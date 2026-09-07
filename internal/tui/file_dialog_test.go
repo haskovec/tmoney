@@ -198,17 +198,18 @@ func TestBuildOpenRecentDialog(t *testing.T) {
 
 func TestApp_CloseFileDialog(t *testing.T) {
 	app := &App{
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New File")
 			d.SetVisible(true)
 			return d
-		}(),
-		fileDialogMode: fileDialogModeNew,
+		}()},
+
+			mode: fileDialogModeNew},
 	}
 
 	app.closeFileDialog()
 
-	if app.fileDialog != nil {
+	if app.file.dlg != nil {
 		t.Error("dialog should be nil after close")
 	}
 }
@@ -220,18 +221,19 @@ func TestApp_HandleFileDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			return d
-		}(),
-		fileDialogMode: fileDialogModeNew,
+		}()},
+
+			mode: fileDialogModeNew},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.fileDialog != nil {
+	if updatedApp.file.dlg != nil {
 		t.Error("file dialog should be nil after cancel")
 	}
 }
@@ -279,22 +281,23 @@ func TestApp_SubmitFileDialog_NewFile_EmptyPath(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = ""
 			return d
-		}(),
-		fileDialogMode: fileDialogModeNew,
+		}()},
+
+			mode: fileDialogModeNew},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd != nil {
 		t.Error("empty path should not return a cmd")
 	}
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.fileDialog.Fields()[fileFieldPath].Error == "" {
+	if app.file.dlg.Fields()[fileFieldPath].Error == "" {
 		t.Error("path field should have error")
 	}
 }
@@ -306,22 +309,23 @@ func TestApp_SubmitFileDialog_NewFile_WhitespacePath(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = "   "
 			return d
-		}(),
-		fileDialogMode: fileDialogModeNew,
+		}()},
+
+			mode: fileDialogModeNew},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd != nil {
 		t.Error("whitespace path should not return a cmd")
 	}
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Fatal("dialog should remain open")
 	}
-	if app.fileDialog.Fields()[fileFieldPath].Error == "" {
+	if app.file.dlg.Fields()[fileFieldPath].Error == "" {
 		t.Error("path field should have error for whitespace-only path")
 	}
 }
@@ -333,19 +337,20 @@ func TestApp_SubmitFileDialog_NewFile_ValidPath(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = "/tmp/test-tmoney.tdb"
 			return d
-		}(),
-		fileDialogMode: fileDialogModeNew,
+		}()},
+
+			mode: fileDialogModeNew},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd == nil {
 		t.Error("valid new file path should return a non-nil cmd")
 	}
-	if app.fileDialog != nil {
+	if app.file.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 }
@@ -357,22 +362,23 @@ func TestApp_SubmitFileDialog_OpenFile_EmptyPath(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenFileDialog()
 			d.Fields()[fileFieldPath].Value = ""
 			return d
-		}(),
-		fileDialogMode: fileDialogModeOpen,
+		}()},
+
+			mode: fileDialogModeOpen},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd != nil {
 		t.Error("empty path should not return a cmd")
 	}
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Fatal("dialog should remain open")
 	}
-	if app.fileDialog.Fields()[fileFieldPath].Error == "" {
+	if app.file.dlg.Fields()[fileFieldPath].Error == "" {
 		t.Error("path field should have error")
 	}
 }
@@ -384,19 +390,20 @@ func TestApp_SubmitFileDialog_OpenFile_ValidPath(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenFileDialog()
 			d.Fields()[fileFieldPath].Value = "/tmp/existing.tdb"
 			return d
-		}(),
-		fileDialogMode: fileDialogModeOpen,
+		}()},
+
+			mode: fileDialogModeOpen},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd == nil {
 		t.Error("valid open file path should return a non-nil cmd")
 	}
-	if app.fileDialog != nil {
+	if app.file.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 }
@@ -408,11 +415,12 @@ func TestApp_SubmitFileDialog_OpenRecent_NoRecentFiles(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenRecentDialog(nil)
 			return d
-		}(),
-		fileDialogMode: fileDialogModeOpenRecent,
+		}()},
+
+			mode: fileDialogModeOpenRecent},
 	}
 
 	_, cmd := app.submitFileDialog()
@@ -429,18 +437,19 @@ func TestApp_SubmitFileDialog_OpenRecent_ValidSelection(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		fileDialog: func() *dialog.Dialog {
+		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenRecentDialog(files)
 			return d
-		}(),
-		fileDialogMode: fileDialogModeOpenRecent,
+		}()},
+
+			mode: fileDialogModeOpenRecent},
 	}
 
 	_, cmd := app.submitFileDialog()
 	if cmd == nil {
 		t.Error("valid recent file selection should return a non-nil cmd")
 	}
-	if app.fileDialog != nil {
+	if app.file.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 }
@@ -458,7 +467,7 @@ func TestApp_RenderLayout_WithFileDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		fileDialog:  buildNewFileDialog(),
+		file:        fileSurface{modalSurface: modalSurface{dlg: buildNewFileDialog()}},
 	}
 
 	output := app.renderLayout()
@@ -478,11 +487,11 @@ func TestApp_HandleMenuAction_NewFile(t *testing.T) {
 
 	app.handleMenuAction(widget.MenuActionNewFile, "")
 
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Error("widget.MenuActionNewFile should open the file dialog")
 	}
-	if app.fileDialogMode != fileDialogModeNew {
-		t.Errorf("fileDialogMode = %d, want fileDialogModeNew", app.fileDialogMode)
+	if app.file.mode != fileDialogModeNew {
+		t.Errorf("fileDialogMode = %d, want fileDialogModeNew", app.file.mode)
 	}
 }
 
@@ -497,11 +506,11 @@ func TestApp_HandleMenuAction_OpenFile(t *testing.T) {
 
 	app.handleMenuAction(widget.MenuActionOpenFile, "")
 
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Error("widget.MenuActionOpenFile should open the file dialog")
 	}
-	if app.fileDialogMode != fileDialogModeBrowse {
-		t.Errorf("fileDialogMode = %d, want fileDialogModeBrowse", app.fileDialogMode)
+	if app.file.mode != fileDialogModeBrowse {
+		t.Errorf("fileDialogMode = %d, want fileDialogModeBrowse", app.file.mode)
 	}
 }
 
@@ -516,11 +525,11 @@ func TestApp_HandleMenuAction_OpenRecent(t *testing.T) {
 
 	app.handleMenuAction(widget.MenuActionOpenRecent, "")
 
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Error("widget.MenuActionOpenRecent should open the file dialog")
 	}
-	if app.fileDialogMode != fileDialogModeOpenRecent {
-		t.Errorf("fileDialogMode = %d, want fileDialogModeOpenRecent", app.fileDialogMode)
+	if app.file.mode != fileDialogModeOpenRecent {
+		t.Errorf("fileDialogMode = %d, want fileDialogModeOpenRecent", app.file.mode)
 	}
 }
 
@@ -694,9 +703,9 @@ func TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir(t *testing.T) {
 
 	app.handleMenuAction(widget.MenuActionOpenFile, "")
 
-	if app.browseDir != defaultDir {
+	if app.file.browseDir != defaultDir {
 		t.Errorf("browseDir = %q, want %q (Open File should start in DefaultDirectory, not the current file's directory)",
-			app.browseDir, defaultDir)
+			app.file.browseDir, defaultDir)
 	}
 }
 
@@ -727,18 +736,18 @@ func TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp(t *testing.T) {
 	app.styles.Resize(100, 40)
 
 	app.openBrowseDialog(child)
-	if app.fileDialog == nil {
+	if app.file.dlg == nil {
 		t.Fatal("setup: openBrowseDialog did not set fileDialog")
 	}
-	if app.browseDir != child {
-		t.Fatalf("setup: browseDir = %q, want %q", app.browseDir, child)
+	if app.file.browseDir != child {
+		t.Fatalf("setup: browseDir = %q, want %q", app.file.browseDir, child)
 	}
 
 	now := time.Unix(0, 0)
-	app.browseDialogClicks = widget.NewClickTracker(400 * time.Millisecond)
-	app.browseDialogClicks.SetNowFn(func() time.Time { return now })
+	app.file.clicks = widget.NewClickTracker(400 * time.Millisecond)
+	app.file.clicks.SetNowFn(func() time.Time { return now })
 
-	d := app.fileDialog
+	d := app.file.dlg
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
 	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
 
@@ -764,16 +773,16 @@ func TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp(t *testing.T) {
 	if _, cmd := app.Update(clickMsg); cmd != nil {
 		t.Fatal("first click should not return a navigation command")
 	}
-	if app.browseDir != child {
-		t.Fatalf("after first click, browseDir = %q, want %q (no navigation yet)", app.browseDir, child)
+	if app.file.browseDir != child {
+		t.Fatalf("after first click, browseDir = %q, want %q (no navigation yet)", app.file.browseDir, child)
 	}
 
 	// Second click within threshold: triggers navigation up.
 	now = now.Add(100 * time.Millisecond)
 	app.Update(clickMsg)
 
-	if app.browseDir != parent {
-		t.Errorf("after double-click on ../, browseDir = %q, want %q", app.browseDir, parent)
+	if app.file.browseDir != parent {
+		t.Errorf("after double-click on ../, browseDir = %q, want %q", app.file.browseDir, parent)
 	}
 }
 
@@ -801,10 +810,10 @@ func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
 
 	// Entries: ["../", "sub/"] — sub/ is index 1.
 	now := time.Unix(0, 0)
-	app.browseDialogClicks = widget.NewClickTracker(400 * time.Millisecond)
-	app.browseDialogClicks.SetNowFn(func() time.Time { return now })
+	app.file.clicks = widget.NewClickTracker(400 * time.Millisecond)
+	app.file.clicks.SetNowFn(func() time.Time { return now })
 
-	d := app.fileDialog
+	d := app.file.dlg
 	startCol, startRow, _, _ := d.DialogBounds(app.width, app.height)
 	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
 
@@ -829,7 +838,7 @@ func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
 	now = now.Add(100 * time.Millisecond)
 	app.Update(clickMsg)
 
-	if app.browseDir != subdir {
-		t.Errorf("after double-click on sub/, browseDir = %q, want %q", app.browseDir, subdir)
+	if app.file.browseDir != subdir {
+		t.Errorf("after double-click on sub/, browseDir = %q, want %q", app.file.browseDir, subdir)
 	}
 }

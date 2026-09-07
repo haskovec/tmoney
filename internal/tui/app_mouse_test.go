@@ -525,15 +525,16 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 	dlg.SetVisible(true)
 
 	app := &App{
-		currentView:   ViewDashboard,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		sidebar:       NewSidebar(),
-		statusbar:     widget.NewStatusBar(),
-		confirmDialog: dlg,
-		confirmAction: func() tea.Msg { return nil },
-		width:         80,
-		height:        24,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
+			action: func() tea.Msg { return nil }},
+
+		width:  80,
+		height: 24,
 	}
 	app.styles.Resize(80, 24)
 
@@ -547,7 +548,7 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.confirmDialog != nil {
+	if updatedApp.confirm.dlg != nil {
 		t.Error("confirm dialog should be closed after clicking [x]")
 	}
 }
@@ -559,15 +560,16 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 
 	submitted := false
 	app := &App{
-		currentView:   ViewDashboard,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		sidebar:       NewSidebar(),
-		statusbar:     widget.NewStatusBar(),
-		confirmDialog: dlg,
-		confirmAction: func() tea.Msg { submitted = true; return nil },
-		width:         80,
-		height:        24,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
+			action: func() tea.Msg { submitted = true; return nil }},
+
+		width:  80,
+		height: 24,
 	}
 	app.styles.Resize(80, 24)
 
@@ -593,7 +595,7 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 	model, cmd := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.confirmDialog != nil {
+	if updatedApp.confirm.dlg != nil {
 		t.Error("confirm dialog should be closed after clicking OK")
 	}
 	// Execute the command to trigger the confirm action
@@ -611,15 +613,16 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 	dlg.SetVisible(true)
 
 	app := &App{
-		currentView:   ViewDashboard,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		sidebar:       NewSidebar(),
-		statusbar:     widget.NewStatusBar(),
-		confirmDialog: dlg,
-		confirmAction: func() tea.Msg { return nil },
-		width:         80,
-		height:        24,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
+			action: func() tea.Msg { return nil }},
+
+		width:  80,
+		height: 24,
 	}
 	app.styles.Resize(80, 24)
 
@@ -645,7 +648,7 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.confirmDialog != nil {
+	if updatedApp.confirm.dlg != nil {
 		t.Error("confirm dialog should be closed after clicking Cancel")
 	}
 }
@@ -655,15 +658,16 @@ func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
 	dlg.SetVisible(true)
 
 	app := &App{
-		currentView:   ViewDashboard,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		sidebar:       NewSidebar(),
-		statusbar:     widget.NewStatusBar(),
-		confirmDialog: dlg,
-		confirmAction: func() tea.Msg { return nil },
-		width:         80,
-		height:        24,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
+			action: func() tea.Msg { return nil }},
+
+		width:  80,
+		height: 24,
 	}
 	app.styles.Resize(80, 24)
 
@@ -672,7 +676,7 @@ func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.confirmDialog == nil || !updatedApp.confirmDialog.IsVisible() {
+	if updatedApp.confirm.dlg == nil || !updatedApp.confirm.dlg.IsVisible() {
 		t.Error("dialog should remain open when clicking outside")
 	}
 }
@@ -708,15 +712,16 @@ func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
 	dlg.SetVisible(true)
 
 	app := &App{
-		currentView:   ViewDashboard,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		sidebar:       NewSidebar(),
-		statusbar:     widget.NewStatusBar(),
-		confirmDialog: dlg,
-		confirmAction: func() tea.Msg { return nil },
-		width:         80,
-		height:        24,
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
+			action: func() tea.Msg { return nil }},
+
+		width:  80,
+		height: 24,
 	}
 	app.styles.Resize(80, 24)
 

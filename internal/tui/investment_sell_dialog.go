@@ -158,20 +158,28 @@ func (a *App) loadSellDialogData() tea.Cmd {
 	}
 }
 
+// sellSurface is the Sell dialog together with the form state that
+// belongs to it. Its zero value is closed; closeSellDialog resets it to that.
+type sellSurface struct {
+	modalSurface
+	data        *sellDialogData
+	securityIDs []types.ID
+	lots        []*investment.Lot
+}
+
+func (s *sellSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeSellDialog clears the sell dialog state.
 func (a *App) closeSellDialog() {
-	a.sellDialog = nil
-	a.sellDialogData = nil
-	a.sellDialogSecurityIDs = nil
-	a.sellDialogLots = nil
+	a.sell = sellSurface{}
 }
 
 // handleSellDialogKey routes key events to the sell dialog.
 func (a *App) handleSellDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.sellDialog == nil {
+	if a.sell.dlg == nil {
 		return a, nil
 	}
-	return a.sellDialogAction(a.sellDialog.HandleKey(msg))
+	return a.sellDialogAction(a.sell.dlg.HandleKey(msg))
 }
 
 // sellDialogAction dispatches a DialogAction for the sell dialog, from either input path.
@@ -189,19 +197,19 @@ func (a *App) sellDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) 
 
 // submitSellDialog parses dialog fields, validates, and saves the sell transaction.
 func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
-	if a.sellDialog == nil || a.sellDialogData == nil {
+	if a.sell.dlg == nil || a.sell.data == nil {
 		return a, nil
 	}
 
-	fields := a.sellDialog.Fields()
-	numLots := len(a.sellDialogLots)
+	fields := a.sell.dlg.Fields()
+	numLots := len(a.sell.lots)
 	// Expected fields: Date(0), Security(1), Shares(2), [lots...], Total, Price/Share, Commission, Memo
 	expectedFields := 7 + numLots
 	if len(fields) < expectedFields {
 		return a, nil
 	}
 
-	a.sellDialog.ClearErrors()
+	a.sell.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -215,14 +223,14 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.sellDialogSecurityIDs) == 0 {
+	if len(a.sell.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.sellDialogSecurityIDs) {
-		securityID = a.sellDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.sell.securityIDs) {
+		securityID = a.sell.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true
@@ -264,7 +272,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			}
 
 			// Check lot has enough shares
-			lot := a.sellDialogLots[i]
+			lot := a.sell.lots[i]
 			if lot.Shares.Cmp(q) < 0 {
 				fields[fieldIdx].Error = fmt.Sprintf("Only %s shares available", lot.Shares.String())
 				hasErrors = true

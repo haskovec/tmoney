@@ -57,18 +57,26 @@ func buildCashOperationDialog(title string, editTxn *investment.Transaction) *di
 	return d
 }
 
+// cashOperationSurface is the cash operation (deposit, withdrawal, fee, interest) dialog together with the form state that
+// belongs to it. Its zero value is closed; closeCashOperationDialog resets it to that.
+type cashOperationSurface struct {
+	modalSurface
+	opType investment.TransactionType
+}
+
+func (s *cashOperationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeCashOperationDialog clears the cash operation dialog state.
 func (a *App) closeCashOperationDialog() {
-	a.cashOperationDialog = nil
-	a.cashOperationType = ""
+	a.cashOperation = cashOperationSurface{}
 }
 
 // handleCashOperationDialogKey routes key events to the cash operation dialog.
 func (a *App) handleCashOperationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.cashOperationDialog == nil {
+	if a.cashOperation.dlg == nil {
 		return a, nil
 	}
-	return a.cashOperationDialogAction(a.cashOperationDialog.HandleKey(msg))
+	return a.cashOperationDialogAction(a.cashOperation.dlg.HandleKey(msg))
 }
 
 // cashOperationDialogAction dispatches a DialogAction for the cash operation dialog, from either input path.
@@ -86,16 +94,16 @@ func (a *App) cashOperationDialogAction(action dialog.DialogAction) (tea.Model, 
 
 // submitCashOperationDialog parses dialog fields, validates, and saves a cash operation transaction.
 func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
-	if a.cashOperationDialog == nil {
+	if a.cashOperation.dlg == nil {
 		return a, nil
 	}
 
-	fields := a.cashOperationDialog.Fields()
+	fields := a.cashOperation.dlg.Fields()
 	if len(fields) < 3 {
 		return a, nil
 	}
 
-	a.cashOperationDialog.ClearErrors()
+	a.cashOperation.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -133,7 +141,7 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 	}
 
 	editTxnID := a.investmentEditTxnID
-	txnType := a.cashOperationType
+	txnType := a.cashOperation.opType
 	amountVal := *amount
 
 	// Close dialog before async save

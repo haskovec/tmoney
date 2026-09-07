@@ -160,8 +160,9 @@ func TestSubmitCashOperationDialog_ValidationErrors(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Deposit", nil),
-		cashOperationType:   investment.TransactionTypeDeposit,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
+			opType: investment.TransactionTypeDeposit},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -172,21 +173,21 @@ func TestSubmitCashOperationDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Set invalid values
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[1].Value = ""           // empty amount
 
 	model, cmd := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog == nil {
+	if updatedApp.cashOperation.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.cashOperationDialog.Fields()
+	fields = updatedApp.cashOperation.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -199,8 +200,9 @@ func TestSubmitCashOperationDialog_InvalidAmount(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Deposit", nil),
-		cashOperationType:   investment.TransactionTypeDeposit,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
+			opType: investment.TransactionTypeDeposit},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -209,17 +211,17 @@ func TestSubmitCashOperationDialog_InvalidAmount(t *testing.T) {
 		},
 	}
 
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[1].Value = "not-valid" // invalid amount
 
 	model, _ := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog == nil {
+	if updatedApp.cashOperation.dlg == nil {
 		t.Error("dialog should remain open on amount error")
 	}
-	fields = updatedApp.cashOperationDialog.Fields()
+	fields = updatedApp.cashOperation.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("amount field should have error")
 	}
@@ -229,8 +231,9 @@ func TestSubmitCashOperationDialog_ValidDeposit(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Deposit", nil),
-		cashOperationType:   investment.TransactionTypeDeposit,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
+			opType: investment.TransactionTypeDeposit},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -240,14 +243,14 @@ func TestSubmitCashOperationDialog_ValidDeposit(t *testing.T) {
 		},
 	}
 
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[1].Value = "500.00"     // amount
 
 	model, cmd := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog != nil {
+	if updatedApp.cashOperation.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -259,8 +262,9 @@ func TestSubmitCashOperationDialog_ValidWithMemo(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Withdrawal", nil),
-		cashOperationType:   investment.TransactionTypeWithdrawal,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Withdrawal", nil)},
+			opType: investment.TransactionTypeWithdrawal},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -269,7 +273,7 @@ func TestSubmitCashOperationDialog_ValidWithMemo(t *testing.T) {
 		},
 	}
 
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[1].Value = "250.00"
 	fields[2].Value = "ATM withdrawal" // memo
@@ -277,7 +281,7 @@ func TestSubmitCashOperationDialog_ValidWithMemo(t *testing.T) {
 	model, cmd := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog != nil {
+	if updatedApp.cashOperation.dlg != nil {
 		t.Error("dialog should close on valid submit with memo")
 	}
 	if cmd == nil {
@@ -289,8 +293,9 @@ func TestSubmitCashOperationDialog_DollarSignInAmount(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Fee", nil),
-		cashOperationType:   investment.TransactionTypeFee,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Fee", nil)},
+			opType: investment.TransactionTypeFee},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -299,14 +304,14 @@ func TestSubmitCashOperationDialog_DollarSignInAmount(t *testing.T) {
 		},
 	}
 
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "06/01/2024"
 	fields[1].Value = "$25.00" // dollar sign in amount
 
 	model, cmd := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog != nil {
+	if updatedApp.cashOperation.dlg != nil {
 		t.Error("dialog should close (dollar sign stripped)")
 	}
 	if cmd == nil {
@@ -318,8 +323,9 @@ func TestSubmitCashOperationDialog_ValidInterest(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Interest", nil),
-		cashOperationType:   investment.TransactionTypeInterest,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Interest", nil)},
+			opType: investment.TransactionTypeInterest},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -328,7 +334,7 @@ func TestSubmitCashOperationDialog_ValidInterest(t *testing.T) {
 		},
 	}
 
-	fields := app.cashOperationDialog.Fields()
+	fields := app.cashOperation.dlg.Fields()
 	fields[0].Value = "12/31/2024"
 	fields[1].Value = "15.75"
 	fields[2].Value = "Monthly interest"
@@ -336,7 +342,7 @@ func TestSubmitCashOperationDialog_ValidInterest(t *testing.T) {
 	model, cmd := app.submitCashOperationDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog != nil {
+	if updatedApp.cashOperation.dlg != nil {
 		t.Error("dialog should close after valid interest submit")
 	}
 	if cmd == nil {
@@ -348,18 +354,18 @@ func TestSubmitCashOperationDialog_ValidInterest(t *testing.T) {
 
 func TestHandleCashOperationDialogKey_Cancel(t *testing.T) {
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Deposit", nil),
-		cashOperationType:   investment.TransactionTypeDeposit,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
+			opType: investment.TransactionTypeDeposit},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleCashOperationDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.cashOperationDialog != nil {
+	if updatedApp.cashOperation.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.cashOperationType != "" {
+	if updatedApp.cashOperation.opType != "" {
 		t.Error("cash operation type should be cleared after cancel")
 	}
 }
@@ -397,16 +403,16 @@ func TestSubmitCashOperationDialog_NilDialog(t *testing.T) {
 
 func TestCloseCashOperationDialog(t *testing.T) {
 	app := &App{
-		cashOperationDialog: buildCashOperationDialog("Deposit", nil),
-		cashOperationType:   investment.TransactionTypeDeposit,
+		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
+			opType: investment.TransactionTypeDeposit},
 	}
 
 	app.closeCashOperationDialog()
 
-	if app.cashOperationDialog != nil {
+	if app.cashOperation.dlg != nil {
 		t.Error("cashOperationDialog should be nil after close")
 	}
-	if app.cashOperationType != "" {
+	if app.cashOperation.opType != "" {
 		t.Error("cashOperationType should be empty after close")
 	}
 }
@@ -454,8 +460,9 @@ func TestCashOperationType_AllTypes(t *testing.T) {
 	for _, txnType := range cashTypes {
 		acctID := types.NewID()
 		app := &App{
-			cashOperationDialog: buildCashOperationDialog(txnType.DisplayName(), nil),
-			cashOperationType:   txnType,
+			cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog(txnType.DisplayName(), nil)},
+				opType: txnType},
+
 			investmentRegister: &investmentRegisterData{
 				account: &account.Account{
 					BaseModel: types.BaseModel{ID: acctID},
@@ -464,14 +471,14 @@ func TestCashOperationType_AllTypes(t *testing.T) {
 			},
 		}
 
-		fields := app.cashOperationDialog.Fields()
+		fields := app.cashOperation.dlg.Fields()
 		fields[0].Value = "03/15/2024"
 		fields[1].Value = "100.00"
 
 		model, cmd := app.submitCashOperationDialog()
 		updatedApp := model.(*App)
 
-		if updatedApp.cashOperationDialog != nil {
+		if updatedApp.cashOperation.dlg != nil {
 			t.Errorf("dialog should be closed for type %s", txnType)
 		}
 		if cmd == nil {

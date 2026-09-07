@@ -71,7 +71,7 @@ func TestInvestmentTypeSelector_SpinOffDispatch(t *testing.T) {
 	if cmd == nil {
 		t.Error("expected a command to load the spin-off dialog")
 	}
-	if app.spinOffDialogPreSelectedID == nil || *app.spinOffDialogPreSelectedID != secID {
-		t.Errorf("spin-off parent should be pre-filled to the selected holding %v, got %v", secID, app.spinOffDialogPreSelectedID)
+	if app.spinOff.preSelectedID == nil || *app.spinOff.preSelectedID != secID {
+		t.Errorf("spin-off parent should be pre-filled to the selected holding %v, got %v", secID, app.spinOff.preSelectedID)
 	}
 }

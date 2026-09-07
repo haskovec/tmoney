@@ -828,7 +828,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 
 	// createCatSource must be set before parentsForCreateCatDialog so the
 	// helper picks the right source for the parents list.
-	a.createCatSource = createCatSourceSchedPreview
+	a.createCat.origin.surface = createCatSourceSchedPreview
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
 	// A transfer's always-positive amount carries no income/expense signal, so
@@ -838,7 +838,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 	if !a.schedPreviewDialog.IsTransfer() && len(fields) > previewSingleFieldAmount {
 		defaultType = inferCategoryTypeFromAmount(fields[previewSingleFieldAmount].Value)
 	}
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, defaultType)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
 	header.SetVisible(false)
 	return a, nil
 }
@@ -852,17 +852,17 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 // freshly-created category.
 func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats []*category.Category) {
 	if a.schedPreviewDialog == nil {
-		a.createCatDialog = nil
+		a.createCat.dlg = nil
 		return
 	}
 	header := a.schedPreviewDialog.HeaderDialog()
 	if header == nil {
-		a.createCatDialog = nil
+		a.createCat.dlg = nil
 		return
 	}
 	catIdx := a.schedPreviewDialog.categoryFieldIndex()
 	if catIdx < 0 || catIdx >= len(header.Fields()) {
-		a.createCatDialog = nil
+		a.createCat.dlg = nil
 		return
 	}
 
@@ -892,7 +892,7 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 	// Focus advances to the field after Category so the user can keep typing.
 	header.SetFocusIndex(catIdx + 1)
 	header.SetVisible(true)
-	a.createCatDialog = nil
+	a.createCat.dlg = nil
 }
 
 // handleSchedulePreviewMultiLineKey routes keys for a multi-line

@@ -163,12 +163,12 @@ func TestInvestmentRegister_DeleteKey_CashTransfer(t *testing.T) {
 			// confirmation.
 			model, _ := env.app.handleInvestmentRegisterKeys(tea.KeyPressMsg{Code: 'd', Text: "d"})
 			a := model.(*App)
-			if a.confirmAction == nil {
+			if a.confirm.action == nil {
 				t.Fatal("delete key did not open a confirmation dialog")
 			}
 
 			// Confirm.
-			msg := a.confirmAction()
+			msg := a.confirm.action()
 			if em, ok := msg.(errMsg); ok {
 				t.Fatalf("confirming the delete failed: %v", em.err)
 			}

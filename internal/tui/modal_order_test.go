@@ -44,12 +44,12 @@ func visibleDialog(title string) *dialog.Dialog {
 // newLoanSurface, newImportSurface and firstOf keep the many fixtures that
 // build a wizard or dialog to a single line now that the state lives in one
 // struct.
-func newLoanSurface(d *dialog.Dialog, st *loanWizardData) *loanSurface {
-	return &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+func newLoanSurface(d *dialog.Dialog, st *loanWizardData) loanSurface {
+	return loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 }
 
-func newImportSurface(d *dialog.Dialog) *importSurface {
-	return &importSurface{modalSurface: modalSurface{dlg: d}, state: &importDialogState{}}
+func newImportSurface(d *dialog.Dialog) importSurface {
+	return importSurface{modalSurface: modalSurface{dlg: d}, state: &importDialogState{}}
 }
 
 func firstOf[T any, U any](t T, _ U) T { return t }
@@ -77,113 +77,113 @@ func surfaceSetters() map[string]func(*App) {
 		"help":  func(a *App) { a.showHelp = true },
 		"about": func(a *App) { a.aboutDialog = visibleDialog("About") },
 		"confirm": func(a *App) {
-			a.confirmDialog = visibleDialog("Confirm")
-			a.confirmAction = func() tea.Msg { return nil }
+			a.confirm.dlg = visibleDialog("Confirm")
+			a.confirm.action = func() tea.Msg { return nil }
 		},
 		"backup": func(a *App) { a.backupDialog = &backupDialogState{dialog: visibleDialog("Backup")} },
-		"file":   func(a *App) { a.fileDialog = visibleDialog("File") },
+		"file":   func(a *App) { a.file.dlg = visibleDialog("File") },
 		"import": func(a *App) {
-			a.importer = &importSurface{
+			a.importer = importSurface{
 				modalSurface: visibleSurface("Import"),
 				state:        &importDialogState{},
 			}
 		},
 		"linkTransfers": func(a *App) {
-			a.linkTransfers = &linkTransfersSurface{
+			a.linkTransfers = linkTransfersSurface{
 				modalSurface: visibleSurface("Link"),
 				result:       &transferlink.Result{},
 			}
 		},
-		"split":          func(a *App) { a.splitDialog = newVisibleSplitDialog() },
-		"createCategory": func(a *App) { a.createCatDialog = visibleDialog("Create Category") },
+		"split":          func(a *App) { a.split.editor = newVisibleSplitDialog() },
+		"createCategory": func(a *App) { a.createCat.dlg = visibleDialog("Create Category") },
 		"transaction": func(a *App) {
-			a.txnDialog = visibleDialog("Transaction")
-			a.txnDialogData = &transactionDialogData{}
-			a.txnDialogCategoryIDs = ids()
+			a.txn.dlg = visibleDialog("Transaction")
+			a.txn.data = &transactionDialogData{}
+			a.txn.categoryIDs = ids()
 		},
 		"transfer": func(a *App) {
-			a.transferDialog = visibleDialog("Transfer")
-			a.transferDialogData = &transferDialogData{}
-			a.transferDialogAccountIDs = ids()
-			a.transferDialogCategoryIDs = ids()
+			a.transfer.dlg = visibleDialog("Transfer")
+			a.transfer.data = &transferDialogData{}
+			a.transfer.accountIDs = ids()
+			a.transfer.categoryIDs = ids()
 		},
 		"scheduled": func(a *App) {
-			a.schedDialog = visibleDialog("Scheduled")
-			a.schedDialogData = &scheduledDialogData{}
-			a.schedDialogAccountIDs = ids()
-			a.schedDialogCategoryIDs = ids()
-			a.schedDialogCategoryOptions = []string{"Groceries"}
+			a.sched.dlg = visibleDialog("Scheduled")
+			a.sched.data = &scheduledDialogData{}
+			a.sched.accountIDs = ids()
+			a.sched.categoryIDs = ids()
+			a.sched.categoryOptions = []string{"Groceries"}
 		},
 		"schedulePreview": func(a *App) {
 			a.schedPreviewDialog = &SchedulePreviewDialog{headerDialog: visibleDialog("Preview")}
 		},
 		"paycheckWizard": func(a *App) { a.paycheckWizard = newVisiblePaycheckWizard() },
 		"loanWizard": func(a *App) {
-			a.loan = &loanSurface{
+			a.loan = loanSurface{
 				modalSurface: visibleSurface("Loan"),
 				state:        &loanWizardData{},
 			}
 		},
 		"account": func(a *App) {
-			a.acctDialog = visibleDialog("Account")
-			a.acctDialogData = &accountDialogData{}
+			a.acct.dlg = visibleDialog("Account")
+			a.acct.data = &accountDialogData{}
 		},
 		"reconciliation": func(a *App) { a.reconDialog = visibleDialog("Reconcile") },
 		"closeAccount": func(a *App) {
-			a.closeAcct = &closeAcctSurface{modalSurface: visibleSurface("Close Account")}
+			a.closeAcct = closeAcctSurface{modalSurface: visibleSurface("Close Account")}
 		},
 		"security": func(a *App) {
-			a.security = &securitySurface{modalSurface: visibleSurface("Security")}
+			a.security = securitySurface{modalSurface: visibleSurface("Security")}
 		},
 		"price": func(a *App) {
-			a.price = &priceSurface{modalSurface: visibleSurface("Price")}
+			a.price = priceSurface{modalSurface: visibleSurface("Price")}
 		},
 		"priceImport": func(a *App) { a.priceImportDialog = visibleDialog("Price Import") },
 		"buy": func(a *App) {
-			a.buyDialog = visibleDialog("Buy")
-			a.buyDialogData = &buyDialogData{}
-			a.buyDialogSecurityIDs = ids()
+			a.buy.dlg = visibleDialog("Buy")
+			a.buy.data = &buyDialogData{}
+			a.buy.securityIDs = ids()
 		},
 		"sell": func(a *App) {
-			a.sellDialog = visibleDialog("Sell")
-			a.sellDialogData = &sellDialogData{}
-			a.sellDialogSecurityIDs = ids()
-			a.sellDialogLots = lots()
+			a.sell.dlg = visibleDialog("Sell")
+			a.sell.data = &sellDialogData{}
+			a.sell.securityIDs = ids()
+			a.sell.lots = lots()
 		},
 		"feeLiquidation": func(a *App) {
-			a.feeLiquidationDialog = visibleDialog("Fee")
-			a.feeLiquidationDialogData = &feeLiquidationDialogData{}
-			a.feeLiquidationDialogSecurityIDs = ids()
+			a.feeLiquidation.dlg = visibleDialog("Fee")
+			a.feeLiquidation.data = &feeLiquidationDialogData{}
+			a.feeLiquidation.securityIDs = ids()
 		},
 		"dividend": func(a *App) {
-			a.dividendDialog = visibleDialog("Dividend")
-			a.dividendDialogData = &dividendDialogData{}
-			a.dividendDialogSecurityIDs = ids()
+			a.dividend.dlg = visibleDialog("Dividend")
+			a.dividend.data = &dividendDialogData{}
+			a.dividend.securityIDs = ids()
 		},
 		"transferShares": func(a *App) {
-			a.transferSharesDialog = visibleDialog("Transfer Shares")
-			a.transferSharesDialogData = &transferSharesDialogData{}
-			a.transferSharesDialogAccountIDs = ids()
-			a.transferSharesDialogSecurityIDs = ids()
-			a.transferSharesDialogLots = lots()
+			a.transferShares.dlg = visibleDialog("Transfer Shares")
+			a.transferShares.data = &transferSharesDialogData{}
+			a.transferShares.accountIDs = ids()
+			a.transferShares.securityIDs = ids()
+			a.transferShares.lots = lots()
 		},
 		"stockSplit": func(a *App) {
-			a.stockSplitDialog = visibleDialog("Stock Split")
-			a.stockSplitDialogData = &stockSplitDialogData{}
-			a.stockSplitDialogSecurityIDs = ids()
+			a.stockSplit.dlg = visibleDialog("Stock Split")
+			a.stockSplit.data = &stockSplitDialogData{}
+			a.stockSplit.securityIDs = ids()
 		},
-		"mergerConfirm": func(a *App) { a.mergerConfirmData = &mergerConfirmData{} },
+		"mergerConfirm": func(a *App) { a.mergerConfirm.data = &mergerConfirmData{} },
 		"merger": func(a *App) {
-			a.mergerDialog = visibleDialog("Merger")
-			a.mergerDialogData = &mergerDialogData{}
-			a.mergerDialogSecurityIDs = ids()
+			a.merger.dlg = visibleDialog("Merger")
+			a.merger.data = &mergerDialogData{}
+			a.merger.securityIDs = ids()
 		},
 		"spinOff": func(a *App) {
-			a.spinOffDialog = visibleDialog("Spin-off")
-			a.spinOffDialogData = &spinOffDialogData{}
-			a.spinOffDialogSecurityIDs = ids()
+			a.spinOff.dlg = visibleDialog("Spin-off")
+			a.spinOff.data = &spinOffDialogData{}
+			a.spinOff.securityIDs = ids()
 		},
-		"cashOperation":          func(a *App) { a.cashOperationDialog = visibleDialog("Cash") },
+		"cashOperation":          func(a *App) { a.cashOperation.dlg = visibleDialog("Cash") },
 		"investmentTypeSelector": func(a *App) { a.investmentTypeSelector = visibleDialog("Type") },
 	}
 }
@@ -371,10 +371,10 @@ func TestModals_SplitHidesItselfOnCreateCategoryDivert(t *testing.T) {
 
 	_, _ = a.openCreateCategorySubDialogFromSplit()
 
-	if a.splitDialog == nil {
+	if a.split.editor == nil {
 		t.Fatal("the divert must keep the split editor alive (hidden), not drop it")
 	}
-	if a.splitDialog.IsVisible() {
+	if a.split.editor.IsVisible() {
 		t.Error("the split editor must hide itself when it opens create-category")
 	}
 	if front := a.frontmostModal(); front == nil || front.name != "createCategory" {

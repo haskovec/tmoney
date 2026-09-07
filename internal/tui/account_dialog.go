@@ -283,18 +283,26 @@ func (a *App) loadEditAccountDialogData() tea.Cmd {
 	}
 }
 
+// acctSurface is the Account dialog together with the form state that
+// belongs to it. Its zero value is closed; closeAccountDialog resets it to that.
+type acctSurface struct {
+	modalSurface
+	data *accountDialogData
+}
+
+func (s *acctSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeAccountDialog clears the account dialog state.
 func (a *App) closeAccountDialog() {
-	a.acctDialog = nil
-	a.acctDialogData = nil
+	a.acct = acctSurface{}
 }
 
 // handleAccountDialogKey routes key events to the account dialog.
 func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.acctDialog == nil {
+	if a.acct.dlg == nil {
 		return a, nil
 	}
-	return a.accountDialogAction(a.acctDialog.HandleKey(msg))
+	return a.accountDialogAction(a.acct.dlg.HandleKey(msg))
 }
 
 // accountDialogAction dispatches a DialogAction for the account dialog, from either input path.
@@ -308,23 +316,23 @@ func (a *App) accountDialogAction(action dialog.DialogAction) (tea.Model, tea.Cm
 	}
 
 	// Update field visibility when account type changes
-	updateAccountFieldVisibility(a.acctDialog)
+	updateAccountFieldVisibility(a.acct.dlg)
 
 	return a, nil
 }
 
 // submitAccountDialog parses dialog fields, validates, and saves the account.
 func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
-	if a.acctDialog == nil || a.acctDialogData == nil {
+	if a.acct.dlg == nil || a.acct.data == nil {
 		return a, nil
 	}
 
-	fields := a.acctDialog.Fields()
+	fields := a.acct.dlg.Fields()
 	if len(fields) < 10 {
 		return a, nil
 	}
 
-	a.acctDialog.ClearErrors()
+	a.acct.dlg.ClearErrors()
 	hasErrors := false
 
 	// Name
@@ -405,8 +413,8 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		trackLots = fields[acctFieldTrackLots].Checked
 	}
 
-	mode := a.acctDialogData.mode
-	existingAccount := a.acctDialogData.account
+	mode := a.acct.data.mode
+	existingAccount := a.acct.data.account
 
 	// Close dialog before async save for responsive UI
 	a.closeAccountDialog()

@@ -1680,10 +1680,10 @@ func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	a.createCatSource = createCatSourcePaycheckWizard
-	a.createCatPaycheckLine = line
+	a.createCat.origin.surface = createCatSourcePaycheckWizard
+	a.createCat.origin.line = line
 	parents := a.parentsForCreateCatDialog()
-	a.createCatDialog = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
+	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
 	w.SetVisible(false)
 	return a, nil
 }
@@ -1711,8 +1711,8 @@ func defaultTypeForPaycheckSection(s PaycheckSection) category.Type {
 // sub-dialog is cleared.
 func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
 	defer func() {
-		a.createCatDialog = nil
-		a.createCatPaycheckLine = nil
+		a.createCat.dlg = nil
+		a.createCat.origin.line = nil
 	}()
 	w := a.paycheckWizard
 	if w == nil {
@@ -1747,7 +1747,7 @@ func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*
 		newCatIdx = idx
 	}
 
-	originating := a.createCatPaycheckLine
+	originating := a.createCat.origin.line
 	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
 		for _, line := range w.sections[s] {
 			// Lines were built with selectField.Options pointing at the prior
@@ -1936,17 +1936,17 @@ func NewPaycheckWizardFromSchedule(
 // relaunchAsPaycheckWizard closes the scheduled-edit dialog and
 // opens the paycheck wizard pre-filled from the in-flight schedule.
 func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return a, nil
 	}
-	if a.schedDialogData.mode != scheduledDialogModeEdit || a.schedDialogData.scheduled == nil {
+	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
 		return a, nil
 	}
-	st := a.schedDialogData.scheduled
-	accounts := a.schedDialogData.accounts
-	payees := a.schedDialogData.payees
-	categoryOptions := a.schedDialogCategoryOptions
-	categoryIDs := a.schedDialogCategoryIDs
+	st := a.sched.data.scheduled
+	accounts := a.sched.data.accounts
+	payees := a.sched.data.payees
+	categoryOptions := a.sched.categoryOptions
+	categoryIDs := a.sched.categoryIDs
 
 	// Refuse rather than pre-fill wrong. The wizard's pickers only offer
 	// active accounts, so a closed deposit account would silently resolve to

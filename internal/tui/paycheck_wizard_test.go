@@ -1376,14 +1376,14 @@ func TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handlePaycheckWizardKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after Enter on AddNew sentinel")
 	}
-	if updated.createCatSource != createCatSourcePaycheckWizard {
+	if updated.createCat.origin.surface != createCatSourcePaycheckWizard {
 		t.Errorf("createCatSource = %d, want createCatSourcePaycheckWizard (%d)",
-			updated.createCatSource, createCatSourcePaycheckWizard)
+			updated.createCat.origin.surface, createCatSourcePaycheckWizard)
 	}
-	if updated.createCatPaycheckLine != line {
+	if updated.createCat.origin.line != line {
 		t.Error("createCatPaycheckLine should reference the originating line")
 	}
 	if updated.paycheckWizard == nil {
@@ -1392,9 +1392,9 @@ func TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.paycheckWizard.IsVisible() {
 		t.Error("paycheckWizard should be hidden while createCatDialog is shown")
 	}
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 }
 
@@ -1404,7 +1404,7 @@ func TestApp_PaycheckWizard_AddNew_CancelRestoresState(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
@@ -1412,13 +1412,13 @@ func TestApp_PaycheckWizard_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCat.origin.surface)
 	}
-	if app.createCatPaycheckLine != nil {
+	if app.createCat.origin.line != nil {
 		t.Error("createCatPaycheckLine should be cleared after cancel")
 	}
 	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
@@ -1456,12 +1456,12 @@ func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill: Name=CommuterPass, Parent=(top-level), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "CommuterPass"
 	cFields[1].SelectedIndex = 0
 	cFields[2].SelectedIndex = 0
@@ -1491,13 +1491,13 @@ func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
 		t.Fatal("'CommuterPass' should be persisted after submit")
 	}
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCat.origin.surface)
 	}
-	if app.createCatPaycheckLine != nil {
+	if app.createCat.origin.line != nil {
 		t.Error("createCatPaycheckLine should be cleared after submit")
 	}
 	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
@@ -1564,10 +1564,10 @@ func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Cleaning" // alphabetically inserts in the middle
 	cFields[1].SelectedIndex = 0
 	cFields[2].SelectedIndex = 0
@@ -2193,19 +2193,19 @@ func (env *paycheckEditEnv) openEditSeries(t *testing.T, st *scheduled.Transacti
 		}
 	}
 	accountOptions, accountIDs := buildAccountOptions(env.accounts)
-	env.app.schedDialogAccountIDs = accountIDs
-	env.app.schedDialogCategoryIDs = env.categoryIDs
-	env.app.schedDialogCategoryOptions = env.categoryOptions
-	env.app.schedDialog = buildEditScheduledDialog(
+	env.app.sched.accountIDs = accountIDs
+	env.app.sched.categoryIDs = env.categoryIDs
+	env.app.sched.categoryOptions = env.categoryOptions
+	env.app.sched.dlg = buildEditScheduledDialog(
 		st, accountOptions, accountIDs, env.categoryOptions, env.categoryIDs, payeeNames)
-	env.app.schedDialogData = &scheduledDialogData{
+	env.app.sched.data = &scheduledDialogData{
 		mode:      scheduledDialogModeEdit,
 		scheduled: st,
 		accounts:  env.accounts,
 		payees:    env.payees,
 		payeeMap:  map[string]*payee.Payee{},
 	}
-	return env.app.schedDialog
+	return env.app.sched.dlg
 }
 
 // sectionByTarget maps each split's category or transfer destination to its
@@ -2250,14 +2250,14 @@ func TestScheduledDialog_EditSeriesRoundTrip_KeepsPaycheckTags(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("the first Save should open the split editor, not save")
 	}
-	if env.app.splitDialog == nil {
+	if env.app.split.editor == nil {
 		t.Fatal("split editor did not open")
 	}
 
 	// Second Save persists. Nothing was changed, so no confirmation is due.
 	model, cmd = env.app.submitScheduledSplitDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog != nil {
+	if env.app.confirm.dlg != nil {
 		t.Fatal("a preserving save must not prompt for demotion")
 	}
 	if cmd == nil {
@@ -2336,7 +2336,7 @@ func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T
 	env.openEditSeries(t, seeded)
 	model, _ := env.app.submitScheduledDialog()
 	env.app = model.(*App)
-	sd := env.app.splitDialog
+	sd := env.app.split.editor
 	if sd == nil {
 		t.Fatal("split editor did not open")
 	}
@@ -2358,7 +2358,7 @@ func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T
 
 	model, cmd := env.app.submitScheduledSplitDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("adding an untagged row should prompt before dropping the paycheck shape")
 	}
 	if cmd != nil {
@@ -2369,10 +2369,10 @@ func TestScheduledDialog_EditSeriesAddsUntaggedRow_ConfirmsDemotion(t *testing.T
 		t.Error("the stored schedule changed before the confirmation was answered")
 	}
 
-	if env.app.confirmAction == nil {
+	if env.app.confirm.action == nil {
 		t.Fatal("no confirm action recorded")
 	}
-	if msg, ok := env.app.confirmAction().(errMsg); ok {
+	if msg, ok := env.app.confirm.action().(errMsg); ok {
 		t.Fatalf("confirmed save returned error: %v", msg.err)
 	}
 	after := env.only(t)
@@ -2398,7 +2398,7 @@ func TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion(t *testing.T) {
 
 	model, cmd := env.app.submitScheduledDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("unchecking Split on a paycheck should prompt first")
 	}
 	if cmd != nil {
@@ -2408,7 +2408,7 @@ func TestScheduledDialog_UncheckSplitOnPaycheck_ConfirmsDemotion(t *testing.T) {
 		t.Error("the stored schedule changed before the confirmation was answered")
 	}
 
-	if msg, ok := env.app.confirmAction().(errMsg); ok {
+	if msg, ok := env.app.confirm.action().(errMsg); ok {
 		t.Fatalf("confirmed save returned error: %v", msg.err)
 	}
 	if got := env.only(t); len(got.Splits) != 0 {
@@ -2430,14 +2430,14 @@ func TestScheduledDialog_DeclinedPaycheckDemotion_LeavesScheduleUntouched(t *tes
 
 	model, _ := env.app.submitScheduledDialog()
 	env.app = model.(*App)
-	if env.app.confirmDialog == nil {
+	if env.app.confirm.dlg == nil {
 		t.Fatal("expected a confirmation")
 	}
 
 	// Decline.
 	model, _ = env.app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	env.app = model.(*App)
-	if env.app.confirmDialog != nil || env.app.confirmAction != nil {
+	if env.app.confirm.dlg != nil || env.app.confirm.action != nil {
 		t.Error("declining should clear the confirmation state")
 	}
 
@@ -2472,7 +2472,7 @@ func TestScheduledDialog_EditSeries_MouseClickOnSave_Saves(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("the first Save should open the split editor")
 	}
-	sd := env.app.splitDialog
+	sd := env.app.split.editor
 	if sd == nil {
 		t.Fatal("split editor did not open")
 	}
@@ -2487,7 +2487,7 @@ func TestScheduledDialog_EditSeries_MouseClickOnSave_Saves(t *testing.T) {
 	model, cmd = env.app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
 	env.app = model.(*App)
 
-	if env.app.splitDialog != nil {
+	if env.app.split.editor != nil {
 		t.Fatalf("the split editor is still open after clicking Save; errorMsg=%q", sd.errorMsg)
 	}
 	if cmd == nil {

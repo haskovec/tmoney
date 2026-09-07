@@ -491,22 +491,22 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.schedDialog == nil {
+	if updatedApp.sched.dlg == nil {
 		t.Fatal("scheduled dialog should be created")
 	}
-	if !updatedApp.schedDialog.IsVisible() {
+	if !updatedApp.sched.dlg.IsVisible() {
 		t.Error("scheduled dialog should be visible")
 	}
-	if updatedApp.schedDialog.Title() != "New Scheduled Transaction" {
-		t.Errorf("title = %q, want %q", updatedApp.schedDialog.Title(), "New Scheduled Transaction")
+	if updatedApp.sched.dlg.Title() != "New Scheduled Transaction" {
+		t.Errorf("title = %q, want %q", updatedApp.sched.dlg.Title(), "New Scheduled Transaction")
 	}
-	if updatedApp.schedDialogData == nil {
+	if updatedApp.sched.data == nil {
 		t.Error("scheduled dialog data should be set")
 	}
-	if updatedApp.schedDialogAccountIDs == nil {
+	if updatedApp.sched.accountIDs == nil {
 		t.Error("scheduled dialog account IDs should be set")
 	}
-	if updatedApp.schedDialogCategoryIDs == nil {
+	if updatedApp.sched.categoryIDs == nil {
 		t.Error("scheduled dialog category IDs should be set")
 	}
 }
@@ -537,15 +537,15 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.schedDialog == nil {
+	if updatedApp.sched.dlg == nil {
 		t.Fatal("scheduled dialog should be created")
 	}
-	if updatedApp.schedDialog.Title() != "Edit Scheduled Transaction" {
-		t.Errorf("title = %q, want %q", updatedApp.schedDialog.Title(), "Edit Scheduled Transaction")
+	if updatedApp.sched.dlg.Title() != "Edit Scheduled Transaction" {
+		t.Errorf("title = %q, want %q", updatedApp.sched.dlg.Title(), "Edit Scheduled Transaction")
 	}
 
 	// Verify payee is pre-filled
-	fields := updatedApp.schedDialog.Fields()
+	fields := updatedApp.sched.dlg.Fields()
 	if fields[schedFieldPayee].Value != "Test Payee" {
 		t.Errorf("payee = %q, want %q", fields[schedFieldPayee].Value, "Test Payee")
 	}
@@ -561,29 +561,30 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{types.NewID()},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{types.NewID()},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.schedDialog != nil {
+	if updatedApp.sched.dlg != nil {
 		t.Error("scheduled dialog should be nil after cancel")
 	}
-	if updatedApp.schedDialogData != nil {
+	if updatedApp.sched.data != nil {
 		t.Error("scheduled dialog data should be nil after cancel")
 	}
-	if updatedApp.schedDialogAccountIDs != nil {
+	if updatedApp.sched.accountIDs != nil {
 		t.Error("scheduled dialog account IDs should be nil after cancel")
 	}
-	if updatedApp.schedDialogCategoryIDs != nil {
+	if updatedApp.sched.categoryIDs != nil {
 		t.Error("scheduled dialog category IDs should be nil after cancel")
 	}
 }
@@ -598,16 +599,17 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{types.NewID()},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{types.NewID()},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
-	initialFocus := app.schedDialog.FocusIndex()
+	initialFocus := app.sched.dlg.FocusIndex()
 	if initialFocus != 0 {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
@@ -616,8 +618,8 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.schedDialog.FocusIndex() != 1 {
-		t.Errorf("focus after Tab = %d, want 1", updatedApp.schedDialog.FocusIndex())
+	if updatedApp.sched.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after Tab = %d, want 1", updatedApp.sched.dlg.FocusIndex())
 	}
 }
 
@@ -632,7 +634,7 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Syntactically valid 10-char mask shape, but semantically
 			// invalid — the masked widget no longer accepts free-text
@@ -640,10 +642,11 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 			// time.Parse error in submit-path validation.
 			d.Fields()[schedFieldStartDate].Value = "13/45/2024"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -651,10 +654,10 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid start date should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldStartDate].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldStartDate].Error == "" {
 		t.Error("invalid start date should set field-level error")
 	}
 }
@@ -670,14 +673,15 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "not-a-number"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -685,10 +689,10 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid amount should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldAmount].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldAmount].Error == "" {
 		t.Error("invalid amount should set field-level error")
 	}
 }
@@ -704,14 +708,15 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "abc"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -719,10 +724,10 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid interval should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldInterval].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldInterval].Error == "" {
 		t.Error("invalid interval should set field-level error")
 	}
 }
@@ -738,14 +743,15 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "0"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -753,10 +759,10 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 	if cmd != nil {
 		t.Error("zero interval should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldInterval].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldInterval].Error == "" {
 		t.Error("zero interval should set field-level error")
 	}
 }
@@ -772,7 +778,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Set duration to "Until Date" (index 1)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
@@ -780,10 +786,11 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 			// AddOptionalDateField — submit must surface a required-field
 			// error when Duration = Until Date and the field is unfilled.
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -791,10 +798,10 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 	if cmd != nil {
 		t.Error("missing end date should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldEndDate].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldEndDate].Error == "" {
 		t.Error("missing end date should set field-level error")
 	}
 }
@@ -810,7 +817,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
 			// 10-char mask shape but month=13/day=45 — masked widget refuses
@@ -818,10 +825,11 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 			// invalid date to force the parser error.
 			d.Fields()[schedFieldEndDate].Value = "13/45/2024"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -829,10 +837,10 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 	if cmd != nil {
 		t.Error("invalid end date should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldEndDate].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldEndDate].Error == "" {
 		t.Error("invalid end date should set field-level error")
 	}
 }
@@ -848,15 +856,16 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
 			d.Fields()[schedFieldOccurrence].Value = ""
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -864,10 +873,10 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 	if cmd != nil {
 		t.Error("missing occurrences should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldOccurrence].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldOccurrence].Error == "" {
 		t.Error("missing occurrences should set field-level error")
 	}
 }
@@ -883,15 +892,16 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
 			d.Fields()[schedFieldOccurrence].Value = "abc"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	_, cmd := app.submitScheduledDialog()
@@ -899,10 +909,10 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 	if cmd != nil {
 		t.Error("invalid occurrences should not return a cmd")
 	}
-	if app.schedDialog == nil {
+	if app.sched.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.schedDialog.Fields()[schedFieldOccurrence].Error == "" {
+	if app.sched.dlg.Fields()[schedFieldOccurrence].Error == "" {
 		t.Error("invalid occurrences should set field-level error")
 	}
 }
@@ -918,14 +928,15 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID, types.NewID()},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID, types.NewID()}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -934,10 +945,10 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid new scheduled should return a non-nil cmd")
 	}
-	if updatedApp.schedDialog != nil {
+	if updatedApp.sched.dlg != nil {
 		t.Error("dialog should be closed after submit")
 	}
-	if updatedApp.schedDialogData != nil {
+	if updatedApp.sched.data != nil {
 		t.Error("dialog data should be nil after submit")
 	}
 	if updatedApp.err != nil {
@@ -956,15 +967,16 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Leave amount empty for variable
 			d.Fields()[schedFieldAmount].Value = ""
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -992,15 +1004,16 @@ func TestApp_SubmitScheduledDialog_DurationIndefinite_BlankEndDateAccepted(t *te
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			// Leave duration at Indefinite, end date at canonical blank.
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1025,16 +1038,17 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
 			d.Fields()[schedFieldEndDate].Value = "12/31/2025"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1059,16 +1073,17 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
 			d.Fields()[schedFieldOccurrence].Value = "12"
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1095,21 +1110,22 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildEditScheduledDialog(st,
 				accountOptions, []types.ID{accountID},
 				categoryOptions, []types.ID{types.NilID},
 				map[types.ID]string{})
 			d.Fields()[schedFieldAmount].Value = "200.00"
 			return d
-		}(),
-		schedDialogData: &scheduledDialogData{
-			mode:      scheduledDialogModeEdit,
-			scheduled: st,
-			payeeMap:  make(map[string]*payee.Payee),
-		},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data: &scheduledDialogData{
+				mode:      scheduledDialogModeEdit,
+				scheduled: st,
+				payeeMap:  make(map[string]*payee.Payee),
+			},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1118,7 +1134,7 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid edit should return a non-nil cmd")
 	}
-	if updatedApp.schedDialog != nil {
+	if updatedApp.sched.dlg != nil {
 		t.Error("dialog should be closed after submit")
 	}
 	if updatedApp.err != nil {
@@ -1128,28 +1144,29 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 
 func TestApp_CloseScheduledDialog(t *testing.T) {
 	app := &App{
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Scheduled Transaction")
 			d.SetVisible(true)
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew},
-		schedDialogAccountIDs:  []types.ID{types.NewID()},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
+			accountIDs:  []types.ID{types.NewID()},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	app.closeScheduledDialog()
 
-	if app.schedDialog != nil {
+	if app.sched.dlg != nil {
 		t.Error("dialog should be nil after close")
 	}
-	if app.schedDialogData != nil {
+	if app.sched.data != nil {
 		t.Error("dialog data should be nil after close")
 	}
-	if app.schedDialogAccountIDs != nil {
+	if app.sched.accountIDs != nil {
 		t.Error("account IDs should be nil after close")
 	}
-	if app.schedDialogCategoryIDs != nil {
+	if app.sched.categoryIDs != nil {
 		t.Error("category IDs should be nil after close")
 	}
 }
@@ -1190,10 +1207,10 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 		},
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)"})
 			return d
-		}(),
+		}()}},
 	}
 	app.buildScheduledTable()
 
@@ -1508,16 +1525,17 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: func() *dialog.Dialog {
+		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
 			d.Fields()[schedFieldAutoPost].Checked = true
 			d.Fields()[schedFieldLeadDays].SelectedIndex = leadDays3Days
 			return d
-		}(),
-		schedDialogData:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID},
+		}()},
+
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1526,7 +1544,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid new scheduled with auto-post should return a non-nil cmd")
 	}
-	if updatedApp.schedDialog != nil {
+	if updatedApp.sched.dlg != nil {
 		t.Error("dialog should be closed after submit")
 	}
 }
@@ -1572,18 +1590,19 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: buildSchedDialogWithSplitToggle(t,
+		sched: schedSurface{modalSurface: modalSurface{dlg: buildSchedDialogWithSplitToggle(t,
 			"4000.00", "01/15/2024", true, "Checking",
-			[]string{"(None)", "Salary"}),
-		schedDialogData: &scheduledDialogData{
-			mode: scheduledDialogModeNew,
-			accounts: []*account.Account{
-				{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+			[]string{"(None)", "Salary"})},
+
+			data: &scheduledDialogData{
+				mode: scheduledDialogModeNew,
+				accounts: []*account.Account{
+					{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
+				},
+				payeeMap: make(map[string]*payee.Payee),
 			},
-			payeeMap: make(map[string]*payee.Payee),
-		},
-		schedDialogAccountIDs:  []types.ID{accountID},
-		schedDialogCategoryIDs: []types.ID{types.NilID, categoryID},
+			accountIDs:  []types.ID{accountID},
+			categoryIDs: []types.ID{types.NilID, categoryID}},
 	}
 
 	model, cmd := app.submitScheduledDialog()
@@ -1592,24 +1611,24 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("expected no async cmd when toggling into split editor, got non-nil")
 	}
-	if updatedApp.schedDialog != nil {
+	if updatedApp.sched.dlg != nil {
 		t.Error("scheduled dialog should be closed once split editor opens")
 	}
-	if updatedApp.splitDialog == nil {
+	if updatedApp.split.editor == nil {
 		t.Fatal("split dialog should be opened by the Split toggle")
 	}
-	if updatedApp.pendingSplitScheduled == nil {
+	if updatedApp.split.pendingScheduled == nil {
 		t.Fatal("pendingSplitScheduled should be set so the split-save handler can finalize")
 	}
 
 	wantAmount, _ := types.NewMoney("4000.00")
-	if !updatedApp.splitDialog.totalAmount.Equal(wantAmount) {
+	if !updatedApp.split.editor.totalAmount.Equal(wantAmount) {
 		t.Errorf("split dialog totalAmount = %s, want %s",
-			updatedApp.splitDialog.totalAmount.String(), wantAmount.String())
+			updatedApp.split.editor.totalAmount.String(), wantAmount.String())
 	}
-	if updatedApp.pendingSplitScheduled.frequency != scheduled.FrequencyMonthly {
+	if updatedApp.split.pendingScheduled.frequency != scheduled.FrequencyMonthly {
 		t.Errorf("pendingSplitScheduled.frequency = %s, want monthly",
-			updatedApp.pendingSplitScheduled.frequency)
+			updatedApp.split.pendingScheduled.frequency)
 	}
 }
 
@@ -1671,15 +1690,15 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 	app, schedSvc, acct, incomeCat, taxCat := createMultiLineScheduledTestApp(t)
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{incomeCat, taxCat})
-	app.schedDialogData = &scheduledDialogData{
+	app.sched.data = &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{acct},
 		payeeMap: make(map[string]*payee.Payee),
 	}
-	app.schedDialogAccountIDs = []types.ID{acct.ID}
-	app.schedDialogCategoryIDs = categoryIDs
+	app.sched.accountIDs = []types.ID{acct.ID}
+	app.sched.categoryIDs = categoryIDs
 	today := types.Today().Time().Format("01/02/2006")
-	app.schedDialog = buildSchedDialogWithSplitToggle(t,
+	app.sched.dlg = buildSchedDialogWithSplitToggle(t,
 		"900.00", today, true, acct.Name, categoryOptions)
 
 	model, cmd := app.submitScheduledDialog()
@@ -1687,7 +1706,7 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("expected nil cmd when opening split editor, got non-nil")
 	}
-	if app2.splitDialog == nil {
+	if app2.split.editor == nil {
 		t.Fatal("split dialog should be open after Split toggle")
 	}
 
@@ -1705,7 +1724,7 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 		t.Fatalf("category indices unresolved: income=%d tax=%d", incomeIdx, taxIdx)
 	}
 
-	sd := app2.splitDialog
+	sd := app2.split.editor
 	sd.rows[0].categoryIndex = incomeIdx
 	sd.rows[0].amountField.Value = "1000.00"
 	sd.addRow()
@@ -1714,10 +1733,10 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 
 	model, saveCmd := app2.submitScheduledSplitDialog()
 	app3 := model.(*App)
-	if app3.splitDialog != nil {
+	if app3.split.editor != nil {
 		t.Error("split dialog should be cleared after a successful save")
 	}
-	if app3.pendingSplitScheduled != nil {
+	if app3.split.pendingScheduled != nil {
 		t.Error("pendingSplitScheduled should be cleared after a successful save")
 	}
 	if saveCmd == nil {
@@ -1860,22 +1879,22 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		schedDialog: dlg,
-		schedDialogData: &scheduledDialogData{
-			mode:      scheduledDialogModeEdit,
-			scheduled: st,
-			accounts:  accounts,
-			payees:    payees,
-		},
-		schedDialogAccountIDs:  accountIDs,
-		schedDialogCategoryIDs: categoryIDs,
+		sched: schedSurface{modalSurface: modalSurface{dlg: dlg},
+			data: &scheduledDialogData{
+				mode:      scheduledDialogModeEdit,
+				scheduled: st,
+				accounts:  accounts,
+				payees:    payees,
+			},
+			accountIDs:  accountIDs,
+			categoryIDs: categoryIDs},
 	}
-	app.schedDialogCategoryOptions = categoryOptions
+	app.sched.categoryOptions = categoryOptions
 
 	model, _ := app.relaunchAsPaycheckWizard()
 	app2 := model.(*App)
 
-	if app2.schedDialog != nil {
+	if app2.sched.dlg != nil {
 		t.Error("scheduled dialog should close after Edit-as-paycheck relaunch")
 	}
 	if app2.paycheckWizard == nil {
@@ -2097,13 +2116,13 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
 		categorySvc: categorySvc,
-		schedDialogData: &scheduledDialogData{
+		sched: schedSurface{data: &scheduledDialogData{
 			mode:     scheduledDialogModeNew,
 			payeeMap: make(map[string]*payee.Payee),
 		},
-		schedDialogAccountIDs:      accountIDs,
-		schedDialogCategoryIDs:     categoryIDs,
-		schedDialogCategoryOptions: categoryOptions,
+			accountIDs:      accountIDs,
+			categoryIDs:     categoryIDs,
+			categoryOptions: categoryOptions},
 	}
 	d := buildNewScheduledDialog(accountOptions, categoryOptions)
 	// Capture distinctive scalar state we expect to see preserved across the
@@ -2115,7 +2134,7 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 	cat := d.Fields()[schedFieldCategory]
 	cat.Query = query
 	cat.ComboHighlight = len(cat.FilteredIndices())
-	app.schedDialog = d
+	app.sched.dlg = d
 	return app
 }
 
@@ -2126,25 +2145,25 @@ func TestApp_SchedDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handleScheduledDialogKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
-	if updated.createCatSource != createCatSourceSchedDialog {
+	if updated.createCat.origin.surface != createCatSourceSchedDialog {
 		t.Errorf("createCatSource = %d, want createCatSourceSchedDialog (%d)",
-			updated.createCatSource, createCatSourceSchedDialog)
+			updated.createCat.origin.surface, createCatSourceSchedDialog)
 	}
-	if updated.schedDialog == nil {
+	if updated.sched.dlg == nil {
 		t.Fatal("schedDialog should be kept (hidden) so its state survives the divert")
 	}
-	if updated.schedDialog.IsVisible() {
+	if updated.sched.dlg.IsVisible() {
 		t.Error("schedDialog should be hidden while createCatDialog is shown")
 	}
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 	// Typed query was "Donations" (no colon) so it seeds the Name field.
-	cFields := updated.createCatDialog.Fields()
+	cFields := updated.createCat.dlg.Fields()
 	if cFields[0].Value != "Donations" {
 		t.Errorf("Name field = %q, want %q (seeded from typed query)",
 			cFields[0].Value, "Donations")
@@ -2153,13 +2172,13 @@ func TestApp_SchedDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 
 func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 	app := newAppForSchedAddNew(t, "", nil, nil)
-	prevCat := app.schedDialog.Fields()[schedFieldCategory].SelectedIndex
-	prevFocus := app.schedDialog.FocusIndex()
+	prevCat := app.sched.dlg.Fields()[schedFieldCategory].SelectedIndex
+	prevFocus := app.sched.dlg.FocusIndex()
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
@@ -2167,17 +2186,17 @@ func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCat.origin.surface)
 	}
-	if app.schedDialog == nil || !app.schedDialog.IsVisible() {
+	if app.sched.dlg == nil || !app.sched.dlg.IsVisible() {
 		t.Fatal("schedDialog should be restored to visible after cancel")
 	}
 
-	fields := app.schedDialog.Fields()
+	fields := app.sched.dlg.Fields()
 	if fields[schedFieldPayee].Value != "Landlord" {
 		t.Errorf("Payee preserved? got %q, want %q",
 			fields[schedFieldPayee].Value, "Landlord")
@@ -2194,9 +2213,9 @@ func TestApp_SchedDialog_AddNew_CancelRestoresState(t *testing.T) {
 		t.Errorf("Category SelectedIndex changed on cancel: got %d, want %d",
 			fields[schedFieldCategory].SelectedIndex, prevCat)
 	}
-	if app.schedDialog.FocusIndex() != prevFocus {
+	if app.sched.dlg.FocusIndex() != prevFocus {
 		t.Errorf("FocusIndex changed on cancel: got %d, want %d",
-			app.schedDialog.FocusIndex(), prevFocus)
+			app.sched.dlg.FocusIndex(), prevFocus)
 	}
 }
 
@@ -2219,12 +2238,12 @@ func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill: Name=Cleaning, Parent=(top-level), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Cleaning"
 	cFields[1].SelectedIndex = 0
 	cFields[2].SelectedIndex = 0
@@ -2254,17 +2273,17 @@ func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 		t.Fatal("'Cleaning' should be persisted after submit")
 	}
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCat.origin.surface)
 	}
-	if app.schedDialog == nil || !app.schedDialog.IsVisible() {
+	if app.sched.dlg == nil || !app.sched.dlg.IsVisible() {
 		t.Fatal("schedDialog should be visible again after submit")
 	}
 
-	fields := app.schedDialog.Fields()
+	fields := app.sched.dlg.Fields()
 	if fields[schedFieldPayee].Value != "Landlord" {
 		t.Errorf("Payee preserved? got %q", fields[schedFieldPayee].Value)
 	}
@@ -2281,16 +2300,16 @@ func TestApp_SchedDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 		t.Errorf("Category selected = %q, want %q",
 			catField.Options[catField.SelectedIndex], "Cleaning")
 	}
-	if app.schedDialogCategoryIDs[catField.SelectedIndex] != found.ID {
+	if app.sched.categoryIDs[catField.SelectedIndex] != found.ID {
 		t.Errorf("schedDialogCategoryIDs[%d] = %s, want %s",
 			catField.SelectedIndex,
-			app.schedDialogCategoryIDs[catField.SelectedIndex],
+			app.sched.categoryIDs[catField.SelectedIndex],
 			found.ID)
 	}
 
-	if app.schedDialog.FocusIndex() != schedFieldAmount {
+	if app.sched.dlg.FocusIndex() != schedFieldAmount {
 		t.Errorf("FocusIndex after submit = %d, want %d (Amount)",
-			app.schedDialog.FocusIndex(), schedFieldAmount)
+			app.sched.dlg.FocusIndex(), schedFieldAmount)
 	}
 }
 
@@ -2303,14 +2322,14 @@ func TestSubmitScheduledDialog_CategoryRoundTrip(t *testing.T) {
 	app, schedSvc, acct, incomeCat, _ := createMultiLineScheduledTestApp(t)
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{incomeCat})
-	app.schedDialogData = &scheduledDialogData{
+	app.sched.data = &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{acct},
 		payeeMap: make(map[string]*payee.Payee),
 	}
-	app.schedDialogAccountIDs = []types.ID{acct.ID}
-	app.schedDialogCategoryIDs = categoryIDs
-	app.schedDialogCategoryOptions = categoryOptions
+	app.sched.accountIDs = []types.ID{acct.ID}
+	app.sched.categoryIDs = categoryIDs
+	app.sched.categoryOptions = categoryOptions
 
 	d := buildNewScheduledDialog([]string{acct.Name}, categoryOptions)
 	d.Fields()[schedFieldAccount].SelectedIndex = 0
@@ -2331,7 +2350,7 @@ func TestSubmitScheduledDialog_CategoryRoundTrip(t *testing.T) {
 	}
 	catField.SelectedIndex = salaryIdx
 	catField.ComboHighlight = salaryIdx
-	app.schedDialog = d
+	app.sched.dlg = d
 
 	_, cmd := app.submitScheduledDialog()
 	if cmd == nil {

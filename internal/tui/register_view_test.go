@@ -951,7 +951,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 	}
 
 	// No confirm dialog should be shown
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("confirmDialog should be nil for already-void transaction")
 	}
 }
@@ -1029,16 +1029,16 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 	app.buildRegisterTable()
 	_, _ = app.showVoidConfirmation()
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("confirmDialog should be set after showVoidConfirmation()")
 	}
-	if !app.confirmDialog.IsVisible() {
+	if !app.confirm.dlg.IsVisible() {
 		t.Error("confirmDialog should be visible")
 	}
-	if app.confirmDialog.Title() != "Void Transaction" {
-		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Void Transaction")
+	if app.confirm.dlg.Title() != "Void Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirm.dlg.Title(), "Void Transaction")
 	}
-	if app.confirmAction == nil {
+	if app.confirm.action == nil {
 		t.Error("confirmAction should be set")
 	}
 }
@@ -1077,11 +1077,11 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 	app.buildRegisterTable()
 	_, _ = app.showVoidConfirmation()
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("confirmDialog should be set")
 	}
 	// The message should mention "transfer" (rendered in the wrapped body).
-	msg := strings.Join(strings.Fields(app.confirmDialog.Message()), " ")
+	msg := strings.Join(strings.Fields(app.confirm.dlg.Message()), " ")
 	if !contains(msg, "transfer") {
 		t.Errorf("dialog message = %q, should mention 'transfer'", msg)
 	}
@@ -1124,10 +1124,10 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 	_, _ = app.handleRegisterKeys(msg)
 
 	// Should show confirmation dialog
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("pressing 'v' should show confirmation dialog")
 	}
-	if !app.confirmDialog.IsVisible() {
+	if !app.confirm.dlg.IsVisible() {
 		t.Error("confirmation dialog should be visible")
 	}
 }
@@ -1169,7 +1169,7 @@ func TestApp_RegisterFrozenOnClosedAccount(t *testing.T) {
 	// 'v' / 'd' must not open a confirmation dialog.
 	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("'v'/'d' should be no-ops on a closed account")
 	}
 	// 'n' (new) must not return a load command.
@@ -1259,7 +1259,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 	if !contains(notifications[0].Text, "void") {
 		t.Errorf("notification = %q, should mention void", notifications[0].Text)
 	}
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("confirmDialog should be nil for void transaction")
 	}
 }
@@ -1305,7 +1305,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 	if !contains(notifications[0].Text, "reconciled") {
 		t.Errorf("notification = %q, should mention reconciled", notifications[0].Text)
 	}
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("confirmDialog should be nil for reconciled transaction")
 	}
 }
@@ -1340,16 +1340,16 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 	app.buildRegisterTable()
 	_, _ = app.showDeleteConfirmation()
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("confirmDialog should be set after showDeleteConfirmation()")
 	}
-	if !app.confirmDialog.IsVisible() {
+	if !app.confirm.dlg.IsVisible() {
 		t.Error("confirmDialog should be visible")
 	}
-	if app.confirmDialog.Title() != "Delete Transaction" {
-		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Delete Transaction")
+	if app.confirm.dlg.Title() != "Delete Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirm.dlg.Title(), "Delete Transaction")
 	}
-	if app.confirmAction == nil {
+	if app.confirm.action == nil {
 		t.Error("confirmAction should be set")
 	}
 }
@@ -1388,12 +1388,12 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 	app.buildRegisterTable()
 	_, _ = app.showDeleteConfirmation()
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("confirmDialog should be set")
 	}
 	// The prompt is rendered in the (wrapped) message body; normalize
 	// whitespace so word-wrap line breaks don't split the phrases.
-	msg := strings.Join(strings.Fields(app.confirmDialog.Message()), " ")
+	msg := strings.Join(strings.Fields(app.confirm.dlg.Message()), " ")
 	if !contains(msg, "transfer") {
 		t.Errorf("dialog message = %q, should mention 'transfer'", msg)
 	}
@@ -1437,14 +1437,14 @@ func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 	msg := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	_, _ = app.handleRegisterKeys(msg)
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("pressing 'd' should show confirmation dialog")
 	}
-	if !app.confirmDialog.IsVisible() {
+	if !app.confirm.dlg.IsVisible() {
 		t.Error("confirmation dialog should be visible")
 	}
-	if app.confirmDialog.Title() != "Delete Transaction" {
-		t.Errorf("dialog title = %q, want %q", app.confirmDialog.Title(), "Delete Transaction")
+	if app.confirm.dlg.Title() != "Delete Transaction" {
+		t.Errorf("dialog title = %q, want %q", app.confirm.dlg.Title(), "Delete Transaction")
 	}
 }
 

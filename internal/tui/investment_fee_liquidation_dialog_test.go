@@ -97,9 +97,10 @@ func TestBuildFeeLiquidationDialog_EditTransaction(t *testing.T) {
 func feeLiqApp(t *testing.T, secID, acctID types.ID) *App {
 	t.Helper()
 	return &App{
-		feeLiquidationDialog:            buildFeeLiquidationDialog([]string{"FXAIX - Fidelity 500 Index"}, nil, []types.ID{secID}),
-		feeLiquidationDialogData:        &feeLiquidationDialogData{securities: []*security.Security{}},
-		feeLiquidationDialogSecurityIDs: []types.ID{secID},
+		feeLiquidation: feeLiquidationSurface{modalSurface: modalSurface{dlg: buildFeeLiquidationDialog([]string{"FXAIX - Fidelity 500 Index"}, nil, []types.ID{secID})},
+			data:        &feeLiquidationDialogData{securities: []*security.Security{}},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -113,7 +114,7 @@ func feeLiqApp(t *testing.T, secID, acctID types.ID) *App {
 
 func TestSubmitFeeLiquidationDialog_ValidationErrors(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "not-a-date"
 	fields[2].Value = "" // empty shares
 	fields[3].Value = "" // no total
@@ -121,13 +122,13 @@ func TestSubmitFeeLiquidationDialog_ValidationErrors(t *testing.T) {
 
 	model, cmd := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog == nil {
+	if updated.feeLiquidation.dlg == nil {
 		t.Error("dialog should stay open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return a command on validation errors")
 	}
-	fields = updated.feeLiquidationDialog.Fields()
+	fields = updated.feeLiquidation.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -141,35 +142,35 @@ func TestSubmitFeeLiquidationDialog_ValidationErrors(t *testing.T) {
 
 func TestSubmitFeeLiquidationDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		feeLiquidationDialog:            buildFeeLiquidationDialog([]string{}, nil, []types.ID{}),
-		feeLiquidationDialogData:        &feeLiquidationDialogData{securities: []*security.Security{}},
-		feeLiquidationDialogSecurityIDs: []types.ID{},
+		feeLiquidation: feeLiquidationSurface{modalSurface: modalSurface{dlg: buildFeeLiquidationDialog([]string{}, nil, []types.ID{})},
+			data:        &feeLiquidationDialogData{securities: []*security.Security{}},
+			securityIDs: []types.ID{}},
 	}
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "06/15/2026"
 	fields[2].Value = "0.123"
 	fields[4].Value = "40.65"
 
 	model, _ := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog == nil {
+	if updated.feeLiquidation.dlg == nil {
 		t.Error("dialog should stay open when no securities")
 	}
-	if updated.feeLiquidationDialog.Fields()[1].Error == "" {
+	if updated.feeLiquidation.dlg.Fields()[1].Error == "" {
 		t.Error("security field should error when no securities available")
 	}
 }
 
 func TestSubmitFeeLiquidationDialog_ValidWithPricePerShare(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "06/15/2026"
 	fields[2].Value = "0.123"
 	fields[4].Value = "40.65"
 
 	model, cmd := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog != nil {
+	if updated.feeLiquidation.dlg != nil {
 		t.Error("dialog should close after a valid submit")
 	}
 	if cmd == nil {
@@ -179,14 +180,14 @@ func TestSubmitFeeLiquidationDialog_ValidWithPricePerShare(t *testing.T) {
 
 func TestSubmitFeeLiquidationDialog_ValidWithTotal(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "06/15/2026"
 	fields[2].Value = "0.123"
 	fields[3].Value = "5.00" // total (fee), no price
 
 	model, cmd := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog != nil {
+	if updated.feeLiquidation.dlg != nil {
 		t.Error("dialog should close after a valid submit with total")
 	}
 	if cmd == nil {
@@ -196,7 +197,7 @@ func TestSubmitFeeLiquidationDialog_ValidWithTotal(t *testing.T) {
 
 func TestSubmitFeeLiquidationDialog_DollarSignInCommission(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "06/15/2026"
 	fields[2].Value = "0.123"
 	fields[4].Value = "40.65"
@@ -204,7 +205,7 @@ func TestSubmitFeeLiquidationDialog_DollarSignInCommission(t *testing.T) {
 
 	model, cmd := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog != nil {
+	if updated.feeLiquidation.dlg != nil {
 		t.Error("dialog should close with a $-prefixed commission")
 	}
 	if cmd == nil {
@@ -214,7 +215,7 @@ func TestSubmitFeeLiquidationDialog_DollarSignInCommission(t *testing.T) {
 
 func TestSubmitFeeLiquidationDialog_InvalidCommission(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
-	fields := app.feeLiquidationDialog.Fields()
+	fields := app.feeLiquidation.dlg.Fields()
 	fields[0].Value = "06/15/2026"
 	fields[2].Value = "0.123"
 	fields[4].Value = "40.65"
@@ -222,13 +223,13 @@ func TestSubmitFeeLiquidationDialog_InvalidCommission(t *testing.T) {
 
 	model, cmd := app.submitFeeLiquidationDialog()
 	updated := model.(*App)
-	if updated.feeLiquidationDialog == nil {
+	if updated.feeLiquidation.dlg == nil {
 		t.Error("dialog should stay open on invalid commission")
 	}
 	if cmd != nil {
 		t.Error("should not return a command on invalid commission")
 	}
-	if updated.feeLiquidationDialog.Fields()[5].Error == "" {
+	if updated.feeLiquidation.dlg.Fields()[5].Error == "" {
 		t.Error("commission field should have error")
 	}
 }
@@ -237,13 +238,13 @@ func TestHandleFeeLiquidationDialogKey_Cancel(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
 	model, _ := app.handleFeeLiquidationDialogKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	updated := model.(*App)
-	if updated.feeLiquidationDialog != nil {
+	if updated.feeLiquidation.dlg != nil {
 		t.Error("dialog should be nil after Escape")
 	}
-	if updated.feeLiquidationDialogData != nil {
+	if updated.feeLiquidation.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updated.feeLiquidationDialogSecurityIDs != nil {
+	if updated.feeLiquidation.securityIDs != nil {
 		t.Error("security IDs should be cleared after cancel")
 	}
 }
@@ -267,7 +268,7 @@ func TestSubmitFeeLiquidationDialog_NilDialog(t *testing.T) {
 func TestCloseFeeLiquidationDialog(t *testing.T) {
 	app := feeLiqApp(t, types.NewID(), types.NewID())
 	app.closeFeeLiquidationDialog()
-	if app.feeLiquidationDialog != nil || app.feeLiquidationDialogData != nil || app.feeLiquidationDialogSecurityIDs != nil {
+	if app.feeLiquidation.dlg != nil || app.feeLiquidation.data != nil || app.feeLiquidation.securityIDs != nil {
 		t.Error("all fee-liquidation dialog state should be nil after close")
 	}
 }
@@ -288,7 +289,7 @@ func TestFeeLiquidationDialog_RendersInView(t *testing.T) {
 		height:      40,
 		ready:       true,
 	}
-	app.feeLiquidationDialog = buildFeeLiquidationDialog([]string{"FXAIX - Fidelity 500 Index"}, nil, []types.ID{types.NewID()})
+	app.feeLiquidation.dlg = buildFeeLiquidationDialog([]string{"FXAIX - Fidelity 500 Index"}, nil, []types.ID{types.NewID()})
 
 	if !app.isDialogVisible() {
 		t.Error("isDialogVisible() must report the fee-liquidation dialog as open")

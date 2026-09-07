@@ -1076,7 +1076,7 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		txnDialog: func() *dialog.Dialog {
+		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddTextField("Date", "01/15/2024", "", 10)
 			d.AddTextField("Payee", "Grocery Store", "", 0)
@@ -1087,18 +1087,19 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 			d.AddCheckboxField("Split transaction", true) // checked!
 			d.SetVisible(true)
 			return d
-		}(),
-		txnDialogData: &transactionDialogData{
-			payeeMap: make(map[string]*payee.Payee),
-			categories: []*category.Category{
-				{
-					BaseModel: types.BaseModel{ID: catID},
-					Name:      "Food",
-					Type:      category.TypeExpense,
+		}()},
+
+			data: &transactionDialogData{
+				payeeMap: make(map[string]*payee.Payee),
+				categories: []*category.Category{
+					{
+						BaseModel: types.BaseModel{ID: catID},
+						Name:      "Food",
+						Type:      category.TypeExpense,
+					},
 				},
 			},
-		},
-		txnDialogCategoryIDs: []types.ID{types.NilID, catID},
+			categoryIDs: []types.ID{types.NilID, catID}},
 	}
 
 	// Set up sidebar with a selected account
@@ -1107,34 +1108,34 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 	}, nil)
 
 	// Submit the dialog (focus on Save button)
-	app.txnDialog.SetFocusIndex(len(app.txnDialog.Fields()))
-	app.txnDialog.FocusNext() // move to Save button
+	app.txn.dlg.SetFocusIndex(len(app.txn.dlg.Fields()))
+	app.txn.dlg.FocusNext() // move to Save button
 
 	model, cmd := app.submitTransactionDialog()
 	updatedApp := model.(*App)
 
 	// Transaction dialog should be closed
-	if updatedApp.txnDialog != nil {
+	if updatedApp.txn.dlg != nil {
 		t.Error("txnDialog should be nil after split submit")
 	}
 
 	// Split dialog should be open
-	if updatedApp.splitDialog == nil {
+	if updatedApp.split.editor == nil {
 		t.Fatal("splitDialog should be created when split is checked")
 	}
-	if !updatedApp.splitDialog.IsVisible() {
+	if !updatedApp.split.editor.IsVisible() {
 		t.Error("splitDialog should be visible")
 	}
 
 	// Pending transaction should be stored
-	if updatedApp.pendingSplitTxn == nil {
+	if updatedApp.split.pendingTxn == nil {
 		t.Fatal("pendingSplitTxn should be set")
 	}
-	if updatedApp.pendingSplitTxn.payeeName != "Grocery Store" {
-		t.Errorf("pendingSplitTxn.payeeName = %q, want 'Grocery Store'", updatedApp.pendingSplitTxn.payeeName)
+	if updatedApp.split.pendingTxn.payeeName != "Grocery Store" {
+		t.Errorf("pendingSplitTxn.payeeName = %q, want 'Grocery Store'", updatedApp.split.pendingTxn.payeeName)
 	}
-	if !updatedApp.pendingSplitTxn.amount.Equal(types.MustNewMoney("-150.00")) {
-		t.Errorf("pendingSplitTxn.amount = %s, want -150.00", updatedApp.pendingSplitTxn.amount.String())
+	if !updatedApp.split.pendingTxn.amount.Equal(types.MustNewMoney("-150.00")) {
+		t.Errorf("pendingSplitTxn.amount = %s, want -150.00", updatedApp.split.pendingTxn.amount.String())
 	}
 
 	// Should not return an async command (dialog opens synchronously)
@@ -1150,10 +1151,10 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID}),
-		pendingSplitTxn: &pendingSplitTransaction{
-			amount: types.MustNewMoney("-100.00"),
-		},
+		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID}),
+			pendingTxn: &pendingSplitTransaction{
+				amount: types.MustNewMoney("-100.00"),
+			}},
 	}
 
 	// Press Escape to cancel
@@ -1161,10 +1162,10 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.splitDialog != nil {
+	if updatedApp.split.editor != nil {
 		t.Error("splitDialog should be nil after cancel")
 	}
-	if updatedApp.pendingSplitTxn != nil {
+	if updatedApp.split.pendingTxn != nil {
 		t.Error("pendingSplitTxn should be nil after cancel")
 	}
 }
@@ -1215,7 +1216,7 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 		},
-		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
+		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})},
 	}
 
 	output := app.renderLayout()
@@ -1235,10 +1236,10 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		splitDialog: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
-		pendingSplitTxn: &pendingSplitTransaction{
-			amount: types.MustNewMoney("-100.00"),
-		},
+		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
+			pendingTxn: &pendingSplitTransaction{
+				amount: types.MustNewMoney("-100.00"),
+			}},
 	}
 
 	// Tab key should be routed to split dialog, not to register view
@@ -1246,8 +1247,8 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 	app.Update(tabKey)
 
 	// After tab, split dialog should have advanced focus
-	if app.splitDialog.fieldFocus != splitFieldAmount {
-		t.Errorf("split dialog field focus should advance on Tab, got %d", app.splitDialog.fieldFocus)
+	if app.split.editor.fieldFocus != splitFieldAmount {
+		t.Errorf("split dialog field focus should advance on Tab, got %d", app.split.editor.fieldFocus)
 	}
 }
 
@@ -1549,17 +1550,18 @@ func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*c
 	}
 
 	app := &App{
-		keys:              defaultKeyMap(),
-		menubar:           widget.NewMenuBar(),
-		statusbar:         widget.NewStatusBar(),
-		sidebar:           NewSidebar(),
-		categorySvc:       categorySvc,
-		splitDialog:       sd,
-		createCatSplitRow: -1,
-		pendingSplitTxn: &pendingSplitTransaction{
-			accountID: parentAcctID,
-			amount:    types.MustNewMoney("-100.00"),
-		},
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		categorySvc: categorySvc,
+		split: splitSurface{editor: sd,
+
+			pendingTxn: &pendingSplitTransaction{
+				accountID: parentAcctID,
+				amount:    types.MustNewMoney("-100.00"),
+			}},
+		createCat: createCatSurface{origin: newCreateCatOrigin()},
 	}
 	return app
 }
@@ -1571,25 +1573,25 @@ func TestApp_SplitDialog_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	model, _ := app.handleSplitDialogKey(enter)
 	updated := model.(*App)
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after Enter on AddNew sentinel")
 	}
-	if updated.createCatSource != createCatSourceSplitDialog {
+	if updated.createCat.origin.surface != createCatSourceSplitDialog {
 		t.Errorf("createCatSource = %d, want createCatSourceSplitDialog (%d)",
-			updated.createCatSource, createCatSourceSplitDialog)
+			updated.createCat.origin.surface, createCatSourceSplitDialog)
 	}
-	if updated.createCatSplitRow != 0 {
-		t.Errorf("createCatSplitRow = %d, want 0 (the originating row)", updated.createCatSplitRow)
+	if updated.createCat.origin.splitRow != 0 {
+		t.Errorf("createCatSplitRow = %d, want 0 (the originating row)", updated.createCat.origin.splitRow)
 	}
-	if updated.splitDialog == nil {
+	if updated.split.editor == nil {
 		t.Fatal("splitDialog should be kept (hidden) so its state survives the divert")
 	}
-	if updated.splitDialog.IsVisible() {
+	if updated.split.editor.IsVisible() {
 		t.Error("splitDialog should be hidden while createCatDialog is shown")
 	}
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 }
 
@@ -1599,7 +1601,7 @@ func TestApp_SplitDialog_AddNew_CancelRestoresState(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleSplitDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
@@ -1607,19 +1609,19 @@ func TestApp_SplitDialog_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCat.origin.surface)
 	}
-	if app.splitDialog == nil || !app.splitDialog.IsVisible() {
+	if app.split.editor == nil || !app.split.editor.IsVisible() {
 		t.Fatal("splitDialog should be restored to visible after cancel")
 	}
-	if got := app.splitDialog.rows[0].amountField.Value; got != "-100.00" {
+	if got := app.split.editor.rows[0].amountField.Value; got != "-100.00" {
 		t.Errorf("amount preserved? got %q, want %q", got, "-100.00")
 	}
-	if got := app.splitDialog.rows[0].memoField.Value; got != "groceries" {
+	if got := app.split.editor.rows[0].memoField.Value; got != "groceries" {
 		t.Errorf("memo preserved? got %q, want %q", got, "groceries")
 	}
 }
@@ -1642,25 +1644,25 @@ func TestApp_SplitDialog_AddNew_AppliesToCurrentRow(t *testing.T) {
 	// Add a second row whose category we want to see preserved across the
 	// rebuild. We pick "Food" if present, otherwise just any non-(None)
 	// real category.
-	app.splitDialog.addRow()
+	app.split.editor.addRow()
 	preserveIdx := 1
-	preserveName := app.splitDialog.categoryOptions[preserveIdx]
-	app.splitDialog.rows[1].categoryIndex = preserveIdx
-	app.splitDialog.rows[1].amountField.Value = "-50.00"
+	preserveName := app.split.editor.categoryOptions[preserveIdx]
+	app.split.editor.rows[1].categoryIndex = preserveIdx
+	app.split.editor.rows[1].amountField.Value = "-50.00"
 
 	// Park rowIndex back on row 0 (where AddNew is parked).
-	app.splitDialog.rowIndex = 0
+	app.split.editor.rowIndex = 0
 
 	// Open sub-dialog.
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleSplitDialogKey(enter)
 	app = model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill: Name=Gym, Parent=(top-level), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "YogaStudio"
 	cFields[1].SelectedIndex = 0
 	cFields[2].SelectedIndex = 0
@@ -1690,18 +1692,18 @@ func TestApp_SplitDialog_AddNew_AppliesToCurrentRow(t *testing.T) {
 		t.Fatal("'Gym' should be persisted after submit")
 	}
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCat.origin.surface)
 	}
-	if app.splitDialog == nil || !app.splitDialog.IsVisible() {
+	if app.split.editor == nil || !app.split.editor.IsVisible() {
 		t.Fatal("splitDialog should be visible again after submit")
 	}
 
 	// Originating row points at the new category.
-	sd := app.splitDialog
+	sd := app.split.editor
 	origCatIdx := sd.rows[0].categoryIndex
 	if sd.rows[0].transferMode {
 		t.Errorf("originating row should be in category mode, not transfer mode")
@@ -1847,14 +1849,14 @@ func findRenderedText(t *testing.T, overlay, needle string, startCol, startRow i
 func splitDialogMouseEnv(t *testing.T, sd *SplitDialog) (*App, string, int, int) {
 	t.Helper()
 	app := &App{
-		width:       120,
-		height:      40,
-		keys:        defaultKeyMap(),
-		menubar:     widget.NewMenuBar(),
-		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
-		styles:      widget.NewStyles(),
-		splitDialog: sd,
+		width:     120,
+		height:    40,
+		keys:      defaultKeyMap(),
+		menubar:   widget.NewMenuBar(),
+		statusbar: widget.NewStatusBar(),
+		sidebar:   NewSidebar(),
+		styles:    widget.NewStyles(),
+		split:     splitSurface{editor: sd},
 	}
 	overlay := sd.Render(app.styles)
 	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
@@ -1906,7 +1908,7 @@ func TestSplitDialog_MouseClickOnCancel_Closes(t *testing.T) {
 	model, cmd := app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
 	app = model.(*App)
 
-	if app.splitDialog != nil {
+	if app.split.editor != nil {
 		t.Error("clicking Cancel left the editor open")
 	}
 	if cmd != nil {
@@ -1936,7 +1938,7 @@ func TestSplitDialog_MouseClickOnRow_FocusesField(t *testing.T) {
 	model, _ := app.handleMouseEvent(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	app = model.(*App)
 
-	if app.splitDialog == nil {
+	if app.split.editor == nil {
 		t.Fatal("clicking a row should not close the editor")
 	}
 	if sd.rowIndex != 1 {

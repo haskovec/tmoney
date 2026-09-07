@@ -527,10 +527,10 @@ func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
 // loan edit. Called after buildEditScheduledDialog, so it overrides that
 // function's default Save/Cancel set.
 func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
-	if a.schedDialog == nil || !a.scheduleWantsLoanEdit(st) {
+	if a.sched.dlg == nil || !a.scheduleWantsLoanEdit(st) {
 		return
 	}
-	a.schedDialog.SetButtons([]dialog.DialogButton{
+	a.sched.dlg.SetButtons([]dialog.DialogButton{
 		{Label: "Save", Primary: true},
 		{Label: "Cancel"},
 		{Label: "Edit as loan →", Action: dialog.DialogActionAlternate},
@@ -541,7 +541,7 @@ func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
 // action to the loan wizard for a loan-shaped / loan-adoptable schedule, else
 // to the paycheck wizard (its original owner).
 func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
-	if a.schedDialogData != nil && a.scheduleWantsLoanEdit(a.schedDialogData.scheduled) {
+	if a.sched.data != nil && a.scheduleWantsLoanEdit(a.sched.data.scheduled) {
 		return a.relaunchAsLoanWizard()
 	}
 	return a.relaunchAsPaycheckWizard()
@@ -550,13 +550,13 @@ func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
 // relaunchAsLoanWizard closes the scheduled-edit dialog and opens the loan
 // wizard prefilled from the in-flight loan-shaped / loan-adoptable schedule.
 func (a *App) relaunchAsLoanWizard() (tea.Model, tea.Cmd) {
-	if a.schedDialog == nil || a.schedDialogData == nil {
+	if a.sched.dlg == nil || a.sched.data == nil {
 		return a, nil
 	}
-	if a.schedDialogData.mode != scheduledDialogModeEdit || a.schedDialogData.scheduled == nil {
+	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
 		return a, nil
 	}
-	st := a.schedDialogData.scheduled
+	st := a.sched.data.scheduled
 	a.closeScheduledDialog()
 	return a, a.loadLoanWizardEditData(st)
 }
@@ -578,14 +578,14 @@ func (s *loanSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
 // closeLoanWizard clears the wizard state.
 func (a *App) closeLoanWizard() {
-	a.loan = nil
+	a.loan = loanSurface{}
 }
 
 // handleLoanWizardKey routes a key event through the wizard dialog and
 // translates the resulting action, refreshing conditional visibility and the
 // payment prefill after ordinary edits.
 func (a *App) handleLoanWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.loan == nil {
+	if a.loan.dlg == nil {
 		return a, nil
 	}
 	return a.loanWizardAction(a.loan.dlg.HandleKey(msg))
@@ -614,7 +614,7 @@ func (a *App) loanWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) 
 // keeping the dialog alive (just hidden); cancelCreateCatDialog and
 // applyCreatedCategoryToLoan restore it.
 func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
-	if a.loan == nil {
+	if a.loan.dlg == nil {
 		return a, nil
 	}
 	fields := a.loan.dlg.Fields()
@@ -628,14 +628,14 @@ func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	a.createCatLoanField = fieldIdx
+	a.createCat.origin.loanField = fieldIdx
 	// Set the source before parentsForCreateCatDialog so it resolves the right
 	// parents (falls back to a live category list for the loan wizard).
-	a.createCatSource = createCatSourceLoanWizard
+	a.createCat.origin.surface = createCatSourceLoanWizard
 	parents := a.parentsForCreateCatDialog()
 	parent, name := splitCategoryQuery(query)
 	// Loan interest and escrow lines are always expenses.
-	a.createCatDialog = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
 	a.loan.dlg.SetVisible(false)
 	return a, nil
 }
@@ -650,12 +650,12 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 	// The wizard may have been closed while the category was persisting.
 	var d *dialog.Dialog
 	var st *loanWizardData
-	if a.loan != nil {
+	if a.loan.dlg != nil {
 		d, st = a.loan.dlg, a.loan.state
 	}
 	if d == nil || st == nil || len(d.Fields()) < loanFieldFieldsCount {
-		a.createCatDialog = nil
-		a.createCatLoanField = -1
+		a.createCat.dlg = nil
+		a.createCat.origin.loanField = -1
 		return
 	}
 	fields := d.Fields()
@@ -727,7 +727,7 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 	}
 
 	// Point the originating field at the freshly-created category and focus it.
-	if fld := a.createCatLoanField; fld >= 0 && fld < len(fields) {
+	if fld := a.createCat.origin.loanField; fld >= 0 && fld < len(fields) {
 		switch fld {
 		case loanFieldInterestCategory:
 			fields[fld].SelectedIndex = indexOf(interestIDs, newCat.ID)
@@ -742,14 +742,14 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 
 	updateLoanWizardVisibility(d)
 	d.SetVisible(true)
-	a.createCatDialog = nil
-	a.createCatLoanField = -1
+	a.createCat.dlg = nil
+	a.createCat.origin.loanField = -1
 }
 
 // refreshLoanWizardDerived recomputes conditional field visibility and the
 // payment prefill. Called after every key/mouse edit.
 func (a *App) refreshLoanWizardDerived() {
-	if a.loan == nil || a.loan.state == nil {
+	if a.loan.dlg == nil || a.loan.state == nil {
 		return
 	}
 	updateLoanWizardVisibility(a.loan.dlg)
@@ -887,7 +887,7 @@ func resolveLoanPrincipalSelection(st *loanWizardData, f *dialog.Field) (useDefa
 
 // submitLoanWizard dispatches to the new-loan or Edit-as-loan save path.
 func (a *App) submitLoanWizard() (tea.Model, tea.Cmd) {
-	if a.loan == nil {
+	if a.loan.dlg == nil {
 		return a, nil
 	}
 	if a.loan.state != nil && a.loan.state.mode == loanWizardModeEdit {
@@ -901,7 +901,7 @@ func (a *App) submitLoanWizard() (tea.Model, tea.Cmd) {
 // one atomic, single-undo operation. Validation errors leave the wizard open
 // with per-field errors set.
 func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
-	if a.loan == nil {
+	if a.loan.dlg == nil {
 		return a, nil
 	}
 	d, st := a.loan.dlg, a.loan.state
@@ -1129,7 +1129,7 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 // single-undo operation. owed is the loan's live balance loaded when the wizard
 // opened, so the rebuilt snapshot matches what the next post would compute.
 func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
-	if a.loan == nil {
+	if a.loan.dlg == nil {
 		return a, nil
 	}
 	d, st := a.loan.dlg, a.loan.state

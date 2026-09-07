@@ -93,19 +93,28 @@ func (a *App) loadSpinOffDialogData() tea.Cmd {
 	}
 }
 
+// spinOffSurface is the Spin-Off dialog together with the form state that
+// belongs to it. Its zero value is closed; closeSpinOffDialog resets it to that.
+type spinOffSurface struct {
+	modalSurface
+	data          *spinOffDialogData
+	securityIDs   []types.ID
+	preSelectedID *types.ID
+}
+
+func (s *spinOffSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeSpinOffDialog clears the spin-off dialog state.
 func (a *App) closeSpinOffDialog() {
-	a.spinOffDialog = nil
-	a.spinOffDialogData = nil
-	a.spinOffDialogSecurityIDs = nil
+	a.spinOff = spinOffSurface{}
 }
 
 // handleSpinOffDialogKey routes key events to the spin-off dialog.
 func (a *App) handleSpinOffDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.spinOffDialog == nil {
+	if a.spinOff.dlg == nil {
 		return a, nil
 	}
-	return a.spinOffDialogAction(a.spinOffDialog.HandleKey(msg))
+	return a.spinOffDialogAction(a.spinOff.dlg.HandleKey(msg))
 }
 
 // spinOffDialogAction dispatches a DialogAction for the spin off dialog, from either input path.
@@ -133,20 +142,20 @@ type spinOffPriceLookupMsg struct {
 // startSpinOffPriceLookup fetches the spin-off (child) security's close on the
 // dialog's date and fills the Spin-Off Price field.
 func (a *App) startSpinOffPriceLookup() (tea.Model, tea.Cmd) {
-	if a.spinOffDialog == nil {
+	if a.spinOff.dlg == nil {
 		return a, nil
 	}
-	fields := a.spinOffDialog.Fields()
-	if len(fields) < 6 || len(a.spinOffDialogSecurityIDs) == 0 {
+	fields := a.spinOff.dlg.Fields()
+	if len(fields) < 6 || len(a.spinOff.securityIDs) == 0 {
 		return a, nil
 	}
 	idx := fields[1].SelectedIndex // Spin-Off Security
-	if idx < 0 || idx >= len(a.spinOffDialogSecurityIDs) {
-		a.spinOffDialog.SetErrorMsg("Select a spin-off security first")
+	if idx < 0 || idx >= len(a.spinOff.securityIDs) {
+		a.spinOff.dlg.SetErrorMsg("Select a spin-off security first")
 		return a, nil
 	}
-	a.spinOffDialog.SetErrorMsg("")
-	return a, a.spinOffPriceLookupCmd(a.spinOffDialogSecurityIDs[idx], strings.TrimSpace(fields[2].Value))
+	a.spinOff.dlg.SetErrorMsg("")
+	return a, a.spinOffPriceLookupCmd(a.spinOff.securityIDs[idx], strings.TrimSpace(fields[2].Value))
 }
 
 // spinOffPriceLookupCmd resolves the child ticker and fetches its as-of close.
@@ -178,14 +187,14 @@ func (a *App) spinOffPriceLookupCmd(childID types.ID, dateStr string) tea.Cmd {
 // handleSpinOffPriceLookupResult fills the Spin-Off Price field from a completed
 // lookup, or surfaces the error on the still-open dialog.
 func (a *App) handleSpinOffPriceLookupResult(msg spinOffPriceLookupMsg) (tea.Model, tea.Cmd) {
-	if a.spinOffDialog == nil {
+	if a.spinOff.dlg == nil {
 		return a, nil
 	}
 	if msg.err != nil {
-		a.spinOffDialog.SetErrorMsg("Lookup failed: " + msg.err.Error())
+		a.spinOff.dlg.SetErrorMsg("Lookup failed: " + msg.err.Error())
 		return a, nil
 	}
-	fields := a.spinOffDialog.Fields()
+	fields := a.spinOff.dlg.Fields()
 	if len(fields) >= 6 {
 		prefillField(fields[5], fmt.Sprintf("%.2f", msg.price.Float64()))
 	}
@@ -195,27 +204,27 @@ func (a *App) handleSpinOffPriceLookupResult(msg spinOffPriceLookupMsg) (tea.Mod
 
 // submitSpinOffDialog validates and executes the spin-off.
 func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
-	if a.spinOffDialog == nil || a.spinOffDialogData == nil {
+	if a.spinOff.dlg == nil || a.spinOff.data == nil {
 		return a, nil
 	}
 
-	fields := a.spinOffDialog.Fields()
+	fields := a.spinOff.dlg.Fields()
 	if len(fields) < 6 {
 		return a, nil
 	}
 
-	a.spinOffDialog.ClearErrors()
+	a.spinOff.dlg.ClearErrors()
 	hasErrors := false
 
 	// Parent Security (index 0)
-	if len(a.spinOffDialogSecurityIDs) == 0 {
+	if len(a.spinOff.securityIDs) == 0 {
 		fields[0].Error = "No securities available"
 		hasErrors = true
 	}
 	parentIdx := fields[0].SelectedIndex
 	var parentSecurityID types.ID
-	if parentIdx >= 0 && parentIdx < len(a.spinOffDialogSecurityIDs) {
-		parentSecurityID = a.spinOffDialogSecurityIDs[parentIdx]
+	if parentIdx >= 0 && parentIdx < len(a.spinOff.securityIDs) {
+		parentSecurityID = a.spinOff.securityIDs[parentIdx]
 	} else {
 		fields[0].Error = "Select a parent security"
 		hasErrors = true
@@ -224,8 +233,8 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 	// Spin-Off Security (index 1)
 	spinOffIdx := fields[1].SelectedIndex
 	var spinOffSecurityID types.ID
-	if spinOffIdx >= 0 && spinOffIdx < len(a.spinOffDialogSecurityIDs) {
-		spinOffSecurityID = a.spinOffDialogSecurityIDs[spinOffIdx]
+	if spinOffIdx >= 0 && spinOffIdx < len(a.spinOff.securityIDs) {
+		spinOffSecurityID = a.spinOff.securityIDs[spinOffIdx]
 	} else {
 		fields[1].Error = "Select a spin-off security"
 		hasErrors = true

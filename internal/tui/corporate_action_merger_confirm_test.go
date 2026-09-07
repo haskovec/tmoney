@@ -147,18 +147,19 @@ func TestSubmitMergerDialog_TransitionsToConfirmation(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0 // source = AAPL
 	fields[1].SelectedIndex = 1 // target = MSFT
 	fields[2].Value = "06/10/2024"
@@ -169,25 +170,25 @@ func TestSubmitMergerDialog_TransitionsToConfirmation(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// dialog.Dialog should be closed
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("merger dialog should be closed after submit")
 	}
 
 	// Should have stored confirm params
-	if updatedApp.mergerConfirmParams == nil {
+	if updatedApp.mergerConfirm.params == nil {
 		t.Fatal("confirm params should be stored")
 	}
-	if updatedApp.mergerConfirmParams.sourceSecurityID != sourceID {
+	if updatedApp.mergerConfirm.params.sourceSecurityID != sourceID {
 		t.Error("source security ID mismatch")
 	}
-	if updatedApp.mergerConfirmParams.targetSecurityID != targetID {
+	if updatedApp.mergerConfirm.params.targetSecurityID != targetID {
 		t.Error("target security ID mismatch")
 	}
-	if updatedApp.mergerConfirmParams.exchangeRatio != 2.5 {
-		t.Errorf("exchange ratio = %f, want 2.5", updatedApp.mergerConfirmParams.exchangeRatio)
+	if updatedApp.mergerConfirm.params.exchangeRatio != 2.5 {
+		t.Errorf("exchange ratio = %f, want 2.5", updatedApp.mergerConfirm.params.exchangeRatio)
 	}
-	if updatedApp.mergerConfirmParams.cashPerShare != 10.00 {
-		t.Errorf("cash per share = %f, want 10.00", updatedApp.mergerConfirmParams.cashPerShare)
+	if updatedApp.mergerConfirm.params.cashPerShare != 10.00 {
+		t.Errorf("cash per share = %f, want 10.00", updatedApp.mergerConfirm.params.cashPerShare)
 	}
 
 	// Should return a command to load confirmation data
@@ -201,18 +202,19 @@ func TestSubmitMergerDialog_TransitionsWithoutCash(t *testing.T) {
 	targetID := types.NewID()
 
 	app := &App{
-		mergerDialog: buildMergerDialog(
+		merger: mergerSurface{modalSurface: modalSurface{dlg: buildMergerDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			[]types.ID{sourceID, targetID},
 			nil,
-		),
-		mergerDialogData: &mergerDialogData{
-			securities: []*security.Security{},
-		},
-		mergerDialogSecurityIDs: []types.ID{sourceID, targetID},
+		)},
+
+			data: &mergerDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{sourceID, targetID}},
 	}
 
-	fields := app.mergerDialog.Fields()
+	fields := app.merger.dlg.Fields()
 	fields[0].SelectedIndex = 0
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "06/10/2024"
@@ -222,14 +224,14 @@ func TestSubmitMergerDialog_TransitionsWithoutCash(t *testing.T) {
 	model, cmd := app.submitMergerDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog != nil {
+	if updatedApp.merger.dlg != nil {
 		t.Error("dialog should be closed")
 	}
-	if updatedApp.mergerConfirmParams == nil {
+	if updatedApp.mergerConfirm.params == nil {
 		t.Fatal("confirm params should be stored")
 	}
-	if updatedApp.mergerConfirmParams.cashPerShare != 0 {
-		t.Errorf("cash per share = %f, want 0", updatedApp.mergerConfirmParams.cashPerShare)
+	if updatedApp.mergerConfirm.params.cashPerShare != 0 {
+		t.Errorf("cash per share = %f, want 0", updatedApp.mergerConfirm.params.cashPerShare)
 	}
 	if cmd == nil {
 		t.Error("should return command to load confirmation data")
@@ -238,34 +240,35 @@ func TestSubmitMergerDialog_TransitionsWithoutCash(t *testing.T) {
 
 func TestCloseMergerConfirmation(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker: "AAPL",
 			targetTicker: "MSFT",
 		},
-		mergerConfirmParams: &mergerConfirmParams{
-			sourceSecurityID: types.NewID(),
-		},
+			params: &mergerConfirmParams{
+				sourceSecurityID: types.NewID(),
+			}},
 	}
 
 	app.closeMergerConfirmation()
 
-	if app.mergerConfirmData != nil {
+	if app.mergerConfirm.data != nil {
 		t.Error("confirm data should be nil after close")
 	}
-	if app.mergerConfirmParams != nil {
+	if app.mergerConfirm.params != nil {
 		t.Error("confirm params should be nil after close")
 	}
 }
 
 func TestHandleMergerConfirmKey_Escape(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker: "AAPL",
 			targetTicker: "MSFT",
 		},
-		mergerConfirmParams: &mergerConfirmParams{
-			sourceSecurityID: types.NewID(),
-		},
+			params: &mergerConfirmParams{
+				sourceSecurityID: types.NewID(),
+			}},
+
 		keys: defaultKeyMap(),
 	}
 
@@ -273,10 +276,10 @@ func TestHandleMergerConfirmKey_Escape(t *testing.T) {
 	model, _ := app.handleMergerConfirmKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerConfirmData != nil {
+	if updatedApp.mergerConfirm.data != nil {
 		t.Error("confirm data should be cleared after Escape")
 	}
-	if updatedApp.mergerConfirmParams != nil {
+	if updatedApp.mergerConfirm.params != nil {
 		t.Error("confirm params should be cleared after Escape")
 	}
 }
@@ -303,20 +306,21 @@ func TestHandleMergerConfirmKey_Enter(t *testing.T) {
 	d := types.NewDate(2024, 6, 10)
 
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker: "AAPL",
 			targetTicker: "MSFT",
 			accounts: []mergerAffectedAccount{
 				{accountName: "Brokerage"},
 			},
 		},
-		mergerConfirmParams: &mergerConfirmParams{
-			sourceSecurityID: sourceID,
-			targetSecurityID: targetID,
-			mergerDate:       d,
-			exchangeRatio:    2.0,
-			cashPerShare:     0,
-		},
+			params: &mergerConfirmParams{
+				sourceSecurityID: sourceID,
+				targetSecurityID: targetID,
+				mergerDate:       d,
+				exchangeRatio:    2.0,
+				cashPerShare:     0,
+			}},
+
 		keys: defaultKeyMap(),
 	}
 
@@ -325,10 +329,10 @@ func TestHandleMergerConfirmKey_Enter(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Confirmation should be closed
-	if updatedApp.mergerConfirmData != nil {
+	if updatedApp.mergerConfirm.data != nil {
 		t.Error("confirm data should be cleared after Enter")
 	}
-	if updatedApp.mergerConfirmParams != nil {
+	if updatedApp.mergerConfirm.params != nil {
 		t.Error("confirm params should be cleared after Enter")
 	}
 	// Should return an execution command
@@ -339,7 +343,7 @@ func TestHandleMergerConfirmKey_Enter(t *testing.T) {
 
 func TestRenderMergerConfirmation_NotNil(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
@@ -358,7 +362,8 @@ func TestRenderMergerConfirmation_NotNil(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -380,13 +385,14 @@ func TestRenderMergerConfirmation_NilData(t *testing.T) {
 
 func TestRenderMergerConfirmation_ContainsSourceAndTarget(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -403,14 +409,15 @@ func TestRenderMergerConfirmation_ContainsSourceAndTarget(t *testing.T) {
 
 func TestRenderMergerConfirmation_ContainsCashInfo(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
 			cashPerShare:  5.00,
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -424,13 +431,14 @@ func TestRenderMergerConfirmation_ContainsCashInfo(t *testing.T) {
 
 func TestRenderMergerConfirmation_NoAccounts(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -444,7 +452,7 @@ func TestRenderMergerConfirmation_NoAccounts(t *testing.T) {
 
 func TestRenderMergerConfirmation_WithLotTrackingAccount(t *testing.T) {
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
@@ -467,7 +475,8 @@ func TestRenderMergerConfirmation_WithLotTrackingAccount(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -484,7 +493,7 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
@@ -501,7 +510,8 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
+
 		styles: widget.NewStyles(),
 		width:  80,
 		height: 40,
@@ -516,9 +526,9 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 func TestApp_Update_MergerConfirmDataMsg(t *testing.T) {
 	app := &App{
 		statusbar: widget.NewStatusBar(),
-		mergerConfirmParams: &mergerConfirmParams{
+		mergerConfirm: mergerConfirmSurface{params: &mergerConfirmParams{
 			sourceSecurityID: types.NewID(),
-		},
+		}},
 	}
 
 	data := &mergerConfirmData{
@@ -533,11 +543,11 @@ func TestApp_Update_MergerConfirmDataMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerConfirmData == nil {
+	if updatedApp.mergerConfirm.data == nil {
 		t.Error("confirm data should be set after receiving message")
 	}
-	if updatedApp.mergerConfirmData.sourceTicker != "AAPL" {
-		t.Errorf("source ticker = %q, want AAPL", updatedApp.mergerConfirmData.sourceTicker)
+	if updatedApp.mergerConfirm.data.sourceTicker != "AAPL" {
+		t.Errorf("source ticker = %q, want AAPL", updatedApp.mergerConfirm.data.sourceTicker)
 	}
 }
 
@@ -560,19 +570,19 @@ func mergerConfirmMouseEnv(t *testing.T, w, h, accounts int) (*App, string, int,
 		width:  w,
 		height: h,
 		styles: widget.NewStyles(),
-		mergerConfirmData: &mergerConfirmData{
+		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
 			exchangeRatio: 2.0,
 			date:          "06/10/2024",
 			accounts:      affected,
 		},
-		mergerConfirmParams: &mergerConfirmParams{
-			sourceSecurityID: types.NewID(),
-			targetSecurityID: types.NewID(),
-			mergerDate:       types.NewDate(2024, time.June, 10),
-			exchangeRatio:    2.0,
-		},
+			params: &mergerConfirmParams{
+				sourceSecurityID: types.NewID(),
+				targetSecurityID: types.NewID(),
+				mergerDate:       types.NewDate(2024, time.June, 10),
+				exchangeRatio:    2.0,
+			}},
 	}
 	overlay := app.renderMergerConfirmation()
 	startCol, startRow := widget.OverlayTopLeft(overlay, w, h)
@@ -729,7 +739,7 @@ func TestMergerConfirm_MouseClickOnMerge_Executes(t *testing.T) {
 	model, cmd := app.handleMouseEvent(tea.MouseClickMsg{X: startCol + x + 2, Y: startRow + y, Button: tea.MouseLeft})
 	app = model.(*App)
 
-	if app.mergerConfirmData != nil || app.mergerConfirmParams != nil {
+	if app.mergerConfirm.data != nil || app.mergerConfirm.params != nil {
 		t.Error("confirmation state should be cleared after Merge")
 	}
 	if cmd == nil {
@@ -749,7 +759,7 @@ func TestMergerConfirm_MouseCancelPathsDoNotMerge(t *testing.T) {
 			model, cmd := app.handleMouseEvent(tea.MouseClickMsg{X: startCol + x + 1, Y: startRow + y, Button: tea.MouseLeft})
 			app = model.(*App)
 
-			if app.mergerConfirmData != nil {
+			if app.mergerConfirm.data != nil {
 				t.Error("the overlay should have closed")
 			}
 			if cmd != nil {
@@ -775,7 +785,7 @@ func TestMergerConfirm_StrayClickNeitherMergesNorDismisses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			model, cmd := app.handleMouseEvent(tea.MouseClickMsg{X: tc.x, Y: tc.y, Button: tea.MouseLeft})
 			got := model.(*App)
-			if got.mergerConfirmData == nil || got.mergerConfirmParams == nil {
+			if got.mergerConfirm.data == nil || got.mergerConfirm.params == nil {
 				t.Error("a stray click dismissed the confirmation")
 			}
 			if cmd != nil {
@@ -793,7 +803,7 @@ func TestMergerConfirm_WheelIsInert(t *testing.T) {
 	model, cmd := app.handleMouseEvent(tea.MouseWheelMsg{X: startCol + 20, Y: startRow + mergeRow, Button: tea.MouseWheelDown})
 	app = model.(*App)
 
-	if app.mergerConfirmData == nil {
+	if app.mergerConfirm.data == nil {
 		t.Error("the wheel dismissed the confirmation")
 	}
 	if cmd != nil {

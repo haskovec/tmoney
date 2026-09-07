@@ -177,21 +177,29 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 	}
 }
 
+// transferSharesSurface is the Transfer Shares dialog together with the form state that
+// belongs to it. Its zero value is closed; closeTransferSharesDialog resets it to that.
+type transferSharesSurface struct {
+	modalSurface
+	data        *transferSharesDialogData
+	accountIDs  []types.ID
+	securityIDs []types.ID
+	lots        []*investment.Lot
+}
+
+func (s *transferSharesSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeTransferSharesDialog clears the share transfer dialog state.
 func (a *App) closeTransferSharesDialog() {
-	a.transferSharesDialog = nil
-	a.transferSharesDialogData = nil
-	a.transferSharesDialogAccountIDs = nil
-	a.transferSharesDialogSecurityIDs = nil
-	a.transferSharesDialogLots = nil
+	a.transferShares = transferSharesSurface{}
 }
 
 // handleTransferSharesDialogKey routes key events to the share transfer dialog.
 func (a *App) handleTransferSharesDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.transferSharesDialog == nil {
+	if a.transferShares.dlg == nil {
 		return a, nil
 	}
-	return a.transferSharesDialogAction(a.transferSharesDialog.HandleKey(msg))
+	return a.transferSharesDialogAction(a.transferShares.dlg.HandleKey(msg))
 }
 
 // transferSharesDialogAction dispatches a DialogAction for the transfer shares dialog, from either input path.
@@ -209,19 +217,19 @@ func (a *App) transferSharesDialogAction(action dialog.DialogAction) (tea.Model,
 
 // submitTransferSharesDialog parses dialog fields, validates, and saves the share transfer.
 func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
-	if a.transferSharesDialog == nil || a.transferSharesDialogData == nil {
+	if a.transferShares.dlg == nil || a.transferShares.data == nil {
 		return a, nil
 	}
 
-	fields := a.transferSharesDialog.Fields()
-	numLots := len(a.transferSharesDialogLots)
+	fields := a.transferShares.dlg.Fields()
+	numLots := len(a.transferShares.lots)
 	// Expected: Date(0), Security(1), To Account(2), Shares(3), [lots...], Memo
 	expectedFields := 5 + numLots
 	if len(fields) < expectedFields {
 		return a, nil
 	}
 
-	a.transferSharesDialog.ClearErrors()
+	a.transferShares.dlg.ClearErrors()
 	hasErrors := false
 
 	// Date (index 0)
@@ -235,28 +243,28 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 	}
 
 	// Security (index 1)
-	if len(a.transferSharesDialogSecurityIDs) == 0 {
+	if len(a.transferShares.securityIDs) == 0 {
 		fields[1].Error = "No securities available"
 		hasErrors = true
 	}
 	secIdx := fields[1].SelectedIndex
 	var securityID types.ID
-	if secIdx >= 0 && secIdx < len(a.transferSharesDialogSecurityIDs) {
-		securityID = a.transferSharesDialogSecurityIDs[secIdx]
+	if secIdx >= 0 && secIdx < len(a.transferShares.securityIDs) {
+		securityID = a.transferShares.securityIDs[secIdx]
 	} else {
 		fields[1].Error = "Select a security"
 		hasErrors = true
 	}
 
 	// Destination account (index 2)
-	if len(a.transferSharesDialogAccountIDs) == 0 {
+	if len(a.transferShares.accountIDs) == 0 {
 		fields[2].Error = "No investment accounts available"
 		hasErrors = true
 	}
 	destIdx := fields[2].SelectedIndex
 	var destAccountID types.ID
-	if destIdx >= 0 && destIdx < len(a.transferSharesDialogAccountIDs) {
-		destAccountID = a.transferSharesDialogAccountIDs[destIdx]
+	if destIdx >= 0 && destIdx < len(a.transferShares.accountIDs) {
+		destAccountID = a.transferShares.accountIDs[destIdx]
 	} else {
 		fields[2].Error = "Select a destination account"
 		hasErrors = true
@@ -297,7 +305,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			lot := a.transferSharesDialogLots[i]
+			lot := a.transferShares.lots[i]
 			if lot.Shares.Cmp(q) < 0 {
 				fields[fieldIdx].Error = fmt.Sprintf("Only %s shares available", lot.Shares.String())
 				hasErrors = true

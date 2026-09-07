@@ -938,12 +938,12 @@ func TestApp_SchedPreview_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 		t.Fatalf("handleSchedulePreviewDialogKey returned %T, want *App", model)
 	}
 
-	if updated.createCatDialog == nil || !updated.createCatDialog.IsVisible() {
+	if updated.createCat.dlg == nil || !updated.createCat.dlg.IsVisible() {
 		t.Fatal("createCatDialog should be visible after [+ Add new] is activated")
 	}
-	if updated.createCatSource != createCatSourceSchedPreview {
+	if updated.createCat.origin.surface != createCatSourceSchedPreview {
 		t.Errorf("createCatSource = %d, want createCatSourceSchedPreview (%d)",
-			updated.createCatSource, createCatSourceSchedPreview)
+			updated.createCat.origin.surface, createCatSourceSchedPreview)
 	}
 	if updated.schedPreviewDialog == nil {
 		t.Fatal("schedPreviewDialog should be kept (hidden) so its state survives the divert")
@@ -951,13 +951,13 @@ func TestApp_SchedPreview_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.schedPreviewDialog.IsVisible() {
 		t.Error("schedPreviewDialog should be hidden while createCatDialog is shown")
 	}
-	if updated.createCatDialog.Title() != "New Category" {
+	if updated.createCat.dlg.Title() != "New Category" {
 		t.Errorf("createCatDialog title = %q, want %q",
-			updated.createCatDialog.Title(), "New Category")
+			updated.createCat.dlg.Title(), "New Category")
 	}
 	// The typed query was Donations (no colon), so it pre-fills the Name
 	// field. The Parent combo defaults to "(top-level)".
-	cFields := updated.createCatDialog.Fields()
+	cFields := updated.createCat.dlg.Fields()
 	if cFields[0].Value != "Donations" {
 		t.Errorf("Name field = %q, want %q (seeded from typed query)",
 			cFields[0].Value, "Donations")
@@ -981,7 +981,7 @@ func TestApp_SchedPreview_AddNew_CancelRestoresState(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
 	app := model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
@@ -990,11 +990,11 @@ func TestApp_SchedPreview_AddNew_CancelRestoresState(t *testing.T) {
 	model, _ = app.handleCreateCatDialogKey(esc)
 	app = model.(*App)
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after cancel")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after cancel", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after cancel", app.createCat.origin.surface)
 	}
 	if app.schedPreviewDialog == nil || !app.schedPreviewDialog.IsVisible() {
 		t.Fatal("schedPreviewDialog should be restored to visible after cancel")
@@ -1034,12 +1034,12 @@ func TestApp_SchedPreview_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
 	app := model.(*App)
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
 
 	// Fill: Name=Cleaning, Parent=(top-level), Type=Expense.
-	cFields := app.createCatDialog.Fields()
+	cFields := app.createCat.dlg.Fields()
 	cFields[0].Value = "Cleaning"
 	cFields[1].SelectedIndex = 0 // (top-level)
 	cFields[2].SelectedIndex = 0 // Expense
@@ -1071,11 +1071,11 @@ func TestApp_SchedPreview_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	}
 
 	// Sub-dialog closed; preview dialog visible again.
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("createCatDialog should be cleared after submit")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after submit", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after submit", app.createCat.origin.surface)
 	}
 	if app.schedPreviewDialog == nil || !app.schedPreviewDialog.IsVisible() {
 		t.Fatal("schedPreviewDialog should be visible again after submit")

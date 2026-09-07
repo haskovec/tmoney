@@ -63,7 +63,7 @@ func (a *App) showCloseAccountDialog() {
 
 	d := buildCloseAccountDialog(acct, scheduledCount)
 	d.SetVisible(true)
-	a.closeAcct = &closeAcctSurface{modalSurface: modalSurface{dlg: d}, targetID: accountID}
+	a.closeAcct = closeAcctSurface{modalSurface: modalSurface{dlg: d}, targetID: accountID}
 }
 
 // closeAcctSurface is the Close Account dialog's state. targetID is captured at
@@ -87,7 +87,7 @@ func (a *App) handleCloseAcctDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 func (a *App) closeAcctDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.closeAcct = nil
+		a.closeAcct = closeAcctSurface{}
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitCloseAccountDialog()
@@ -116,7 +116,7 @@ func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	a.closeAcct = nil
+	a.closeAcct = closeAcctSurface{}
 	return a, func() tea.Msg { return accountClosedMsg{} }
 }
 

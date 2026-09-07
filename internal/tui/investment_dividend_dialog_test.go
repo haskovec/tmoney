@@ -249,11 +249,12 @@ func TestSubmitDividendDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		dividendDialog: buildDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: secIDs,
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs)},
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -264,21 +265,21 @@ func TestSubmitDividendDialog_ValidationErrors(t *testing.T) {
 	}
 
 	// Set invalid values
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty amount
 
 	model, cmd := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -291,11 +292,12 @@ func TestSubmitDividendDialog_InvalidAmount(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		dividendDialog: buildDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: secIDs,
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs)},
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -304,17 +306,17 @@ func TestSubmitDividendDialog_InvalidAmount(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "not-valid" // invalid amount
 
 	model, _ := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open on amount error")
 	}
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("amount field should have error")
 	}
@@ -325,15 +327,17 @@ func TestSubmitDividendDialog_Valid(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -343,14 +347,14 @@ func TestSubmitDividendDialog_Valid(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "50.00"      // amount
 
 	model, cmd := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -363,13 +367,15 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -378,7 +384,7 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 	fields[3].Value = "Q1 dividend" // memo
@@ -386,7 +392,7 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 	model, cmd := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should close on valid submit with memo")
 	}
 	if cmd == nil {
@@ -396,24 +402,24 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 
 func TestSubmitDividendDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		dividendDialog: buildDividendDialog([]string{}, nil, []types.ID{}),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: []types.ID{},
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog([]string{}, nil, []types.ID{})},
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 
 	model, _ := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
@@ -423,12 +429,13 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: secIDs,
-		dividendDialogReinvest:    true,
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog([]string{"AAPL - Apple Inc."}, nil, secIDs)},
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs,
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -437,7 +444,7 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty shares
 	fields[3].Value = ""           // no total
@@ -446,14 +453,14 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -473,16 +480,18 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -491,7 +500,7 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024" // date
 	fields[2].Value = "10"         // shares
 	fields[4].Value = "185.00"     // price per share
@@ -499,7 +508,7 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -512,16 +521,18 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -530,7 +541,7 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "06/01/2024" // date
 	fields[2].Value = "5"          // shares
 	fields[3].Value = "925.00"     // total amount
@@ -538,7 +549,7 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -548,15 +559,15 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 
 func TestSubmitReinvestDividendDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog([]string{}, nil, []types.ID{}),
-		dividendDialogData: &dividendDialogData{
-			securities: []*security.Security{},
-		},
-		dividendDialogSecurityIDs: []types.ID{},
-		dividendDialogReinvest:    true,
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog([]string{}, nil, []types.ID{})},
+			data: &dividendDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{},
+			reinvest:    true},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[4].Value = "185.00"
@@ -564,10 +575,10 @@ func TestSubmitReinvestDividendDialog_NoSecurities(t *testing.T) {
 	model, _ := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("security field should have error")
 	}
@@ -577,14 +588,16 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -593,7 +606,7 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = ""
@@ -602,10 +615,10 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 	model, _ := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Error("dialog should remain open on price error")
 	}
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("price field should have error")
 	}
@@ -615,26 +628,27 @@ func TestHandleDividendDialogKey_Cancel(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleDividendDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.dividendDialogData != nil {
+	if updatedApp.dividend.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.dividendDialogSecurityIDs != nil {
+	if updatedApp.dividend.securityIDs != nil {
 		t.Error("security IDs should be cleared after cancel")
 	}
 }
@@ -683,28 +697,29 @@ func TestCloseDividendDialog(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
 	}
 
 	app.closeDividendDialog()
 
-	if app.dividendDialog != nil {
+	if app.dividend.dlg != nil {
 		t.Error("dividendDialog should be nil after close")
 	}
-	if app.dividendDialogData != nil {
+	if app.dividend.data != nil {
 		t.Error("dividendDialogData should be nil after close")
 	}
-	if app.dividendDialogSecurityIDs != nil {
+	if app.dividend.securityIDs != nil {
 		t.Error("dividendDialogSecurityIDs should be nil after close")
 	}
-	if app.dividendDialogReinvest {
+	if app.dividend.reinvest {
 		t.Error("dividendDialogReinvest should be false after close")
 	}
 }
@@ -736,14 +751,16 @@ func TestHandleDividendDialogKey_RoutesToDividendSubmit(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    false,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    false},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -752,14 +769,14 @@ func TestHandleDividendDialogKey_RoutesToDividendSubmit(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "50.00"
 
 	model, cmd := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -773,14 +790,16 @@ func TestHandleDividendDialogKey_RoutesToReinvestSubmit(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -789,7 +808,7 @@ func TestHandleDividendDialogKey_RoutesToReinvestSubmit(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "10"
 	fields[3].Value = "185.00"
@@ -797,7 +816,7 @@ func TestHandleDividendDialogKey_RoutesToReinvestSubmit(t *testing.T) {
 	model, cmd := app.submitReinvestDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed after valid reinvest submit")
 	}
 	if cmd == nil {
@@ -810,13 +829,15 @@ func TestSubmitDividendDialog_DollarSignInAmount(t *testing.T) {
 	acctID := types.NewID()
 
 	app := &App{
-		dividendDialog: buildDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID}},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
@@ -825,14 +846,14 @@ func TestSubmitDividendDialog_DollarSignInAmount(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "03/15/2024"
 	fields[2].Value = "$50.00" // dollar sign in amount
 
 	model, cmd := app.submitDividendDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should close (dollar sign stripped)")
 	}
 	if cmd == nil {
@@ -872,14 +893,16 @@ func TestDividendDialogMouse_SaveRoutesToReinvestSubmit(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 40,
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -888,23 +911,23 @@ func TestDividendDialogMouse_SaveRoutesToReinvestSubmit(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "05/14/2024" // date
 	fields[2].Value = "0.006"      // shares — the cash path would read this as Amount
 	fields[3].Value = ""           // no total
 	fields[4].Value = ""           // no price
 
-	click := dividendDialogButtonClick(t, app.dividendDialog, 0, app.width, app.height)
+	click := dividendDialogButtonClick(t, app.dividend.dlg, 0, app.width, app.height)
 	model, cmd := app.handleDialogMouse(click)
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog == nil {
+	if updatedApp.dividend.dlg == nil {
 		t.Fatal("dialog should stay open: reinvest validation requires price or total")
 	}
 	if cmd != nil {
 		t.Error("no save command should be issued on validation errors")
 	}
-	fields = updatedApp.dividendDialog.Fields()
+	fields = updatedApp.dividend.dlg.Fields()
 	if fields[3].Error == "" || fields[4].Error == "" {
 		t.Error("total and price fields should carry 'Enter price or total' errors")
 	}
@@ -916,14 +939,16 @@ func TestDividendDialogMouse_SaveValidReinvest(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 40,
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
+
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -932,16 +957,16 @@ func TestDividendDialogMouse_SaveValidReinvest(t *testing.T) {
 		},
 	}
 
-	fields := app.dividendDialog.Fields()
+	fields := app.dividend.dlg.Fields()
 	fields[0].Value = "05/14/2024" // date
 	fields[2].Value = "0.006"      // shares
 	fields[3].Value = "0.23"       // total
 
-	click := dividendDialogButtonClick(t, app.dividendDialog, 0, app.width, app.height)
+	click := dividendDialogButtonClick(t, app.dividend.dlg, 0, app.width, app.height)
 	model, cmd := app.handleDialogMouse(click)
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should close after a valid mouse Save")
 	}
 	if cmd == nil {
@@ -955,27 +980,28 @@ func TestDividendDialogMouse_CancelResetsState(t *testing.T) {
 	app := &App{
 		width:  100,
 		height: 40,
-		dividendDialog: buildReinvestDividendDialog(
+		dividend: dividendSurface{modalSurface: modalSurface{dlg: buildReinvestDividendDialog(
 			[]string{"AAPL - Apple Inc."},
 			nil,
 			[]types.ID{secID},
-		),
-		dividendDialogData:        &dividendDialogData{},
-		dividendDialogSecurityIDs: []types.ID{secID},
-		dividendDialogReinvest:    true,
+		)},
+
+			data:        &dividendDialogData{},
+			securityIDs: []types.ID{secID},
+			reinvest:    true},
 	}
 
-	click := dividendDialogButtonClick(t, app.dividendDialog, 1, app.width, app.height)
+	click := dividendDialogButtonClick(t, app.dividend.dlg, 1, app.width, app.height)
 	model, _ := app.handleDialogMouse(click)
 	updatedApp := model.(*App)
 
-	if updatedApp.dividendDialog != nil {
+	if updatedApp.dividend.dlg != nil {
 		t.Error("dialog should be closed on mouse Cancel")
 	}
-	if updatedApp.dividendDialogReinvest {
+	if updatedApp.dividend.reinvest {
 		t.Error("reinvest flag should be reset on mouse Cancel")
 	}
-	if updatedApp.dividendDialogData != nil || updatedApp.dividendDialogSecurityIDs != nil {
+	if updatedApp.dividend.data != nil || updatedApp.dividend.securityIDs != nil {
 		t.Error("dialog data should be cleared on mouse Cancel")
 	}
 }

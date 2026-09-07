@@ -22,16 +22,16 @@ func TestApp_HandleConfirmDialogKey_Cancel(t *testing.T) {
 		{Label: "Yes", Primary: true},
 	})
 	d.SetVisible(true)
-	app.confirmDialog = d
-	app.confirmAction = func() tea.Msg { return nil }
+	app.confirm.dlg = d
+	app.confirm.action = func() tea.Msg { return nil }
 
 	// Press Escape to cancel
 	_, _ = app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEsc})
 
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("confirmDialog should be nil after cancel")
 	}
-	if app.confirmAction != nil {
+	if app.confirm.action != nil {
 		t.Error("confirmAction should be nil after cancel")
 	}
 }
@@ -52,8 +52,8 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 	d.SetVisible(true)
 	// Focus on the Yes button (fields count = 0, so button index 1 = focus index 1)
 	d.SetFocusIndex(1)
-	app.confirmDialog = d
-	app.confirmAction = func() tea.Msg {
+	app.confirm.dlg = d
+	app.confirm.action = func() tea.Msg {
 		called = true
 		return nil
 	}
@@ -61,7 +61,7 @@ func TestApp_HandleConfirmDialogKey_Confirm(t *testing.T) {
 	// Press Enter on Yes button
 	_, cmd := app.handleConfirmDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	if app.confirmDialog != nil {
+	if app.confirm.dlg != nil {
 		t.Error("confirmDialog should be nil after confirm")
 	}
 	if cmd == nil {
@@ -86,7 +86,7 @@ func TestApp_ShowConfirmDialog_WrappedPromptIsMouseClickable(t *testing.T) {
 	long := "Reverse this Spin-Off on ETHE (2024-07-23) and delete the audit row? Lots, positions, and prices will be restored to their pre-action state."
 	app.showConfirmDialog("Reverse Corporate Action", long, func() tea.Msg { return nil })
 
-	d := app.confirmDialog
+	d := app.confirm.dlg
 	if d == nil {
 		t.Fatal("confirm dialog not set")
 	}

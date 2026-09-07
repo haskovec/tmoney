@@ -136,17 +136,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case buyDialogDataMsg:
-		a.buyDialogData = msg.data
+		a.buy.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.buyDialogSecurityIDs = secIDs
+		a.buy.securityIDs = secIDs
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		a.buyDialog = buildBuyDialog(secOptions, editTxn, secIDs)
+		a.buy.dlg = buildBuyDialog(secOptions, editTxn, secIDs)
 		if editTxn == nil {
-			a.buyDialog.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.buyDialog, secIDs, a.investmentNewTxnSecurityID)
+			a.buy.dlg.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.buy.dlg, secIDs, a.investmentNewTxnSecurityID)
 		}
 		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
@@ -165,18 +165,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case sellDialogDataMsg:
-		a.sellDialogData = msg.data
+		a.sell.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.sellDialogSecurityIDs = secIDs
-		a.sellDialogLots = msg.data.lots
+		a.sell.securityIDs = secIDs
+		a.sell.lots = msg.data.lots
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		a.sellDialog = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
+		a.sell.dlg = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
 		if editTxn == nil {
-			a.sellDialog.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.sellDialog, secIDs, a.investmentNewTxnSecurityID)
+			a.sell.dlg.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.sell.dlg, secIDs, a.investmentNewTxnSecurityID)
 		}
 		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
@@ -195,17 +195,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case feeLiquidationDialogDataMsg:
-		a.feeLiquidationDialogData = msg.data
+		a.feeLiquidation.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.feeLiquidationDialogSecurityIDs = secIDs
+		a.feeLiquidation.securityIDs = secIDs
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		a.feeLiquidationDialog = buildFeeLiquidationDialog(secOptions, editTxn, secIDs)
+		a.feeLiquidation.dlg = buildFeeLiquidationDialog(secOptions, editTxn, secIDs)
 		if editTxn == nil {
-			a.feeLiquidationDialog.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.feeLiquidationDialog, secIDs, a.investmentNewTxnSecurityID)
+			a.feeLiquidation.dlg.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.feeLiquidation.dlg, secIDs, a.investmentNewTxnSecurityID)
 		}
 		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
@@ -224,21 +224,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case dividendDialogDataMsg:
-		a.dividendDialogData = msg.data
+		a.dividend.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.dividendDialogSecurityIDs = secIDs
+		a.dividend.securityIDs = secIDs
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		if a.dividendDialogReinvest {
-			a.dividendDialog = buildReinvestDividendDialog(secOptions, editTxn, secIDs)
+		if a.dividend.reinvest {
+			a.dividend.dlg = buildReinvestDividendDialog(secOptions, editTxn, secIDs)
 		} else {
-			a.dividendDialog = buildDividendDialog(secOptions, editTxn, secIDs)
+			a.dividend.dlg = buildDividendDialog(secOptions, editTxn, secIDs)
 		}
 		if editTxn == nil {
-			a.dividendDialog.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.dividendDialog, secIDs, a.investmentNewTxnSecurityID)
+			a.dividend.dlg.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.dividend.dlg, secIDs, a.investmentNewTxnSecurityID)
 		}
 		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
@@ -254,7 +254,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// unconditionally rather than branching on dividendDialogReinvest.
 		a.invalidatePriceHistoryCache()
 		label := "Dividend"
-		if a.dividendDialogReinvest {
+		if a.dividend.reinvest {
 			label = "Reinvest dividend"
 		}
 		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
@@ -269,11 +269,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.investmentEditTxnID = types.NilID
 		a.pendingInvestmentSelectID = msg.savedID
-		label := string(a.cashOperationType)
+		label := string(a.cashOperation.opType)
 		if label == "" {
 			label = "Cash operation"
 		} else {
-			label = a.cashOperationType.DisplayName()
+			label = a.cashOperation.opType.DisplayName()
 		}
 		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -282,24 +282,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case transferSharesDialogDataMsg:
-		a.transferSharesDialogData = msg.data
+		a.transferShares.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.transferSharesDialogSecurityIDs = secIDs
+		a.transferShares.securityIDs = secIDs
 		excludeID := types.NilID
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
 			excludeID = a.investmentRegister.account.ID
 		}
 		acctOptions, acctIDs := buildInvestmentAccountOptions(msg.data.investmentAccounts, excludeID)
-		a.transferSharesDialogAccountIDs = acctIDs
-		a.transferSharesDialogLots = msg.data.lots
+		a.transferShares.accountIDs = acctIDs
+		a.transferShares.lots = msg.data.lots
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		a.transferSharesDialog = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
+		a.transferShares.dlg = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
 		if editTxn == nil {
-			a.transferSharesDialog.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.transferSharesDialog, secIDs, a.investmentNewTxnSecurityID)
+			a.transferShares.dlg.SeedDateField(a.txnDialogLastSavedDate)
+			preselectSecurityCombo(a.transferShares.dlg, secIDs, a.investmentNewTxnSecurityID)
 		}
 		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
@@ -317,12 +317,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case stockSplitDialogDataMsg:
-		a.stockSplitDialogData = msg.data
+		a.stockSplit.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.stockSplitDialogSecurityIDs = secIDs
-		a.stockSplitDialog = buildStockSplitDialog(secOptions, secIDs, msg.data.sharesMap, a.stockSplitDialogPreSelectedID)
-		a.stockSplitDialog.SeedDateField(a.txnDialogLastSavedDate)
-		a.stockSplitDialogPreSelectedID = nil
+		a.stockSplit.securityIDs = secIDs
+		a.stockSplit.dlg = buildStockSplitDialog(secOptions, secIDs, msg.data.sharesMap, a.stockSplit.preSelectedID)
+		a.stockSplit.dlg.SeedDateField(a.txnDialogLastSavedDate)
+		a.stockSplit.preSelectedID = nil
 		return a, nil
 
 	case stockSplitDialogSavedMsg:
@@ -333,16 +333,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.refreshAfterCorporateAction()
 
 	case mergerDialogDataMsg:
-		a.mergerDialogData = msg.data
+		a.merger.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.mergerDialogSecurityIDs = secIDs
-		a.mergerDialog = buildMergerDialog(secOptions, secIDs, a.mergerDialogPreSelectedID)
-		a.mergerDialog.SeedDateField(a.txnDialogLastSavedDate)
-		a.mergerDialogPreSelectedID = nil
+		a.merger.securityIDs = secIDs
+		a.merger.dlg = buildMergerDialog(secOptions, secIDs, a.merger.preSelectedID)
+		a.merger.dlg.SeedDateField(a.txnDialogLastSavedDate)
+		a.merger.preSelectedID = nil
 		return a, nil
 
 	case mergerConfirmDataMsg:
-		a.mergerConfirmData = msg.data
+		a.mergerConfirm.data = msg.data
 		return a, nil
 
 	case mergerDialogSavedMsg:
@@ -353,12 +353,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.refreshAfterCorporateAction()
 
 	case spinOffDialogDataMsg:
-		a.spinOffDialogData = msg.data
+		a.spinOff.data = msg.data
 		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.spinOffDialogSecurityIDs = secIDs
-		a.spinOffDialog = buildSpinOffDialog(secOptions, secIDs, a.spinOffDialogPreSelectedID)
-		a.spinOffDialog.SeedDateField(a.txnDialogLastSavedDate)
-		a.spinOffDialogPreSelectedID = nil
+		a.spinOff.securityIDs = secIDs
+		a.spinOff.dlg = buildSpinOffDialog(secOptions, secIDs, a.spinOff.preSelectedID)
+		a.spinOff.dlg.SeedDateField(a.txnDialogLastSavedDate)
+		a.spinOff.preSelectedID = nil
 		return a, nil
 
 	case spinOffDialogSavedMsg:
@@ -419,10 +419,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case transactionDialogDataMsg:
-		a.txnDialogData = msg.data
+		a.txn.data = msg.data
 		categoryOptions, categoryIDs := buildCategoryOptionsForAccount(msg.data.categories, a.sidebar.SelectedAccount())
-		a.txnDialogCategoryIDs = categoryIDs
-		a.txnDialog = buildTransactionDialog(msg.data, categoryOptions, categoryIDs, a.txnDialogLastSavedDate)
+		a.txn.categoryIDs = categoryIDs
+		a.txn.dlg = buildTransactionDialog(msg.data, categoryOptions, categoryIDs, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transactionDialogSavedMsg:
@@ -451,13 +451,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case transferDialogDataMsg:
-		a.transferDialogData = msg.data
+		a.transfer.data = msg.data
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
-		a.transferDialogAccountIDs = accountIDs
+		a.transfer.accountIDs = accountIDs
 		// Category combo options are the "(None)"-led, system-excluded list;
 		// the parallel ID slice is stashed for the submit handler.
 		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
-		a.transferDialogCategoryIDs = categoryIDs
+		a.transfer.categoryIDs = categoryIDs
 
 		if msg.data.mode == transferDialogModeEdit {
 			fromName, toName := transferAccountNames(msg.data)
@@ -468,7 +468,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// TransferPair and fall back to zero values.
 			if t := msg.data.existing; t != nil {
 				catIdx := categoryComboIndex(categoryIDs, t.CategoryID)
-				a.transferDialog = buildEditTransferDialog(
+				a.transfer.dlg = buildEditTransferDialog(
 					fromName, toName, t.Amount, t.Date, t.Memo, t.Status,
 					includeCategory, categoryOptions, catIdx)
 			}
@@ -484,8 +484,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		a.transferDialog = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
-		a.transferDialog.SeedDateField(a.txnDialogLastSavedDate)
+		a.transfer.dlg = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
+		a.transfer.dlg.SeedDateField(a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transferDialogSavedMsg:
@@ -508,7 +508,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case scheduledDialogDataMsg:
-		a.schedDialogData = msg.data
+		a.sched.data = msg.data
 
 		// Single-line transfer schedules use a distinct dialog whose From/To
 		// pickers exclude investment accounts (regular↔regular only). The
@@ -517,7 +517,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// category.
 		if msg.data.isTransfer {
 			accountOptions, accountIDs := buildTransferAccountOptions(msg.data.accounts)
-			a.schedDialogAccountIDs = accountIDs
+			a.sched.accountIDs = accountIDs
 
 			var transferCats []*category.Category
 			if a.categorySvc != nil {
@@ -526,19 +526,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			categoryOptions, categoryIDs := buildCategoryOptions(transferCats)
-			a.schedDialogCategoryIDs = categoryIDs
-			a.schedDialogCategoryOptions = categoryOptions
+			a.sched.categoryIDs = categoryIDs
+			a.sched.categoryOptions = categoryOptions
 
 			if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
-				a.schedDialog = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, categoryOptions, accountIDs, categoryIDs)
+				a.sched.dlg = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, categoryOptions, accountIDs, categoryIDs)
 			} else {
-				a.schedDialog = buildNewScheduledTransferDialog(accountOptions, categoryOptions)
+				a.sched.dlg = buildNewScheduledTransferDialog(accountOptions, categoryOptions)
 			}
 			return a, nil
 		}
 
 		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
-		a.schedDialogAccountIDs = accountIDs
+		a.sched.accountIDs = accountIDs
 
 		var categories []*category.Category
 		if a.categorySvc != nil {
@@ -560,8 +560,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		includeVA := accountIsAssetByID(msg.data.accounts, initialAcctID)
 		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
-		a.schedDialogCategoryIDs = categoryIDs
-		a.schedDialogCategoryOptions = categoryOptions
+		a.sched.categoryIDs = categoryIDs
+		a.sched.categoryOptions = categoryOptions
 
 		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
 			// Build payee name map for edit dialog
@@ -569,10 +569,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, p := range msg.data.payees {
 				payeeNames[p.ID] = p.Name
 			}
-			a.schedDialog = buildEditScheduledDialog(msg.data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+			a.sched.dlg = buildEditScheduledDialog(msg.data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
 			a.maybeAddEditAsLoanButton(msg.data.scheduled)
 		} else {
-			a.schedDialog = buildNewScheduledDialog(accountOptions, categoryOptions)
+			a.sched.dlg = buildNewScheduledDialog(accountOptions, categoryOptions)
 		}
 		return a, nil
 
@@ -630,10 +630,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loanWizardDataMsg:
 		if msg.editSchedule != nil {
 			d, st := buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
-			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		} else {
 			d, st := buildNewLoanWizard(msg.accounts, msg.categories)
-			a.loan = &loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
+			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
 		}
 		return a, nil
 
@@ -668,11 +668,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case accountDialogDataMsg:
-		a.acctDialogData = msg.data
+		a.acct.data = msg.data
 		if msg.data.mode == accountDialogModeEdit && msg.data.account != nil {
-			a.acctDialog = buildEditAccountDialog(msg.data.account)
+			a.acct.dlg = buildEditAccountDialog(msg.data.account)
 		} else {
-			a.acctDialog = buildNewAccountDialog()
+			a.acct.dlg = buildNewAccountDialog()
 		}
 		return a, nil
 
@@ -898,7 +898,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case importDialogOpenMsg:
 		d, ids := buildImportOptionsDialog(msg.accounts, msg.defaultAccountID)
-		a.importer = &importSurface{modalSurface: modalSurface{dlg: d}}
+		a.importer = importSurface{modalSurface: modalSurface{dlg: d}}
 		a.importer.state = &importDialogState{
 			step:       importStepOptions,
 			accountIDs: ids,
@@ -909,7 +909,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := msg.state
 		state.preview = msg.result
 		state.step = importStepConfirm
-		a.importer = &importSurface{
+		a.importer = importSurface{
 			modalSurface: modalSurface{dlg: buildImportConfirmDialog(state)},
 			state:        state,
 		}
@@ -919,7 +919,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state := msg.state
 		state.step = importStepSourcePicker
 		state.sourceOptions = msg.sources
-		a.importer = &importSurface{
+		a.importer = importSurface{
 			modalSurface: modalSurface{dlg: buildImportSourcePickerDialog(msg.sources, state.accountName)},
 			state:        state,
 		}
@@ -944,7 +944,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(cmds...)
 
 	case linkTransfersPreviewedMsg:
-		a.linkTransfers = &linkTransfersSurface{
+		a.linkTransfers = linkTransfersSurface{
 			modalSurface: modalSurface{dlg: buildLinkTransfersDialog(msg.result)},
 			result:       msg.result,
 		}

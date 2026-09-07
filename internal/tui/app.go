@@ -143,9 +143,7 @@ type App struct {
 	amortizationTable *widget.Table
 
 	// Transaction dialog state
-	txnDialog            *dialog.Dialog
-	txnDialogData        *transactionDialogData
-	txnDialogCategoryIDs []types.ID
+	txn txnSurface
 	// txnDialogLastSavedDate is the date of the last successfully-saved
 	// operation in this process — covers the regular Transaction dialog,
 	// every investment dialog (Buy/Sell/Dividend/Reinvest/Cash ops/
@@ -155,52 +153,25 @@ type App struct {
 	// it. Process-lifetime only — not persisted across restarts.
 	txnDialogLastSavedDate types.Date
 
-	// createCatDialog is the inline create-category sub-dialog opened from
-	// any of the transaction-entry surfaces via the [+ Add new category…]
-	// action row. While it is non-nil and visible, the originating dialog
-	// is hidden but kept alive so its field state survives the divert. The
-	// createCatSource field below records which surface opened it so the
-	// post-create router can dispatch back to the right applier.
-	createCatDialog *dialog.Dialog
-	createCatSource createCategorySource
-	// createCatSplitRow is the row index in splitDialog whose Category combo
-	// activated [+ Add new category…]. Used by applyCreatedCategoryToSplit to
-	// point the originating row at the freshly-created category after the
-	// sub-dialog returns. -1 when no split-sourced sub-dialog is in flight.
-	createCatSplitRow int
-	// createCatPaycheckLine is the paycheck-wizard line whose select field
-	// activated [+ Add new category…]. Used by applyCreatedCategoryToPaycheck
-	// to point the originating line at the freshly-created category after the
-	// sub-dialog returns. nil when no paycheck-sourced sub-dialog is in flight.
-	createCatPaycheckLine *PaycheckLine
-	// createCatLoanField is the loan-wizard dialog field index (interest or an
-	// escrow category combo) that activated [+ Add new category…]. Used by
-	// applyCreatedCategoryToLoan to point that field at the freshly-created
-	// category after the sub-dialog returns. -1 when no loan-sourced sub-dialog
-	// is in flight.
-	createCatLoanField int
+	// createCat is the inline create-category sub-dialog opened from any of
+	// the transaction-entry surfaces via the [+ Add new category…] action row.
+	// While it is open the originating dialog is hidden but kept alive so its
+	// field state survives the divert. Its origin records which surface opened
+	// it, and where in that surface, so the post-create router can dispatch
+	// back to the right applier.
+	createCat createCatSurface
 
 	// Split dialog state
-	splitDialog           *SplitDialog
-	pendingSplitTxn       *pendingSplitTransaction
-	pendingSplitScheduled *pendingSplitScheduled
+	split splitSurface
 
 	// Transfer dialog state
-	transferDialog            *dialog.Dialog
-	transferDialogData        *transferDialogData
-	transferDialogAccountIDs  []types.ID
-	transferDialogCategoryIDs []types.ID // parallel to the Category combo options
+	transfer transferSurface
 
 	// Account dialog state
-	acctDialog     *dialog.Dialog
-	acctDialogData *accountDialogData
+	acct acctSurface
 
 	// Scheduled dialog state
-	schedDialog                *dialog.Dialog
-	schedDialogData            *scheduledDialogData
-	schedDialogAccountIDs      []types.ID
-	schedDialogCategoryIDs     []types.ID
-	schedDialogCategoryOptions []string
+	sched schedSurface
 
 	// Scheduled preview dialog state. Opens when the user presses Enter
 	// on a due scheduled item (replaces the legacy immediate-post path
@@ -218,7 +189,7 @@ type App struct {
 	// generic dialog.Dialog form widget (see loan_wizard.go); creates a loan
 	// account, an optional asset account, and a monthly loan-shaped schedule
 	// as one atomic, single-undo operation.
-	loan *loanSurface
+	loan loanSurface
 
 	// Scheduled view state
 	scheduled      *scheduledViewData
@@ -239,12 +210,12 @@ type App struct {
 	reconDialogLastStatementDate types.Date
 
 	// Close-account dialog state.
-	closeAcct *closeAcctSurface
+	closeAcct closeAcctSurface
 
 	// Security view state
 	securityView  *securityViewData
 	securityTable *widget.Table
-	security      *securitySurface
+	security      securitySurface
 	securitySvc   *security.Service
 
 	// After adding a security, the table build step moves the cursor onto the
@@ -258,7 +229,7 @@ type App struct {
 	priceView         *priceViewData
 	priceTable        *widget.Table // detail-mode: history for one security
 	priceListTable    *widget.Table // list-mode: latest price per ticker
-	price             *priceSurface
+	price             priceSurface
 	priceImportDialog *dialog.Dialog
 	priceSvc          *price.Service
 
@@ -307,37 +278,22 @@ type App struct {
 	pendingInvestmentSelectID types.ID
 
 	// Buy dialog state
-	buyDialog            *dialog.Dialog
-	buyDialogData        *buyDialogData
-	buyDialogSecurityIDs []types.ID
+	buy buySurface
 
 	// Sell dialog state
-	sellDialog            *dialog.Dialog
-	sellDialogData        *sellDialogData
-	sellDialogSecurityIDs []types.ID
-	sellDialogLots        []*investment.Lot
+	sell sellSurface
 
 	// Fee via Liquidation dialog state
-	feeLiquidationDialog            *dialog.Dialog
-	feeLiquidationDialogData        *feeLiquidationDialogData
-	feeLiquidationDialogSecurityIDs []types.ID
+	feeLiquidation feeLiquidationSurface
 
 	// Dividend dialog state
-	dividendDialog            *dialog.Dialog
-	dividendDialogData        *dividendDialogData
-	dividendDialogSecurityIDs []types.ID
-	dividendDialogReinvest    bool // true when dialog is for reinvest dividend
+	dividend dividendSurface
 
 	// Cash operation dialog state (deposit, withdrawal, fee, interest)
-	cashOperationDialog *dialog.Dialog
-	cashOperationType   investment.TransactionType
+	cashOperation cashOperationSurface
 
 	// Transfer shares dialog state (between investment accounts)
-	transferSharesDialog            *dialog.Dialog
-	transferSharesDialogData        *transferSharesDialogData
-	transferSharesDialogAccountIDs  []types.ID
-	transferSharesDialogSecurityIDs []types.ID
-	transferSharesDialogLots        []*investment.Lot
+	transferShares transferSharesSurface
 
 	// Portfolio view state
 	portfolioData          *portfolioViewData
@@ -346,27 +302,17 @@ type App struct {
 	portfolioMode          portfolioViewMode
 
 	// Corporate action service and stock split dialog state
-	corporateActionSvc            *investment.CorporateActionService
-	stockSplitDialog              *dialog.Dialog
-	stockSplitDialogData          *stockSplitDialogData
-	stockSplitDialogSecurityIDs   []types.ID
-	stockSplitDialogPreSelectedID *types.ID
+	corporateActionSvc *investment.CorporateActionService
+	stockSplit         stockSplitSurface
 
 	// Merger dialog state
-	mergerDialog              *dialog.Dialog
-	mergerDialogData          *mergerDialogData
-	mergerDialogSecurityIDs   []types.ID
-	mergerDialogPreSelectedID *types.ID
+	merger mergerSurface
 
 	// Merger confirmation overlay state
-	mergerConfirmData   *mergerConfirmData
-	mergerConfirmParams *mergerConfirmParams
+	mergerConfirm mergerConfirmSurface
 
 	// Spin-off dialog state
-	spinOffDialog              *dialog.Dialog
-	spinOffDialogData          *spinOffDialogData
-	spinOffDialogSecurityIDs   []types.ID
-	spinOffDialogPreSelectedID *types.ID
+	spinOff spinOffSurface
 
 	// Corporate-action register state
 	corporateActionView              *corporateActionViewData
@@ -379,20 +325,17 @@ type App struct {
 	lotRepo      *investment.LotRepository
 	positionRepo *investment.PositionRepository
 
-	// File dialog state
-	fileDialog     *dialog.Dialog
-	fileDialogMode fileDialogMode
-	browseDir      string
+	// File dialog state (Open / Save As / browse), including its double-click tracker
+	file fileSurface
 
 	// Import dialog state (transaction import via File → Import)
-	importer *importSurface
+	importer importSurface
 
 	// Link Transfers dialog state (Transactions → Link Transfers)
-	linkTransfers *linkTransfersSurface
+	linkTransfers linkTransfersSurface
 
 	// Confirmation dialog state
-	confirmDialog *dialog.Dialog
-	confirmAction func() tea.Msg
+	confirm confirmSurface
 
 	// About dialog (Help → About)
 	aboutDialog *dialog.Dialog
@@ -412,10 +355,10 @@ type App struct {
 	// Key bindings
 	keys keyMap
 
-	// Mouse double-click trackers (lazy-initialized on first click).
-	sidebarClicks      *widget.ClickTracker
-	priceListClicks    *widget.ClickTracker
-	browseDialogClicks *widget.ClickTracker
+	// Mouse double-click trackers (lazy-initialized on first click). The file
+	// dialog's lives on its surface.
+	sidebarClicks   *widget.ClickTracker
+	priceListClicks *widget.ClickTracker
 }
 
 // newTUIServices constructs an *app.Services for use inside the TUI and
@@ -461,8 +404,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		lotRepo:                   svc.LotRepo,
 		positionRepo:              svc.PositionRepo,
 		corporateActionSvc:        svc.CorporateAction,
-		createCatSplitRow:         -1,
-		createCatLoanField:        -1,
+		createCat:                 createCatSurface{origin: newCreateCatOrigin()},
 	}
 
 	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {

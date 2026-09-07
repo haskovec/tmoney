@@ -162,15 +162,15 @@ func TestSubmitStockSplitDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: secIDs,
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set invalid values
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "not-a-date" // invalid date
 	fields[2].Value = ""           // empty ratio
 
@@ -178,7 +178,7 @@ func TestSubmitStockSplitDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Should not close dialog when errors exist
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
@@ -186,7 +186,7 @@ func TestSubmitStockSplitDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	}
 
 	// Check field errors
-	fields = updatedApp.stockSplitDialog.Fields()
+	fields = updatedApp.stockSplit.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -199,28 +199,28 @@ func TestSubmitStockSplitDialog_InvalidRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: secIDs,
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "03/15/2024"
 	fields[2].Value = "invalid" // not N:D format
 
 	model, cmd := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Error("dialog should remain open on invalid ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.stockSplitDialog.Fields()
+	fields = updatedApp.stockSplit.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("ratio field should have error for invalid format")
 	}
@@ -230,28 +230,28 @@ func TestSubmitStockSplitDialog_InvalidRatio_ZeroDenominator(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: secIDs,
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "03/15/2024"
 	fields[2].Value = "4:0" // zero denominator
 
 	model, cmd := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Error("dialog should remain open on zero denominator")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.stockSplitDialog.Fields()
+	fields = updatedApp.stockSplit.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("ratio field should have error for zero denominator")
 	}
@@ -259,24 +259,24 @@ func TestSubmitStockSplitDialog_InvalidRatio_ZeroDenominator(t *testing.T) {
 
 func TestSubmitStockSplitDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{}, []types.ID{}, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{},
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{}, []types.ID{}, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "03/15/2024"
 	fields[2].Value = "4:1"
 
 	model, _ := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.stockSplitDialog.Fields()
+	fields = updatedApp.stockSplit.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("security field should have error when no securities available")
 	}
@@ -286,19 +286,20 @@ func TestSubmitStockSplitDialog_ValidForwardSplit(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "06/10/2024"
 	fields[2].Value = "4:1"
 
@@ -306,7 +307,7 @@ func TestSubmitStockSplitDialog_ValidForwardSplit(t *testing.T) {
 	updatedApp := model.(*App)
 
 	// Should close dialog on valid submit
-	if updatedApp.stockSplitDialog != nil {
+	if updatedApp.stockSplit.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -318,26 +319,27 @@ func TestSubmitStockSplitDialog_ValidReverseSplit(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "06/10/2024"
 	fields[2].Value = "1:10" // reverse split
 
 	model, cmd := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog != nil {
+	if updatedApp.stockSplit.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -349,29 +351,30 @@ func TestHandleStockSplitDialogKey_Cancel(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleStockSplitDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog != nil {
+	if updatedApp.stockSplit.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.stockSplitDialogData != nil {
+	if updatedApp.stockSplit.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.stockSplitDialogSecurityIDs != nil {
+	if updatedApp.stockSplit.securityIDs != nil {
 		t.Error("dialog security IDs should be cleared after cancel")
 	}
 }
@@ -407,25 +410,26 @@ func TestCloseStockSplitDialog(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData:        &stockSplitDialogData{},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data:        &stockSplitDialogData{},
+			securityIDs: []types.ID{secID}},
 	}
 
 	app.closeStockSplitDialog()
 
-	if app.stockSplitDialog != nil {
+	if app.stockSplit.dlg != nil {
 		t.Error("stockSplitDialog should be nil after close")
 	}
-	if app.stockSplitDialogData != nil {
+	if app.stockSplit.data != nil {
 		t.Error("stockSplitDialogData should be nil after close")
 	}
-	if app.stockSplitDialogSecurityIDs != nil {
+	if app.stockSplit.securityIDs != nil {
 		t.Error("stockSplitDialogSecurityIDs should be nil after close")
 	}
 }
@@ -453,28 +457,28 @@ func TestSubmitStockSplitDialog_InvalidDate(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: secIDs,
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "13/45/2024" // invalid date
 	fields[2].Value = "4:1"
 
 	model, cmd := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Error("dialog should remain open on invalid date")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.stockSplitDialog.Fields()
+	fields = updatedApp.stockSplit.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("date field should have error for invalid date")
 	}
@@ -484,26 +488,27 @@ func TestSubmitStockSplitDialog_RatioWithSpaces(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
 	}
 
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[1].Value = "06/10/2024"
 	fields[2].Value = "  4:1  " // spaces around ratio
 
 	model, cmd := app.submitStockSplitDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog != nil {
+	if updatedApp.stockSplit.dlg != nil {
 		t.Error("dialog should be closed (spaces trimmed)")
 	}
 	if cmd == nil {
@@ -515,29 +520,30 @@ func TestHandleStockSplitDialogKey_TabNavigates(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog(
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog(
 			[]string{"AAPL - Apple Inc."},
 			[]types.ID{secID},
 			nil,
 			nil,
-		),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: []types.ID{secID},
+		)},
+
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{secID}},
 	}
 
 	// Initial focus should be on field 0 (Security)
-	if app.stockSplitDialog.FocusIndex() != 0 {
-		t.Errorf("initial focus = %d, want 0", app.stockSplitDialog.FocusIndex())
+	if app.stockSplit.dlg.FocusIndex() != 0 {
+		t.Errorf("initial focus = %d, want 0", app.stockSplit.dlg.FocusIndex())
 	}
 
 	// Tab to next field
 	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleStockSplitDialogKey(tabKey)
 
-	if app.stockSplitDialog.FocusIndex() != 1 {
-		t.Errorf("focus after tab = %d, want 1", app.stockSplitDialog.FocusIndex())
+	if app.stockSplit.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after tab = %d, want 1", app.stockSplit.dlg.FocusIndex())
 	}
 }
 
@@ -545,22 +551,22 @@ func TestSubmitStockSplitDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		stockSplitDialog: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil),
-		stockSplitDialogData: &stockSplitDialogData{
-			securities: []*security.Security{},
-		},
-		stockSplitDialogSecurityIDs: secIDs,
+		stockSplit: stockSplitSurface{modalSurface: modalSurface{dlg: buildStockSplitDialog([]string{"AAPL - Apple Inc."}, secIDs, nil, nil)},
+			data: &stockSplitDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set a pre-existing error
-	fields := app.stockSplitDialog.Fields()
+	fields := app.stockSplit.dlg.Fields()
 	fields[0].Error = "old error"
 	fields[1].Value = "not-a-date"
 	fields[2].Value = "4:1"
 
 	app.submitStockSplitDialog()
 
-	fields = app.stockSplitDialog.Fields()
+	fields = app.stockSplit.dlg.Fields()
 	// Old error on field 0 should be cleared (no new error for security since it's valid)
 	if fields[0].Error != "" {
 		t.Errorf("field 0 error should be cleared, got %q", fields[0].Error)

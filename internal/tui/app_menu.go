@@ -54,8 +54,8 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	switch action {
 	case widget.MenuActionNewFile:
 		a.menubar.Deactivate()
-		a.fileDialogMode = fileDialogModeNew
-		a.fileDialog = buildNewFileDialog()
+		a.file.mode = fileDialogModeNew
+		a.file.dlg = buildNewFileDialog()
 		return a, nil
 
 	case widget.MenuActionOpenFile:
@@ -65,12 +65,12 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 
 	case widget.MenuActionOpenRecent:
 		a.menubar.Deactivate()
-		a.fileDialogMode = fileDialogModeOpenRecent
+		a.file.mode = fileDialogModeOpenRecent
 		var recent []string
 		if a.cfg != nil {
 			recent = a.cfg.RecentFiles
 		}
-		a.fileDialog = buildOpenRecentDialog(recent)
+		a.file.dlg = buildOpenRecentDialog(recent)
 		return a, nil
 
 	case widget.MenuActionImportTransactions:
@@ -121,15 +121,15 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 		return a, a.loadPriceViewData()
 
 	case widget.MenuActionStockSplit:
-		a.stockSplitDialogPreSelectedID = nil
+		a.stockSplit.preSelectedID = nil
 		return a, a.loadStockSplitDialogData()
 
 	case widget.MenuActionMerger:
-		a.mergerDialogPreSelectedID = nil
+		a.merger.preSelectedID = nil
 		return a, a.loadMergerDialogData()
 
 	case widget.MenuActionSpinOff:
-		a.spinOffDialogPreSelectedID = nil
+		a.spinOff.preSelectedID = nil
 		return a, a.loadSpinOffDialogData()
 
 	case widget.MenuActionCorporateActions:

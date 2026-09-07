@@ -49,7 +49,7 @@ type mergerConfirmDataMsg struct {
 // loadMergerConfirmData returns a command that loads affected accounts, positions, and lots
 // for the source security to display in the merger confirmation overlay.
 func (a *App) loadMergerConfirmData() tea.Cmd {
-	params := a.mergerConfirmParams
+	params := a.mergerConfirm.params
 	if params == nil {
 		return nil
 	}
@@ -146,15 +146,22 @@ func resolveAccountName(a *App, accountID types.ID) string {
 	return accountID.String()[:8] + "..."
 }
 
+// mergerConfirmSurface is the merger confirmation overlay's state. It has no
+// dialog.Dialog of its own: mergerConfirmModal adapts it for the registry. Its
+// zero value is closed; closeMergerConfirmation resets it to that.
+type mergerConfirmSurface struct {
+	data   *mergerConfirmData
+	params *mergerConfirmParams
+}
+
 // closeMergerConfirmation clears the merger confirmation state.
 func (a *App) closeMergerConfirmation() {
-	a.mergerConfirmData = nil
-	a.mergerConfirmParams = nil
+	a.mergerConfirm = mergerConfirmSurface{}
 }
 
 // handleMergerConfirmKey handles key events in the merger confirmation overlay.
 func (a *App) handleMergerConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.mergerConfirmData == nil {
+	if a.mergerConfirm.data == nil {
 		return a, nil
 	}
 
@@ -185,7 +192,7 @@ var mergerConfirmButtonLabels = []string{"Cancel", "Merge"}
 // The overlay is re-rendered to measure it, the way helpOverlayCloseHit does,
 // so the geometry is read off exactly what app_view composited.
 func (a *App) mergerConfirmMouseAction(x, y int) dialog.DialogAction {
-	if a.mergerConfirmData == nil {
+	if a.mergerConfirm.data == nil {
 		return dialog.DialogActionNone
 	}
 	overlay := a.renderMergerConfirmation()
@@ -243,7 +250,7 @@ func (a *App) mergerConfirmMouseAction(x, y int) dialog.DialogAction {
 // here too (handleMouseWheel routes through handleDialogMouse) and are
 // ignored — the overlay has no scroll surface.
 func (a *App) handleMergerConfirmMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if a.mergerConfirmData == nil {
+	if a.mergerConfirm.data == nil {
 		return a, nil
 	}
 	click, ok := msg.(tea.MouseClickMsg)
@@ -262,7 +269,7 @@ func (a *App) handleMergerConfirmMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // executeMerger executes the merger using the stored confirmation parameters.
 func (a *App) executeMerger() (tea.Model, tea.Cmd) {
-	params := a.mergerConfirmParams
+	params := a.mergerConfirm.params
 	if params == nil {
 		return a, nil
 	}
@@ -293,11 +300,11 @@ func (a *App) executeMerger() (tea.Model, tea.Cmd) {
 
 // renderMergerConfirmation renders the merger confirmation overlay.
 func (a *App) renderMergerConfirmation() string {
-	if a.mergerConfirmData == nil {
+	if a.mergerConfirm.data == nil {
 		return ""
 	}
 
-	data := a.mergerConfirmData
+	data := a.mergerConfirm.data
 	overlayWidth := max(min(a.width-8, 70), 30)
 	// Content width inside OverlayBox's border (1 each side) and padding
 	// (2 each side) — the same overhead a dialog panel has. The previous

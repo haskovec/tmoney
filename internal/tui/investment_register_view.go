@@ -968,10 +968,10 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 	// selector; it opens the (global) spin-off dialog with the selected
 	// holding pre-filled as the parent security.
 	if idx >= len(investmentTransactionTypeOptions()) {
-		a.spinOffDialogPreSelectedID = nil
+		a.spinOff.preSelectedID = nil
 		if txn := a.selectedInvestmentTransaction(); txn != nil && txn.SecurityID.Valid {
 			secID := txn.SecurityID.ID
-			a.spinOffDialogPreSelectedID = &secID
+			a.spinOff.preSelectedID = &secID
 		}
 		return a, a.loadSpinOffDialogData()
 	}
@@ -984,10 +984,10 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 	case investment.TransactionTypeSell:
 		return a, a.loadSellDialogData()
 	case investment.TransactionTypeDividend:
-		a.dividendDialogReinvest = false
+		a.dividend.reinvest = false
 		return a, a.loadDividendDialogData()
 	case investment.TransactionTypeReinvestDividend:
-		a.dividendDialogReinvest = true
+		a.dividend.reinvest = true
 		return a, a.loadDividendDialogData()
 	case investment.TransactionTypeFeeLiquidation:
 		return a, a.loadFeeLiquidationDialogData()
@@ -995,14 +995,14 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 		investment.TransactionTypeWithdrawal,
 		investment.TransactionTypeFee,
 		investment.TransactionTypeInterest:
-		a.cashOperationType = selectedType
+		a.cashOperation.opType = selectedType
 		editTxn, ok := a.loadInvestmentEditTxn()
 		if !ok {
 			return a, nil
 		}
-		a.cashOperationDialog = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
+		a.cashOperation.dlg = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
 		if editTxn == nil {
-			a.cashOperationDialog.SeedDateField(a.txnDialogLastSavedDate)
+			a.cashOperation.dlg.SeedDateField(a.txnDialogLastSavedDate)
 		}
 		return a, nil
 	case investment.TransactionTypeTransferCash:

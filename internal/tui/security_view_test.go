@@ -931,10 +931,10 @@ func TestSecurityDialogDeleteConfirm(t *testing.T) {
 	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handleSecurityViewKeys(dKey)
 
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Error("confirm dialog should be set after pressing 'd'")
 	}
-	if app.confirmAction == nil {
+	if app.confirm.action == nil {
 		t.Error("confirm action should be set after pressing 'd'")
 	}
 }

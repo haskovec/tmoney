@@ -496,15 +496,15 @@ func TestBuildCreateCategoryDialog_DefaultTypeExpense(t *testing.T) {
 // sub-dialog opens with Income preselected.
 func TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	app := newAppForTxnAddNew(t, "", nil, nil)
-	app.txnDialog.Fields()[3].Value = "100.00" // amount
+	app.txn.dlg.Fields()[3].Value = "100.00" // amount
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleTransactionDialogKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
 	}
 }
@@ -513,12 +513,12 @@ func TestApp_TxnDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 // negative, the create-category sub-dialog opens with Expense preselected.
 func TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	app := newAppForTxnAddNew(t, "", nil, nil)
-	app.txnDialog.Fields()[3].Value = "-9.50"
+	app.txn.dlg.Fields()[3].Value = "-9.50"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleTransactionDialogKey(enter)
 	updated := model.(*App)
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
 	}
 }
@@ -527,15 +527,15 @@ func TestApp_TxnDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 // the New Scheduled dialog → Income default.
 func TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	app := newAppForSchedAddNew(t, "", nil, nil)
-	app.schedDialog.Fields()[schedFieldAmount].Value = "3500.00"
+	app.sched.dlg.Fields()[schedFieldAmount].Value = "3500.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
 	}
 }
@@ -545,12 +545,12 @@ func TestApp_SchedDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 func TestApp_SchedDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	app := newAppForSchedAddNew(t, "", nil, nil)
 	// Helper already seeds "-1500.00" but pin it.
-	app.schedDialog.Fields()[schedFieldAmount].Value = "-1500.00"
+	app.sched.dlg.Fields()[schedFieldAmount].Value = "-1500.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleScheduledDialogKey(enter)
 	updated := model.(*App)
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
 	}
 }
@@ -566,10 +566,10 @@ func TestApp_SchedPreview_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
 	}
 }
@@ -585,7 +585,7 @@ func TestApp_SchedPreview_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := env.app.handleSchedulePreviewDialogKey(enter)
 	updated := model.(*App)
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
 	}
 }
@@ -594,15 +594,15 @@ func TestApp_SchedPreview_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 // the originating split row → Income default.
 func TestApp_SplitDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 	app := newAppForSplitAddNew(t, nil, nil)
-	app.splitDialog.rows[0].amountField.Value = "100.00"
+	app.split.editor.rows[0].amountField.Value = "100.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleSplitDialogKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for positive amount)", got)
 	}
 }
@@ -611,12 +611,12 @@ func TestApp_SplitDialog_AddNew_DefaultTypeFromPositiveAmount(t *testing.T) {
 // the originating split row → Expense default.
 func TestApp_SplitDialog_AddNew_DefaultTypeFromNegativeAmount(t *testing.T) {
 	app := newAppForSplitAddNew(t, nil, nil)
-	app.splitDialog.rows[0].amountField.Value = "-100.00"
+	app.split.editor.rows[0].amountField.Value = "-100.00"
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handleSplitDialogKey(enter)
 	updated := model.(*App)
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for negative amount)", got)
 	}
 }
@@ -634,10 +634,10 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 0 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 0 {
 		t.Errorf("Type.SelectedIndex = %d, want 0 (Expense for pre-tax line)", got)
 	}
 }
@@ -664,10 +664,10 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection(t *testing.T) 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	updated := model.(*App)
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("createCatDialog should be open")
 	}
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for earnings line)", got)
 	}
 }
@@ -693,7 +693,7 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	model, _ := app.handlePaycheckWizardKey(enter)
 	updated := model.(*App)
-	if got := updated.createCatDialog.Fields()[2].SelectedIndex; got != 1 {
+	if got := updated.createCat.dlg.Fields()[2].SelectedIndex; got != 1 {
 		t.Errorf("Type.SelectedIndex = %d, want 1 (Income for net-pay line)", got)
 	}
 }
@@ -706,11 +706,11 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
 func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
 	svc, _ := newCategorySvcForPersistTest(t)
 	app := &App{
-		categorySvc:     svc,
-		createCatDialog: buildCreateCategoryDialog("X", "", nil, category.TypeExpense),
-		createCatSource: createCatSourceNone,
+		categorySvc: svc,
+		createCat: createCatSurface{modalSurface: modalSurface{dlg: buildCreateCategoryDialog("X", "", nil, category.TypeExpense)},
+			origin: newCreateCatOrigin()},
 	}
-	if app.createCatDialog == nil {
+	if app.createCat.dlg == nil {
 		t.Fatal("test setup: createCatDialog should be non-nil")
 	}
 
@@ -720,11 +720,11 @@ func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("applyCreatedCategory: %v", err)
 	}
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("router should clear createCatDialog even when source is unknown")
 	}
-	if app.createCatSource != createCatSourceNone {
-		t.Errorf("createCatSource = %d, want None after dispatch", app.createCatSource)
+	if app.createCat.origin.surface != createCatSourceNone {
+		t.Errorf("createCatSource = %d, want None after dispatch", app.createCat.origin.surface)
 	}
 
 	cats, _ := svc.List()

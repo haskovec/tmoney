@@ -30,11 +30,11 @@ func TestSecurityEditSubmit_UsesTheCapturedEditID(t *testing.T) {
 	app := &App{statusbar: widget.NewStatusBar(), securitySvc: svc}
 	d := buildEditSecurityDialog(sec)
 	d.SetVisible(true)
-	app.security = &securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeEdit, editID: sec.ID}
+	app.security = securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeEdit, editID: sec.ID}
 	d.Fields()[1].Value = "Apple Incorporated"
 
 	_, cmd := app.submitSecurityDialog()
-	if app.security != nil {
+	if app.security.dlg != nil {
 		t.Fatal("submit must drop the surface")
 	}
 	if cmd == nil {
@@ -58,20 +58,21 @@ func TestSecurityEditSubmit_UsesTheCapturedEditID(t *testing.T) {
 // clear the sub-dialog and return, not dereference the nil surface.
 func TestApplyCreatedCategoryToLoan_ToleratesAClosedWizard(t *testing.T) {
 	app := &App{
-		createCatSource:    createCatSourceLoanWizard,
-		createCatLoanField: 3,
-		createCatDialog:    buildCreateCategoryDialog("Escrow", "", nil, category.TypeExpense),
+		createCat: createCatSurface{origin: createCatOrigin{surface: createCatSourceLoanWizard,
+			loanField: 3},
+
+			modalSurface: modalSurface{dlg: buildCreateCategoryDialog("Escrow", "", nil, category.TypeExpense)}},
 	}
-	app.loan = nil
+	app.loan = loanSurface{}
 
 	newCat := category.NewCategory("Escrow", category.TypeExpense)
 	app.applyCreatedCategoryToLoan(newCat, []*category.Category{newCat})
 
-	if app.createCatDialog != nil {
+	if app.createCat.dlg != nil {
 		t.Error("the applier must clear the create-category sub-dialog when the wizard is gone")
 	}
-	if app.createCatLoanField != -1 {
-		t.Errorf("createCatLoanField = %d, want -1 after the applier gives up", app.createCatLoanField)
+	if app.createCat.origin.loanField != -1 {
+		t.Errorf("createCatLoanField = %d, want -1 after the applier gives up", app.createCat.origin.loanField)
 	}
 }
 

@@ -259,13 +259,13 @@ func (s *importSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() 
 
 // closeImportDialog clears the import dialog state.
 func (a *App) closeImportDialog() {
-	a.importer = nil
+	a.importer = importSurface{}
 }
 
 // handleImportDialogKey routes keys to the import dialog and dispatches
 // the appropriate submit handler based on which step the dialog is on.
 func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.importer == nil {
+	if a.importer.dlg == nil {
 		return a, nil
 	}
 	return a.importDialogAction(a.importer.dlg.HandleKey(msg))
@@ -286,7 +286,7 @@ func (a *App) importDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd
 // submitImportDialog dispatches the right submit handler based on the
 // current step of the import workflow.
 func (a *App) submitImportDialog() (tea.Model, tea.Cmd) {
-	if a.importer == nil || a.importer.state == nil {
+	if a.importer.dlg == nil || a.importer.state == nil {
 		return a, nil
 	}
 	switch a.importer.state.step {

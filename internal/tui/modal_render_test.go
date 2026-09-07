@@ -59,7 +59,7 @@ func TestRenderLayout_ImportDialogSourcePickerStepRenders(t *testing.T) {
 
 func TestRenderLayout_LinkTransfersDialogRenders(t *testing.T) {
 	app := newModalRenderTestApp()
-	app.linkTransfers = &linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(&transferlink.Result{Scanned: 3})}}
+	app.linkTransfers = linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(&transferlink.Result{Scanned: 3})}}
 
 	if got := app.viewContent(); !strings.Contains(got, "Link Transfers") {
 		t.Error("renderLayout must paint the link-transfers dialog")
@@ -79,7 +79,7 @@ func TestMouseGate_ImportDialogCancelClosesIt(t *testing.T) {
 	// Preview on an empty state keeps the dialog open, so only Cancel closes it.
 	clickCancelButton(t, app, app.importer.dlg)
 
-	if app.importer != nil {
+	if app.importer.dlg != nil {
 		t.Error("clicking Cancel must close the import dialog")
 	}
 }
@@ -95,11 +95,11 @@ func TestMouseGate_LinkTransfersDialogCancelClosesIt(t *testing.T) {
 		FromAccount: "Checking",
 		ToAccount:   "Savings",
 	}}}
-	app.linkTransfers = &linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(res)}, result: res}
+	app.linkTransfers = linkTransfersSurface{modalSurface: modalSurface{dlg: buildLinkTransfersDialog(res)}, result: res}
 
 	cmd := clickCancelButton(t, app, app.linkTransfers.dlg)
 
-	if app.linkTransfers != nil {
+	if app.linkTransfers.dlg != nil {
 		t.Error("clicking Cancel must close the link-transfers dialog")
 	}
 	if cmd != nil {

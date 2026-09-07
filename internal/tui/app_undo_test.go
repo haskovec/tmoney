@@ -267,11 +267,11 @@ func TestApp_UndoKeyBindingNotActiveInDialogs(t *testing.T) {
 	}
 
 	// Open a transaction dialog
-	app.txnDialog = dialog.NewDialog("Test")
-	app.txnDialog.AddTextField("Name", "", "", 0)
-	app.txnDialog.SetVisible(true)
-	app.txnDialogData = &transactionDialogData{}
-	app.txnDialogCategoryIDs = []types.ID{}
+	app.txn.dlg = dialog.NewDialog("Test")
+	app.txn.dlg.AddTextField("Name", "", "", 0)
+	app.txn.dlg.SetVisible(true)
+	app.txn.data = &transactionDialogData{}
+	app.txn.categoryIDs = []types.ID{}
 
 	// Press Ctrl+Z - should be routed to dialog, not undo
 	msg := tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}

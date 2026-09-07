@@ -33,13 +33,13 @@ func TestSpinOffDialog_PriceLookupFillsChildPrice(t *testing.T) {
 
 	ids := []types.ID{child.ID}
 	app := &App{
-		statusbar:                widget.NewStatusBar(),
-		priceSvc:                 priceSvc,
-		securitySvc:              securitySvc,
-		spinOffDialog:            buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil),
-		spinOffDialogSecurityIDs: ids,
+		statusbar:   widget.NewStatusBar(),
+		priceSvc:    priceSvc,
+		securitySvc: securitySvc,
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil)},
+			securityIDs: ids},
 	}
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 0 // spin-off security = BTC
 	fields[2].Value = "07/31/2024"
 
@@ -56,7 +56,7 @@ func TestSpinOffDialog_PriceLookupFillsChildPrice(t *testing.T) {
 	}
 	app.handleSpinOffPriceLookupResult(msg)
 
-	if got := app.spinOffDialog.Fields()[5].Value; got != "5.84" {
+	if got := app.spinOff.dlg.Fields()[5].Value; got != "5.84" {
 		t.Errorf("Spin-Off Price field = %q, want 5.84", got)
 	}
 }
@@ -83,13 +83,13 @@ func TestSpinOffDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 
 	ids := []types.ID{child.ID}
 	app := &App{
-		statusbar:                widget.NewStatusBar(),
-		priceSvc:                 priceSvc,
-		securitySvc:              security.NewService(secRepo, database),
-		spinOffDialog:            buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil),
-		spinOffDialogSecurityIDs: ids,
+		statusbar:   widget.NewStatusBar(),
+		priceSvc:    priceSvc,
+		securitySvc: security.NewService(secRepo, database),
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil)},
+			securityIDs: ids},
 	}
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 0
 	fields[2].Value = "07/31/2024"
 
@@ -103,5 +103,5 @@ func TestSpinOffDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 	}
 	app.handleSpinOffPriceLookupResult(msg)
 
-	assertPrefillEditable(t, app.spinOffDialog.Fields()[5], "spin-off price")
+	assertPrefillEditable(t, app.spinOff.dlg.Fields()[5], "spin-off price")
 }

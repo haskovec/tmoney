@@ -33,10 +33,10 @@ func TestApp_Update_SpinOffDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(spinOffDialogDataMsg{data: &spinOffDialogData{}})
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Fatal("spin-off dialog should be created")
 	}
-	if got := updatedApp.spinOffDialog.Fields()[2].Value; got != "07/23/2024" {
+	if got := updatedApp.spinOff.dlg.Fields()[2].Value; got != "07/23/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "07/23/2024")
 	}
 }
@@ -48,7 +48,7 @@ func TestApp_Update_SpinOffDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *test
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	if got := updatedApp.spinOffDialog.Fields()[2].Value; got != today {
+	if got := updatedApp.spinOff.dlg.Fields()[2].Value; got != today {
 		t.Errorf("date field = %q, want %q (today)", got, today)
 	}
 }
@@ -73,10 +73,10 @@ func TestApp_Update_MergerDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(mergerDialogDataMsg{data: &mergerDialogData{}})
 	updatedApp := model.(*App)
 
-	if updatedApp.mergerDialog == nil {
+	if updatedApp.merger.dlg == nil {
 		t.Fatal("merger dialog should be created")
 	}
-	if got := updatedApp.mergerDialog.Fields()[2].Value; got != "07/23/2024" {
+	if got := updatedApp.merger.dlg.Fields()[2].Value; got != "07/23/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "07/23/2024")
 	}
 }
@@ -88,7 +88,7 @@ func TestApp_Update_MergerDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testi
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	if got := updatedApp.mergerDialog.Fields()[2].Value; got != today {
+	if got := updatedApp.merger.dlg.Fields()[2].Value; got != today {
 		t.Errorf("date field = %q, want %q (today)", got, today)
 	}
 }
@@ -113,10 +113,10 @@ func TestApp_Update_StockSplitDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	model, _ := app.Update(stockSplitDialogDataMsg{data: &stockSplitDialogData{}})
 	updatedApp := model.(*App)
 
-	if updatedApp.stockSplitDialog == nil {
+	if updatedApp.stockSplit.dlg == nil {
 		t.Fatal("stock split dialog should be created")
 	}
-	if got := updatedApp.stockSplitDialog.Fields()[1].Value; got != "07/23/2024" {
+	if got := updatedApp.stockSplit.dlg.Fields()[1].Value; got != "07/23/2024" {
 		t.Errorf("date field = %q, want %q (seeded from sticky date)", got, "07/23/2024")
 	}
 }
@@ -128,7 +128,7 @@ func TestApp_Update_StockSplitDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *t
 	updatedApp := model.(*App)
 
 	today := time.Now().Format("01/02/2006")
-	if got := updatedApp.stockSplitDialog.Fields()[1].Value; got != today {
+	if got := updatedApp.stockSplit.dlg.Fields()[1].Value; got != today {
 		t.Errorf("date field = %q, want %q (today)", got, today)
 	}
 }
@@ -159,7 +159,7 @@ func TestApp_CorporateActionDialogs_ShareTransactionStickyDate(t *testing.T) {
 	model, _ := app.Update(spinOffDialogDataMsg{data: &spinOffDialogData{}})
 	updatedApp := model.(*App)
 
-	if got := updatedApp.spinOffDialog.Fields()[2].Value; got != "01/15/2024" {
+	if got := updatedApp.spinOff.dlg.Fields()[2].Value; got != "01/15/2024" {
 		t.Errorf("spin-off date field = %q, want %q (shared sticky date from buy)", got, "01/15/2024")
 	}
 }

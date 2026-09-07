@@ -932,10 +932,10 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 	app.handleInvestmentRegisterKeys(dKey)
 
 	// Should show confirmation dialog
-	if app.confirmDialog == nil {
+	if app.confirm.dlg == nil {
 		t.Fatal("pressing 'd' should show confirmation dialog")
 	}
-	if !app.confirmDialog.IsVisible() {
+	if !app.confirm.dlg.IsVisible() {
 		t.Error("confirmation dialog should be visible")
 	}
 }

@@ -196,18 +196,19 @@ func TestSubmitSpinOffDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set invalid values
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1 // different target so no same-security error
 	fields[2].Value = "not-a-date"
 	fields[3].Value = ""
@@ -217,14 +218,14 @@ func TestSubmitSpinOffDialog_ValidationErrors_AllEmpty(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on validation errors")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("date field should have error")
 	}
@@ -244,17 +245,18 @@ func TestSubmitSpinOffDialog_SameParentAndSpinOff(t *testing.T) {
 	secIDs := []types.ID{secID}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[0].SelectedIndex = 0 // parent = AAPL
 	fields[1].SelectedIndex = 0 // spin-off = AAPL (same!)
 	fields[2].Value = "03/15/2024"
@@ -265,14 +267,14 @@ func TestSubmitSpinOffDialog_SameParentAndSpinOff(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open when parent == spin-off")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[1].Error == "" {
 		t.Error("spin-off field should have error when same as parent")
 	}
@@ -282,17 +284,18 @@ func TestSubmitSpinOffDialog_InvalidShareRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "abc" // not a number
@@ -302,14 +305,14 @@ func TestSubmitSpinOffDialog_InvalidShareRatio(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on invalid share ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("share ratio field should have error for invalid format")
 	}
@@ -319,17 +322,18 @@ func TestSubmitSpinOffDialog_ZeroShareRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0" // zero
@@ -339,14 +343,14 @@ func TestSubmitSpinOffDialog_ZeroShareRatio(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on zero share ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("share ratio field should have error for zero value")
 	}
@@ -356,17 +360,18 @@ func TestSubmitSpinOffDialog_NegativeShareRatio(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "-0.5" // negative
@@ -376,14 +381,14 @@ func TestSubmitSpinOffDialog_NegativeShareRatio(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on negative share ratio")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[3].Error == "" {
 		t.Error("share ratio field should have error for negative value")
 	}
@@ -393,17 +398,18 @@ func TestSubmitSpinOffDialog_InvalidParentAllocation(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -413,14 +419,14 @@ func TestSubmitSpinOffDialog_InvalidParentAllocation(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on invalid allocation")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("parent allocation field should have error for invalid format")
 	}
@@ -430,17 +436,18 @@ func TestSubmitSpinOffDialog_ParentAllocationZero(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -450,14 +457,14 @@ func TestSubmitSpinOffDialog_ParentAllocationZero(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on zero allocation")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("parent allocation field should have error for zero value")
 	}
@@ -467,17 +474,18 @@ func TestSubmitSpinOffDialog_ParentAllocation100(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -487,14 +495,14 @@ func TestSubmitSpinOffDialog_ParentAllocation100(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on 100% allocation")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("parent allocation field should have error for 100% value")
 	}
@@ -504,17 +512,18 @@ func TestSubmitSpinOffDialog_ParentAllocationOver100(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -524,14 +533,14 @@ func TestSubmitSpinOffDialog_ParentAllocationOver100(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on >100% allocation")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("parent allocation field should have error for >100% value")
 	}
@@ -541,17 +550,18 @@ func TestSubmitSpinOffDialog_InvalidSpinOffPrice(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -561,14 +571,14 @@ func TestSubmitSpinOffDialog_InvalidSpinOffPrice(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on invalid price")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[5].Error == "" {
 		t.Error("spin-off price field should have error for invalid format")
 	}
@@ -578,17 +588,18 @@ func TestSubmitSpinOffDialog_ZeroSpinOffPrice(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -598,14 +609,14 @@ func TestSubmitSpinOffDialog_ZeroSpinOffPrice(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on zero price")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[5].Error == "" {
 		t.Error("spin-off price field should have error for zero value")
 	}
@@ -615,17 +626,18 @@ func TestSubmitSpinOffDialog_NegativeSpinOffPrice(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -635,14 +647,14 @@ func TestSubmitSpinOffDialog_NegativeSpinOffPrice(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on negative price")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[5].Error == "" {
 		t.Error("spin-off price field should have error for negative value")
 	}
@@ -650,14 +662,14 @@ func TestSubmitSpinOffDialog_NegativeSpinOffPrice(t *testing.T) {
 
 func TestSubmitSpinOffDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		spinOffDialog: buildSpinOffDialog([]string{}, []types.ID{}, nil),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: []types.ID{},
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog([]string{}, []types.ID{}, nil)},
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{}},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
 	fields[4].Value = "80"
@@ -666,10 +678,10 @@ func TestSubmitSpinOffDialog_NoSecurities(t *testing.T) {
 	model, _ := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open when no securities available")
 	}
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[0].Error == "" {
 		t.Error("parent security field should have error when no securities available")
 	}
@@ -680,18 +692,19 @@ func TestSubmitSpinOffDialog_ValidSubmit(t *testing.T) {
 	spinOffID := types.NewID()
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "NEWCO - NewCo Inc."},
 			[]types.ID{parentID, spinOffID},
 			nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: []types.ID{parentID, spinOffID},
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{parentID, spinOffID}},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[0].SelectedIndex = 0 // parent = AAPL
 	fields[1].SelectedIndex = 1 // spin-off = NEWCO
 	fields[2].Value = "06/10/2024"
@@ -702,7 +715,7 @@ func TestSubmitSpinOffDialog_ValidSubmit(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog != nil {
+	if updatedApp.spinOff.dlg != nil {
 		t.Error("dialog should be closed after valid submit")
 	}
 	if cmd == nil {
@@ -715,18 +728,19 @@ func TestSubmitSpinOffDialog_ValidSubmitWithSpaces(t *testing.T) {
 	spinOffID := types.NewID()
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "NEWCO - NewCo Inc."},
 			[]types.ID{parentID, spinOffID},
 			nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: []types.ID{parentID, spinOffID},
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: []types.ID{parentID, spinOffID}},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[0].SelectedIndex = 0
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "06/10/2024"
@@ -737,7 +751,7 @@ func TestSubmitSpinOffDialog_ValidSubmitWithSpaces(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog != nil {
+	if updatedApp.spinOff.dlg != nil {
 		t.Error("dialog should be closed (spaces trimmed)")
 	}
 	if cmd == nil {
@@ -749,17 +763,18 @@ func TestSubmitSpinOffDialog_InvalidDate(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "13/45/2024" // invalid date
 	fields[3].Value = "0.5"
@@ -769,14 +784,14 @@ func TestSubmitSpinOffDialog_InvalidDate(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on invalid date")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[2].Error == "" {
 		t.Error("date field should have error for invalid date")
 	}
@@ -786,27 +801,28 @@ func TestHandleSpinOffDialogKey_Cancel(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	model, _ := app.handleSpinOffDialogKey(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog != nil {
+	if updatedApp.spinOff.dlg != nil {
 		t.Error("dialog should be closed after Escape")
 	}
-	if updatedApp.spinOffDialogData != nil {
+	if updatedApp.spinOff.data != nil {
 		t.Error("dialog data should be cleared after cancel")
 	}
-	if updatedApp.spinOffDialogSecurityIDs != nil {
+	if updatedApp.spinOff.securityIDs != nil {
 		t.Error("dialog security IDs should be cleared after cancel")
 	}
 }
@@ -842,23 +858,24 @@ func TestCloseSpinOffDialog(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData:        &spinOffDialogData{},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data:        &spinOffDialogData{},
+			securityIDs: secIDs},
 	}
 
 	app.closeSpinOffDialog()
 
-	if app.spinOffDialog != nil {
+	if app.spinOff.dlg != nil {
 		t.Error("spinOffDialog should be nil after close")
 	}
-	if app.spinOffDialogData != nil {
+	if app.spinOff.data != nil {
 		t.Error("spinOffDialogData should be nil after close")
 	}
-	if app.spinOffDialogSecurityIDs != nil {
+	if app.spinOff.securityIDs != nil {
 		t.Error("spinOffDialogSecurityIDs should be nil after close")
 	}
 }
@@ -886,18 +903,19 @@ func TestSubmitSpinOffDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
 	// Set a pre-existing error
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[0].Error = "old error"
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "not-a-date"
@@ -907,7 +925,7 @@ func TestSubmitSpinOffDialog_ClearsErrorsBeforeValidation(t *testing.T) {
 
 	app.submitSpinOffDialog()
 
-	fields = app.spinOffDialog.Fields()
+	fields = app.spinOff.dlg.Fields()
 	// Old error on field 0 should be cleared
 	if fields[0].Error != "" {
 		t.Errorf("field 0 error should be cleared, got %q", fields[0].Error)
@@ -922,25 +940,26 @@ func TestHandleSpinOffDialogKey_TabNavigates(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	if app.spinOffDialog.FocusIndex() != 0 {
-		t.Errorf("initial focus = %d, want 0", app.spinOffDialog.FocusIndex())
+	if app.spinOff.dlg.FocusIndex() != 0 {
+		t.Errorf("initial focus = %d, want 0", app.spinOff.dlg.FocusIndex())
 	}
 
 	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
 	app.handleSpinOffDialogKey(tabKey)
 
-	if app.spinOffDialog.FocusIndex() != 1 {
-		t.Errorf("focus after tab = %d, want 1", app.spinOffDialog.FocusIndex())
+	if app.spinOff.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after tab = %d, want 1", app.spinOff.dlg.FocusIndex())
 	}
 }
 
@@ -961,17 +980,18 @@ func TestSubmitSpinOffDialog_NegativeParentAllocation(t *testing.T) {
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
 	app := &App{
-		spinOffDialog: buildSpinOffDialog(
+		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog(
 			[]string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."},
 			secIDs, nil,
-		),
-		spinOffDialogData: &spinOffDialogData{
-			securities: []*security.Security{},
-		},
-		spinOffDialogSecurityIDs: secIDs,
+		)},
+
+			data: &spinOffDialogData{
+				securities: []*security.Security{},
+			},
+			securityIDs: secIDs},
 	}
 
-	fields := app.spinOffDialog.Fields()
+	fields := app.spinOff.dlg.Fields()
 	fields[1].SelectedIndex = 1
 	fields[2].Value = "03/15/2024"
 	fields[3].Value = "0.5"
@@ -981,14 +1001,14 @@ func TestSubmitSpinOffDialog_NegativeParentAllocation(t *testing.T) {
 	model, cmd := app.submitSpinOffDialog()
 	updatedApp := model.(*App)
 
-	if updatedApp.spinOffDialog == nil {
+	if updatedApp.spinOff.dlg == nil {
 		t.Error("dialog should remain open on negative allocation")
 	}
 	if cmd != nil {
 		t.Error("should not return command on validation errors")
 	}
 
-	fields = updatedApp.spinOffDialog.Fields()
+	fields = updatedApp.spinOff.dlg.Fields()
 	if fields[4].Error == "" {
 		t.Error("parent allocation field should have error for negative value")
 	}

@@ -107,10 +107,10 @@ func TestApp_ScheduledTransferDialogDataMsg_BuildsCategoryCombo(t *testing.T) {
 	model, _ := env.app.Update(scheduledDialogDataMsg{data: data})
 	updated := model.(*App)
 
-	if updated.schedDialog == nil {
+	if updated.sched.dlg == nil {
 		t.Fatal("scheduled transfer dialog should be built")
 	}
-	fields := updated.schedDialog.Fields()
+	fields := updated.sched.dlg.Fields()
 	if len(fields) != schedXferFieldCount {
 		t.Fatalf("dialog fields = %d, want %d", len(fields), schedXferFieldCount)
 	}
@@ -118,10 +118,10 @@ func TestApp_ScheduledTransferDialogDataMsg_BuildsCategoryCombo(t *testing.T) {
 		t.Errorf("field[%d] label = %q, want Category", schedXferFieldCategory, fields[schedXferFieldCategory].Label)
 	}
 	// "(None)" + two seeded categories.
-	if len(updated.schedDialogCategoryIDs) != 3 {
-		t.Fatalf("schedDialogCategoryIDs len = %d, want 3", len(updated.schedDialogCategoryIDs))
+	if len(updated.sched.categoryIDs) != 3 {
+		t.Fatalf("schedDialogCategoryIDs len = %d, want 3", len(updated.sched.categoryIDs))
 	}
-	if !updated.schedDialogCategoryIDs[0].IsNil() {
+	if !updated.sched.categoryIDs[0].IsNil() {
 		t.Error("category index 0 should be the NilID (None) sentinel")
 	}
 }
@@ -133,12 +133,12 @@ func TestApp_SubmitScheduledTransferDialog_New_ThreadsCategory(t *testing.T) {
 	app := env.app
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{env.catA, env.catB})
-	app.schedDialogData = &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true}
-	app.schedDialogAccountIDs = []types.ID{env.from.ID, env.to.ID}
-	app.schedDialogCategoryIDs = categoryIDs
-	app.schedDialog = buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, categoryOptions)
+	app.sched.data = &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true}
+	app.sched.accountIDs = []types.ID{env.from.ID, env.to.ID}
+	app.sched.categoryIDs = categoryIDs
+	app.sched.dlg = buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, categoryOptions)
 
-	fields := app.schedDialog.Fields()
+	fields := app.sched.dlg.Fields()
 	fields[schedXferFieldFrom].SelectedIndex = 0
 	fields[schedXferFieldTo].SelectedIndex = 1
 	fields[schedXferFieldAmount].Value = "200.00"
@@ -182,12 +182,12 @@ func TestApp_SubmitScheduledTransferDialog_Edit_ClearsCategory(t *testing.T) {
 	}
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{env.catA, env.catB})
-	app.schedDialogData = &scheduledDialogData{mode: scheduledDialogModeEdit, isTransfer: true, scheduled: st}
-	app.schedDialogAccountIDs = []types.ID{env.from.ID, env.to.ID}
-	app.schedDialogCategoryIDs = categoryIDs
-	app.schedDialog = buildEditScheduledTransferDialog(st, []string{"Checking", "Visa"}, categoryOptions, []types.ID{env.from.ID, env.to.ID}, categoryIDs)
+	app.sched.data = &scheduledDialogData{mode: scheduledDialogModeEdit, isTransfer: true, scheduled: st}
+	app.sched.accountIDs = []types.ID{env.from.ID, env.to.ID}
+	app.sched.categoryIDs = categoryIDs
+	app.sched.dlg = buildEditScheduledTransferDialog(st, []string{"Checking", "Visa"}, categoryOptions, []types.ID{env.from.ID, env.to.ID}, categoryIDs)
 
-	fields := app.schedDialog.Fields()
+	fields := app.sched.dlg.Fields()
 	// The edit dialog should have seeded the category to Bills (index 1).
 	if fields[schedXferFieldCategory].SelectedIndex != 1 {
 		t.Fatalf("edit dialog seeded category index = %d, want 1", fields[schedXferFieldCategory].SelectedIndex)
@@ -217,23 +217,23 @@ func TestApp_OpenCreateCategorySubDialogFromSchedTransfer(t *testing.T) {
 	app := env.app
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{env.catA})
-	app.schedDialogData = &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true}
-	app.schedDialogAccountIDs = []types.ID{env.from.ID, env.to.ID}
-	app.schedDialogCategoryIDs = categoryIDs
-	app.schedDialog = buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, categoryOptions)
-	app.schedDialog.Fields()[schedXferFieldCategory].Query = "Groceries"
+	app.sched.data = &scheduledDialogData{mode: scheduledDialogModeNew, isTransfer: true}
+	app.sched.accountIDs = []types.ID{env.from.ID, env.to.ID}
+	app.sched.categoryIDs = categoryIDs
+	app.sched.dlg = buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, categoryOptions)
+	app.sched.dlg.Fields()[schedXferFieldCategory].Query = "Groceries"
 
 	model, _ := app.openCreateCategorySubDialogFromSchedTransfer()
 	updated := model.(*App)
 
-	if updated.createCatSource != createCatSourceSchedTransferDialog {
+	if updated.createCat.origin.surface != createCatSourceSchedTransferDialog {
 		t.Errorf("createCatSource = %d, want createCatSourceSchedTransferDialog (%d)",
-			updated.createCatSource, createCatSourceSchedTransferDialog)
+			updated.createCat.origin.surface, createCatSourceSchedTransferDialog)
 	}
-	if updated.createCatDialog == nil {
+	if updated.createCat.dlg == nil {
 		t.Fatal("create-category sub-dialog should be open")
 	}
-	if updated.schedDialog.IsVisible() {
+	if updated.sched.dlg.IsVisible() {
 		t.Error("scheduled transfer dialog should be hidden during the divert")
 	}
 
@@ -241,14 +241,14 @@ func TestApp_OpenCreateCategorySubDialogFromSchedTransfer(t *testing.T) {
 	groceries := category.NewCategory("Groceries", category.TypeExpense)
 	updated.applyCreatedCategoryToSchedTransfer(groceries, []*category.Category{env.catA, groceries})
 
-	catField := updated.schedDialog.Fields()[schedXferFieldCategory]
+	catField := updated.sched.dlg.Fields()[schedXferFieldCategory]
 	if catField.Options[catField.SelectedIndex] != "Groceries" {
 		t.Errorf("selected category = %q, want Groceries", catField.Options[catField.SelectedIndex])
 	}
-	if updated.createCatDialog != nil {
+	if updated.createCat.dlg != nil {
 		t.Error("create-category sub-dialog should be cleared after apply")
 	}
-	if !updated.schedDialog.IsVisible() {
+	if !updated.sched.dlg.IsVisible() {
 		t.Error("scheduled transfer dialog should be re-shown after apply")
 	}
 }

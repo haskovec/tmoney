@@ -356,16 +356,16 @@ func TestApp_Update_AccountDialogDataMsg_New(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.acctDialog == nil {
+	if updatedApp.acct.dlg == nil {
 		t.Fatal("account dialog should be created")
 	}
-	if !updatedApp.acctDialog.IsVisible() {
+	if !updatedApp.acct.dlg.IsVisible() {
 		t.Error("account dialog should be visible")
 	}
-	if updatedApp.acctDialog.Title() != "New Account" {
-		t.Errorf("title = %q, want %q", updatedApp.acctDialog.Title(), "New Account")
+	if updatedApp.acct.dlg.Title() != "New Account" {
+		t.Errorf("title = %q, want %q", updatedApp.acct.dlg.Title(), "New Account")
 	}
-	if updatedApp.acctDialogData == nil {
+	if updatedApp.acct.data == nil {
 		t.Error("account dialog data should be set")
 	}
 }
@@ -390,15 +390,15 @@ func TestApp_Update_AccountDialogDataMsg_Edit(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.acctDialog == nil {
+	if updatedApp.acct.dlg == nil {
 		t.Fatal("account dialog should be created")
 	}
-	if updatedApp.acctDialog.Title() != "Edit Account" {
-		t.Errorf("title = %q, want %q", updatedApp.acctDialog.Title(), "Edit Account")
+	if updatedApp.acct.dlg.Title() != "Edit Account" {
+		t.Errorf("title = %q, want %q", updatedApp.acct.dlg.Title(), "Edit Account")
 	}
 
 	// Verify the name is pre-filled
-	fields := updatedApp.acctDialog.Fields()
+	fields := updatedApp.acct.dlg.Fields()
 	if fields[acctFieldName].Value != "Savings" {
 		t.Errorf("name = %q, want %q", fields[acctFieldName].Value, "Savings")
 	}
@@ -411,21 +411,22 @@ func TestApp_HandleAccountDialogKey_Cancel(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	escKey := tea.KeyPressMsg{Code: tea.KeyEsc}
 	model, _ := app.Update(escKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.acctDialog != nil {
+	if updatedApp.acct.dlg != nil {
 		t.Error("account dialog should be nil after cancel")
 	}
-	if updatedApp.acctDialogData != nil {
+	if updatedApp.acct.data != nil {
 		t.Error("account dialog data should be nil after cancel")
 	}
 }
@@ -437,14 +438,15 @@ func TestApp_HandleAccountDialogKey_TabCycles(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
-	initialFocus := app.acctDialog.FocusIndex()
+	initialFocus := app.acct.dlg.FocusIndex()
 	if initialFocus != 0 {
 		t.Fatalf("initial focus = %d, want 0", initialFocus)
 	}
@@ -453,8 +455,8 @@ func TestApp_HandleAccountDialogKey_TabCycles(t *testing.T) {
 	model, _ := app.Update(tabKey)
 	updatedApp := model.(*App)
 
-	if updatedApp.acctDialog.FocusIndex() != 1 {
-		t.Errorf("focus after Tab = %d, want 1", updatedApp.acctDialog.FocusIndex())
+	if updatedApp.acct.dlg.FocusIndex() != 1 {
+		t.Errorf("focus after Tab = %d, want 1", updatedApp.acct.dlg.FocusIndex())
 	}
 }
 
@@ -465,13 +467,14 @@ func TestApp_SubmitAccountDialog_EmptyName(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Clear the name field
 			d.Fields()[acctFieldName].Value = ""
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -479,10 +482,10 @@ func TestApp_SubmitAccountDialog_EmptyName(t *testing.T) {
 	if cmd != nil {
 		t.Error("empty name should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldName].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldName].Error == "" {
 		t.Error("empty name should set field-level error")
 	}
 }
@@ -494,13 +497,14 @@ func TestApp_SubmitAccountDialog_EmptyCurrency(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldCurrency].Value = ""
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -508,10 +512,10 @@ func TestApp_SubmitAccountDialog_EmptyCurrency(t *testing.T) {
 	if cmd != nil {
 		t.Error("empty currency should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldCurrency].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldCurrency].Error == "" {
 		t.Error("empty currency should set field-level error")
 	}
 }
@@ -523,13 +527,14 @@ func TestApp_SubmitAccountDialog_InvalidOpeningBalance(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldOpeningBalance].Value = "not-a-number"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -537,10 +542,10 @@ func TestApp_SubmitAccountDialog_InvalidOpeningBalance(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid balance should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldOpeningBalance].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldOpeningBalance].Error == "" {
 		t.Error("invalid balance should set field-level error")
 	}
 }
@@ -552,13 +557,14 @@ func TestApp_SubmitAccountDialog_InvalidDate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
 			d.Fields()[acctFieldOpeningDate].Value = "not-a-date"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -566,10 +572,10 @@ func TestApp_SubmitAccountDialog_InvalidDate(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid date should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldOpeningDate].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldOpeningDate].Error == "" {
 		t.Error("invalid date should set field-level error")
 	}
 }
@@ -581,7 +587,7 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Card"
 			// Set type to Credit Card so credit limit field is visible
@@ -589,8 +595,9 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 			updateAccountFieldVisibility(d)
 			d.Fields()[acctFieldCreditLimit].Value = "abc"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -598,10 +605,10 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid credit limit should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldCreditLimit].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldCreditLimit].Error == "" {
 		t.Error("invalid credit limit should set field-level error")
 	}
 }
@@ -613,14 +620,15 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Loan"
 			// Default type is Checking which shows interest rate
 			d.Fields()[acctFieldInterestRate].Value = "xyz"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -628,10 +636,10 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 	if cmd != nil {
 		t.Error("invalid interest rate should not return a cmd")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open after validation failure")
 	}
-	if app.acctDialog.Fields()[acctFieldInterestRate].Error == "" {
+	if app.acct.dlg.Fields()[acctFieldInterestRate].Error == "" {
 		t.Error("invalid interest rate should set field-level error")
 	}
 }
@@ -643,15 +651,16 @@ func TestApp_SubmitAccountDialog_MultipleErrors(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = ""
 			d.Fields()[acctFieldCurrency].Value = ""
 			d.Fields()[acctFieldOpeningBalance].Value = "bad"
 			d.Fields()[acctFieldOpeningDate].Value = "bad"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()
@@ -659,11 +668,11 @@ func TestApp_SubmitAccountDialog_MultipleErrors(t *testing.T) {
 	if cmd != nil {
 		t.Error("should not return a cmd with multiple errors")
 	}
-	if app.acctDialog == nil {
+	if app.acct.dlg == nil {
 		t.Fatal("dialog should remain open")
 	}
 
-	fields := app.acctDialog.Fields()
+	fields := app.acct.dlg.Fields()
 	if fields[acctFieldName].Error == "" {
 		t.Error("name field should have error")
 	}
@@ -706,12 +715,13 @@ func TestApp_SubmitAccountDialog_ValidNew(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	model, cmd := app.submitAccountDialog()
@@ -720,10 +730,10 @@ func TestApp_SubmitAccountDialog_ValidNew(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid new account should return a non-nil cmd")
 	}
-	if updatedApp.acctDialog != nil {
+	if updatedApp.acct.dlg != nil {
 		t.Error("dialog should be closed after submit")
 	}
-	if updatedApp.acctDialogData != nil {
+	if updatedApp.acct.data != nil {
 		t.Error("dialog data should be nil after submit")
 	}
 	if updatedApp.err != nil {
@@ -740,15 +750,16 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildEditAccountDialog(existing)
 			d.Fields()[acctFieldName].Value = "New Name"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{
-			mode:    accountDialogModeEdit,
-			account: existing,
-		},
+		}()},
+
+			data: &accountDialogData{
+				mode:    accountDialogModeEdit,
+				account: existing,
+			}},
 	}
 
 	model, cmd := app.submitAccountDialog()
@@ -757,7 +768,7 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 	if cmd == nil {
 		t.Error("valid edit should return a non-nil cmd")
 	}
-	if updatedApp.acctDialog != nil {
+	if updatedApp.acct.dlg != nil {
 		t.Error("dialog should be closed after submit")
 	}
 	if updatedApp.err != nil {
@@ -767,20 +778,21 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 
 func TestApp_CloseAccountDialog(t *testing.T) {
 	app := &App{
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Account")
 			d.SetVisible(true)
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	app.closeAccountDialog()
 
-	if app.acctDialog != nil {
+	if app.acct.dlg != nil {
 		t.Error("dialog should be nil after close")
 	}
-	if app.acctDialogData != nil {
+	if app.acct.data != nil {
 		t.Error("dialog data should be nil after close")
 	}
 }
@@ -853,10 +865,10 @@ func TestApp_RenderLayout_WithAccountDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
-		}(),
+		}()}},
 	}
 
 	output := app.renderLayout()
@@ -1124,16 +1136,17 @@ func TestApp_HandleAccountDialogKey_TypeChangeUpdatesVisibility(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Focus the Type field
 			d.SetFocusIndex(acctFieldType)
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
-	fields := app.acctDialog.Fields()
+	fields := app.acct.dlg.Fields()
 
 	// Default is Checking (index 0) - credit limit hidden
 	if !fields[acctFieldCreditLimit].Hidden {
@@ -1165,14 +1178,15 @@ func TestApp_SubmitAccountDialog_HiddenCreditLimitIgnored(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
 			// Credit limit has invalid value but field is hidden (default Checking type)
 			d.Fields()[acctFieldCreditLimit].Value = "abc"
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	// Since credit limit is hidden for Checking, invalid value should be ignored
@@ -1190,7 +1204,7 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		acctDialog: func() *dialog.Dialog {
+		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Cash"
 			// Change type to Cash
@@ -1200,8 +1214,9 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 			d.Fields()[acctFieldInterestRate].Value = "xyz"
 			d.Fields()[acctFieldInterestRate].Hidden = true
 			return d
-		}(),
-		acctDialogData: &accountDialogData{mode: accountDialogModeNew},
+		}()},
+
+			data: &accountDialogData{mode: accountDialogModeNew}},
 	}
 
 	_, cmd := app.submitAccountDialog()

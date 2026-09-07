@@ -521,7 +521,7 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.portfolioMode == portfolioViewHoldings {
 			if h := a.selectedHolding(); h != nil {
 				secID := h.SecurityID
-				a.stockSplitDialogPreSelectedID = &secID
+				a.stockSplit.preSelectedID = &secID
 				return a, a.loadStockSplitDialogData()
 			}
 		}
