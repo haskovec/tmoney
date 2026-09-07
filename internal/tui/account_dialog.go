@@ -297,10 +297,7 @@ func (a *App) handleAccountDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.accountDialogAction(a.acctDialog.HandleKey(msg))
 }
 
-// accountDialogAction dispatches a DialogAction for the account dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// accountDialogAction dispatches a DialogAction for the account dialog, from either input path.
 func (a *App) accountDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

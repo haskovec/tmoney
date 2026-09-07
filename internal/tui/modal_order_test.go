@@ -317,7 +317,8 @@ func TestModals_HelpStacksOverEverything(t *testing.T) {
 // originating surfaces hide themselves before showing the sub-dialog, so this
 // ordering is belt-and-braces rather than load-bearing — except for the split
 // dialog, which outranks create-category and would paint over it if it ever
-// failed to hide. The next test pins that hiding.
+// failed to hide. TestModals_SplitHidesItselfOnCreateCategoryDivert pins that
+// hiding.
 func TestModals_CreateCategoryOutranksItsOriginators(t *testing.T) {
 	for _, under := range []string{"transaction", "transfer", "scheduled", "schedulePreview", "paycheckWizard", "loanWizard"} {
 		t.Run(under, func(t *testing.T) { assertStacks(t, "createCategory", under) })
@@ -329,6 +330,30 @@ func TestModals_CreateCategoryOutranksItsOriginators(t *testing.T) {
 // create-category, which is only safe because split hides itself on divert.
 func TestModals_SplitOutranksCreateCategory(t *testing.T) {
 	assertStacks(t, "split", "createCategory")
+}
+
+// TestModals_SplitHidesItselfOnCreateCategoryDivert is the behavioral half of
+// the exception above: rank alone would let a split editor that forgot to hide
+// take every key and paint over the sub-dialog it just opened.
+func TestModals_SplitHidesItselfOnCreateCategoryDivert(t *testing.T) {
+	a := newModalTestApp()
+	surfaceSetters()["split"](a)
+
+	_, _ = a.openCreateCategorySubDialogFromSplit()
+
+	if a.splitDialog == nil {
+		t.Fatal("the divert must keep the split editor alive (hidden), not drop it")
+	}
+	if a.splitDialog.IsVisible() {
+		t.Error("the split editor must hide itself when it opens create-category")
+	}
+	if front := a.frontmostModal(); front == nil || front.name != "createCategory" {
+		got := "none"
+		if front != nil {
+			got = front.name
+		}
+		t.Errorf("frontmost after the divert = %q, want createCategory", got)
+	}
 }
 
 // The merger confirmation is a swap, not a stack: submitMergerDialog closes the

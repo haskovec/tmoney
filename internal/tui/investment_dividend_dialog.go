@@ -179,10 +179,7 @@ func (a *App) handleDividendDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	return a.dividendDialogAction(a.dividendDialog.HandleKey(msg))
 }
 
-// dividendDialogAction dispatches a DialogAction for the dividend dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// dividendDialogAction dispatches a DialogAction for the dividend dialog, from either input path.
 func (a *App) dividendDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

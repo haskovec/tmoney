@@ -24,7 +24,9 @@ import (
 //   - SetVisible. Only the create-category divert calls it, from the
 //     originating surface rather than from the registry.
 //
-// Add a member when a walk needs it, not before. Phase 2 adds HandleMouse.
+// Add a member when a walk needs it, not before. Mouse input is not a member
+// either: a surface is asked through modalMouseAction (app_mouse.go) and the
+// result goes to the entry's onAction, or the entry declares its own onMouse.
 //
 // Every implementation must be nil-safe, because a nil *dialog.Dialog stored
 // in a Modal is not a nil interface and the walks below run over surfaces that
@@ -62,8 +64,8 @@ type modalEntry struct {
 //
 // This is the single source of an order that handleKeyPress, renderLayout and
 // isDialogVisible each used to spell out by hand, in three different orders,
-// across three files. Adding a surface here is the whole edit; app_mouse.go
-// keeps its own cascade until phase 2.
+// across three files, and that handleDialogMouse walked a fourth way. Adding a
+// surface here is the whole edit.
 //
 // The order is handleKeyPress's, because that one was already load-bearing:
 // the first visible surface wins the key. Paint simply runs it backwards. The
@@ -160,13 +162,15 @@ func (a *App) modals() []modalEntry {
 			onAction: (*App).scheduledDialogAction,
 		},
 		// The preview stacks a header dialog over an embedded split editor and
-		// routes to whichever the click lands in, so neither input path is a
-		// single HandleX plus a switch.
+		// routes to whichever panel the click lands in, so the mouse path maps
+		// the click itself. Both panels then dispatch through the same action
+		// functions the keyboard uses (schedulePreviewAction for the header).
 		{
-			name:    "schedulePreview",
-			modal:   a.schedPreviewDialog,
-			onKey:   (*App).handleSchedulePreviewDialogKey,
-			onMouse: (*App).handleSchedulePreviewMouse,
+			name:     "schedulePreview",
+			modal:    a.schedPreviewDialog,
+			onKey:    (*App).handleSchedulePreviewDialogKey,
+			onAction: (*App).schedulePreviewAction,
+			onMouse:  (*App).handleSchedulePreviewMouse,
 		},
 		{
 			name:     "paycheckWizard",

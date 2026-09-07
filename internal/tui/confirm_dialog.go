@@ -34,10 +34,7 @@ func (a *App) handleConfirmDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.confirmDialogAction(a.confirmDialog.HandleKey(msg))
 }
 
-// confirmDialogAction dispatches a DialogAction for the confirm dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// confirmDialogAction dispatches a DialogAction for the confirm dialog, from either input path.
 func (a *App) confirmDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

@@ -531,10 +531,7 @@ func (a *App) handleSecurityDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	return a.securityDialogAction(a.securityDialog.HandleKey(msg))
 }
 
-// securityDialogAction dispatches a DialogAction for the security dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// securityDialogAction dispatches a DialogAction for the security dialog, from either input path.
 func (a *App) securityDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:

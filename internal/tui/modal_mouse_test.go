@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -51,46 +52,66 @@ func diffSnapshots(before, after map[string]bool) []string {
 	return out
 }
 
+// cancelDialogOf returns the base dialog whose Cancel button closes the surface,
+// or nil for surfaces that are not built on one. The schedule preview is a
+// composite whose header dialog carries the buttons.
+func cancelDialogOf(m Modal) *dialog.Dialog {
+	switch s := m.(type) {
+	case *dialog.Dialog:
+		return s
+	case *SchedulePreviewDialog:
+		return s.HeaderDialog()
+	}
+	return nil
+}
+
+// assertEscAndClickCancelAgree drives both real routes on a fresh App each —
+// Esc through handleKeyPress, a left click through handleMouseEvent — and
+// requires them to clear the same set of fields. Calling the shared dispatcher
+// twice would compare a function against itself and pass no matter what; the
+// point is to exercise the two routes a user has.
+func assertEscAndClickCancelAgree(t *testing.T, show func(*App), click func(t *testing.T, a *App)) {
+	t.Helper()
+	byKey := newModalTestApp()
+	show(byKey)
+	base := modalStateSnapshot(byKey)
+	_, _ = byKey.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	keyDiff := diffSnapshots(base, modalStateSnapshot(byKey))
+
+	byMouse := newModalTestApp()
+	show(byMouse)
+	click(t, byMouse)
+	mouseDiff := diffSnapshots(base, modalStateSnapshot(byMouse))
+
+	if len(keyDiff) == 0 {
+		t.Fatalf("Esc cleared nothing, so this fixture cannot detect a leak")
+	}
+	if len(mouseDiff) == 0 {
+		t.Fatalf("the click never reached the Cancel button; Esc cleared %v", keyDiff)
+	}
+	if !equalSets(keyDiff, mouseDiff) {
+		t.Errorf("Esc cleared %v, clicking Cancel cleared %v", keyDiff, mouseDiff)
+	}
+}
+
 // TestMouseCancel_LeavesTheSameStateAsEsc is the phase 2 fix, stated as a
-// property: for every surface, cancelling by click must leave the App in the
-// same shape as cancelling by Esc.
-//
-// Both paths are driven end to end — Esc through handleKeyPress, the click
-// through handleMouseEvent onto the real Cancel button's coordinates. Calling
-// the shared dispatcher twice would compare a function against itself and pass
-// no matter what; the point is to exercise the two routes a user has.
+// property: for every surface built on a base dialog, cancelling by click must
+// leave the App in the same shape as cancelling by Esc.
 func TestMouseCancel_LeavesTheSameStateAsEsc(t *testing.T) {
 	setters := surfaceSetters()
 	for _, e := range newModalTestApp().modals() {
 		name := e.name
 		show := setters[name]
-		if _, ok := e.modal.(*dialog.Dialog); !ok {
-			// The click needs DialogBounds to place it. The bespoke surfaces
-			// (help, merger confirmation, split, paycheck, preview) are covered
-			// by TestMouseCancel_RoutesThroughTheSameDispatcher instead.
+		probe := newModalTestApp()
+		show(probe)
+		if cancelDialogOf(entryNamed(t, probe, name).modal) == nil {
+			// No base dialog to place the click against. The split editor and
+			// the paycheck wizard are covered by the label-driven tests below;
+			// help and the merger confirmation have their own hit tests.
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
-			byKey := newModalTestApp()
-			show(byKey)
-			base := modalStateSnapshot(byKey)
-			_, _ = byKey.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyEscape})
-			keyDiff := diffSnapshots(base, modalStateSnapshot(byKey))
-
-			byMouse := newModalTestApp()
-			show(byMouse)
-			clickCancelOn(t, byMouse, name)
-			mouseDiff := diffSnapshots(base, modalStateSnapshot(byMouse))
-
-			if len(keyDiff) == 0 {
-				t.Fatalf("Esc cleared nothing, so this fixture cannot detect a leak")
-			}
-			if len(mouseDiff) == 0 {
-				t.Fatalf("the click never reached the Cancel button; Esc cleared %v", keyDiff)
-			}
-			if !equalSets(keyDiff, mouseDiff) {
-				t.Errorf("Esc cleared %v, clicking Cancel cleared %v", keyDiff, mouseDiff)
-			}
+			assertEscAndClickCancelAgree(t, show, func(t *testing.T, a *App) { clickCancelOn(t, a, name) })
 		})
 	}
 }
@@ -99,9 +120,9 @@ func TestMouseCancel_LeavesTheSameStateAsEsc(t *testing.T) {
 // button, through the same handleMouseEvent entry point a user's click takes.
 func clickCancelOn(t *testing.T, a *App, name string) {
 	t.Helper()
-	d, ok := entryNamed(t, a, name).modal.(*dialog.Dialog)
-	if !ok {
-		t.Fatalf("surface %q is not a base dialog", name)
+	d := cancelDialogOf(entryNamed(t, a, name).modal)
+	if d == nil {
+		t.Fatalf("surface %q has no base dialog to click", name)
 	}
 	// The paint pass sets each dialog's height bound and DialogBounds reads it
 	// back, so render before computing coordinates.
@@ -115,9 +136,35 @@ func clickCancelOn(t *testing.T, a *App, name string) {
 	_, _ = a.handleMouseEvent(tea.MouseClickMsg{X: btnX, Y: btnY, Button: tea.MouseLeft})
 }
 
+// clickLabel drives a left click onto the first on-screen occurrence of label,
+// for surfaces that are not base dialogs and so have no DialogBounds. It reads
+// the rendered screen rather than recomputing the layout, so it cannot share a
+// wrong assumption with the hit test it exercises.
+func clickLabel(t *testing.T, a *App, label string) {
+	t.Helper()
+	x, y := screenCellOf(t, a.viewContent(), label)
+	_, _ = a.handleMouseEvent(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
+}
+
+// The split editor and the paycheck wizard are the two surfaces with their own
+// hit tests AND companion state on App, so they are exactly where a mouse
+// Cancel could quietly leak again. Both are driven end to end here.
+func TestMouseCancel_SplitEditorAgreesWithEsc(t *testing.T) {
+	show := func(a *App) {
+		surfaceSetters()["split"](a)
+		a.pendingSplitTxn = &pendingSplitTransaction{}
+	}
+	assertEscAndClickCancelAgree(t, show, func(t *testing.T, a *App) { clickLabel(t, a, "Cancel") })
+}
+
+func TestMouseCancel_PaycheckWizardAgreesWithEsc(t *testing.T) {
+	show := surfaceSetters()["paycheckWizard"]
+	assertEscAndClickCancelAgree(t, show, func(t *testing.T, a *App) { clickLabel(t, a, "Cancel") })
+}
+
 // TestMouseCancel_RoutesThroughTheSameDispatcher states the structural fact the
-// test above depends on: there is exactly one action dispatcher per surface,
-// and both input paths reach it. Without this, the test above could pass while
+// tests above depend on: there is exactly one action dispatcher per surface,
+// and both input paths reach it. Without this, the tests above could pass while
 // the mouse walk kept a second copy.
 func TestMouseCancel_RoutesThroughTheSameDispatcher(t *testing.T) {
 	for _, e := range newModalTestApp().modals() {
@@ -129,6 +176,36 @@ func TestMouseCancel_RoutesThroughTheSameDispatcher(t *testing.T) {
 		default:
 			t.Errorf("surface %q has no onAction and no onMouse, "+
 				"so a click on it silently does nothing", e.name)
+		}
+	}
+}
+
+// TestMouseOverride_CallsTheSharedDispatcher closes the gap the structural test
+// above leaves: handleDialogMouse prefers onMouse, so a surface that sets both
+// never takes the default HandleMouse-then-onAction walk, and `onAction != nil`
+// proves nothing about its mouse path. For those surfaces the override's source
+// must call the named dispatcher. The schedule preview's override must also run
+// the reseed tail its keyboard path runs after every header key.
+func TestMouseOverride_CallsTheSharedDispatcher(t *testing.T) {
+	src := appMethodSources(t)
+	for _, e := range newModalTestApp().modals() {
+		if e.onMouse == nil || e.onAction == nil {
+			continue
+		}
+		override := methodName(e.onMouse)
+		dispatcher := methodName(e.onAction)
+		body, ok := src[override]
+		if !ok {
+			t.Errorf("surface %q: could not read the source of %s", e.name, override)
+			continue
+		}
+		if !strings.Contains(body, dispatcher+"(") {
+			t.Errorf("surface %q: mouse override %s does not call its dispatcher %s, "+
+				"so a click and a keypress can drift apart", e.name, override, dispatcher)
+		}
+		if e.name == "schedulePreview" && !strings.Contains(body, "maybeReseedLoanPreview(") {
+			t.Errorf("surface %q: the mouse path no longer runs maybeReseedLoanPreview, "+
+				"so a Date change by click does not reseed a loan preview as typing does", e.name)
 		}
 	}
 }
@@ -167,7 +244,7 @@ func TestActionDispatcher_IsSharedIncludingTheHandlerTail(t *testing.T) {
 		"account":     "updateAccountFieldVisibility",
 		"stockSplit":  "refreshStockSplitDialogMessage",
 	}
-	src := dispatcherSources(t)
+	src := appMethodSources(t)
 	for surface, tail := range tails {
 		e := entryNamed(t, newModalTestApp(), surface)
 		if e.onAction == nil {
@@ -177,7 +254,7 @@ func TestActionDispatcher_IsSharedIncludingTheHandlerTail(t *testing.T) {
 		if e.onMouse != nil {
 			t.Errorf("surface %q overrides the mouse path, so it can skip its %s tail", surface, tail)
 		}
-		body, ok := src[surface]
+		body, ok := src[methodName(e.onAction)]
 		if !ok {
 			t.Errorf("could not read %q's dispatcher source", surface)
 			continue
@@ -189,22 +266,25 @@ func TestActionDispatcher_IsSharedIncludingTheHandlerTail(t *testing.T) {
 	}
 }
 
-// dispatcherSources maps a surface name to the source text of its onAction
-// dispatcher, read from disk. Parsing rather than executing keeps the test
-// about where the tail lives, which is the property that broke.
-func dispatcherSources(t *testing.T) map[string]string {
+// methodName returns the bare method name of an (*App) method expression, e.g.
+// "sellDialogAction" for (*App).sellDialogAction.
+func methodName(fn any) string {
+	full := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
+	name := full[strings.LastIndex(full, ".")+1:]
+	return strings.TrimSuffix(name, "-fm")
+}
+
+// appMethodSources maps every `func (a *App) name(` in this package's
+// non-test files to its body text. Reading source rather than executing keeps
+// these tests about where code lives, which is the property that broke.
+func appMethodSources(t *testing.T) map[string]string {
 	t.Helper()
-	want := map[string]string{
-		"transaction": "transactionDialogAction",
-		"scheduled":   "scheduledDialogAction",
-		"account":     "accountDialogAction",
-		"stockSplit":  "stockSplitDialogAction",
-	}
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
 	out := make(map[string]string)
+	const head = "func (a *App) "
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
@@ -214,17 +294,19 @@ func dispatcherSources(t *testing.T) map[string]string {
 			continue
 		}
 		s := string(b)
-		for surface, fn := range want {
-			head := "func (a *App) " + fn + "(action dialog.DialogAction)"
-			i := strings.Index(s, head)
-			if i < 0 {
-				continue
+		for i := strings.Index(s, head); i >= 0; {
+			rest := s[i+len(head):]
+			paren := strings.Index(rest, "(")
+			end := strings.Index(rest, "\n}\n")
+			if paren < 0 || end < 0 {
+				break
 			}
-			j := strings.Index(s[i:], "\n}\n")
-			if j < 0 {
-				continue
+			out[rest[:paren]] = rest[:end]
+			next := strings.Index(rest[end:], head)
+			if next < 0 {
+				break
 			}
-			out[surface] = s[i : i+j]
+			i = i + len(head) + end + next
 		}
 	}
 	return out

@@ -108,10 +108,7 @@ func (a *App) handleSpinOffDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.spinOffDialogAction(a.spinOffDialog.HandleKey(msg))
 }
 
-// spinOffDialogAction dispatches a DialogAction for the spin off dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// spinOffDialogAction dispatches a DialogAction for the spin off dialog, from either input path.
 func (a *App) spinOffDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

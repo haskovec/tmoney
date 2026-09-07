@@ -71,10 +71,7 @@ func (a *App) handleCashOperationDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.
 	return a.cashOperationDialogAction(a.cashOperationDialog.HandleKey(msg))
 }
 
-// cashOperationDialogAction dispatches a DialogAction for the cash operation dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// cashOperationDialogAction dispatches a DialogAction for the cash operation dialog, from either input path.
 func (a *App) cashOperationDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

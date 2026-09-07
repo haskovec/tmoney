@@ -194,10 +194,7 @@ func (a *App) handleTransferSharesDialogKey(msg tea.KeyPressMsg) (tea.Model, tea
 	return a.transferSharesDialogAction(a.transferSharesDialog.HandleKey(msg))
 }
 
-// transferSharesDialogAction dispatches a DialogAction for the transfer shares dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// transferSharesDialogAction dispatches a DialogAction for the transfer shares dialog, from either input path.
 func (a *App) transferSharesDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

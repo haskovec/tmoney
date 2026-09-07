@@ -123,10 +123,7 @@ func (a *App) handleFileDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.fileDialogAction(a.fileDialog.HandleKey(msg))
 }
 
-// fileDialogAction dispatches a DialogAction for the file dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// fileDialogAction dispatches a DialogAction for the file dialog, from either input path.
 func (a *App) fileDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

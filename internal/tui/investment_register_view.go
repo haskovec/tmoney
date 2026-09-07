@@ -941,10 +941,7 @@ func (a *App) handleInvestmentTypeSelectorKey(msg tea.KeyPressMsg) (tea.Model, t
 	return a.investmentTypeSelectorAction(a.investmentTypeSelector.HandleKey(msg))
 }
 
-// investmentTypeSelectorAction dispatches a DialogAction for the investment type selector. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// investmentTypeSelectorAction dispatches a DialogAction for the investment type selector, from either input path.
 func (a *App) investmentTypeSelectorAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

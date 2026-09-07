@@ -500,10 +500,7 @@ func (a *App) handleScheduledDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	return a.scheduledDialogAction(a.schedDialog.HandleKey(msg))
 }
 
-// scheduledDialogAction dispatches a DialogAction for the scheduled dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// scheduledDialogAction dispatches a DialogAction for the scheduled dialog, from either input path.
 func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

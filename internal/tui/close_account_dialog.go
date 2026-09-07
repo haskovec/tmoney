@@ -71,10 +71,7 @@ func (a *App) handleCloseAcctDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	return a.closeAcctDialogAction(a.closeAcctDialog.HandleKey(msg))
 }
 
-// closeAcctDialogAction dispatches a DialogAction for the close acct dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// closeAcctDialogAction dispatches a DialogAction for the close acct dialog, from either input path.
 func (a *App) closeAcctDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:

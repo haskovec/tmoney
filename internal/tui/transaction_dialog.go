@@ -457,10 +457,7 @@ func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	return a.transactionDialogAction(a.txnDialog.HandleKey(msg))
 }
 
-// transactionDialogAction dispatches a DialogAction for the transaction dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// transactionDialogAction dispatches a DialogAction for the transaction dialog, from either input path.
 func (a *App) transactionDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
@@ -543,10 +540,7 @@ func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	return a.createCatDialogAction(a.createCatDialog.HandleKey(msg))
 }
 
-// createCatDialogAction dispatches a DialogAction for the create cat dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// createCatDialogAction dispatches a DialogAction for the create cat dialog, from either input path.
 func (a *App) createCatDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

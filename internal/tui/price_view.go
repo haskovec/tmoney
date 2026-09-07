@@ -860,10 +860,7 @@ func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.priceDialogAction(a.priceDialog.HandleKey(msg))
 }
 
-// priceDialogAction dispatches a DialogAction for the price dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// priceDialogAction dispatches a DialogAction for the price dialog, from either input path.
 func (a *App) priceDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
@@ -1048,10 +1045,7 @@ func (a *App) handlePriceImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	return a.priceImportDialogAction(a.priceImportDialog.HandleKey(msg))
 }
 
-// priceImportDialogAction dispatches a DialogAction for the price import dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// priceImportDialogAction dispatches a DialogAction for the price import dialog, from either input path.
 func (a *App) priceImportDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:

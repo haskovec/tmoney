@@ -202,10 +202,7 @@ func (a *App) handleStockSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	return a.stockSplitDialogAction(a.stockSplitDialog.HandleKey(msg))
 }
 
-// stockSplitDialogAction dispatches a DialogAction for the stock split dialog. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// stockSplitDialogAction dispatches a DialogAction for the stock split dialog, from either input path.
 func (a *App) stockSplitDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:

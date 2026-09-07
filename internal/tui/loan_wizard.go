@@ -581,10 +581,7 @@ func (a *App) handleLoanWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a.loanWizardAction(a.loanWizard.HandleKey(msg))
 }
 
-// loanWizardAction dispatches a DialogAction for the loan wizard. Both the keyboard
-// and the mouse path call it, so clicking a button is exactly equivalent to
-// the keyboard action -- the rule specs/tui.md states and the two hand-kept
-// switches used to break.
+// loanWizardAction dispatches a DialogAction for the loan wizard, from either input path.
 func (a *App) loanWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionSubmit:
