@@ -183,3 +183,28 @@ func (a *App) getKeyHints() string {
 func (a *App) renderError() string {
 	return a.styles.Error.Render(fmt.Sprintf("Error: %v\n\nPress any key to continue", a.err))
 }
+
+// handleWindowSize records a new terminal size and rebuilds whichever register
+// table the new width changes.
+//
+// The register tables decide whether to show the running-balance column from
+// the available width, which is fixed at build time. Rebuild a loaded register
+// only when that decision actually flips, so the column appears/disappears
+// live on resize without resetting scroll/cursor state (SetRows resets scroll)
+// on every no-op resize tick.
+func (a *App) handleWindowSize(width, height int) {
+	a.width = width
+	a.height = height
+	a.styles.Resize(width, height)
+	a.ready = true
+	if a.register != nil && tableHasBalanceColumn(a.table) != a.shouldShowRegisterBalance() {
+		a.buildRegisterTable()
+	}
+	// The effective decision also suppresses the balance column while a
+	// security filter is active, so mirror that here to avoid a needless
+	// rebuild (and scroll/cursor reset) on every resize tick while filtered.
+	if a.investmentRegister != nil &&
+		tableHasBalanceColumn(a.investmentTable) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
+		a.buildInvestmentRegisterTable()
+	}
+}

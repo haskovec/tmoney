@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -391,6 +392,47 @@ type transferSurface struct {
 
 func (s *transferSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData builds either the edit form or the new form over the loaded
+// accounts and categories. selectedAccountID pre-selects the "From" account in
+// new mode and stickyDate seeds its Date field; edit mode reads neither,
+// because the transfer being edited supplies both.
+//
+// An edit with no existing transfer leaves the dialog unbuilt, so nothing
+// paints and the surface stays closed.
+func (s *transferSurface) applyData(data *transferDialogData, selectedAccountID types.ID, stickyDate types.Date) {
+	s.data = data
+	accountOptions, accountIDs := buildAccountOptions(data.accounts)
+	s.accountIDs = accountIDs
+	// Category combo options are the "(None)"-led, system-excluded list;
+	// the parallel ID slice is stashed for the submit handler.
+	categoryOptions, categoryIDs := buildCategoryOptions(data.categories)
+	s.categoryIDs = categoryIDs
+
+	if data.mode == transferDialogModeEdit {
+		t := data.existing
+		if t == nil {
+			return
+		}
+		fromName, toName := transferAccountNames(data)
+		s.dlg = buildEditTransferDialog(
+			fromName, toName, t.Amount, t.Date, t.Memo, t.Status,
+			editTransferIncludesCategory(data), categoryOptions,
+			categoryComboIndex(categoryIDs, t.CategoryID))
+		return
+	}
+
+	// Pre-select the currently selected sidebar account as "From"
+	defaultFromIndex := 0
+	for i, id := range accountIDs {
+		if id == selectedAccountID {
+			defaultFromIndex = i
+			break
+		}
+	}
+	s.dlg = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
+	s.dlg.SeedDateField(stickyDate)
+}
+
 // closeTransferDialog clears the transfer dialog state.
 func (a *App) closeTransferDialog() {
 	a.transfer = transferSurface{}
@@ -761,4 +803,23 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		}
 		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
 	}
+}
+
+// afterTransferSave applies the state a saved transfer leaves behind: the
+// session sticky date, the end of any investment edit, the leg to select once
+// the reload lands, and the status-bar note.
+func (a *App) afterTransferSave(msg transferDialogSavedMsg) tea.Cmd {
+	a.rememberSavedDate(msg.savedDate)
+	a.investmentEditTxnID = types.NilID
+	// Select the saved leg in whichever register the user is viewing so the
+	// new transfer scrolls into view, mirroring plain transactions and splits.
+	if !msg.savedID.IsNil() {
+		if msg.savedIsInvestment {
+			a.pendingInvestmentSelectID = msg.savedID
+		} else {
+			a.pendingRegisterSelectID = msg.savedID
+		}
+	}
+	a.statusbar.AddNotification("Transfer saved", widget.NotificationInfo)
+	return a.reloadCurrentView()
 }

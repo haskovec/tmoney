@@ -156,3 +156,20 @@ func (a *App) reopenSelectedAccount() tea.Cmd {
 		return accountClosedMsg{}
 	}
 }
+
+// afterAccountClosed reloads the sidebar and dashboard, plus whichever
+// account-scoped view is on screen, so a closed account stops showing as open.
+func (a *App) afterAccountClosed() tea.Cmd {
+	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	switch a.currentView {
+	case ViewRegister:
+		cmds = append(cmds, a.loadRegisterData(a.sidebar.SelectedAccountID()))
+	case ViewInvestmentRegister:
+		cmds = append(cmds, a.loadInvestmentRegisterData(a.sidebar.SelectedAccountID()))
+	case ViewPortfolio:
+		if a.portfolioData != nil && a.portfolioData.account != nil {
+			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
+		}
+	}
+	return tea.Batch(cmds...)
+}

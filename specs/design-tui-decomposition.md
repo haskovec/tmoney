@@ -36,7 +36,7 @@ names 4b and 4d with the measurement that sizes them.
 | 1 | **yes** | Declare `Modal`; give three types the methods they lack; one registry replaces the key and paint cascades |
 | 2 | **yes** | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
 | 3 | **yes** | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
-| 4 | — | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
+| 4 | **yes** | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
 | 5 | — | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
 
 Read §1 first for the measurement, then §3 for the one prescription in the
@@ -957,6 +957,95 @@ Exit measure for this phase is the method count, not the line count. The bar is
 else. If the count lands near 418 rather than 398, the reorder did not do its
 job and the phase is not done.
 
+#### Built: the pinned arms cluster, and the line target was the wrong measure
+
+`app_update.go` 1,009 -> 399 lines, 89 arms -> 88. `*App` 400 -> 432 methods
+(+32); 19 new methods landed on 16 surface structs. Tests changed: none.
+
+**The `*App` baseline was 400, not 357.** The design wrote its target against
+the pre-phase-1 count. Phases 1-3 added the action dispatchers, the close
+helpers and the registry glue, so the honest bar for this phase is its own
+bound — "the pinned arms and nothing else" — not the absolute 398.
+
+**42 arms were pinned, and they needed only 32 methods.** The design priced
+one method per pinned arm. Six clusters of arms turned out to differ only in a
+string, so each collapsed to one method:
+
+| Method | Arms | What they shared |
+|---|---|---|
+| `afterInvestmentSave` | 6 | sticky date, end-of-edit, pending select, note, register reload |
+| `afterCorporateActionSaved` | 3 | sticky date, note, `refreshAfterCorporateAction` |
+| `afterPriceChange` | 4 | note, history-cache eviction, mode-preserving reload |
+| `afterSecurityChange` | 4 | note, securities reload |
+| `afterRegisterSave` | 2 | pending select, register + sidebar reload |
+| `reloadAfterBulkWrite` | 2 | sidebar + dashboard + open register |
+
+That is the phase's real deletion. The design expected the message bodies to
+move; what they mostly did was **merge**. `if !msg.savedDate.IsZero()` was
+written out nine times and is now `rememberSavedDate` once;
+`if a.investmentRegister != nil && a.investmentRegister.account != nil` was
+written out eight times and is now `reloadInvestmentRegisterCmd`.
+
+**19 arms moved onto a surface, against the 20 the design measured.** The
+security-bearing investment dialogs (buy, sell, fee-via-liquidation, dividend,
+transfer shares) all take one `investmentDialogSeed` — the transaction being
+edited, the sticky date, and the one-shot pre-selected security — because all
+three belong to `App` and all three travel together. `takeInvestmentDialogSeed`
+consumes the pre-select, so no later dialog inherits it; that consume used to
+be a bare `a.investmentNewTxnSecurityID = types.NilID` repeated in five arms.
+
+`schedSurface.applyData` is the one surface method that reports back: it
+returns whether it built the regular edit form, because only that form can
+carry the "Edit as loan ->" button and only `App` can decide on it (the
+decision needs `scheduledTxnSvc`). §5.5 forbids the service on the surface, so
+the category list arrives as a value from `categoriesOrNil()` instead.
+
+**The `~300` line target was missed, at 399, and the target was wrong.** 88
+arms cost 3 lines each at the absolute floor — `case`, one dispatch line, a
+blank — which is 264 before the file header, the `errMsg` fallthrough, or a
+single comment. The remaining 135 lines are 29 arms that are already one or
+two statements against a component (`a.register = msg.data` then
+`a.buildRegisterTable()`), and the load-bearing comments on `ToastClearMsg`
+and `dashboardLoadedMsg` that explain what those arms deliberately do *not*
+do. Nothing was squeezed to approach 300; §4 already said the exit measure is
+the method count, and that one is met.
+
+**29 arms stayed inline, and every one is a dispatch already.** Nine are an
+assignment plus a table build (`registerLoadedMsg` and its seven siblings,
+`reconciliationLoadedMsg`); five already delegated before this phase
+(`handleKeyPress`, `handleMouseEvent`, `handleSpinOffPriceLookupResult`,
+`handlePriceLookupResult`, `switchDatabase`); the rest are a single
+assignment, a single constructor call, or a `tea.Batch` of two or three loads.
+Giving any of them a name would be the "pure motion the compiler proves" this
+phase exists to avoid.
+
+**One pair of arms merged.** `scheduledSkippedMsg` and `scheduledDeletedMsg`
+had byte-identical bodies and are now one `case`. That is the only change to
+the arm set; the other 88 dispatch exactly what they dispatched before.
+
+**One behaviour change, found by the PR review, not by the move.** Extracting
+`savedNote()` onto the cash-operation and dividend surfaces made two dead
+branches look live: `submitCashOperationDialog` and `submitDividendDialog`
+both close the dialog *before* the async save, so the saved arm read an
+already-zeroed `opType` / `reinvest`. Every deposit, withdrawal, fee and
+interest notified "Cash operation transaction saved", and every reinvest
+notified "Dividend transaction saved". The old arms read the same zeroed
+fields, so this is pre-existing, but the extraction is what made it visible.
+The note now travels on the message, captured in submit before the close, and
+two tests pin it — both verified to fail against the old reads.
+
+This is the general hazard in a phase that moves `*SavedMsg` bodies onto
+surface structs: **a saved arm must not read its own surface**, because every
+submit path closes before it saves. The other saved arms take their note from
+a literal, so only these two were affected.
+
+**Two name collisions worth recording for phase 5.** `finishReconciliation`
+and `cancelReconciliation` were already taken — by the methods that *start*
+those operations from a keystroke. The message handlers are
+`afterReconciliationFinished` / `afterReconciliationCancelled`. A phase-5
+controller extracting a surface will hit the same shape, because the verb pair
+"do it" / "the result arrived" is the whole message loop.
+
 ### Phase 5 — one pilot controller
 
 Phases 0–4 give every surface one state struct and one registry entry. They do
@@ -1341,7 +1430,7 @@ Per phase, checkable:
 | 1 | `Modal` declared and the §5.0 nil decision recorded; `handleKeyPress` and `renderLayout` contain no per-dialog `if` — **the mouse cascade is untouched until phase 2**; the §1.5 co-occurrence tests pass; §6.1 guards 1–3 land with this phase; smoke checklist |
 | 2 | `handleDialogMouse` contains no per-dialog `if`; every mouse Cancel routes through the same `onCancel` as Esc; the pre-audited test assertions updated deliberately; visual smoke check |
 | 3 | **Met at 107 fields**: `App` under ~100 fields; each surface's state is one field; **no surface struct holds a service pointer** (§5.5); every surface struct is nil-safe and guard 1 is re-run against the new registry (§5.0); guard 2's filter updated in the same commit as the first surface struct (§6.1); `createCatOrigin` replaces the five scratch fields |
-| 4 | `app_update.go` under ~300 lines; `*App` gains **only the documented pinned arms (≤ 41), never the full 61** — landing near ~398, not ~418; each arm that stayed is listed with its reason |
+| 4 | **Met on the method measure, missed on lines**: `app_update.go` 1,009 -> 399, not under ~300 (the floor is ~264 for 88 arms — see the phase 4 notes); `*App` +32 for 42 pinned arms, against a bound of ≤ 41; the 29 arms that stayed are listed with their reason |
 | 5 | The transfer surface owns `open`/`submit`/`close`; its registry entry is a thin wrapper, not a second implementation (§2.2); `App` supplies only services; the deps are a live indirection, not captured pointers; the inherited undo/DB mismatch is noted in the commit, not treated as a regression |
 
 **What these criteria deliberately do not claim.** No phase reduces

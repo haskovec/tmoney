@@ -18,6 +18,10 @@ type cashOperationDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the investment register
 	// can move the cursor onto its row after reload.
 	savedID types.ID
+	// note is the status-bar text. It is built in the submit path, which
+	// closes the dialog before the save runs, so the operation type it names
+	// is no longer readable by the time this message arrives.
+	note string
 }
 
 // buildCashOperationDialog creates a dialog.Dialog for cash-only investment operations
@@ -65,6 +69,16 @@ type cashOperationSurface struct {
 }
 
 func (s *cashOperationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
+// cashOperationSavedNote is the status-bar note for a saved cash operation.
+// Call it in the submit path with the type captured before the close, not
+// from the surface: closeCashOperationDialog runs before the save completes.
+func cashOperationSavedNote(t investment.TransactionType) string {
+	if t == "" {
+		return "Cash operation transaction saved"
+	}
+	return t.DisplayName() + " transaction saved"
+}
 
 // closeCashOperationDialog clears the cash operation dialog state.
 func (a *App) closeCashOperationDialog() {
@@ -186,6 +200,6 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save %s transaction: %w", txnType.DisplayName(), txnErr)}
 		}
 
-		return cashOperationDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return cashOperationDialogSavedMsg{savedDate: date, savedID: saved.ID, note: cashOperationSavedNote(txnType)}
 	}
 }

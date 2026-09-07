@@ -169,6 +169,21 @@ type sellSurface struct {
 
 func (s *sellSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and open lots and builds the form
+// over them. The lots are kept beside the dialog because the submit path
+// re-reads them to resolve the chosen lot rows.
+func (s *sellSurface) applyData(data *sellDialogData, seed investmentDialogSeed) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.lots = data.lots
+	s.dlg = buildSellDialog(secOptions, seed.editTxn, secIDs, data.lots)
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
 // closeSellDialog clears the sell dialog state.
 func (a *App) closeSellDialog() {
 	a.sell = sellSurface{}

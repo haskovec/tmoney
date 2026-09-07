@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // linkTransfersPreviewedMsg carries the FindUnlinked result back to the
@@ -118,6 +119,15 @@ type linkTransfersSurface struct {
 // the note on modalSurface.
 func (s *linkTransfersSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// showPreview opens the dialog over a completed scan, keeping the result
+// because the confirm step re-checks it before linking.
+func (s *linkTransfersSurface) showPreview(result *transferlink.Result) {
+	*s = linkTransfersSurface{
+		modalSurface: modalSurface{dlg: buildLinkTransfersDialog(result)},
+		result:       result,
+	}
+}
+
 // closeLinkTransfersDialog clears the dialog state.
 func (a *App) closeLinkTransfersDialog() {
 	a.linkTransfers = linkTransfersSurface{}
@@ -155,4 +165,24 @@ func (a *App) submitLinkTransfersDialog() (tea.Model, tea.Cmd) {
 	}
 	a.closeLinkTransfersDialog()
 	return a, a.runLinkTransfersExecute()
+}
+
+// applyLinkTransfersResult reports what the link pass did and reloads the
+// views its writes touched. Pairs it could not link are counted, not listed:
+// the user re-runs the scan to see them.
+func (a *App) applyLinkTransfersResult(msg linkTransfersCompletedMsg) tea.Cmd {
+	summary := fmt.Sprintf("Linked %d transfer pairs", msg.linked)
+	if msg.ambiguous > 0 {
+		summary += fmt.Sprintf(" (%d ambiguous left for review)", msg.ambiguous)
+	}
+	a.statusbar.AddNotification(summary, widget.NotificationInfo)
+	if len(msg.errors) > 0 {
+		parts := make([]string, len(msg.errors))
+		for i, e := range msg.errors {
+			parts[i] = e.Error()
+		}
+		a.err = fmt.Errorf("link transfers had %d errors:\n%s",
+			len(msg.errors), strings.Join(parts, "\n"))
+	}
+	return a.reloadAfterBulkWrite()
 }

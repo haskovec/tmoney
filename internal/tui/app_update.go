@@ -1,40 +1,21 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/tui/widget"
-	"github.com/haskovec/tmoney/internal/types"
-	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // Update implements tea.Model.
+//
+// A case body that mutates one surface belongs on that surface; anything
+// reaching past it — the status bar, a view reload, a service, switchView —
+// is an App method in the feature's own file.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
-		a.styles.Resize(msg.Width, msg.Height)
-		a.ready = true
-		// The register tables decide whether to show the running-balance column
-		// from the available width, which is fixed at build time. Rebuild a
-		// loaded register only when that decision actually flips, so the column
-		// appears/disappears live on resize without resetting scroll/cursor
-		// state (SetRows resets scroll) on every no-op resize tick.
-		if a.register != nil && tableHasBalanceColumn(a.table) != a.shouldShowRegisterBalance() {
-			a.buildRegisterTable()
-		}
-		// The effective decision also suppresses the balance column while a
-		// security filter is active, so mirror that here to avoid a needless
-		// rebuild (and scroll/cursor reset) on every resize tick while filtered.
-		if a.investmentRegister != nil &&
-			tableHasBalanceColumn(a.investmentTable) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
-			a.buildInvestmentRegisterTable()
-		}
+		a.handleWindowSize(msg.Width, msg.Height)
 		return a, nil
 
 	case tea.KeyPressMsg:
@@ -44,29 +25,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleMouseEvent(msg)
 
 	case mouseOpenAccountMsg:
-		acct := a.sidebar.SelectedAccount()
-		if acct != nil && acct.Type.IsInvestmentType() {
-			a.portfolioData = nil
-			a.switchView(ViewPortfolio)
-			return a, a.loadPortfolioData(msg.accountID)
-		}
-		a.register = nil
-		a.switchView(ViewRegister)
-		return a, a.loadRegisterData(msg.accountID)
+		return a, a.openAccountFromMouse(msg.accountID)
 
 	case sidebarLoadedMsg:
 		a.sidebar.SetAccounts(msg.accounts, msg.balances)
 		return a, nil
 
 	case scheduledDueCountMsg:
-		a.statusbar.ClearNotifications()
-		if msg.count > 0 {
-			text := fmt.Sprintf("%d scheduled due", msg.count)
-			if msg.count == 1 {
-				text = "1 scheduled due"
-			}
-			a.statusbar.AddNotification(text, widget.NotificationAlert)
-		}
+		a.applyScheduledDueCount(msg.count)
 		return a, nil
 
 	case widget.ToastClearMsg:
@@ -109,236 +75,80 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case portfolioLotDetailMsg:
-		if a.portfolioData != nil {
-			a.portfolioData.lotDetails = msg.lots
-			a.portfolioData.lotSecurityID = msg.securityID
-			a.buildPortfolioLotsTable()
-			if a.portfolioLotsTable != nil {
-				a.portfolioLotsTable.SetFocused(true)
-			}
-			if a.portfolioHoldingsTable != nil {
-				a.portfolioHoldingsTable.SetFocused(false)
-			}
-		}
+		a.applyPortfolioLotDetail(msg.securityID, msg.lots)
 		return a, nil
 
 	case investmentTransactionDeletedMsg:
 		a.statusbar.AddNotification("Transaction deleted", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.reloadInvestmentRegisterCmd()
 
 	case investmentTransactionClearedMsg:
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.reloadInvestmentRegisterCmd()
 
 	case buyDialogDataMsg:
-		a.buy.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.buy.securityIDs = secIDs
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
+		if seed, ok := a.takeInvestmentDialogSeed(); ok {
+			a.buy.applyData(msg.data, seed)
 		}
-		a.buy.dlg = buildBuyDialog(secOptions, editTxn, secIDs)
-		if editTxn == nil {
-			a.buy.dlg.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.buy.dlg, secIDs, a.investmentNewTxnSecurityID)
-		}
-		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case buyDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
 		a.invalidatePriceHistoryCache()
-		a.statusbar.AddNotification("Buy transaction saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, "Buy transaction saved")
 
 	case sellDialogDataMsg:
-		a.sell.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.sell.securityIDs = secIDs
-		a.sell.lots = msg.data.lots
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
+		if seed, ok := a.takeInvestmentDialogSeed(); ok {
+			a.sell.applyData(msg.data, seed)
 		}
-		a.sell.dlg = buildSellDialog(secOptions, editTxn, secIDs, msg.data.lots)
-		if editTxn == nil {
-			a.sell.dlg.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.sell.dlg, secIDs, a.investmentNewTxnSecurityID)
-		}
-		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case sellDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
 		a.invalidatePriceHistoryCache()
-		a.statusbar.AddNotification("Sell transaction saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, "Sell transaction saved")
 
 	case feeLiquidationDialogDataMsg:
-		a.feeLiquidation.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.feeLiquidation.securityIDs = secIDs
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
+		if seed, ok := a.takeInvestmentDialogSeed(); ok {
+			a.feeLiquidation.applyData(msg.data, seed)
 		}
-		a.feeLiquidation.dlg = buildFeeLiquidationDialog(secOptions, editTxn, secIDs)
-		if editTxn == nil {
-			a.feeLiquidation.dlg.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.feeLiquidation.dlg, secIDs, a.investmentNewTxnSecurityID)
-		}
-		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case feeLiquidationDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
 		a.invalidatePriceHistoryCache()
-		a.statusbar.AddNotification("Fee via liquidation saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, "Fee via liquidation saved")
 
 	case dividendDialogDataMsg:
-		a.dividend.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.dividend.securityIDs = secIDs
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
+		if seed, ok := a.takeInvestmentDialogSeed(); ok {
+			a.dividend.applyData(msg.data, seed)
 		}
-		if a.dividend.reinvest {
-			a.dividend.dlg = buildReinvestDividendDialog(secOptions, editTxn, secIDs)
-		} else {
-			a.dividend.dlg = buildDividendDialog(secOptions, editTxn, secIDs)
-		}
-		if editTxn == nil {
-			a.dividend.dlg.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.dividend.dlg, secIDs, a.investmentNewTxnSecurityID)
-		}
-		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case dividendDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
 		// Reinvest dividends auto-create a price row; cash dividends do
 		// not. The chart history cache is cheap to rebuild, so clear
-		// unconditionally rather than branching on dividendDialogReinvest.
+		// unconditionally rather than branching on the variant.
 		a.invalidatePriceHistoryCache()
-		label := "Dividend"
-		if a.dividend.reinvest {
-			label = "Reinvest dividend"
-		}
-		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, msg.note)
 
 	case cashOperationDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
-		label := string(a.cashOperation.opType)
-		if label == "" {
-			label = "Cash operation"
-		} else {
-			label = a.cashOperation.opType.DisplayName()
-		}
-		a.statusbar.AddNotification(label+" transaction saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, msg.note)
 
 	case transferSharesDialogDataMsg:
-		a.transferShares.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.transferShares.securityIDs = secIDs
-		excludeID := types.NilID
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			excludeID = a.investmentRegister.account.ID
+		if seed, ok := a.takeInvestmentDialogSeed(); ok {
+			a.transferShares.applyData(msg.data, seed, a.investmentRegisterAccountID())
 		}
-		acctOptions, acctIDs := buildInvestmentAccountOptions(msg.data.investmentAccounts, excludeID)
-		a.transferShares.accountIDs = acctIDs
-		a.transferShares.lots = msg.data.lots
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
-		}
-		a.transferShares.dlg = buildTransferSharesDialog(acctOptions, secOptions, editTxn, acctIDs, secIDs, msg.data.lots)
-		if editTxn == nil {
-			a.transferShares.dlg.SeedDateField(a.txnDialogLastSavedDate)
-			preselectSecurityCombo(a.transferShares.dlg, secIDs, a.investmentNewTxnSecurityID)
-		}
-		a.investmentNewTxnSecurityID = types.NilID
 		return a, nil
 
 	case transferSharesDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		a.pendingInvestmentSelectID = msg.savedID
-		a.statusbar.AddNotification("Share transfer saved", widget.NotificationInfo)
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
-		}
-		return a, nil
+		return a, a.afterInvestmentSave(msg.savedDate, msg.savedID, "Share transfer saved")
 
 	case stockSplitDialogDataMsg:
-		a.stockSplit.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.stockSplit.securityIDs = secIDs
-		a.stockSplit.dlg = buildStockSplitDialog(secOptions, secIDs, msg.data.sharesMap, a.stockSplit.preSelectedID)
-		a.stockSplit.dlg.SeedDateField(a.txnDialogLastSavedDate)
-		a.stockSplit.preSelectedID = nil
+		a.stockSplit.applyData(msg.data, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case stockSplitDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.statusbar.AddNotification("Stock split executed", widget.NotificationInfo)
-		return a, a.refreshAfterCorporateAction()
+		return a, a.afterCorporateActionSaved(msg.savedDate, "Stock split executed")
 
 	case mergerDialogDataMsg:
-		a.merger.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.merger.securityIDs = secIDs
-		a.merger.dlg = buildMergerDialog(secOptions, secIDs, a.merger.preSelectedID)
-		a.merger.dlg.SeedDateField(a.txnDialogLastSavedDate)
-		a.merger.preSelectedID = nil
+		a.merger.applyData(msg.data, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case mergerConfirmDataMsg:
@@ -346,27 +156,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case mergerDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.statusbar.AddNotification("Merger executed", widget.NotificationInfo)
-		return a, a.refreshAfterCorporateAction()
+		return a, a.afterCorporateActionSaved(msg.savedDate, "Merger executed")
 
 	case spinOffDialogDataMsg:
-		a.spinOff.data = msg.data
-		secOptions, secIDs := buildSecurityOptions(msg.data.securities)
-		a.spinOff.securityIDs = secIDs
-		a.spinOff.dlg = buildSpinOffDialog(secOptions, secIDs, a.spinOff.preSelectedID)
-		a.spinOff.dlg.SeedDateField(a.txnDialogLastSavedDate)
-		a.spinOff.preSelectedID = nil
+		a.spinOff.applyData(msg.data, a.txnDialogLastSavedDate)
 		return a, nil
 
 	case spinOffDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.statusbar.AddNotification("Spin-off executed", widget.NotificationInfo)
-		return a, a.refreshAfterCorporateAction()
+		return a, a.afterCorporateActionSaved(msg.savedDate, "Spin-off executed")
 
 	case spinOffPriceLookupMsg:
 		return a.handleSpinOffPriceLookupResult(msg)
@@ -392,49 +189,23 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case scheduledPostedMsg:
-		cmds := []tea.Cmd{
-			a.loadScheduledViewData(),
-			a.loadSidebarData(),
-			a.loadScheduledDueCount(),
-		}
-		if msg.loanPaidOff && a.statusbar != nil {
-			a.statusbar.SetToast(
-				"Loan paid off — close the account from the Accounts menu when ready.",
-				widget.NotificationInfo,
-			)
-			cmds = append(cmds, widget.ClearToastCmd())
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.afterScheduledPosted(msg.loanPaidOff)
 
-	case scheduledSkippedMsg:
-		return a, tea.Batch(
-			a.loadScheduledViewData(),
-			a.loadScheduledDueCount(),
-		)
-
-	case scheduledDeletedMsg:
+	// Skipping and deleting differ only in what the service did; both leave
+	// the same two lists stale.
+	case scheduledSkippedMsg, scheduledDeletedMsg:
 		return a, tea.Batch(
 			a.loadScheduledViewData(),
 			a.loadScheduledDueCount(),
 		)
 
 	case transactionDialogDataMsg:
-		a.txn.data = msg.data
-		categoryOptions, categoryIDs := buildCategoryOptionsForAccount(msg.data.categories, a.sidebar.SelectedAccount())
-		a.txn.categoryIDs = categoryIDs
-		a.txn.dlg = buildTransactionDialog(msg.data, categoryOptions, categoryIDs, a.txnDialogLastSavedDate)
+		a.txn.applyData(msg.data, a.sidebar.SelectedAccount(), a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transactionDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.pendingRegisterSelectID = msg.savedID
-		accountID := a.sidebar.SelectedAccountID()
-		return a, tea.Batch(
-			a.loadRegisterData(accountID),
-			a.loadSidebarData(),
-		)
+		a.rememberSavedDate(msg.savedDate)
+		return a, a.afterRegisterSave(msg.savedID)
 
 	case createCategoryRequestMsg:
 		if err := a.applyCreatedCategory(msg.request); err != nil {
@@ -443,136 +214,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case splitDialogSavedMsg:
-		a.pendingRegisterSelectID = msg.savedID
-		accountID := a.sidebar.SelectedAccountID()
-		return a, tea.Batch(
-			a.loadRegisterData(accountID),
-			a.loadSidebarData(),
-		)
+		return a, a.afterRegisterSave(msg.savedID)
 
 	case transferDialogDataMsg:
-		a.transfer.data = msg.data
-		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
-		a.transfer.accountIDs = accountIDs
-		// Category combo options are the "(None)"-led, system-excluded list;
-		// the parallel ID slice is stashed for the submit handler.
-		categoryOptions, categoryIDs := buildCategoryOptions(msg.data.categories)
-		a.transfer.categoryIDs = categoryIDs
-
-		if msg.data.mode == transferDialogModeEdit {
-			fromName, toName := transferAccountNames(msg.data)
-			includeCategory := editTransferIncludesCategory(msg.data)
-			// One payload for every shape. There used to be two switch arms here,
-			// pulling the same five display values out of two different structs —
-			// and the bank↔bank arm had to defensively nil-check both legs of a
-			// TransferPair and fall back to zero values.
-			if t := msg.data.existing; t != nil {
-				catIdx := categoryComboIndex(categoryIDs, t.CategoryID)
-				a.transfer.dlg = buildEditTransferDialog(
-					fromName, toName, t.Amount, t.Date, t.Memo, t.Status,
-					includeCategory, categoryOptions, catIdx)
-			}
-			return a, nil
-		}
-
-		// Pre-select the currently selected sidebar account as "From"
-		defaultFromIndex := 0
-		selectedID := a.sidebar.SelectedAccountID()
-		for i, id := range accountIDs {
-			if id == selectedID {
-				defaultFromIndex = i
-				break
-			}
-		}
-		a.transfer.dlg = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
-		a.transfer.dlg.SeedDateField(a.txnDialogLastSavedDate)
+		a.transfer.applyData(msg.data, a.sidebar.SelectedAccountID(), a.txnDialogLastSavedDate)
 		return a, nil
 
 	case transferDialogSavedMsg:
-		if !msg.savedDate.IsZero() {
-			a.txnDialogLastSavedDate = msg.savedDate
-		}
-		a.investmentEditTxnID = types.NilID
-		// Select the saved leg in whichever register the user is viewing so the
-		// new transfer scrolls into view, mirroring plain transactions and splits.
-		if !msg.savedID.IsNil() {
-			if msg.savedIsInvestment {
-				a.pendingInvestmentSelectID = msg.savedID
-			} else {
-				a.pendingRegisterSelectID = msg.savedID
-			}
-		}
-		a.statusbar.AddNotification("Transfer saved", widget.NotificationInfo)
-		return a, tea.Batch(
-			a.reloadCurrentView(),
-		)
+		return a, a.afterTransferSave(msg)
 
 	case scheduledDialogDataMsg:
-		a.sched.data = msg.data
-
-		// Single-line transfer schedules use a distinct dialog whose From/To
-		// pickers exclude investment accounts (regular↔regular only). The
-		// optional Category combo excludes every system category (Transfer,
-		// Value Adjustment) — a transfer may be labeled with any non-system
-		// category.
-		if msg.data.isTransfer {
-			accountOptions, accountIDs := buildTransferAccountOptions(msg.data.accounts)
-			a.sched.accountIDs = accountIDs
-
-			var transferCats []*category.Category
-			if a.categorySvc != nil {
-				if cats, err := a.categorySvc.List(); err == nil {
-					transferCats = cats
-				}
-			}
-			categoryOptions, categoryIDs := buildCategoryOptions(transferCats)
-			a.sched.categoryIDs = categoryIDs
-			a.sched.categoryOptions = categoryOptions
-
-			if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
-				a.sched.dlg = buildEditScheduledTransferDialog(msg.data.scheduled, accountOptions, categoryOptions, accountIDs, categoryIDs)
-			} else {
-				a.sched.dlg = buildNewScheduledTransferDialog(accountOptions, categoryOptions)
-			}
-			return a, nil
-		}
-
-		accountOptions, accountIDs := buildAccountOptions(msg.data.accounts)
-		a.sched.accountIDs = accountIDs
-
-		var categories []*category.Category
-		if a.categorySvc != nil {
-			cats, err := a.categorySvc.List()
-			if err == nil {
-				categories = cats
-			}
-		}
-		// Surface the Value Adjustment category when the initially
-		// selected account is an asset account (edit: the schedule's
-		// account; new: the first account, which the picker defaults
-		// to). The picker tracks later account changes via
-		// refreshSchedCategoryOptionsForAccount.
-		initialAcctID := types.NilID
-		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
-			initialAcctID = msg.data.scheduled.AccountID
-		} else if len(accountIDs) > 0 {
-			initialAcctID = accountIDs[0]
-		}
-		includeVA := accountIsAssetByID(msg.data.accounts, initialAcctID)
-		categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
-		a.sched.categoryIDs = categoryIDs
-		a.sched.categoryOptions = categoryOptions
-
-		if msg.data.mode == scheduledDialogModeEdit && msg.data.scheduled != nil {
-			// Build payee name map for edit dialog
-			payeeNames := make(map[types.ID]string)
-			for _, p := range msg.data.payees {
-				payeeNames[p.ID] = p.Name
-			}
-			a.sched.dlg = buildEditScheduledDialog(msg.data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+		if a.sched.applyData(msg.data, a.categoriesOrNil()) {
 			a.maybeAddEditAsLoanButton(msg.data.scheduled)
-		} else {
-			a.sched.dlg = buildNewScheduledDialog(accountOptions, categoryOptions)
 		}
 		return a, nil
 
@@ -585,104 +238,34 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case schedulePreviewDataMsg:
 		a.schedPreviewDialog = NewSchedulePreviewDialog(
-			msg.template,
-			msg.accounts,
-			msg.payees,
-			msg.categoryOptions,
-			msg.categoryIDs,
-			msg.loanSplits,
+			msg.template, msg.accounts, msg.payees,
+			msg.categoryOptions, msg.categoryIDs, msg.loanSplits,
 		)
 		return a, nil
 
 	case schedulePreviewLoanBlockedMsg:
-		// A loan-shaped schedule that cannot be previewed with correct
-		// numbers: paid off (already refused-and-completed by the loader) or
-		// misconfigured. Surface a toast and refresh the due list instead of
-		// opening the preview with stale template values.
-		if a.statusbar != nil {
-			if msg.paidOff {
-				a.statusbar.SetToast(
-					"Loan paid off — close the account from the Accounts menu when ready.",
-					widget.NotificationInfo,
-				)
-			} else {
-				a.statusbar.SetToast(
-					fmt.Sprintf("Cannot post loan payment: %v", msg.err),
-					widget.NotificationAlert,
-				)
-			}
-		}
-		return a, tea.Batch(
-			a.loadScheduledViewData(),
-			a.loadSidebarData(),
-			a.loadScheduledDueCount(),
-			widget.ClearToastCmd(),
-		)
+		return a, a.handleSchedulePreviewLoanBlocked(msg.paidOff, msg.err)
 
 	case paycheckWizardDataMsg:
-		a.paycheckWizard = NewPaycheckWizard(
-			msg.categoryOptions,
-			msg.categoryIDs,
-			msg.accounts,
-		)
+		a.paycheckWizard = NewPaycheckWizard(msg.categoryOptions, msg.categoryIDs, msg.accounts)
 		return a, nil
 
 	case loanWizardDataMsg:
-		if msg.editSchedule != nil {
-			d, st := buildEditLoanWizard(msg.accounts, msg.categories, msg.editSchedule, msg.editOwed)
-			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
-		} else {
-			d, st := buildNewLoanWizard(msg.accounts, msg.categories)
-			a.loan = loanSurface{modalSurface: modalSurface{dlg: d}, state: st}
-		}
+		a.loan.applyData(msg)
 		return a, nil
 
 	case loanWizardSavedMsg:
-		if a.statusbar != nil {
-			a.statusbar.SetToast("Loan created.", widget.NotificationInfo)
-		}
-		return a, tea.Batch(
-			a.loadSidebarData(),
-			a.loadDashboardData(),
-			a.loadScheduledViewData(),
-			a.loadScheduledDueCount(),
-			widget.ClearToastCmd(),
-		)
+		return a, a.afterLoanWizardSave()
 
 	case autoPostCompletedMsg:
-		if msg.summary != nil && msg.summary.PostedCount > 0 {
-			text := fmt.Sprintf("Auto-posted %d scheduled transaction(s)", msg.summary.PostedCount)
-			a.statusbar.AddNotification(text, widget.NotificationInfo)
-			// Register auto-post as a single undo step
-			if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
-				cmd := undo.NewAutoPostCommand(a.transactionSvc, a.transferSvc, a.scheduledTxnSvc, msg.summary)
-				a.undoManager.Push(cmd)
-			}
-			// Reload data since auto-posting created transactions
-			return a, tea.Batch(
-				a.loadSidebarData(),
-				a.loadScheduledDueCount(),
-				a.loadDashboardData(),
-			)
-		}
-		return a, nil
+		return a, a.applyAutoPostResult(msg.summary)
 
 	case accountDialogDataMsg:
-		a.acct.data = msg.data
-		if msg.data.mode == accountDialogModeEdit && msg.data.account != nil {
-			a.acct.dlg = buildEditAccountDialog(msg.data.account)
-		} else {
-			a.acct.dlg = buildNewAccountDialog()
-		}
+		a.acct.applyData(msg.data)
 		return a, nil
 
 	case accountDialogSavedMsg:
-		cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
-		if a.currentView == ViewRegister {
-			accountID := a.sidebar.SelectedAccountID()
-			cmds = append(cmds, a.loadRegisterData(accountID))
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.afterAccountDialogSave()
 
 	case fileDialogSavedMsg:
 		return a.switchDatabase(msg.db)
@@ -695,12 +278,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case restoreConfirmedMsg:
-		model, cmd := a.reloadAfterRestore()
-		a.statusbar.AddNotification(
-			fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
-			widget.NotificationInfo,
-		)
-		return model, cmd
+		return a.afterRestore(msg.safetyBackupPath)
 
 	case reconciliationStartedMsg:
 		// Session started, switch to reconciliation view and load data
@@ -719,28 +297,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case reconciliationFinishedMsg:
-		acctName := ""
-		if a.reconciliation != nil {
-			acctName = a.reconciliation.account.Name
-		}
-		a.reconciliation = nil
-		a.reconciliationTable = nil
-		a.switchView(ViewRegister)
-		a.statusbar.AddNotification(
-			fmt.Sprintf("Reconciliation completed for %s", acctName),
-			widget.NotificationInfo,
-		)
-		accountID := a.sidebar.SelectedAccountID()
-		return a, tea.Batch(
-			a.loadRegisterData(accountID),
-			a.loadSidebarData(),
-		)
+		return a, a.afterReconciliationFinished()
 
 	case reconciliationCancelledMsg:
-		a.reconciliation = nil
-		a.reconciliationTable = nil
-		a.switchView(ViewRegister)
-		a.statusbar.AddNotification("Reconciliation cancelled", widget.NotificationInfo)
+		a.afterReconciliationCancelled()
 		return a, nil
 
 	case accountDeletedMsg:
@@ -748,39 +308,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
 
 	case accountClosedMsg:
-		cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
-		if a.currentView == ViewRegister {
-			accountID := a.sidebar.SelectedAccountID()
-			cmds = append(cmds, a.loadRegisterData(accountID))
-		}
-		if a.currentView == ViewInvestmentRegister {
-			accountID := a.sidebar.SelectedAccountID()
-			cmds = append(cmds, a.loadInvestmentRegisterData(accountID))
-		}
-		if a.currentView == ViewPortfolio && a.portfolioData != nil && a.portfolioData.account != nil {
-			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.afterAccountClosed()
 
 	case undoResultMsg:
-		if errors.Is(msg.err, undo.ErrNothingToUndo) {
-			a.statusbar.AddNotification("Nothing to undo", widget.NotificationInfo)
-			return a, nil
-		}
-		if errors.Is(msg.err, undo.ErrNothingToRedo) {
-			a.statusbar.AddNotification("Nothing to redo", widget.NotificationInfo)
-			return a, nil
-		}
-		if msg.err != nil {
-			a.err = msg.err
-			return a, nil
-		}
-		a.statusbar.AddNotification(
-			fmt.Sprintf("%s: %s", msg.action, msg.description),
-			widget.NotificationInfo,
-		)
-		// Reload current view data after undo/redo
-		return a, a.reloadCurrentView()
+		return a, a.applyUndoResult(msg)
 
 	case securityViewDataLoadedMsg:
 		a.securityView = msg.data
@@ -788,217 +319,75 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case securityAddedMsg:
-		a.statusbar.AddNotification("Security added", widget.NotificationInfo)
 		// Select the new security after the reload so it scrolls into view,
 		// even if it sorts off-screen in a long list.
 		a.pendingSecuritySelectID = msg.id
-		return a, a.loadSecurityViewData()
+		return a, a.afterSecurityChange("Security added")
 
 	case securityUpdatedMsg:
-		a.statusbar.AddNotification("Security updated", widget.NotificationInfo)
-		return a, a.loadSecurityViewData()
+		return a, a.afterSecurityChange("Security updated")
 
 	case securityDeletedMsg:
-		a.statusbar.AddNotification("Security deleted", widget.NotificationInfo)
-		return a, a.loadSecurityViewData()
+		return a, a.afterSecurityChange("Security deleted")
 
 	case securityHiddenMsg:
+		note := "Security unhidden"
 		if msg.hidden {
-			a.statusbar.AddNotification("Security hidden", widget.NotificationInfo)
-		} else {
-			a.statusbar.AddNotification("Security unhidden", widget.NotificationInfo)
+			note = "Security hidden"
 		}
-		return a, a.loadSecurityViewData()
+		return a, a.afterSecurityChange(note)
 
 	case priceViewDataLoadedMsg:
-		// Preserve the existing historyCache across reload so that the
-		// per-security evictions performed by the price-CRUD handlers
-		// (PC-015) and the full clear performed by bulk refresh (PC-016)
-		// are not silently undone by the fresh empty cache that
-		// loadPriceViewData/loadPriceViewDataForSecurity construct.
-		if a.priceView != nil && a.priceView.historyCache != nil {
-			msg.data.historyCache = a.priceView.historyCache
-		}
-		a.priceView = msg.data
-		var cmd tea.Cmd
-		switch msg.data.mode {
-		case pricesViewList:
-			a.buildPriceListTable()
-			// Kick off the initial debounced fetch for the row under the
-			// cursor so the chart panel populates without requiring a
-			// keystroke. Subsequent cursor movement reschedules.
-			if secID := a.listCursorSecurityID(); !secID.IsNil() {
-				cmd = a.schedulePriceChartFetch(secID)
-			}
-		case pricesViewDetail:
-			a.buildPriceTable()
-		}
-		return a, cmd
+		return a, a.applyPriceViewData(msg.data)
 
 	case priceChartDebounceTickMsg:
-		if a.priceView == nil {
-			return a, nil
-		}
-		// Stale: a later schedule has superseded this tick.
-		if msg.gen != a.priceView.chartDebounceGen {
-			return a, nil
-		}
-		// Cursor moved off the row this tick was scheduled for. Drop
-		// silently — the move that triggered the change scheduled its
-		// own fresh tick.
-		if a.listCursorSecurityID() != msg.secID {
-			return a, nil
-		}
-		// Already cached (e.g. user scrolled away and back, or a CRUD
-		// invalidation re-fired before the tick). No fetch needed; just
-		// promote to displayed.
-		if a.priceView.historyCache != nil {
-			if _, ok := a.priceView.historyCache.Lookup(msg.secID); ok {
-				a.priceView.chartDisplayedID = msg.secID
-				return a, nil
-			}
-		}
-		return a, a.fetchPriceChartHistory(msg.secID)
+		return a, a.handlePriceChartDebounceTick(msg)
 
 	case priceChartHistoryLoadedMsg:
-		if a.priceView == nil {
-			return a, nil
-		}
-		if a.priceView.historyCache != nil {
-			a.priceView.historyCache.Put(msg.secID, msg.prices)
-		}
-		a.priceView.chartDisplayedID = msg.secID
+		a.applyPriceChartHistory(msg)
 		return a, nil
 
 	case priceAddedMsg:
-		a.statusbar.AddNotification("Price added", widget.NotificationInfo)
-		a.evictSelectedSecurityFromHistoryCache()
-		return a, a.reloadPriceViewKeepingMode()
+		return a, a.afterPriceChange("Price added")
 
 	case priceUpdatedMsg:
-		a.statusbar.AddNotification("Price updated", widget.NotificationInfo)
-		a.evictSelectedSecurityFromHistoryCache()
-		return a, a.reloadPriceViewKeepingMode()
+		return a, a.afterPriceChange("Price updated")
 
 	case priceDeletedMsg:
-		a.statusbar.AddNotification("Price deleted", widget.NotificationInfo)
-		a.evictSelectedSecurityFromHistoryCache()
-		return a, a.reloadPriceViewKeepingMode()
+		return a, a.afterPriceChange("Price deleted")
 
 	case priceLookupResultMsg:
 		return a.handlePriceLookupResult(msg)
 
 	case priceImportedMsg:
-		a.statusbar.AddNotification(
+		return a, a.afterPriceChange(
 			fmt.Sprintf("Imported %d prices (%d skipped)", msg.imported, msg.skipped),
-			widget.NotificationInfo,
 		)
-		a.evictSelectedSecurityFromHistoryCache()
-		return a, a.reloadPriceViewKeepingMode()
 
 	case importDialogOpenMsg:
-		d, ids := buildImportOptionsDialog(msg.accounts, msg.defaultAccountID)
-		a.importer = importSurface{modalSurface: modalSurface{dlg: d}}
-		a.importer.state = &importDialogState{
-			step:       importStepOptions,
-			accountIDs: ids,
-		}
+		a.importer.showOptions(msg.accounts, msg.defaultAccountID)
 		return a, nil
 
 	case importPreviewedMsg:
-		state := msg.state
-		state.preview = msg.result
-		state.step = importStepConfirm
-		a.importer = importSurface{
-			modalSurface: modalSurface{dlg: buildImportConfirmDialog(state)},
-			state:        state,
-		}
+		a.importer.showConfirm(msg.state, msg.result)
 		return a, nil
 
 	case importNeedsSourceMsg:
-		state := msg.state
-		state.step = importStepSourcePicker
-		state.sourceOptions = msg.sources
-		a.importer = importSurface{
-			modalSurface: modalSurface{dlg: buildImportSourcePickerDialog(msg.sources, state.accountName)},
-			state:        state,
-		}
+		a.importer.showSourcePicker(msg.state, msg.sources)
 		return a, nil
 
 	case importCompletedMsg:
-		a.statusbar.AddNotification(
-			fmt.Sprintf("Imported: %d created, %d updated, %d skipped", msg.created, msg.updated, msg.skipped),
-			widget.NotificationInfo,
-		)
-		// Reload data so the new transactions appear in the dashboard /
-		// register without the user having to navigate away and back.
-		var cmds []tea.Cmd
-		cmds = append(cmds, a.loadSidebarData(), a.loadDashboardData())
-		if a.currentView == ViewRegister && a.register != nil {
-			cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
-		}
-		if len(msg.errors) > 0 {
-			a.err = fmt.Errorf("import completed with %d errors:\n%s",
-				len(msg.errors), strings.Join(msg.errors, "\n"))
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.applyImportResult(msg)
 
 	case linkTransfersPreviewedMsg:
-		a.linkTransfers = linkTransfersSurface{
-			modalSurface: modalSurface{dlg: buildLinkTransfersDialog(msg.result)},
-			result:       msg.result,
-		}
+		a.linkTransfers.showPreview(msg.result)
 		return a, nil
 
 	case linkTransfersCompletedMsg:
-		summary := fmt.Sprintf("Linked %d transfer pairs", msg.linked)
-		if msg.ambiguous > 0 {
-			summary += fmt.Sprintf(" (%d ambiguous left for review)", msg.ambiguous)
-		}
-		a.statusbar.AddNotification(summary, widget.NotificationInfo)
-		var cmds []tea.Cmd
-		cmds = append(cmds, a.loadSidebarData(), a.loadDashboardData())
-		if a.currentView == ViewRegister && a.register != nil {
-			cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
-		}
-		if len(msg.errors) > 0 {
-			parts := make([]string, len(msg.errors))
-			for i, e := range msg.errors {
-				parts[i] = e.Error()
-			}
-			a.err = fmt.Errorf("link transfers had %d errors:\n%s",
-				len(msg.errors), strings.Join(parts, "\n"))
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.applyLinkTransfersResult(msg)
 
 	case priceRefreshCompleteMsg:
-		// Always retire the in-progress notification and clear the
-		// guard, regardless of success/failure, so the `u` shortcut
-		// becomes responsive again.
-		a.statusbar.RemoveNotification(a.refreshNotifID)
-		a.refreshNotifID = 0
-		a.refreshingPrices = false
-		if msg.err != nil {
-			a.err = msg.err
-			return a, nil
-		}
-		a.statusbar.AddNotification(summarizeRefreshResult(msg.result), widget.NotificationInfo)
-		// PC-016: bulk refresh can silently change any subset of
-		// tickers' prices, and the result doesn't enumerate which.
-		// Drop every chart-history cache entry so the next render
-		// re-fetches from the price service.
-		if a.priceView != nil && a.priceView.historyCache != nil {
-			a.priceView.historyCache.Clear()
-		}
-		// Re-load any data views that may now be stale.
-		var cmds []tea.Cmd
-		if a.currentView == ViewSecurities {
-			cmds = append(cmds, a.loadSecurityViewData())
-		}
-		if a.currentView == ViewPrices {
-			cmds = append(cmds, a.loadPriceViewData())
-		}
-		return a, tea.Batch(cmds...)
+		return a, a.applyPriceRefreshResult(msg)
 
 	case errMsg:
 		a.err = msg.err

@@ -568,3 +568,21 @@ func portfolioShortcuts() shortcutSection {
 		},
 	}
 }
+
+// applyPortfolioLotDetail installs the loaded lots for one holding and moves
+// focus from the holdings table to the lots table. A portfolio unloaded while
+// the lots were in flight drops them.
+func (a *App) applyPortfolioLotDetail(securityID types.ID, lots []investment.LotDetail) {
+	if a.portfolioData == nil {
+		return
+	}
+	a.portfolioData.lotDetails = lots
+	a.portfolioData.lotSecurityID = securityID
+	a.buildPortfolioLotsTable()
+	if a.portfolioLotsTable != nil {
+		a.portfolioLotsTable.SetFocused(true)
+	}
+	if a.portfolioHoldingsTable != nil {
+		a.portfolioHoldingsTable.SetFocused(false)
+	}
+}

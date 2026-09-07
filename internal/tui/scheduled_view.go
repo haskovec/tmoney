@@ -424,3 +424,59 @@ func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string
 
 	return []string{status, dateStr, payee, amount, freq, account, autoIndicator}
 }
+
+// loanPaidOffToast is shown when a posting retires a loan. Closing the account
+// is the user's call, so the app invites rather than acts. Both the post path
+// and the blocked-preview path use it.
+const loanPaidOffToast = "Loan paid off — close the account from the Accounts menu when ready."
+
+// applyScheduledDueCount replaces the status bar's notifications with the
+// due-count alert, or leaves it cleared when nothing is due.
+func (a *App) applyScheduledDueCount(count int) {
+	a.statusbar.ClearNotifications()
+	if count <= 0 {
+		return
+	}
+	text := fmt.Sprintf("%d scheduled due", count)
+	if count == 1 {
+		text = "1 scheduled due"
+	}
+	a.statusbar.AddNotification(text, widget.NotificationAlert)
+}
+
+// afterScheduledPosted reloads everything a posting can change and, when the
+// posting retired a loan, toasts the invitation to close the account.
+func (a *App) afterScheduledPosted(loanPaidOff bool) tea.Cmd {
+	cmds := []tea.Cmd{
+		a.loadScheduledViewData(),
+		a.loadSidebarData(),
+		a.loadScheduledDueCount(),
+	}
+	if loanPaidOff && a.statusbar != nil {
+		a.statusbar.SetToast(loanPaidOffToast, widget.NotificationInfo)
+		cmds = append(cmds, widget.ClearToastCmd())
+	}
+	return tea.Batch(cmds...)
+}
+
+// applyAutoPostResult notifies, registers the whole batch as one undo step,
+// and reloads what auto-posting changed. A run that posted nothing is silent.
+func (a *App) applyAutoPostResult(summary *scheduled.AutoPostSummary) tea.Cmd {
+	if summary == nil || summary.PostedCount == 0 {
+		return nil
+	}
+	a.statusbar.AddNotification(
+		fmt.Sprintf("Auto-posted %d scheduled transaction(s)", summary.PostedCount),
+		widget.NotificationInfo,
+	)
+	// Register auto-post as a single undo step
+	if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
+		a.undoManager.Push(undo.NewAutoPostCommand(a.transactionSvc, a.transferSvc, a.scheduledTxnSvc, summary))
+	}
+	// Reload data since auto-posting created transactions
+	return tea.Batch(
+		a.loadSidebarData(),
+		a.loadScheduledDueCount(),
+		a.loadDashboardData(),
+	)
+}

@@ -189,6 +189,23 @@ type transferSharesSurface struct {
 
 func (s *transferSharesSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities, destination accounts and open lots
+// and builds the form over them. excludeAccountID drops the account the user is
+// already in from the destination picker; pass NilID to keep every account.
+func (s *transferSharesSurface) applyData(data *transferSharesDialogData, seed investmentDialogSeed, excludeAccountID types.ID) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	acctOptions, acctIDs := buildInvestmentAccountOptions(data.investmentAccounts, excludeAccountID)
+	s.accountIDs = acctIDs
+	s.lots = data.lots
+	s.dlg = buildTransferSharesDialog(acctOptions, secOptions, seed.editTxn, acctIDs, secIDs, data.lots)
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
 // closeTransferSharesDialog clears the share transfer dialog state.
 func (a *App) closeTransferSharesDialog() {
 	a.transferShares = transferSharesSurface{}

@@ -1137,3 +1137,95 @@ func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
 		}
 	}
 }
+
+// applyPriceViewData installs a freshly loaded price view and builds the table
+// its mode calls for. In list mode it also kicks off the initial debounced
+// chart fetch for the row under the cursor, so the chart panel populates
+// without requiring a keystroke; subsequent cursor movement reschedules.
+//
+// The existing historyCache is carried across the reload. Without that, the
+// per-security evictions the price-CRUD handlers perform (PC-015) and the full
+// clear bulk refresh performs (PC-016) would be silently undone by the fresh
+// empty cache loadPriceViewData constructs.
+func (a *App) applyPriceViewData(data *priceViewData) tea.Cmd {
+	if a.priceView != nil && a.priceView.historyCache != nil {
+		data.historyCache = a.priceView.historyCache
+	}
+	a.priceView = data
+	switch data.mode {
+	case pricesViewList:
+		a.buildPriceListTable()
+		if secID := a.listCursorSecurityID(); !secID.IsNil() {
+			return a.schedulePriceChartFetch(secID)
+		}
+	case pricesViewDetail:
+		a.buildPriceTable()
+	}
+	return nil
+}
+
+// handlePriceChartDebounceTick fetches the chart history for the row the tick
+// was scheduled against, unless the tick is stale (a later schedule superseded
+// it), the cursor has moved off that row (the move scheduled its own tick), or
+// the history is already cached — in which case it only promotes the cached
+// series to displayed.
+func (a *App) handlePriceChartDebounceTick(msg priceChartDebounceTickMsg) tea.Cmd {
+	if a.priceView == nil || msg.gen != a.priceView.chartDebounceGen || a.listCursorSecurityID() != msg.secID {
+		return nil
+	}
+	if a.priceView.historyCache != nil {
+		if _, ok := a.priceView.historyCache.Lookup(msg.secID); ok {
+			a.priceView.chartDisplayedID = msg.secID
+			return nil
+		}
+	}
+	return a.fetchPriceChartHistory(msg.secID)
+}
+
+// applyPriceChartHistory caches a fetched series and shows it.
+func (a *App) applyPriceChartHistory(msg priceChartHistoryLoadedMsg) {
+	if a.priceView == nil {
+		return
+	}
+	if a.priceView.historyCache != nil {
+		a.priceView.historyCache.Put(msg.secID, msg.prices)
+	}
+	a.priceView.chartDisplayedID = msg.secID
+}
+
+// afterPriceChange notes the change, drops the affected security's cached
+// chart history, and reloads the price view in whichever mode it is in. Every
+// price CRUD result ends this way; only the note differs.
+func (a *App) afterPriceChange(note string) tea.Cmd {
+	a.statusbar.AddNotification(note, widget.NotificationInfo)
+	a.evictSelectedSecurityFromHistoryCache()
+	return a.reloadPriceViewKeepingMode()
+}
+
+// applyPriceRefreshResult ends a bulk refresh. The in-progress notification
+// and the re-entry guard are retired whatever the outcome, so the `u` shortcut
+// becomes responsive again.
+//
+// A bulk refresh can silently change any subset of tickers' prices and the
+// result does not enumerate which (PC-016), so every chart-history entry is
+// dropped rather than evicted one by one.
+func (a *App) applyPriceRefreshResult(msg priceRefreshCompleteMsg) tea.Cmd {
+	a.statusbar.RemoveNotification(a.refreshNotifID)
+	a.refreshNotifID = 0
+	a.refreshingPrices = false
+	if msg.err != nil {
+		a.err = msg.err
+		return nil
+	}
+	a.statusbar.AddNotification(summarizeRefreshResult(msg.result), widget.NotificationInfo)
+	a.invalidatePriceHistoryCache()
+	// Re-load any data views that may now be stale.
+	var cmds []tea.Cmd
+	if a.currentView == ViewSecurities {
+		cmds = append(cmds, a.loadSecurityViewData())
+	}
+	if a.currentView == ViewPrices {
+		cmds = append(cmds, a.loadPriceViewData())
+	}
+	return tea.Batch(cmds...)
+}

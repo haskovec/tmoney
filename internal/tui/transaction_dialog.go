@@ -413,6 +413,16 @@ type txnSurface struct {
 
 func (s *txnSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData builds the form over the loaded payees and categories. selected is
+// the sidebar's account, which decides whether the Value Adjustment category is
+// offered; stickyDate seeds the Date field.
+func (s *txnSurface) applyData(data *transactionDialogData, selected *account.Account, stickyDate types.Date) {
+	s.data = data
+	categoryOptions, categoryIDs := buildCategoryOptionsForAccount(data.categories, selected)
+	s.categoryIDs = categoryIDs
+	s.dlg = buildTransactionDialog(data, categoryOptions, categoryIDs, stickyDate)
+}
+
 // closeTransactionDialog clears the transaction dialog state.
 func (a *App) closeTransactionDialog() {
 	a.txn = txnSurface{}

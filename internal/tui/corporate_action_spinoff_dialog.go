@@ -104,6 +104,18 @@ type spinOffSurface struct {
 
 func (s *spinOffSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds the form over them,
+// seeding the Date field from the session sticky date. The one-shot
+// preSelectedID set by the opener is consumed here.
+func (s *spinOffSurface) applyData(data *spinOffDialogData, stickyDate types.Date) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.dlg = buildSpinOffDialog(secOptions, secIDs, s.preSelectedID)
+	s.dlg.SeedDateField(stickyDate)
+	s.preSelectedID = nil
+}
+
 // closeSpinOffDialog clears the spin-off dialog state.
 func (a *App) closeSpinOffDialog() {
 	a.spinOff = spinOffSurface{}

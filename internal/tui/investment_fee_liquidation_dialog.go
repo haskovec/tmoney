@@ -126,6 +126,19 @@ type feeLiquidationSurface struct {
 
 func (s *feeLiquidationSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds the form over them. See
+// buySurface.applyData for what the seed supplies in each mode.
+func (s *feeLiquidationSurface) applyData(data *feeLiquidationDialogData, seed investmentDialogSeed) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	s.dlg = buildFeeLiquidationDialog(secOptions, seed.editTxn, secIDs)
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
 // closeFeeLiquidationDialog clears the fee-liquidation dialog state.
 func (a *App) closeFeeLiquidationDialog() {
 	a.feeLiquidation = feeLiquidationSurface{}

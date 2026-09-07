@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -484,5 +485,34 @@ func TestCashOperationType_AllTypes(t *testing.T) {
 		if cmd == nil {
 			t.Errorf("should return command for type %s", txnType)
 		}
+	}
+}
+
+// The dialog closes before the async save runs, so the status-bar note must
+// travel on the message. Reading opType in the saved arm named every deposit,
+// withdrawal, fee and interest "Cash operation transaction saved".
+func TestCashOperationSavedMsg_NoteNamesTheOperation(t *testing.T) {
+	tests := []struct {
+		opType investment.TransactionType
+		want   string
+	}{
+		{investment.TransactionTypeDeposit, "Deposit transaction saved"},
+		{investment.TransactionTypeWithdrawal, "Withdrawal transaction saved"},
+		{investment.TransactionTypeFee, "Fee transaction saved"},
+		{investment.TransactionTypeInterest, "Interest transaction saved"},
+		{"", "Cash operation transaction saved"},
+	}
+	for _, tt := range tests {
+		if got := cashOperationSavedNote(tt.opType); got != tt.want {
+			t.Errorf("cashOperationSavedNote(%q) = %q, want %q", tt.opType, got, tt.want)
+		}
+	}
+
+	// The arm must take the note off the message, not off the closed surface.
+	app := &App{statusbar: widget.NewStatusBar()}
+	app.Update(cashOperationDialogSavedMsg{note: "Deposit transaction saved"})
+	notes := app.statusbar.Notifications()
+	if len(notes) != 1 || notes[0].Text != "Deposit transaction saved" {
+		t.Errorf("status bar = %+v, want one \"Deposit transaction saved\"", notes)
 	}
 }

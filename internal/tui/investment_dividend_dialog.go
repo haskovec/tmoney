@@ -29,6 +29,10 @@ type dividendDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the investment register
 	// can move the cursor onto its row after reload.
 	savedID types.ID
+	// note is the status-bar text. The two submit paths each know their own
+	// variant; the surface's reinvest flag is already cleared by the time
+	// this message arrives, so it cannot be consulted then.
+	note string
 }
 
 // buildDividendDialog creates a dialog.Dialog for entering a cash dividend transaction.
@@ -174,6 +178,24 @@ type dividendSurface struct {
 
 func (s *dividendSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// applyData installs the loaded securities and builds whichever of the two
+// forms the open variant asked for. reinvest is set by the opener, before the
+// securities arrive, so it is read here rather than passed in.
+func (s *dividendSurface) applyData(data *dividendDialogData, seed investmentDialogSeed) {
+	s.data = data
+	secOptions, secIDs := buildSecurityOptions(data.securities)
+	s.securityIDs = secIDs
+	if s.reinvest {
+		s.dlg = buildReinvestDividendDialog(secOptions, seed.editTxn, secIDs)
+	} else {
+		s.dlg = buildDividendDialog(secOptions, seed.editTxn, secIDs)
+	}
+	if seed.editTxn == nil {
+		s.dlg.SeedDateField(seed.stickyDate)
+		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)
+	}
+}
+
 // closeDividendDialog clears the dividend dialog state.
 func (a *App) closeDividendDialog() {
 	a.dividend = dividendSurface{}
@@ -294,7 +316,7 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Dividend transaction saved"}
 	}
 }
 
@@ -415,6 +437,6 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save reinvest dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Reinvest dividend transaction saved"}
 	}
 }
