@@ -701,18 +701,21 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.priceView.searchQuery = ""
 	case key.Matches(msg, a.keys.New):
 		if a.priceView.selectedSecurity != nil {
-			a.priceDialog = buildAddPriceDialog(a.priceView.selectedSecurity)
-			a.priceDialogMode = priceDialogModeAdd
-			a.priceDialog.SetVisible(true)
+			d := buildAddPriceDialog(a.priceView.selectedSecurity)
+			d.SetVisible(true)
+			a.price = &priceSurface{modalSurface: modalSurface{dlg: d}, mode: priceDialogModeAdd}
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
 		p := a.selectedPrice()
 		if p != nil && a.priceView.selectedSecurity != nil {
-			a.priceDialog = buildEditPriceDialog(a.priceView.selectedSecurity, p)
-			a.priceDialogMode = priceDialogModeEdit
-			a.priceDialogEditID = p.ID
-			a.priceDialog.SetVisible(true)
+			d := buildEditPriceDialog(a.priceView.selectedSecurity, p)
+			d.SetVisible(true)
+			a.price = &priceSurface{
+				modalSurface: modalSurface{dlg: d},
+				mode:         priceDialogModeEdit,
+				editID:       p.ID,
+			}
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Delete):
@@ -803,6 +806,18 @@ func (a *App) handlePriceSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // Price dialog types and builders
 
+// priceSurface is the Price add/edit dialog's state. mode selects add vs edit;
+// editID is meaningful only when mode is priceDialogModeEdit.
+type priceSurface struct {
+	modalSurface
+	mode   priceDialogMode
+	editID types.ID
+}
+
+// IsVisible must be declared here rather than promoted from modalSurface — see
+// the note on modalSurface.
+func (s *priceSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 type priceDialogMode int
 
 const (
@@ -857,15 +872,14 @@ func buildEditPriceDialog(sec *security.Security, p *price.Price) *dialog.Dialog
 
 // handlePriceDialogKey handles key presses in the price add/edit dialog.
 func (a *App) handlePriceDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	return a.priceDialogAction(a.priceDialog.HandleKey(msg))
+	return a.priceDialogAction(a.price.dlg.HandleKey(msg))
 }
 
 // priceDialogAction dispatches a DialogAction for the price dialog, from either input path.
 func (a *App) priceDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case dialog.DialogActionCancel:
-		a.priceDialog.SetVisible(false)
-		a.priceDialog = nil
+		a.price = nil
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitPriceDialog()
@@ -886,14 +900,14 @@ type priceLookupResultMsg struct {
 // startPriceLookup reads the dialog's current date + selected security and
 // kicks off an async provider fetch to fill the Price field.
 func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
-	if a.priceDialog == nil || a.priceView.selectedSecurity == nil {
+	if a.price == nil || a.priceView.selectedSecurity == nil {
 		return a, nil
 	}
-	fields := a.priceDialog.Fields()
+	fields := a.price.dlg.Fields()
 	if len(fields) < 2 {
 		return a, nil
 	}
-	a.priceDialog.SetErrorMsg("")
+	a.price.dlg.SetErrorMsg("")
 	return a, a.lookupPriceCmd(a.priceView.selectedSecurity.Ticker, strings.TrimSpace(fields[0].Value))
 }
 
@@ -923,14 +937,14 @@ func (a *App) lookupPriceCmd(ticker, dateStr string) tea.Cmd {
 // handlePriceLookupResult fills the Price (and resolved Date) fields from a
 // completed lookup, or surfaces the error on the still-open dialog.
 func (a *App) handlePriceLookupResult(msg priceLookupResultMsg) (tea.Model, tea.Cmd) {
-	if a.priceDialog == nil {
+	if a.price == nil {
 		return a, nil
 	}
 	if msg.err != nil {
-		a.priceDialog.SetErrorMsg("Lookup failed: " + msg.err.Error())
+		a.price.dlg.SetErrorMsg("Lookup failed: " + msg.err.Error())
 		return a, nil
 	}
-	fields := a.priceDialog.Fields()
+	fields := a.price.dlg.Fields()
 	if len(fields) >= 2 {
 		// fields[0] is a masked FieldDate: it overwrites digits from the
 		// first one, so its cursor must stay at 0 — no prefillField here.
@@ -946,43 +960,42 @@ func (a *App) handlePriceLookupResult(msg priceLookupResultMsg) (tea.Model, tea.
 
 // submitPriceDialog processes the price dialog submission.
 func (a *App) submitPriceDialog() (tea.Model, tea.Cmd) {
-	fields := a.priceDialog.Fields()
+	fields := a.price.dlg.Fields()
 
 	dateStr := strings.TrimSpace(fields[0].Value)
 	priceStr := strings.TrimSpace(fields[1].Value)
 
 	if dateStr == "" {
-		a.priceDialog.SetErrorMsg("Date is required.")
+		a.price.dlg.SetErrorMsg("Date is required.")
 		return a, nil
 	}
 	if priceStr == "" {
-		a.priceDialog.SetErrorMsg("Price is required.")
+		a.price.dlg.SetErrorMsg("Price is required.")
 		return a, nil
 	}
 
 	date, err := types.ParseDate(dateStr)
 	if err != nil {
-		a.priceDialog.SetErrorMsg("Invalid date format. Use YYYY-MM-DD.")
+		a.price.dlg.SetErrorMsg("Invalid date format. Use YYYY-MM-DD.")
 		return a, nil
 	}
 
 	amount, err := types.NewMoney(priceStr)
 	if err != nil {
-		a.priceDialog.SetErrorMsg("Invalid price value.")
+		a.price.dlg.SetErrorMsg("Invalid price value.")
 		return a, nil
 	}
 
 	if amount.IsZero() || !amount.IsPositive() {
-		a.priceDialog.SetErrorMsg("Price must be positive.")
+		a.price.dlg.SetErrorMsg("Price must be positive.")
 		return a, nil
 	}
 
 	secID := a.priceView.selectedSecurity.ID
-	mode := a.priceDialogMode
-	editID := a.priceDialogEditID
+	mode := a.price.mode
+	editID := a.price.editID
 
-	a.priceDialog.SetVisible(false)
-	a.priceDialog = nil
+	a.price = nil
 
 	if mode == priceDialogModeAdd {
 		return a, a.createPrice(secID, date, amount)

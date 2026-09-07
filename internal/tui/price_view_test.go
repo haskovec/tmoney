@@ -248,11 +248,11 @@ func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	app.handlePriceViewKeys(nKey)
 
-	if app.priceDialog == nil {
+	if app.price == nil {
 		t.Error("priceDialog should be set after pressing 'n'")
 	}
-	if app.priceDialogMode != priceDialogModeAdd {
-		t.Errorf("priceDialogMode = %d, want %d (add)", app.priceDialogMode, priceDialogModeAdd)
+	if app.price.mode != priceDialogModeAdd {
+		t.Errorf("priceDialogMode = %d, want %d (add)", app.price.mode, priceDialogModeAdd)
 	}
 }
 
@@ -280,11 +280,11 @@ func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	app.handlePriceViewKeys(enterKey)
 
-	if app.priceDialog == nil {
+	if app.price == nil {
 		t.Error("priceDialog should be set after pressing Enter")
 	}
-	if app.priceDialogMode != priceDialogModeEdit {
-		t.Errorf("priceDialogMode = %d, want %d (edit)", app.priceDialogMode, priceDialogModeEdit)
+	if app.price.mode != priceDialogModeEdit {
+		t.Errorf("priceDialogMode = %d, want %d (edit)", app.price.mode, priceDialogModeEdit)
 	}
 }
 

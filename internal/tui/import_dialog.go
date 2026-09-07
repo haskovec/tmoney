@@ -246,19 +246,29 @@ type importDialogOpenMsg struct {
 	defaultAccountID types.ID
 }
 
+// importSurface is the import workflow's state. One dialog handle serves all
+// three steps; state carries the parse and preview results between them.
+type importSurface struct {
+	modalSurface
+	state *importDialogState
+}
+
+// IsVisible must be declared here rather than promoted from modalSurface — see
+// the note on modalSurface.
+func (s *importSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
 // closeImportDialog clears the import dialog state.
 func (a *App) closeImportDialog() {
-	a.importDialog = nil
-	a.importDialogState = nil
+	a.importer = nil
 }
 
 // handleImportDialogKey routes keys to the import dialog and dispatches
 // the appropriate submit handler based on which step the dialog is on.
 func (a *App) handleImportDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.importDialog == nil {
+	if a.importer == nil {
 		return a, nil
 	}
-	return a.importDialogAction(a.importDialog.HandleKey(msg))
+	return a.importDialogAction(a.importer.dlg.HandleKey(msg))
 }
 
 // importDialogAction dispatches a DialogAction for the import dialog, from either input path.
@@ -276,10 +286,10 @@ func (a *App) importDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd
 // submitImportDialog dispatches the right submit handler based on the
 // current step of the import workflow.
 func (a *App) submitImportDialog() (tea.Model, tea.Cmd) {
-	if a.importDialogState == nil {
+	if a.importer.state == nil {
 		return a, nil
 	}
-	switch a.importDialogState.step {
+	switch a.importer.state.step {
 	case importStepOptions:
 		return a.submitImportOptions()
 	case importStepSourcePicker:
@@ -293,8 +303,8 @@ func (a *App) submitImportDialog() (tea.Model, tea.Cmd) {
 // submitImportSourcePicker captures the user's source-account choice and
 // re-runs the preview filtered to that account.
 func (a *App) submitImportSourcePicker() (tea.Model, tea.Cmd) {
-	state := a.importDialogState
-	d := a.importDialog
+	state := a.importer.state
+	d := a.importer.dlg
 	if state == nil || d == nil {
 		return a, nil
 	}
@@ -314,8 +324,8 @@ func (a *App) submitImportSourcePicker() (tea.Model, tea.Cmd) {
 // submitImportOptions validates the options dialog inputs, captures them
 // onto importDialogState, and kicks off the preview command.
 func (a *App) submitImportOptions() (tea.Model, tea.Cmd) {
-	d := a.importDialog
-	state := a.importDialogState
+	d := a.importer.dlg
+	state := a.importer.state
 	d.ClearErrors()
 
 	fields := d.Fields()
@@ -409,7 +419,7 @@ func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 // submitImportConfirm executes the import after the user has reviewed the
 // preview summary.
 func (a *App) submitImportConfirm() (tea.Model, tea.Cmd) {
-	state := a.importDialogState
+	state := a.importer.state
 	if state == nil || state.preview == nil {
 		a.closeImportDialog()
 		return a, nil

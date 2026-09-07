@@ -61,6 +61,9 @@ func cancelDialogOf(m Modal) *dialog.Dialog {
 		return s
 	case *SchedulePreviewDialog:
 		return s.HeaderDialog()
+	case interface{ Dialog() *dialog.Dialog }:
+		// A per-surface state struct (modalSurface embedder).
+		return s.Dialog()
 	}
 	return nil
 }
