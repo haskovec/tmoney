@@ -115,16 +115,15 @@ func TestApp_SubmitTransferDialog_InvToInvRejectsCategory(t *testing.T) {
 	fields[3].Value = "01/15/2024"
 	fields[5].SelectedIndex = 1 // Category = Bills
 
-	model, cmd := app.submitTransferDialog()
-	updated := model.(*App)
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("expected nil cmd: a categorized inv↔inv transfer must be refused")
 	}
-	if updated.transfer.dlg == nil {
+	if app.transfer.dlg == nil {
 		t.Fatal("dialog should stay open on the validation error")
 	}
-	if updated.transfer.dlg.Fields()[5].Error == "" {
+	if app.transfer.dlg.Fields()[5].Error == "" {
 		t.Error("Category field should carry the inv↔inv limitation error")
 	}
 }
@@ -161,7 +160,7 @@ func TestApp_SubmitTransferDialog_InvToInvAllowsNoCategory(t *testing.T) {
 	fields[3].Value = "01/15/2024"
 	fields[5].SelectedIndex = 0 // (None)
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 	if cmd == nil {
 		t.Fatal("an uncategorized inv↔inv transfer should submit (non-nil cmd)")
 	}

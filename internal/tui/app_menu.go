@@ -194,7 +194,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 				a.statusbar.AddNotification("Account is closed — reopen to add transfers", widget.NotificationAlert)
 				return a, nil
 			}
-			return a, a.loadTransferDialogData()
+			return a, a.transfer.open(a.transferDeps())
 		}
 
 	case widget.MenuActionLinkTransfers:
