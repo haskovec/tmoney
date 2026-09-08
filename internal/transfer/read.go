@@ -180,8 +180,8 @@ func malformed(transferID types.ID, legs []Leg) error {
 // Resolve loads the whole transfer from ANY leg's row ID, reading both ledgers.
 //
 // It replaces cli/transfer/resolve.go in its entirety and the cross-table
-// halves of both TUI edit loaders. It is also a bug fix for the TUI: today
-// loadEditTransferDialogData decides which service to call by scanning the
+// halves of both TUI edit loaders. It is also a bug fix for the TUI: the older
+// of those loaders decided which service to call by scanning the
 // dialog's loaded account list, which comes from accountSvc.List(true) —
 // ACTIVE ONLY — and accountTypeByID returns "" for a missing account, which
 // reads as non-investment. So an inv↔reg transfer whose investment counterpart

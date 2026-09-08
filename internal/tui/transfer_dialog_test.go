@@ -50,7 +50,7 @@ func TestAccountTypeByID_NotFound(t *testing.T) {
 	}
 }
 
-// TestApp_SubmitTransferDialog_DispatchesInvToInv exercises submitTransferDialog
+// TestApp_SubmitTransferDialog_DispatchesInvToInv exercises transferSurface.submit
 // with two investment accounts in the dialog data and asserts the dialog
 // closes and a cmd is produced. The actual undo command construction lives
 // inside the returned closure, so we only verify the synchronous path here;
@@ -85,13 +85,12 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd == nil {
 		t.Fatal("inv↔inv transfer should return a non-nil cmd")
 	}
-	if updatedApp.transfer.dlg != nil {
+	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -125,13 +124,12 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd == nil {
 		t.Fatal("inv→reg transfer should return a non-nil cmd")
 	}
-	if updatedApp.transfer.dlg != nil {
+	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -165,13 +163,12 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd == nil {
 		t.Fatal("reg→inv transfer should return a non-nil cmd")
 	}
-	if updatedApp.transfer.dlg != nil {
+	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be closed after a valid submit")
 	}
 }
@@ -524,7 +521,7 @@ func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
 	}
@@ -760,7 +757,7 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 			accountIDs: []types.ID{accountID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("same-account transfer should not return a cmd")
@@ -802,7 +799,7 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("negative amount transfer should not return a cmd")
@@ -844,7 +841,7 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("invalid date transfer should not return a cmd")
@@ -883,7 +880,7 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("empty amount transfer should not return a cmd")
@@ -922,8 +919,7 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	model, cmd := app.submitTransferDialog()
-	updatedApp := model.(*App)
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	// Should return a cmd (async save)
 	if cmd == nil {
@@ -931,16 +927,16 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 	}
 
 	// dialog.Dialog should be closed
-	if updatedApp.transfer.dlg != nil {
+	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be nil after submit")
 	}
-	if updatedApp.transfer.data != nil {
+	if app.transfer.data != nil {
 		t.Error("transfer dialog data should be nil after submit")
 	}
 
 	// No immediate error
-	if updatedApp.err != nil {
-		t.Errorf("unexpected error: %v", updatedApp.err)
+	if app.err != nil {
+		t.Errorf("unexpected error: %v", app.err)
 	}
 }
 
@@ -956,7 +952,7 @@ func TestApp_CloseTransferDialog(t *testing.T) {
 			accountIDs: []types.ID{types.NewID()}},
 	}
 
-	app.closeTransferDialog()
+	app.transfer.close()
 
 	if app.transfer.dlg != nil {
 		t.Error("transfer dialog should be nil after close")
@@ -1084,7 +1080,7 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 			accountIDs: []types.ID{fromID, toID}},
 	}
 
-	_, cmd := app.submitTransferDialog()
+	cmd := app.transfer.submit(app.transferDeps(), app.currentRegisterAccountID())
 
 	if cmd != nil {
 		t.Error("zero amount transfer should not return a cmd")

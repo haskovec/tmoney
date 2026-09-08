@@ -1007,9 +1007,9 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 		return a, nil
 	case investment.TransactionTypeTransferCash:
 		if a.investmentEditTxnID != types.NilID {
-			return a, a.loadEditInvestmentTransferDialogData(a.investmentEditTxnID)
+			return a, a.transfer.openForEdit(a.transferDeps(), a.investmentEditTxnID)
 		}
-		return a, a.loadTransferDialogData()
+		return a, a.transfer.open(a.transferDeps())
 	case investment.TransactionTypeTransferShares:
 		return a, a.loadTransferSharesDialogData()
 	}

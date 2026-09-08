@@ -222,136 +222,33 @@ func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
 	return 0
 }
 
-// transferCategoryFieldIndex returns the dialog-field index of the Category
-// combo for the currently open transfer dialog, or -1 when the dialog has no
-// Category field. Create mode lays out From, To, Amount, Date, Memo, Category
-// (index 5); the edit modes that carry a category lay out
-// Amount, Date, Memo, Category, Status (index 3); an inv↔inv edit omits the
-// combo entirely, so it reports -1 rather than pointing at the Status radio.
-func (a *App) transferCategoryFieldIndex() int {
-	if a.transfer.data != nil && a.transfer.data.mode == transferDialogModeEdit {
-		if !editTransferIncludesCategory(a.transfer.data) {
-			return -1
-		}
-		return 3
-	}
-	return 5
-}
-
-// loadTransferDialogData returns a command that loads accounts for the transfer dialog.
-func (a *App) loadTransferDialogData() tea.Cmd {
-	return func() tea.Msg {
-		data := &transferDialogData{}
-
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.accounts = accounts
-		}
-
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.categories = categories
-		}
-
-		_, ids := buildAccountOptions(data.accounts)
-		data.accountIDs = ids
-
-		return transferDialogDataMsg{data: data}
-	}
-}
-
-// loadEditTransferDialogData returns a command that loads accounts and the
-// existing transfer pair (resolved from any one transaction ID belonging to
-// the pair), then emits a transferDialogDataMsg in edit mode so the
-// transfer dialog opens pre-filled for editing.
+// transferDeps is what the transfer surface needs from outside itself. Two
+// constraints shape it, and both are live:
 //
-// When the bank-side row's counterpart lives in the investment ledger (i.e.
-// the user opened the regular-side leg of an inv↔reg transfer in a bank
-// register), the loader builds an existingInvestment payload instead, so
-// the unified dialog's edit submit routes through the investment service.
-func (a *App) loadEditTransferDialogData(transactionID types.ID) tea.Cmd {
-	return a.loadEditTransferFromAnyLeg(transactionID)
+//   - Every dep is a func, because switchDatabase re-points App's service
+//     fields and closes the previous *db.DB. A closure re-reads the field at
+//     call time; a captured pointer would be a use-after-close.
+//   - Deps are passed to each call and never stored on the surface, because
+//     close() resets the surface to its zero value and would zero them.
+//
+// Both are pinned by tests: TestTransferDeps_FollowADatabaseSwitch and
+// TestGuard_NoSurfaceStructHoldsItsDeps.
+type transferDeps struct {
+	accounts   func() *account.Service
+	categories func() *category.Service
+	transfers  func() *transfer.Service
+	undo       func() *undo.Manager
 }
 
-// loadEditInvestmentTransferDialogData loads the transfer anchored at an
-// investment-ledger row. It is the same operation as
-// loadEditTransferDialogData — transfer.Resolve does not care which table the
-// named leg lives in — and both entry points are kept only because the two
-// registers call them by different names.
-func (a *App) loadEditInvestmentTransferDialogData(invTxnID types.ID) tea.Cmd {
-	return a.loadEditTransferFromAnyLeg(invTxnID)
-}
-
-// loadEditTransferFromAnyLeg loads accounts and categories for the dialog, then
-// resolves the whole transfer that legRowID belongs to and emits a
-// transferDialogDataMsg in edit mode.
-//
-// This replaces the two hand-rolled cross-table loaders (94 + 81 lines) that
-// each probed one table, guessed the counterpart's ledger from the dialog's
-// loaded account list, and hunted the counterpart leg by scanning the target
-// account's whole transaction history. Both are now one transfer.Resolve call.
-//
-// It also fixes a real bug in the process. The old bank-side loader decided
-// which ledger the counterpart lived in via accountTypeByID(data.accounts, ...),
-// and data.accounts comes from accountSvc.List(true) — ACTIVE ONLY. accountTypeByID
-// returns "" for an account it cannot find, which reads as non-investment, so an
-// inv↔reg transfer whose investment counterpart had been closed was misrouted to
-// GetTransferPair and failed. transfer.Resolve reads account rows directly.
-func (a *App) loadEditTransferFromAnyLeg(legRowID types.ID) tea.Cmd {
-	return func() tea.Msg {
-		data := &transferDialogData{mode: transferDialogModeEdit}
-
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.accounts = accounts
-		}
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.categories = categories
-		}
-		_, ids := buildAccountOptions(data.accounts)
-		data.accountIDs = ids
-
-		if a.transferSvc == nil {
-			return transferDialogDataMsg{data: data}
-		}
-
-		t, err := a.transferSvc.Resolve(legRowID)
-		if err != nil {
-			return errMsg{err: err}
-		}
-
-		// A transfer LINE inside a multi-line split is owned by the parent
-		// transaction's split lifecycle. Refuse it here rather than editing it
-		// as a standalone transfer: doing that on the investment side deletes
-		// both legs and recreates them under a brand-new transfer_id, which
-		// permanently orphans the split line AND mints a second regular-side
-		// leg in the bank account.
-		if t.Shape == transfer.ShapeSplitLine {
-			return errMsg{err: fmt.Errorf(
-				"this transfer is a line inside a multi-line split; edit it from the parent transaction's splits (parent %s)",
-				t.ParentTransactionID.String(),
-			)}
-		}
-		// Share transfers are owned by the investment share-transfer dialog.
-		if t.Movement == transfer.MovementShares {
-			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog")}
-		}
-
-		data.existing = t
-		return transferDialogDataMsg{data: data}
+// transferDeps binds the transfer surface to the services App owns. Every
+// accessor may legitimately return nil — an App built by a test has no services
+// — so each caller keeps its own nil guard.
+func (a *App) transferDeps() transferDeps {
+	return transferDeps{
+		accounts:   func() *account.Service { return a.accountSvc },
+		categories: func() *category.Service { return a.categorySvc },
+		transfers:  func() *transfer.Service { return a.transferSvc },
+		undo:       func() *undo.Manager { return a.undoManager },
 	}
 }
 
@@ -382,7 +279,7 @@ func transferAccountNames(data *transferDialogData) (fromName, toName string) {
 }
 
 // transferSurface is the Transfer dialog together with the form state that
-// belongs to it. Its zero value is closed; closeTransferDialog resets it to that.
+// belongs to it. Its zero value is closed; close() resets it to that.
 type transferSurface struct {
 	modalSurface
 	data        *transferDialogData
@@ -433,140 +330,182 @@ func (s *transferSurface) applyData(data *transferDialogData, selectedAccountID 
 	s.dlg.SeedDateField(stickyDate)
 }
 
-// closeTransferDialog clears the transfer dialog state.
-func (a *App) closeTransferDialog() {
-	a.transfer = transferSurface{}
-}
-
-// handleTransferDialogKey routes key events to the transfer dialog.
-func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.transfer.dlg == nil {
-		return a, nil
-	}
-	return a.transferDialogAction(a.transfer.dlg.HandleKey(msg))
-}
-
-// transferDialogAction dispatches a DialogAction for the transfer dialog, from either input path.
-func (a *App) transferDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
-	switch action {
-	case dialog.DialogActionSubmit:
-		return a.submitTransferDialog()
-	case dialog.DialogActionCancel:
-		a.closeTransferDialog()
-		return a, nil
-	case dialog.DialogActionAddNew:
-		return a.openCreateCategorySubDialogForTransfer()
-	}
-
-	return a, nil
-}
-
-// openCreateCategorySubDialogForTransfer hides the transfer dialog and opens
-// the inline create-category sub-dialog seeded with the Category combo's
-// typed query. The transfer dialog is kept alive (hidden) so its field state
-// survives the divert; applyCreatedCategoryToTransfer re-shows it with the new
-// category selected. Transfers are labeled for spending tracking (credit-card
-// payments, loan principal), so the sub-dialog defaults to an Expense type —
-// unlike the amount-bearing surfaces, a transfer's amount is always a positive
-// magnitude and carries no income/expense signal.
-func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
-	if a.transfer.dlg == nil {
-		return a, nil
-	}
-	fields := a.transfer.dlg.Fields()
-	idx := a.transferCategoryFieldIndex()
-	if idx < 0 || idx >= len(fields) {
-		return a, nil
-	}
-	catField := fields[idx]
-	query := catField.Query
-	catField.AddNewTriggered = false
-	catField.Query = ""
-
-	var parents []string
-	if a.transfer.data != nil {
-		parents = topLevelParentNames(a.transfer.data.categories)
-	}
-	parent, name := splitCategoryQuery(query)
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
-	a.createCat.origin.surface = createCatSourceTransferDialog
-	a.transfer.dlg.SetVisible(false)
-	return a, nil
-}
-
-// applyCreatedCategoryToTransfer is the per-surface applier for the
-// create-category router when the originating surface was the Transfer dialog.
-// It reloads the dialog's category options with newCat pre-selected on the
-// Category combo and re-shows the transfer dialog. Persistence already happened
-// in persistCategory; the router passes the fresh category in.
-func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*category.Category) {
-	if a.transfer.data != nil {
-		a.transfer.data.categories = cats
-	}
-	options, ids := buildCategoryOptions(cats)
-	a.transfer.categoryIDs = ids
-
-	idx := a.transferCategoryFieldIndex()
-	if a.transfer.dlg != nil && idx >= 0 && idx < len(a.transfer.dlg.Fields()) {
-		catField := a.transfer.dlg.Fields()[idx]
-		catField.Options = options
-		newIdx := 0
-		for i, id := range ids {
-			if id == newCat.ID {
-				newIdx = i
-				break
-			}
+// categoryFieldIndex returns the dialog-field index of the Category combo for
+// the currently open transfer dialog, or -1 when the dialog has no Category
+// field. Create mode lays out From, To, Amount, Date, Memo, Category (index 5);
+// the edit modes that carry a category lay out
+// Amount, Date, Memo, Category, Status (index 3); an inv↔inv edit omits the
+// combo entirely, so it reports -1 rather than pointing at the Status radio.
+func (s *transferSurface) categoryFieldIndex() int {
+	if s.data != nil && s.data.mode == transferDialogModeEdit {
+		if !editTransferIncludesCategory(s.data) {
+			return -1
 		}
-		catField.SelectedIndex = newIdx
-		catField.ComboHighlight = newIdx
-		a.transfer.dlg.SetVisible(true)
+		return 3
 	}
-	a.createCat.dlg = nil
+	return 5
 }
 
-// submitTransferDialog parses dialog fields, validates, and saves the transfer.
-func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
-	if a.transfer.dlg == nil || a.transfer.data == nil {
-		return a, nil
+// open returns the command that loads the accounts and categories a new
+// transfer needs. The dialog is built when the resulting message reaches
+// applyData, so there is nothing to mutate before the data lands and the
+// receiver goes unread — open is a method because opening is the surface's
+// operation, not App's.
+func (s *transferSurface) open(deps transferDeps) tea.Cmd {
+	return func() tea.Msg {
+		data := &transferDialogData{}
+		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
+			return errMsg{err: err}
+		}
+		return transferDialogDataMsg{data: data}
+	}
+}
+
+// openForEdit returns the command that loads the dialog's accounts and
+// categories, resolves the whole transfer that legRowID belongs to, and emits a
+// transferDialogDataMsg in edit mode so the dialog opens pre-filled.
+//
+// Either leg's row id works — transfer.Resolve does not care which table the
+// named leg lives in — so the bank register and the investment register share
+// one entry point. They used to call two aliases of it under different names.
+//
+// This replaced the two hand-rolled cross-table loaders (94 + 81 lines) that
+// each probed one table, guessed the counterpart's ledger from the dialog's
+// loaded account list, and hunted the counterpart leg by scanning the target
+// account's whole transaction history. Both are now one transfer.Resolve call.
+//
+// It also fixed a real bug in the process. The old bank-side loader decided
+// which ledger the counterpart lived in via accountTypeByID(data.accounts, ...),
+// and data.accounts comes from accountSvc.List(true) — ACTIVE ONLY. accountTypeByID
+// returns "" for an account it cannot find, which reads as non-investment, so an
+// inv↔reg transfer whose investment counterpart had been closed was misrouted to
+// GetTransferPair and failed. transfer.Resolve reads account rows directly.
+func (s *transferSurface) openForEdit(deps transferDeps, legRowID types.ID) tea.Cmd {
+	return func() tea.Msg {
+		data := &transferDialogData{mode: transferDialogModeEdit}
+		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
+			return errMsg{err: err}
+		}
+
+		svc := deps.transfers()
+		if svc == nil {
+			return transferDialogDataMsg{data: data}
+		}
+
+		t, err := svc.Resolve(legRowID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+
+		// A transfer LINE inside a multi-line split is owned by the parent
+		// transaction's split lifecycle. Refuse it here rather than editing it
+		// as a standalone transfer: doing that on the investment side deletes
+		// both legs and recreates them under a brand-new transfer_id, which
+		// permanently orphans the split line AND mints a second regular-side
+		// leg in the bank account.
+		if t.Shape == transfer.ShapeSplitLine {
+			return errMsg{err: fmt.Errorf(
+				"this transfer is a line inside a multi-line split; edit it from the parent transaction's splits (parent %s)",
+				t.ParentTransactionID.String(),
+			)}
+		}
+		// Share transfers are owned by the investment share-transfer dialog.
+		if t.Movement == transfer.MovementShares {
+			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog")}
+		}
+
+		data.existing = t
+		return transferDialogDataMsg{data: data}
+	}
+}
+
+// loadTransferAccountsAndCategories fills the account and category halves of
+// data, which both open paths need identically. It runs on the command's own
+// goroutine, so it reaches every service through deps rather than holding one.
+func loadTransferAccountsAndCategories(deps transferDeps, data *transferDialogData) error {
+	if svc := deps.accounts(); svc != nil {
+		accounts, err := svc.List(true)
+		if err != nil {
+			return err
+		}
+		data.accounts = accounts
+	}
+	if svc := deps.categories(); svc != nil {
+		categories, err := svc.List()
+		if err != nil {
+			return err
+		}
+		data.categories = categories
+	}
+	_, ids := buildAccountOptions(data.accounts)
+	data.accountIDs = ids
+	return nil
+}
+
+// handleKey gives the dialog the key and reports what it wants done about it.
+// An unbuilt surface asks for nothing.
+func (s *transferSurface) handleKey(msg tea.KeyPressMsg) dialog.DialogAction {
+	if s.dlg == nil {
+		return dialog.DialogActionNone
+	}
+	return s.dlg.HandleKey(msg)
+}
+
+// close clears the surface. The zero value is the closed state, so this is the
+// whole of it — and it stays that way only because the deps are a call
+// parameter rather than a field.
+func (s *transferSurface) close() { *s = transferSurface{} }
+
+// submit parses the dialog fields, validates them, and returns the command that
+// saves the transfer. A nil command means validation failed: the dialog stays
+// open carrying its inline errors.
+//
+// currentAcct is the account whose register is on screen. The leg living there
+// should be selected after the save, so a freshly entered transfer scrolls into
+// view just like a plain transaction does. It arrives as a value because the
+// returned closure runs on another goroutine, where reading App would race.
+func (s *transferSurface) submit(deps transferDeps, currentAcct types.ID) tea.Cmd {
+	if s.dlg == nil || s.data == nil {
+		return nil
 	}
 
-	if a.transfer.data.mode == transferDialogModeEdit {
-		return a.submitEditTransferDialog()
+	if s.data.mode == transferDialogModeEdit {
+		return s.submitEdit(deps, currentAcct)
 	}
 
-	fields := a.transfer.dlg.Fields()
+	fields := s.dlg.Fields()
 	if len(fields) < 5 {
-		return a, nil
+		return nil
 	}
 
-	a.transfer.dlg.ClearErrors()
+	s.dlg.ClearErrors()
 	hasErrors := false
 
 	// From account
 	fromIdx := fields[0].SelectedIndex
-	if fromIdx < 0 || fromIdx >= len(a.transfer.accountIDs) {
+	if fromIdx < 0 || fromIdx >= len(s.accountIDs) {
 		fields[0].Error = "Please select a From account"
 		hasErrors = true
 	}
 	fromAccountID := types.NilID
-	if fromIdx >= 0 && fromIdx < len(a.transfer.accountIDs) {
-		fromAccountID = a.transfer.accountIDs[fromIdx]
+	if fromIdx >= 0 && fromIdx < len(s.accountIDs) {
+		fromAccountID = s.accountIDs[fromIdx]
 	}
 
 	// To account
 	toIdx := fields[1].SelectedIndex
-	if toIdx < 0 || toIdx >= len(a.transfer.accountIDs) {
+	if toIdx < 0 || toIdx >= len(s.accountIDs) {
 		fields[1].Error = "Please select a To account"
 		hasErrors = true
 	}
 	toAccountID := types.NilID
-	if toIdx >= 0 && toIdx < len(a.transfer.accountIDs) {
-		toAccountID = a.transfer.accountIDs[toIdx]
+	if toIdx >= 0 && toIdx < len(s.accountIDs) {
+		toAccountID = s.accountIDs[toIdx]
 	}
 
 	// Validate from != to
 	if !fromAccountID.IsNil() && !toAccountID.IsNil() && fromAccountID == toAccountID {
-		a.transfer.dlg.SetErrorMsg("From and To accounts must be different")
+		s.dlg.SetErrorMsg("From and To accounts must be different")
 		hasErrors = true
 	}
 
@@ -585,13 +524,13 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	if err != nil {
 		fields[3].Error = "Invalid date (MM/DD/YYYY)"
 		hasErrors = true
-	} else if msg := transferOpeningDateError(a.transfer.data.accounts, date, fromAccountID, toAccountID); msg != "" {
+	} else if msg := transferOpeningDateError(s.data.accounts, date, fromAccountID, toAccountID); msg != "" {
 		fields[3].Error = msg
 		hasErrors = true
 	}
 
 	if hasErrors {
-		return a, nil
+		return nil
 	}
 
 	// Memo
@@ -602,8 +541,8 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	var categoryID types.NullableID
 	const catFieldIdx = 5
 	if len(fields) > catFieldIdx {
-		if idx := fields[catFieldIdx].SelectedIndex; idx > 0 && idx < len(a.transfer.categoryIDs) {
-			categoryID = types.NullableID{ID: a.transfer.categoryIDs[idx], Valid: true}
+		if idx := fields[catFieldIdx].SelectedIndex; idx > 0 && idx < len(s.categoryIDs) {
+			categoryID = types.NullableID{ID: s.categoryIDs[idx], Valid: true}
 		}
 	}
 
@@ -617,22 +556,18 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// independently (*transfer.CategoryNotSupportedError); this is a fast path
 	// to a better-placed message, not the authority.
 	if categoryID.Valid && len(fields) > catFieldIdx {
-		fromType := accountTypeByID(a.transfer.data.accounts, fromAccountID)
-		toType := accountTypeByID(a.transfer.data.accounts, toAccountID)
+		fromType := accountTypeByID(s.data.accounts, fromAccountID)
+		toType := accountTypeByID(s.data.accounts, toAccountID)
 		if !transfer.ClassifyKind(fromType, toType).StoresCategory() {
 			fields[catFieldIdx].Error = "Categories aren't supported on investment-to-investment transfers"
-			return a, nil
+			return nil
 		}
 	}
 
-	// The leg living in the register the user is currently viewing should be
-	// selected after the save, so a freshly entered transfer scrolls into view
-	// just like a plain transaction does. Capture the account synchronously here
-	// (the closure runs on a separate goroutine).
-	currentAcct := a.currentRegisterAccountID()
-
-	// Close dialog before async save for responsive UI
-	a.closeTransferDialog()
+	// Close dialog before async save for responsive UI. Everything the save
+	// needs is already a local, so the closure never reads the surface it has
+	// just dropped.
+	s.close()
 
 	// No dispatch. One service call handles every (From, To) combination: the
 	// transfer service derives each leg's sign from its side and each leg's
@@ -644,15 +579,17 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 	// The inv↔inv category refusal that used to be re-implemented here is also
 	// gone: the domain returns *transfer.CategoryNotSupportedError, and the
 	// error surface below maps it back onto the Category field.
-	return a, func() tea.Msg {
-		if a.undoManager == nil {
+	return func() tea.Msg {
+		undoMgr := deps.undo()
+		if undoMgr == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-		if a.transferSvc == nil {
+		svc := deps.transfers()
+		if svc == nil {
 			return errMsg{err: fmt.Errorf("transfer service not available")}
 		}
 
-		cmd := undo.NewCreateTransferCommand(a.transferSvc, transfer.Spec{
+		cmd := undo.NewCreateTransferCommand(svc, transfer.Spec{
 			FromAccountID: fromAccountID,
 			ToAccountID:   toAccountID,
 			Date:          date,
@@ -660,7 +597,7 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 			Memo:          memo,
 			CategoryID:    categoryID,
 		})
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoMgr.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
 		}
 
@@ -684,14 +621,15 @@ func (a *App) submitTransferDialog() (tea.Model, tea.Cmd) {
 // leg's ledger rather than a bool, so the caller does not have to know which
 // result shape it was handed.
 
-// submitEditTransferDialog validates the edit-mode transfer dialog and applies
-// the edit. Edit-mode field layout is Amount(0), Date(1), Memo(2), [Category(3)],
-// Status(3|4). One path for every shape: the transfer service addresses the edit
-// by transfer_id and rewrites both legs in place, wherever they live.
-func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
-	existing := a.transfer.data.existing
+// submitEdit validates the edit-mode transfer dialog and returns the command
+// that applies the edit, or nil when validation failed. Edit-mode field layout
+// is Amount(0), Date(1), Memo(2), [Category(3)], Status(3|4). One path for every
+// shape: the transfer service addresses the edit by transfer_id and rewrites
+// both legs in place, wherever they live.
+func (s *transferSurface) submitEdit(deps transferDeps, currentAcct types.ID) tea.Cmd {
+	existing := s.data.existing
 	if existing == nil {
-		return a, nil
+		return nil
 	}
 
 	// Field layout depends on whether a Category combo is present. It is for
@@ -699,7 +637,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	//   Amount(0), Date(1), Memo(2), Category(3), Status(4)
 	// inv↔inv omits it:
 	//   Amount(0), Date(1), Memo(2), Status(3)
-	includeCategory := editTransferIncludesCategory(a.transfer.data)
+	includeCategory := editTransferIncludesCategory(s.data)
 	minFields := 4
 	statusIdx := 3
 	catIdx := -1
@@ -709,12 +647,12 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		statusIdx = 4
 	}
 
-	fields := a.transfer.dlg.Fields()
+	fields := s.dlg.Fields()
 	if len(fields) < minFields {
-		return a, nil
+		return nil
 	}
 
-	a.transfer.dlg.ClearErrors()
+	s.dlg.ClearErrors()
 	hasErrors := false
 
 	amount, err := parseAmountInput(fields[0].Value)
@@ -743,7 +681,7 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	}
 
 	if hasErrors {
-		return a, nil
+		return nil
 	}
 
 	memo := strings.TrimSpace(fields[2].Value)
@@ -753,8 +691,8 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	// both legs.
 	var categoryID types.NullableID
 	if catIdx >= 0 {
-		if idx := fields[catIdx].SelectedIndex; idx > 0 && idx < len(a.transfer.categoryIDs) {
-			categoryID = types.NullableID{ID: a.transfer.categoryIDs[idx], Valid: true}
+		if idx := fields[catIdx].SelectedIndex; idx > 0 && idx < len(s.categoryIDs) {
+			categoryID = types.NullableID{ID: s.categoryIDs[idx], Valid: true}
 		}
 	}
 
@@ -769,22 +707,23 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 	// to dispatch on.
 	transferID := existing.TransferID
 
-	currentAcct := a.currentRegisterAccountID()
-	a.closeTransferDialog()
+	s.close()
 
-	return a, func() tea.Msg {
-		if a.transferSvc == nil || a.undoManager == nil {
+	return func() tea.Msg {
+		svc := deps.transfers()
+		undoMgr := deps.undo()
+		if svc == nil || undoMgr == nil {
 			return errMsg{err: fmt.Errorf("transfer service not available")}
 		}
 
-		cmd := undo.NewEditTransferCommand(a.transferSvc, transferID, transfer.Edit{
+		cmd := undo.NewEditTransferCommand(svc, transferID, transfer.Edit{
 			Date:       date,
 			Amount:     amount,
 			Memo:       memo,
 			CategoryID: categoryID,
 			Status:     status,
 		})
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoMgr.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to update transfer: %w", err)}
 		}
 
@@ -803,6 +742,137 @@ func (a *App) submitEditTransferDialog() (tea.Model, tea.Cmd) {
 		}
 		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
 	}
+}
+
+// beginCreateCategory takes the Category combo's typed query off the field,
+// hides the dialog and reports the parent names the sub-dialog's combo should
+// offer. The dialog is kept alive (hidden) so its field state survives the
+// divert; applyCreatedCategory re-shows it with the new category selected.
+// It reports false when there is no Category field to divert from, in which
+// case nothing was hidden and the caller must not open the sub-dialog.
+func (s *transferSurface) beginCreateCategory() (query string, parents []string, ok bool) {
+	if s.dlg == nil {
+		return "", nil, false
+	}
+	fields := s.dlg.Fields()
+	idx := s.categoryFieldIndex()
+	if idx < 0 || idx >= len(fields) {
+		return "", nil, false
+	}
+	catField := fields[idx]
+	query = catField.Query
+	catField.AddNewTriggered = false
+	catField.Query = ""
+
+	parents, _ = s.parentCategoryNames()
+	s.dlg.SetVisible(false)
+	return query, parents, true
+}
+
+// parentCategoryNames is the top-level parent list drawn from the categories
+// this surface loaded, for the create-category sub-dialog's parent combo. ok is
+// false when the surface has loaded nothing, which is a different answer from
+// "loaded, and there are no parents": the router falls back to a live service
+// call only for the first one.
+func (s *transferSurface) parentCategoryNames() (names []string, ok bool) {
+	if s.data == nil {
+		return nil, false
+	}
+	return topLevelParentNames(s.data.categories), true
+}
+
+// applyCreatedCategory reloads the Category combo's options with newCat
+// selected and re-shows the dialog. Persistence already happened in
+// persistCategory; the router passes the fresh category in. The persist is
+// asynchronous, so a surface the user has closed in the meantime is left alone.
+func (s *transferSurface) applyCreatedCategory(newCat *category.Category, cats []*category.Category) {
+	if s.data != nil {
+		s.data.categories = cats
+	}
+	options, ids := buildCategoryOptions(cats)
+	s.categoryIDs = ids
+
+	idx := s.categoryFieldIndex()
+	if s.dlg == nil || idx < 0 || idx >= len(s.dlg.Fields()) {
+		return
+	}
+	catField := s.dlg.Fields()[idx]
+	catField.Options = options
+	newIdx := 0
+	for i, id := range ids {
+		if id == newCat.ID {
+			newIdx = i
+			break
+		}
+	}
+	catField.SelectedIndex = newIdx
+	catField.ComboHighlight = newIdx
+	s.dlg.SetVisible(true)
+}
+
+// reshow makes the dialog visible again after a create-category divert the user
+// cancelled. Nil-safe, because the divert can outlive the surface.
+func (s *transferSurface) reshow() {
+	if s.dlg != nil {
+		s.dlg.SetVisible(true)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// App glue. Everything below is a thin wrapper supplying the services, the
+// on-screen register account, and the divert into a sibling surface. No
+// behaviour lives here: an action the surface owns must not have a second
+// implementation on App.
+// -----------------------------------------------------------------------------
+
+// handleTransferDialogKey routes key events to the transfer dialog.
+func (a *App) handleTransferDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	return a.transferDialogAction(a.transfer.handleKey(msg))
+}
+
+// transferDialogAction dispatches a DialogAction for the transfer dialog, from
+// either input path.
+//
+// AddNew is the one arm that stays on App: it writes createCat, which is
+// another surface's state, and a surface must not reach into a sibling. That
+// is the whole of what this pilot could not move.
+func (a *App) transferDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	switch action {
+	case dialog.DialogActionSubmit:
+		return a, a.transfer.submit(a.transferDeps(), a.currentRegisterAccountID())
+	case dialog.DialogActionCancel:
+		a.transfer.close()
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogForTransfer()
+	}
+
+	return a, nil
+}
+
+// openCreateCategorySubDialogForTransfer opens the inline create-category
+// sub-dialog over the (now hidden) transfer dialog, seeded with the Category
+// combo's typed query. Transfers are labeled for spending tracking (credit-card
+// payments, loan principal), so the sub-dialog defaults to an Expense type —
+// unlike the amount-bearing surfaces, a transfer's amount is always a positive
+// magnitude and carries no income/expense signal.
+func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
+	query, parents, ok := a.transfer.beginCreateCategory()
+	if !ok {
+		return a, nil
+	}
+	parent, name := splitCategoryQuery(query)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.origin.surface = createCatSourceTransferDialog
+	return a, nil
+}
+
+// applyCreatedCategoryToTransfer is the per-surface applier for the
+// create-category router when the originating surface was the Transfer dialog.
+// The surface applies the category to its own field; App closes the sub-dialog,
+// which is its own state.
+func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*category.Category) {
+	a.transfer.applyCreatedCategory(newCat, cats)
+	a.createCat.dlg = nil
 }
 
 // afterTransferSave applies the state a saved transfer leaves behind: the
