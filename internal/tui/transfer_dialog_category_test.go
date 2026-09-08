@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -287,4 +289,86 @@ func newAppForTransferAddNew(t *testing.T, query string) *App {
 	cat.ComboHighlight = len(cat.FilteredIndices())
 	app.transfer.dlg = d
 	return app
+}
+
+// The Category-parent source is a three-way answer, and two of its arms were
+// unpinned: parentsForCreateCatDialog prefers the categories the transfer
+// surface already loaded, and falls back to a live categorySvc.List() only when
+// the surface has loaded NOTHING. "Loaded, and no top-level parents" is a real
+// answer of its own — topLevelParentNames returns nil for it — so collapsing
+// parentCategoryNames to a bare slice compiles, passes every guard, and
+// silently starts offering parents the open dialog does not know about.
+
+// TestParentsForCreateCatDialog_LoadedWithNoParentsDoesNotHitTheService: the
+// surface loaded a category list that happens to contain no top-level parent.
+// That is the surface's answer and it must stand, even though the service has a
+// parent to offer.
+func TestParentsForCreateCatDialog_LoadedWithNoParentsDoesNotHitTheService(t *testing.T) {
+	svc, seeded := newCategorySvcForParentTest(t)
+
+	// Only a subcategory: IsTopLevel() is false, so the surface's answer is nil.
+	child := category.NewSubcategory("Streaming", seeded.ID, category.TypeExpense)
+	app := &App{
+		categorySvc: svc,
+		createCat:   createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
+		transfer:    transferSurface{data: &transferDialogData{categories: []*category.Category{child}}},
+	}
+
+	if got := app.parentsForCreateCatDialog(); len(got) != 0 {
+		t.Errorf("parents = %v, want none: the surface has loaded its categories, so the "+
+			"live service must not be consulted", got)
+	}
+}
+
+// TestParentsForCreateCatDialog_UnloadedSurfaceFallsBackToTheService: no loaded
+// data at all is the other answer, and it must reach the service.
+func TestParentsForCreateCatDialog_UnloadedSurfaceFallsBackToTheService(t *testing.T) {
+	svc, seeded := newCategorySvcForParentTest(t)
+
+	app := &App{
+		categorySvc: svc,
+		createCat:   createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
+		transfer:    transferSurface{}, // data is nil: nothing loaded
+	}
+
+	got := app.parentsForCreateCatDialog()
+	if !slices.Contains(got, seeded.Name) {
+		t.Errorf("parents = %v, want it to contain %q from the live service: a surface "+
+			"that has loaded nothing must fall back", got, seeded.Name)
+	}
+}
+
+// TestTransferSurface_ParentCategoryNames_SeparatesEmptyFromUnloaded pins the
+// two answers at the source, so the distinction survives even if the router
+// above is rewritten.
+func TestTransferSurface_ParentCategoryNames_SeparatesEmptyFromUnloaded(t *testing.T) {
+	var unloaded transferSurface
+	if names, ok := unloaded.parentCategoryNames(); ok || names != nil {
+		t.Errorf("unloaded surface reported (%v, %v), want (nil, false)", names, ok)
+	}
+
+	loadedEmpty := transferSurface{data: &transferDialogData{}}
+	if names, ok := loadedEmpty.parentCategoryNames(); !ok || len(names) != 0 {
+		t.Errorf("surface loaded with no parents reported (%v, %v), want (empty, true)", names, ok)
+	}
+
+	bills := category.NewCategory("Bills", category.TypeExpense)
+	loaded := transferSurface{data: &transferDialogData{categories: []*category.Category{bills}}}
+	names, ok := loaded.parentCategoryNames()
+	if !ok || !slices.Contains(names, "Bills") {
+		t.Errorf("loaded surface reported (%v, %v), want Bills and true", names, ok)
+	}
+}
+
+// newCategorySvcForParentTest returns a real category service holding one
+// top-level parent, so a fallback to the service is observable.
+func newCategorySvcForParentTest(t *testing.T) (*category.Service, *category.Category) {
+	t.Helper()
+	database := dbtest.New(t)
+	svc := category.NewService(category.NewRepository(database), database)
+	parent := category.NewCategory("Utilities", category.TypeExpense)
+	if err := svc.Create(parent); err != nil {
+		t.Fatalf("create parent category: %v", err)
+	}
+	return svc, parent
 }

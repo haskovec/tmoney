@@ -1192,12 +1192,14 @@ the two answers into one nil would have changed behaviour silently.
 `openForEdit`. And the two loaders' identical 20-line preamble — accounts,
 categories, the parallel ID slice — is `loadTransferAccountsAndCategories` once.
 
-**Three guards, each mutation-verified rather than assumed**
-(`transfer_controller_guard_test.go`):
+**Four guards, each mutation-verified rather than assumed** — the first three
+in `transfer_controller_guard_test.go`, the fourth alongside the phase 3 surface
+guards:
 
 1. **No method on `*transferSurface` names `App`.** Parsed with `go/ast`, not
-   grepped, so `App` in a comment is not a hit. Verified by adding
-   `func (s *transferSurface) mutantProbe(a *App) {}` and watching it fail.
+   grepped, so `App` in a comment is not a hit. Walks **every** production file,
+   because Go lets a method live in any file of the package. Verified by adding
+   `func (s *transferSurface) mutantElsewhere(a *App) {}` to `app_menu.go`.
 2. **No production file reads a `transferSurface` field through `App`.** Both
    sides are mechanical: the field set comes from reflection over the struct
    (following the embedded `modalSurface`, so `dlg` counts), the reads come from
@@ -1206,13 +1208,35 @@ categories, the parallel ID slice — is `loadTransferAccountsAndCategories` onc
    still read `a.transfer.dlg` for its nil check.
 3. **Every dep is a func, and `App.transferDeps` populates all of them.** Plus
    `TestTransferDeps_FollowADatabaseSwitch`, which takes a deps struct, re-points
-   all four fields the way `switchDatabase` does, and asserts the deps see the
-   new services. That one is the behaviour; the guard is the shape.
+   all four fields the closures read, and asserts the deps see the new ones.
+   That one is the behaviour; the guard is the shape. Note that `switchDatabase`
+   re-points the three services and **not** `undoManager`, so the test proves
+   the closure re-reads its field — it does not claim undo follows a file switch.
+4. **No surface struct holds a dependency bag.** `close()` is
+   `*s = surface{}` for every surface, so a stored deps struct would be zeroed
+   and the next call through it would panic on a nil func. The rule is narrow by
+   necessity: `confirmSurface.action` is a single func field and is legitimate
+   per-open state that `close()` *should* clear, so the predicate rejects only a
+   struct whose **every** field is a func. Verified by adding
+   `deps transferDeps` to `transferSurface`.
 
 Test files are outside guard 2 deliberately, and saying so is the honest
 measure: §3 counts 2,084 `app.<unexported>` references across the 66 test files
 as the reason a package split is expensive, and phase 5 does not change that
 number. The production code no longer reaches in. The tests still do.
+
+**The PR review found no bugs and four places where a guard or a comment
+claimed more than it enforced.** That is the failure mode worth recording,
+because it is the one a green suite hides: guard 1 parsed a single file while
+advertising a package-wide rule; nothing stopped a later surface from storing
+its deps, which is the exact trap the `transferDeps` comment describes; and the
+`(names, ok)` split in `parentCategoryNames` was load-bearing with no test on
+either arm — collapsing it compiled, passed every guard, and would have started
+offering the create-category combo parents the open dialog does not know about.
+Three tests now pin that split, one of them at the signature so the collapse is
+a compile error. The lesson generalises to the surfaces after this one: **a
+guard that names an invariant it only partly checks is worse than no guard**,
+because the next reader trusts it.
 
 **What the pilot does not prove.** `transferSurface` still names `errMsg`,
 `parseAmountInput`, `parseDateInput`, `buildCategoryOptions`,

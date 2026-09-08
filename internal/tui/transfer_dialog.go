@@ -222,23 +222,17 @@ func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
 	return 0
 }
 
-// transferDeps is everything outside the surface that the transfer controller
-// needs, and every one of them is a FUNCTION rather than a captured pointer.
+// transferDeps is what the transfer surface needs from outside itself. Two
+// constraints shape it, and both are live:
 //
-// switchDatabase re-points App's service fields when the user opens another
-// file and closes the previous *db.DB (file_dialog.go), so a surface holding a
-// *transfer.Service would be a use-after-close — the class commit 6dede4d
-// fixed. A closure re-reads the field at call time, so it is correct by
-// construction and switchDatabase needs no new line.
+//   - Every dep is a func, because switchDatabase re-points App's service
+//     fields and closes the previous *db.DB. A closure re-reads the field at
+//     call time; a captured pointer would be a use-after-close.
+//   - Deps are passed to each call and never stored on the surface, because
+//     close() resets the surface to its zero value and would zero them.
 //
-// The deps travel as a call parameter and are never stored on the surface. A
-// surface's zero value is the closed state and close() resets it to exactly
-// that; a stored dep would have to survive that reset, and the first close that
-// forgot would leave a surface whose services had silently become nil.
-//
-// When review item 5 collapses App's service fields into one *app.Services,
-// each closure becomes `return a.services.Transfer` and no signature moves.
-// That is why the deps are closures rather than a struct of pointers.
+// Both are pinned by tests: TestTransferDeps_FollowADatabaseSwitch and
+// TestGuard_NoSurfaceStructHoldsItsDeps.
 type transferDeps struct {
 	accounts   func() *account.Service
 	categories func() *category.Service
@@ -449,8 +443,7 @@ func loadTransferAccountsAndCategories(deps transferDeps, data *transferDialogDa
 }
 
 // handleKey gives the dialog the key and reports what it wants done about it.
-// An unbuilt surface asks for nothing, which is what the App-side nil check
-// used to say.
+// An unbuilt surface asks for nothing.
 func (s *transferSurface) handleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	if s.dlg == nil {
 		return dialog.DialogActionNone
@@ -826,10 +819,10 @@ func (s *transferSurface) reshow() {
 }
 
 // -----------------------------------------------------------------------------
-// App glue. Everything below is a thin wrapper: it supplies the services, the
+// App glue. Everything below is a thin wrapper supplying the services, the
 // on-screen register account, and the divert into a sibling surface. No
-// behaviour lives here — the design's phase 5 forbids a second implementation
-// of an action that the surface already owns.
+// behaviour lives here: an action the surface owns must not have a second
+// implementation on App.
 // -----------------------------------------------------------------------------
 
 // handleTransferDialogKey routes key events to the transfer dialog.

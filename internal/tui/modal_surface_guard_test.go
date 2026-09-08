@@ -39,6 +39,51 @@ func TestGuard_NoSurfaceStructHoldsAService(t *testing.T) {
 	}
 }
 
+// TestGuard_NoSurfaceStructHoldsItsDeps: a surface must not store its
+// dependency bag as a field.
+//
+// close() is `*s = surface{}` for every surface, because a surface's zero value
+// IS its closed state. A stored deps struct would be zeroed by that reset, and
+// the next call through it would panic on a nil func — the trap the transferDeps
+// doc comment describes and that nothing else here would catch. The service
+// guard above cannot see it either: a struct of closures holds no service
+// pointer.
+//
+// The rule is narrow on purpose. A single func field is legitimate surface
+// state — confirmSurface.action is the pending continuation, and close() SHOULD
+// clear it. What is forbidden is a bag whose every field is a func, which is
+// what a deps struct is. Deps travel as a call parameter.
+func TestGuard_NoSurfaceStructHoldsItsDeps(t *testing.T) {
+	surfaces := surfaceStructTypes(t)
+	if len(surfaces) == 0 {
+		t.Fatal("no surface struct found on App; this guard would pass vacuously")
+	}
+	for _, st := range surfaces {
+		for i := range st.NumField() {
+			f := st.Field(i)
+			if isDependencyBag(f.Type) {
+				t.Errorf("%s.%s is a %s — every field of it is a func, so it is a "+
+					"dependency bag, and close() would zero it. Pass deps in as a "+
+					"parameter to the methods that need them.", st.Name(), f.Name, f.Type)
+			}
+		}
+	}
+}
+
+// isDependencyBag reports whether t is a non-empty struct whose every field is a
+// func — the shape of transferDeps and of any deps struct that follows it.
+func isDependencyBag(t reflect.Type) bool {
+	if t.Kind() != reflect.Struct || t.NumField() == 0 {
+		return false
+	}
+	for i := range t.NumField() {
+		if t.Field(i).Type.Kind() != reflect.Func {
+			return false
+		}
+	}
+	return true
+}
+
 // TestGuard_EverySurfaceIsVisibleIsNilSafe is the phase 3 shape of the section
 // 5.0 typed-nil trap. The registry holds surfaces now, and App builds them
 // lazily, so a nil surface in a Modal interface value is the common case rather
@@ -148,6 +193,37 @@ func TestGuard_SurfaceGuardSelfTest(t *testing.T) {
 		}
 	})
 
+	t.Run("a stored dependency bag is detected", func(t *testing.T) {
+		if !isDependencyBag(reflect.TypeFor[transferDeps]()) {
+			t.Error("isDependencyBag missed transferDeps, the very shape it exists to reject")
+		}
+		bad := reflect.TypeFor[surfaceWithStoredDeps]()
+		found := false
+		for i := range bad.NumField() {
+			if isDependencyBag(bad.Field(i).Type) {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("the deps predicate missed a surface holding its deps")
+		}
+	})
+
+	t.Run("a single continuation field is not a dependency bag", func(t *testing.T) {
+		// confirmSurface.action is per-open state that close() must clear, not a
+		// dep. A blanket "no func fields" rule would fire on it, and would be
+		// wrong.
+		st := reflect.TypeFor[confirmSurface]()
+		for i := range st.NumField() {
+			if f := st.Field(i); isDependencyBag(f.Type) {
+				t.Errorf("the deps predicate flagged confirmSurface.%s, which is state", f.Name)
+			}
+		}
+		if isDependencyBag(reflect.TypeFor[func() int]()) {
+			t.Error("a bare func is not a struct and must not read as a bag")
+		}
+	})
+
 	t.Run("surfaceStructTypes finds the real surfaces", func(t *testing.T) {
 		var names []string
 		for _, st := range surfaceStructTypes(t) {
@@ -175,6 +251,15 @@ type surfaceWithAService struct {
 }
 
 func (s *surfaceWithAService) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
+// surfaceWithStoredDeps is the mistake the deps guard exists to reject: close()
+// would zero the bag and the next call through it would panic on a nil func.
+type surfaceWithStoredDeps struct {
+	modalSurface
+	deps transferDeps
+}
+
+func (s *surfaceWithStoredDeps) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
 // surfaceWithUnsafeIsVisible declares IsVisible the wrong way: it compiles, so
 // only a call can catch it.

@@ -35,16 +35,22 @@ import (
 // reach the status bar, a sibling surface or a service field, and the pilot
 // would prove nothing.
 func TestGuard_TransferSurfaceNamesNoApp(t *testing.T) {
-	src := readSourceFile(t, "transfer_dialog.go")
-	methods, offenders := methodsNamingApp(t, src, "transferSurface")
-	if methods == 0 {
-		t.Fatal("no method on *transferSurface found in transfer_dialog.go, so this " +
-			"guard would pass vacuously. If the surface moved file, point the guard at it.")
+	// Every production file, not just transfer_dialog.go: Go lets a method live
+	// in any file of the package, so a file-scoped guard would advertise a
+	// package-wide invariant it cannot see.
+	seen := 0
+	for _, path := range productionGoFiles(t) {
+		methods, offenders := methodsNamingApp(t, readSourceFile(t, path), "transferSurface")
+		seen += methods
+		for _, name := range offenders {
+			t.Errorf("%s: (*transferSurface).%s names App. A surface method takes what it "+
+				"needs as a value or through transferDeps; App state reaches it as a "+
+				"parameter, never as a receiver.", path, name)
+		}
 	}
-	for _, name := range offenders {
-		t.Errorf("(*transferSurface).%s names App. A surface method takes what it needs "+
-			"as a value or through transferDeps; App state reaches it as a parameter, "+
-			"never as a receiver.", name)
+	if seen == 0 {
+		t.Fatal("no method on *transferSurface found in any production file, so this " +
+			"guard would pass vacuously. Either the surface was renamed or it is gone.")
 	}
 }
 
@@ -116,7 +122,11 @@ func TestTransferDeps_FollowADatabaseSwitch(t *testing.T) {
 		t.Fatal("an App with no services must hand out nil services, not a panic")
 	}
 
-	// What switchDatabase does, in one line each.
+	// Re-point the four App fields the closures read. switchDatabase does this
+	// for the three services (file_dialog.go) and NOT for undoManager, which is
+	// assigned once in NewApp — the inherited item-5 mismatch. So this proves
+	// the closures re-read their field; it does not claim undo follows a file
+	// switch in production, because it does not.
 	transfers := &transfer.Service{}
 	accounts := &account.Service{}
 	categories := &category.Service{}
