@@ -459,7 +459,8 @@ func (a *App) renderInvestmentRegister() string {
 // renderInvestmentTotalReturnLines builds the two header lines that show the
 // total-return breakdown for the investment account: a components line
 // (Unrealized · Realized · Div · Int · Fees) and a summary line
-// (Total return $amount (pct%) · Value $total), where Value is the
+// (Total return $amount (pct%) · IRR pct% · TWR pct% · Value $total), where
+// IRR and TWR are the money- and time-weighted returns and Value is the
 // account's total worth (cash + holdings market value). Returns ("", "")
 // when no valuation is loaded so the register still renders during the
 // initial load.
@@ -511,13 +512,32 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	}
 	breakdown := strings.Join(parts, " · ")
 
-	pctStr := "—"
-	if v.TotalReturnPct != nil {
-		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
+	// pct renders a percent, or the "—" placeholder when the figure is
+	// undefined, so every line keeps the same shape.
+	pct := func(p *float64) string {
+		if p == nil {
+			return "—"
+		}
+		return fmt.Sprintf("%.2f%%", *p)
 	}
-	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pct(v.TotalReturnPct) + ")"
 	if v.AnyRealizedUnavailable {
 		total += " " + a.styles.Muted.Render("(partial)")
+	}
+	// IRR and TWR sit between total return and value. Both are measured
+	// against external flows (see investment/performance.go), so unlike
+	// TotalReturnPct they do not move when cash is turned into shares.
+	// TWR is shown per year once the ledger spans a year; before that the
+	// cumulative figure is shown and marked so the two are not confused.
+	total += " · " + a.styles.Muted.Render("IRR") + " " + pct(v.MoneyWeightedReturnPct)
+	switch {
+	case v.TimeWeightedReturnAnnualizedPct != nil:
+		total += " · " + a.styles.Muted.Render("TWR") + " " + pct(v.TimeWeightedReturnAnnualizedPct)
+	default:
+		total += " · " + a.styles.Muted.Render("TWR") + " " + pct(v.TimeWeightedReturnPct)
+		if v.TimeWeightedReturnPct != nil {
+			total += " " + a.styles.Muted.Render("(cum.)")
+		}
 	}
 	// Account value (cash + holdings market value) is appended after the
 	// optional (partial) marker: total value is independent of the

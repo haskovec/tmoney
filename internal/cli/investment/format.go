@@ -174,8 +174,10 @@ func printPortfolioWithLots(w io.Writer, acct *account.Account, valuation *inves
 
 // printAccountTotals renders the account totals block beneath the holdings
 // table, one row per total-return component in the order defined by the
-// total-return spec. Total return % renders the "—" placeholder when
-// TotalReturnPct is nil (no buys ever — denominator is zero).
+// total-return spec, followed by the money-weighted (IRR) and time-weighted
+// (TWR) returns. Total return % renders the "—" placeholder when
+// TotalReturnPct is nil (no buys ever — denominator is zero); IRR and TWR
+// render it when the ledger cannot define them.
 func printAccountTotals(w io.Writer, acct *account.Account, valuation *investmentdom.AccountValuation) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Account totals")
@@ -204,7 +206,22 @@ func printAccountTotals(w io.Writer, acct *account.Account, valuation *investmen
 	row("Fees paid", formatFeesPaid(valuation.FeesPaid, acct.Currency))
 	row("Total return", totalReturnStr)
 	row("Total return %", totalReturnPctStr)
+	row("IRR (annual)", formatReturnPct(valuation.MoneyWeightedReturnPct))
+	row("TWR", formatTWR(valuation))
 	tw.Flush()
+}
+
+// formatTWR renders the time-weighted return: the annualized figure once
+// the ledger spans a year, otherwise the cumulative figure marked so the two
+// are not confused. Both nil renders the "—" placeholder.
+func formatTWR(valuation *investmentdom.AccountValuation) string {
+	if valuation.TimeWeightedReturnAnnualizedPct != nil {
+		return formatReturnPct(valuation.TimeWeightedReturnAnnualizedPct) + " (annual)"
+	}
+	if valuation.TimeWeightedReturnPct != nil {
+		return formatReturnPct(valuation.TimeWeightedReturnPct) + " (cumulative)"
+	}
+	return "—"
 }
 
 // partitionHoldings splits holdings into open (still held) and closed

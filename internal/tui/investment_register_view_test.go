@@ -1115,18 +1115,22 @@ func TestInvestmentRegisterView_SwitchView(t *testing.T) {
 
 func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 	pct := 22.51
+	irr, twrCum, twrAnn := 8.12, 15.9, 7.41
 	val := &investment.AccountValuation{
-		CashBalance:       types.MustNewMoney("1200.00"),
-		MarketValue:       types.MustNewMoney("27000.00"),
-		TotalValue:        types.MustNewMoney("28200.00"),
-		TotalCostBasis:    types.MustNewMoney("22500.00"),
-		TotalGainLoss:     types.MustNewMoney("4500.00"),
-		RealizedGain:      types.MustNewMoney("200.00"),
-		DividendsReceived: types.MustNewMoney("570.00"),
-		InterestReceived:  types.MustNewMoney("13.00"),
-		FeesPaid:          types.MustNewMoney("15.00"),
-		TotalReturn:       types.MustNewMoney("5267.50"),
-		TotalReturnPct:    &pct,
+		CashBalance:                     types.MustNewMoney("1200.00"),
+		MarketValue:                     types.MustNewMoney("27000.00"),
+		TotalValue:                      types.MustNewMoney("28200.00"),
+		TotalCostBasis:                  types.MustNewMoney("22500.00"),
+		TotalGainLoss:                   types.MustNewMoney("4500.00"),
+		RealizedGain:                    types.MustNewMoney("200.00"),
+		DividendsReceived:               types.MustNewMoney("570.00"),
+		InterestReceived:                types.MustNewMoney("13.00"),
+		FeesPaid:                        types.MustNewMoney("15.00"),
+		TotalReturn:                     types.MustNewMoney("5267.50"),
+		TotalReturnPct:                  &pct,
+		MoneyWeightedReturnPct:          &irr,
+		TimeWeightedReturnPct:           &twrCum,
+		TimeWeightedReturnAnnualizedPct: &twrAnn,
 	}
 
 	app := &App{
@@ -1159,11 +1163,38 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 		"Fees", "-$15.00",
 		"Total return", "$5267.50",
 		"22.51%",
+		"IRR 8.12%",
+		"TWR 7.41%", // annualized wins over cumulative once present
 		"Value $28200.00",
 	}
 	for _, want := range wants {
 		if !strings.Contains(output, want) {
 			t.Errorf("output should contain %q\nfull output:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "15.9%") || strings.Contains(output, "(cum.)") {
+		t.Errorf("cumulative TWR should be hidden when the annualized figure exists\nfull output:\n%s", output)
+	}
+}
+
+// Under a year the cumulative TWR is shown and marked; undefined figures
+// render as the "—" placeholder like TotalReturnPct.
+func TestRenderInvestmentTotalReturnLines_PerformanceFallbacks(t *testing.T) {
+	twrCum := 3.2
+	app := &App{
+		styles: testStyles(),
+		investmentRegister: &investmentRegisterData{
+			valuation: &investment.AccountValuation{
+				AccountID:             types.NewID(),
+				TimeWeightedReturnPct: &twrCum,
+			},
+		},
+	}
+	_, totalRaw := app.renderInvestmentTotalReturnLines()
+	total := widget.StripAnsi(totalRaw)
+	for _, want := range []string{"IRR —", "TWR 3.20% (cum.)"} {
+		if !strings.Contains(total, want) {
+			t.Errorf("total line should contain %q; got %q", want, total)
 		}
 	}
 }

@@ -179,25 +179,33 @@ func (s *ValuationService) GetAccountValuation(accountID types.ID, asOf types.Da
 		totalReturnPct = &pct
 	}
 
+	perf, err := s.computeAccountPerformance(accountID, asOf)
+	if err != nil {
+		return nil, err
+	}
+
 	return &AccountValuation{
-		AccountID:              accountID,
-		CashBalance:            cashBalance,
-		MarketValue:            marketValue,
-		TotalValue:             totalValue,
-		TotalCostBasis:         totalCostBasis,
-		TotalGainLoss:          totalGainLoss,
-		TotalGainPct:           totalGainPct,
-		Holdings:               holdings,
-		RealizedGain:           realizedGain,
-		DividendsReceived:      dividendsReceived,
-		InterestReceived:       interestReceived,
-		FeesPaid:               feesPaid,
-		TotalCostDeployed:      totalCostDeployed,
-		TotalReturn:            totalReturn,
-		TotalReturnPct:         totalReturnPct,
-		HasClosedPositions:     hasClosedPositions,
-		ClosedPositionCount:    closedPositionCount,
-		AnyRealizedUnavailable: anyRealizedUnavailable,
+		AccountID:                       accountID,
+		CashBalance:                     cashBalance,
+		MarketValue:                     marketValue,
+		TotalValue:                      totalValue,
+		TotalCostBasis:                  totalCostBasis,
+		TotalGainLoss:                   totalGainLoss,
+		TotalGainPct:                    totalGainPct,
+		Holdings:                        holdings,
+		RealizedGain:                    realizedGain,
+		DividendsReceived:               dividendsReceived,
+		InterestReceived:                interestReceived,
+		FeesPaid:                        feesPaid,
+		TotalCostDeployed:               totalCostDeployed,
+		TotalReturn:                     totalReturn,
+		TotalReturnPct:                  totalReturnPct,
+		MoneyWeightedReturnPct:          perf.MoneyWeightedReturnPct,
+		TimeWeightedReturnPct:           perf.TimeWeightedReturnPct,
+		TimeWeightedReturnAnnualizedPct: perf.TimeWeightedReturnAnnualizedPct,
+		HasClosedPositions:              hasClosedPositions,
+		ClosedPositionCount:             closedPositionCount,
+		AnyRealizedUnavailable:          anyRealizedUnavailable,
 	}, nil
 }
 

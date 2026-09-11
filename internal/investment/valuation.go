@@ -36,6 +36,19 @@ type AccountValuation struct {
 	HasClosedPositions  bool        `json:"has_closed_positions"`
 	ClosedPositionCount int         `json:"closed_position_count"`
 
+	// Performance against the money that crossed the account boundary
+	// (deposits, withdrawals, cash and share transfers) rather than against
+	// buys — see performance.go. MoneyWeightedReturnPct is the annualized
+	// IRR (XIRR) of those flows plus the closing value.
+	// TimeWeightedReturnPct is the cumulative growth chained across the
+	// sub-periods between flows; TimeWeightedReturnAnnualizedPct is that
+	// growth per year, set only when the ledger spans at least one year.
+	// Each is nil when the ledger cannot define it (no flows, no positive
+	// opening value, no solver root).
+	MoneyWeightedReturnPct          *float64 `json:"money_weighted_return_pct,omitzero"`
+	TimeWeightedReturnPct           *float64 `json:"time_weighted_return_pct,omitzero"`
+	TimeWeightedReturnAnnualizedPct *float64 `json:"time_weighted_return_annualized_pct,omitzero"`
+
 	// AnyRealizedUnavailable is true when at least one of the
 	// contributing holdings has RealizedGainUnavailable=true (a non-lot
 	// security with a corporate action on file, where the chronological
