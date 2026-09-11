@@ -10,35 +10,17 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// Money-weighted (IRR) and time-weighted (TWR) returns for an investment
-// account.
-//
-// Both figures measure the account against the money that crossed its
-// boundary — deposits, withdrawals, cash transfers and share transfers —
-// rather than against the sum of buys that TotalReturnPct uses. Moving idle
-// cash into shares is therefore invisible to both: the account is worth the
-// same the moment after the buy as the moment before.
-//
-//   - IRR is the annual rate that discounts every external flow plus the
-//     closing value to zero (an XIRR). It rewards putting money in before a
-//     rise and taking it out before a fall, so it is the investor's own return.
-//   - TWR chains the growth of each sub-period between external flows, so
-//     the size and timing of contributions do not affect it. It is the return
-//     the holdings produced, and is comparable to a fund's published return.
-//
-// Both need the account's value on every flow date. That value is rebuilt
-// from the ledger in a single ascending pass (ledgerWalker): cash from the
-// cash-affecting types, shares from a per-security replay that honours splits
-// and mergers, and prices from the stored history on or before that date
-// (falling back to the running cost basis when no price exists yet).
+// Money-weighted (IRR) and time-weighted (TWR) return for an account, both
+// measured against external flows (see specs/investment-total-return.md,
+// "Money- and time-weighted return").
 
 // accountPerformance is the result of computeAccountPerformance. A nil
-// pointer means the figure is undefined for this ledger (no external flows,
-// no period with a positive opening value, or no solver root).
+// pointer means the ledger cannot define the figure.
 type accountPerformance struct {
-	MoneyWeightedReturnPct          *float64
-	TimeWeightedReturnPct           *float64
-	TimeWeightedReturnAnnualizedPct *float64
+	MoneyWeightedReturnPct           *float64
+	MoneyWeightedReturnAnnualizedPct *float64
+	TimeWeightedReturnPct            *float64
+	TimeWeightedReturnAnnualizedPct  *float64
 }
 
 // daysPerYear is the day-count basis for annualising both figures.
@@ -46,22 +28,25 @@ const daysPerYear = 365.25
 
 // externalFlow reports the signed amount that crossed the account boundary in
 // this transaction (positive into the account) and whether the transaction is
-// an external flow at all. Deposits, withdrawals and cash transfers carry the
-// cash moved; a share transfer carries the cost basis that moved with the
-// shares (the ledger stores no market value for it). Buys, sells, dividends,
-// interest, fees and corporate-action exchanges are internal and return false.
+// an external flow at all. A share transfer carries the cost basis that moved
+// with the shares: the ledger stores no market value for it. Merger cash
+// consideration and spin-off cash-in-lieu are posted as `deposit` rows but
+// are proceeds of a holding, so they are internal like a dividend.
 func externalFlow(t *Transaction) (types.Money, bool) {
 	switch t.Type {
-	case TransactionTypeDeposit, TransactionTypeWithdrawal,
-		TransactionTypeTransferCash, TransactionTypeTransferShares:
+	case TransactionTypeDeposit:
+		if isCorporateActionCash(t) {
+			return types.ZeroMoney, false
+		}
+		return t.TotalAmount, true
+	case TransactionTypeWithdrawal, TransactionTypeTransferCash, TransactionTypeTransferShares:
 		return t.TotalAmount, true
 	}
 	return types.ZeroMoney, false
 }
 
 // computeAccountPerformance derives IRR and TWR for the account as of asOf.
-// Transactions dated after asOf are ignored, so the figures describe the
-// account as it stood on that date.
+// Transactions dated after asOf are ignored.
 func (s *ValuationService) computeAccountPerformance(accountID types.ID, asOf types.Date) (accountPerformance, error) {
 	var perf accountPerformance
 
@@ -75,11 +60,9 @@ func (s *ValuationService) computeAccountPerformance(accountID types.ID, asOf ty
 	sortTransactionsAscending(txns)
 
 	// Checkpoints are the dates the chain is valued on: the first ledger
-	// date (so the chain starts as soon as the account has a value) and
-	// every date with a net external flow.
-	// Both maps are keyed by the date's string form: types.Date wraps a
-	// time.Time, and two equal dates scanned from different rows need not
-	// compare equal as struct values.
+	// date and every date with a net external flow. Both maps are keyed by
+	// the date's string form: types.Date wraps a time.Time, and two equal
+	// dates scanned from different rows need not compare equal as values.
 	flowByDate := make(map[string]types.Money)
 	checkpointSet := map[string]types.Date{txns[0].Date.String(): txns[0].Date}
 	for _, t := range txns {
@@ -117,8 +100,8 @@ func (s *ValuationService) computeAccountPerformance(accountID types.ID, asOf ty
 		v := w.value(d).Float64()
 		f := flowByDate[d.String()].Float64()
 		if prevSet && prevValue > 0 {
-			// The flow lands on this date; the sub-period's closing value
-			// is what the account was worth just before the flow arrived.
+			// The flow lands on this date; the sub-period closes at what
+			// the account was worth just before it arrived.
 			factor *= math.Max(v-f, 0) / prevValue
 			chained = true
 		}
@@ -138,19 +121,24 @@ func (s *ValuationService) computeAccountPerformance(accountID types.ID, asOf ty
 		chained = true
 	}
 
+	days := daysBetween(checkpoints[0], asOf)
 	if chained {
-		twr := factor - 1
-		perf.TimeWeightedReturnPct = ptrPct(twr)
-		days := daysBetween(checkpoints[0], asOf)
+		perf.TimeWeightedReturnPct = ptrPct(factor - 1)
 		if days >= 365 && factor > 0 {
-			ann := math.Pow(factor, daysPerYear/days) - 1
-			perf.TimeWeightedReturnAnnualizedPct = ptrPct(ann)
+			perf.TimeWeightedReturnAnnualizedPct = ptrPct(math.Pow(factor, daysPerYear/days) - 1)
 		}
 	}
 
 	flows = append(flows, cashFlow{date: asOf, amount: endValue})
-	if r, ok := solveXIRR(flows); ok {
-		perf.MoneyWeightedReturnPct = ptrPct(r)
+	if x, ok := solveXIRR(flows); ok {
+		// x = ln(1+r) per year. The holding-period figure compounds it over
+		// the flows' own span; the annual figure is reported only once that
+		// span reaches a year, matching TWR.
+		span := daysBetween(flows[0].date, asOf) / daysPerYear
+		perf.MoneyWeightedReturnPct = ptrPct(math.Exp(x*span) - 1)
+		if days >= 365 {
+			perf.MoneyWeightedReturnAnnualizedPct = ptrPct(math.Exp(x) - 1)
+		}
 	}
 	return perf, nil
 }
@@ -185,17 +173,17 @@ type cashFlow struct {
 	amount float64
 }
 
-// solveXIRR returns the annual rate r at which Σ amount_i / (1+r)^(years_i)
-// is zero. It needs at least one positive and one negative flow spanning
-// more than one day, and a sign change of the NPV on (−99.99 %, 1e6]. The
-// root is bracketed by expanding the upper bound and then bisected, which is
-// slower than Newton but never diverges.
+// solveXIRR returns x = ln(1+r), where r is the annual rate at which
+// Σ amount_i · e^(−x · years_i) is zero. Solving for x rather than r lets the
+// root sit arbitrarily close to r = −1 (a large one-day loss) or far above
+// r = 1e6 (a large one-day gain) without the bracket missing it. It needs a
+// negative flow and a later flow at least one day apart. Flows that never
+// return anything positive are a total loss and report x = −Inf (r = −100 %).
 func solveXIRR(flows []cashFlow) (float64, bool) {
 	if len(flows) < 2 {
 		return 0, false
 	}
-	first := flows[0].date
-	lastDate := first
+	first, lastDate := flows[0].date, flows[0].date
 	hasPos, hasNeg := false, false
 	for _, f := range flows {
 		if f.date.Before(first) {
@@ -204,40 +192,42 @@ func solveXIRR(flows []cashFlow) (float64, bool) {
 		if f.date.After(lastDate) {
 			lastDate = f.date
 		}
-		if f.amount > 0 {
-			hasPos = true
-		}
-		if f.amount < 0 {
-			hasNeg = true
-		}
+		hasPos = hasPos || f.amount > 0
+		hasNeg = hasNeg || f.amount < 0
 	}
-	if !hasPos || !hasNeg || daysBetween(first, lastDate) < 1 {
+	spanDays := daysBetween(first, lastDate)
+	if !hasNeg || spanDays < 1 {
 		return 0, false
 	}
+	if !hasPos {
+		return math.Inf(-1), true
+	}
 
-	npv := func(r float64) float64 {
+	npv := func(x float64) float64 {
 		sum := 0.0
 		for _, f := range flows {
-			years := daysBetween(first, f.date) / daysPerYear
-			sum += f.amount / math.Pow(1+r, years)
+			t := daysBetween(first, f.date) / daysPerYear
+			sum += f.amount * math.Exp(-x*t)
 		}
 		return sum
 	}
 
-	lo, hi := -0.9999, 1.0
+	// Expand the bracket outward from 0 until the sign changes, then
+	// bisect. |x·span| ≤ 700 keeps every exponent finite.
+	limit := 700 / (spanDays / daysPerYear)
+	lo, hi := -1.0, 1.0
 	fLo, fHi := npv(lo), npv(hi)
-	for fLo*fHi > 0 && hi < 1e6 {
-		hi *= 10
-		fHi = npv(hi)
+	for fLo*fHi > 0 && hi < limit {
+		lo, hi = lo*2, hi*2
+		fLo, fHi = npv(lo), npv(hi)
 	}
 	if fLo*fHi > 0 || math.IsNaN(fLo) || math.IsNaN(fHi) {
 		return 0, false
 	}
-	// Bisect: keep the sign of npv(lo) so each step halves the bracket.
 	for range 200 {
 		mid := (lo + hi) / 2
 		fMid := npv(mid)
-		if fMid == 0 || hi-lo < 1e-10 {
+		if fMid == 0 || hi-lo < 1e-12 {
 			return mid, true
 		}
 		if fLo*fMid < 0 {
@@ -250,7 +240,7 @@ func solveXIRR(flows []cashFlow) (float64, bool) {
 }
 
 // ledgerWalker rebuilds an account's cash and positions at successive dates
-// from one ascending ledger. Per-security splits, merger dates and price
+// from one ascending ledger. Per-security splits, corporate actions and price
 // history are loaded once, on first sight of the security.
 type ledgerWalker struct {
 	svc  *ValuationService
@@ -262,9 +252,18 @@ type ledgerWalker struct {
 	positions map[types.ID]*Position
 	splits    map[types.ID][]splitEvent
 	splitIdx  map[types.ID]int
+	basisCuts map[types.ID][]basisEvent // spin-off parent allocations, ascending
+	cutIdx    map[types.ID]int
 	mergedOn  map[types.ID]types.Date // source security → earliest merger date
 	merged    map[types.ID]bool
 	prices    map[types.ID][]*price.Price // ascending by date
+}
+
+// basisEvent scales a security's running average cost on a date: a spin-off
+// leaves the parent with parentAllocPct of its former basis.
+type basisEvent struct {
+	Date   types.Date
+	Factor alpacadecimal.Decimal
 }
 
 func newLedgerWalker(svc *ValuationService, txns []*Transaction, asOf types.Date) *ledgerWalker {
@@ -276,6 +275,8 @@ func newLedgerWalker(svc *ValuationService, txns []*Transaction, asOf types.Date
 		positions: make(map[types.ID]*Position),
 		splits:    make(map[types.ID][]splitEvent),
 		splitIdx:  make(map[types.ID]int),
+		basisCuts: make(map[types.ID][]basisEvent),
+		cutIdx:    make(map[types.ID]int),
 		mergedOn:  make(map[types.ID]types.Date),
 		merged:    make(map[types.ID]bool),
 		prices:    make(map[types.ID][]*price.Price),
@@ -283,8 +284,8 @@ func newLedgerWalker(svc *ValuationService, txns []*Transaction, asOf types.Date
 }
 
 // advanceTo applies every transaction dated on or before date, then any
-// split or merger dated on or before it. Dates must be non-decreasing across
-// calls.
+// split, spin-off basis cut or merger dated on or before it. Dates must be
+// non-decreasing across calls.
 func (w *ledgerWalker) advanceTo(date types.Date) error {
 	for w.next < len(w.txns) && !w.txns[w.next].Date.After(date) {
 		t := w.txns[w.next]
@@ -304,6 +305,7 @@ func (w *ledgerWalker) advanceTo(date types.Date) error {
 	}
 	for secID, pos := range w.positions {
 		w.applySplitsThrough(secID, pos, date)
+		w.applyBasisCutsThrough(secID, pos, date)
 		if md, ok := w.mergedOn[secID]; ok && !w.merged[secID] && !md.After(date) {
 			pos.Shares = types.ZeroQuantity
 			w.merged[secID] = true
@@ -350,7 +352,7 @@ func applyShareTransaction(pos *Position, t *Transaction) {
 }
 
 // position returns the running position for a security, loading its splits,
-// merger date and price history on first use.
+// corporate actions and price history on first use.
 func (w *ledgerWalker) position(secID types.ID) (*Position, error) {
 	if pos, ok := w.positions[secID]; ok {
 		return pos, nil
@@ -364,17 +366,8 @@ func (w *ledgerWalker) position(secID types.ID) (*Position, error) {
 			return nil, err
 		}
 		w.splits[secID] = splits
-		actions, err := w.svc.corporateActionRepo.ListBySecurity(secID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list corporate actions for performance: %w", err)
-		}
-		for _, ca := range actions {
-			if ca.ActionType != ActionTypeMerger || ca.SecurityID != secID {
-				continue
-			}
-			if md, ok := w.mergedOn[secID]; !ok || ca.ActionDate.Before(md) {
-				w.mergedOn[secID] = ca.ActionDate
-			}
+		if err := w.loadActions(secID); err != nil {
+			return nil, err
 		}
 	}
 	if w.svc.priceRepo != nil {
@@ -389,6 +382,36 @@ func (w *ledgerWalker) position(secID types.ID) (*Position, error) {
 		w.prices[secID] = hist
 	}
 	return &pos, nil
+}
+
+// loadActions records the security's merger date (its shares leave without a
+// ledger row) and spin-off basis cuts (its cost is reallocated without one).
+func (w *ledgerWalker) loadActions(secID types.ID) error {
+	actions, err := w.svc.corporateActionRepo.ListBySecurity(secID)
+	if err != nil {
+		return fmt.Errorf("failed to list corporate actions for performance: %w", err)
+	}
+	for _, ca := range actions {
+		if ca.SecurityID != secID {
+			continue
+		}
+		switch ca.ActionType {
+		case ActionTypeMerger:
+			if md, ok := w.mergedOn[secID]; !ok || ca.ActionDate.Before(md) {
+				w.mergedOn[secID] = ca.ActionDate
+			}
+		case ActionTypeSpinOff:
+			params, err := ParseSpinOffParams(ca.Parameters)
+			if err != nil {
+				return fmt.Errorf("failed to parse spin-off params for performance: %w", err)
+			}
+			factor := alpacadecimal.NewFromFloat(params.ParentAllocationPct).Div(alpacadecimal.NewFromInt(100))
+			w.basisCuts[secID] = append(w.basisCuts[secID], basisEvent{Date: ca.ActionDate, Factor: factor})
+		}
+	}
+	cuts := w.basisCuts[secID]
+	sort.SliceStable(cuts, func(i, j int) bool { return cuts[i].Date.Before(cuts[j].Date) })
+	return nil
 }
 
 // applySplitsBefore applies splits dated strictly before nextTxnDate — the
@@ -407,6 +430,19 @@ func (w *ledgerWalker) applySplitsThrough(secID types.ID, pos *Position, date ty
 		si++
 	}
 	w.splitIdx[secID] = si
+}
+
+// applyBasisCutsThrough scales the running average cost for every spin-off
+// dated on or before date, so the cost-basis fallback matches the live
+// position after the action.
+func (w *ledgerWalker) applyBasisCutsThrough(secID types.ID, pos *Position, date types.Date) {
+	cuts := w.basisCuts[secID]
+	ci := w.cutIdx[secID]
+	for ci < len(cuts) && !cuts[ci].Date.After(date) {
+		pos.AverageCostPerShare = pos.AverageCostPerShare.Mul(cuts[ci].Factor)
+		ci++
+	}
+	w.cutIdx[secID] = ci
 }
 
 // value is cash plus every open position priced on or before date. A
@@ -428,7 +464,11 @@ func (w *ledgerWalker) value(date types.Date) types.Money {
 }
 
 // priceOnOrBefore finds the latest stored price for the security dated on or
-// before date.
+// before date, in the share units the walker holds on that date. Split
+// processing rewrites every stored price on or before the split day into
+// post-split units (adjustPrices), while the walker's share count stays
+// pre-split until the split is applied — so each split not yet applied
+// scales the stored price back up by its ratio.
 func (w *ledgerWalker) priceOnOrBefore(secID types.ID, date types.Date) (types.Money, bool) {
 	hist := w.prices[secID]
 	// First index whose date is after `date`; the answer is the one before it.
@@ -436,5 +476,9 @@ func (w *ledgerWalker) priceOnOrBefore(secID types.ID, date types.Date) (types.M
 	if i == 0 {
 		return types.ZeroMoney, false
 	}
-	return hist[i-1].Price, true
+	p := hist[i-1].Price
+	for _, sp := range w.splits[secID][w.splitIdx[secID]:] {
+		p = p.Mul(sp.Ratio)
+	}
+	return p, true
 }

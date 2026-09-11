@@ -524,21 +524,21 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	if v.AnyRealizedUnavailable {
 		total += " " + a.styles.Muted.Render("(partial)")
 	}
-	// IRR and TWR sit between total return and value. Both are measured
-	// against external flows (see investment/performance.go), so unlike
-	// TotalReturnPct they do not move when cash is turned into shares.
-	// TWR is shown per year once the ledger spans a year; before that the
-	// cumulative figure is shown and marked so the two are not confused.
-	total += " · " + a.styles.Muted.Render("IRR") + " " + pct(v.MoneyWeightedReturnPct)
-	switch {
-	case v.TimeWeightedReturnAnnualizedPct != nil:
-		total += " · " + a.styles.Muted.Render("TWR") + " " + pct(v.TimeWeightedReturnAnnualizedPct)
-	default:
-		total += " · " + a.styles.Muted.Render("TWR") + " " + pct(v.TimeWeightedReturnPct)
-		if v.TimeWeightedReturnPct != nil {
-			total += " " + a.styles.Muted.Render("(cum.)")
+	// IRR and TWR show the annual figure once the ledger spans a year;
+	// before that the holding-period figure is shown and marked "(cum.)".
+	perf := func(label string, annual, cumulative *float64) string {
+		s := " · " + a.styles.Muted.Render(label) + " "
+		if annual != nil {
+			return s + pct(annual)
 		}
+		s += pct(cumulative)
+		if cumulative != nil {
+			s += " " + a.styles.Muted.Render("(cum.)")
+		}
+		return s
 	}
+	total += perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct)
+	total += perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct)
 	// Account value (cash + holdings market value) is appended after the
 	// optional (partial) marker: total value is independent of the
 	// realized-gain partiality that marker qualifies, so it must sit

@@ -182,18 +182,18 @@ func TestSolveXIRR(t *testing.T) {
 	t.Run("ten percent over exactly a year basis", func(t *testing.T) {
 		// 365.25 days is not a calendar date; use 365 days and expect
 		// (1.1)^(365.25/365) − 1 ≈ 10.007 %.
-		r, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(365), 1100}})
+		x, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(365), 1100}})
 		if !ok {
 			t.Fatal("solveXIRR() ok = false")
 		}
-		if math.Abs(r-0.10007) > 1e-4 {
+		if r := math.Exp(x) - 1; math.Abs(r-0.10007) > 1e-4 {
 			t.Errorf("r = %.6f, want ≈ 0.10007", r)
 		}
 	})
 	t.Run("loss", func(t *testing.T) {
-		r, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(365), 500}})
-		if !ok || r >= 0 {
-			t.Errorf("r, ok = %.4f, %v; want negative root", r, ok)
+		x, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(365), 500}})
+		if !ok || x >= 0 {
+			t.Errorf("x, ok = %.4f, %v; want negative root", x, ok)
 		}
 	})
 	t.Run("same-day flows undefined", func(t *testing.T) {
@@ -201,9 +201,211 @@ func TestSolveXIRR(t *testing.T) {
 			t.Error("solveXIRR() ok = true for zero span")
 		}
 	})
-	t.Run("no sign change undefined", func(t *testing.T) {
-		if _, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(30), -1000}}); ok {
-			t.Error("solveXIRR() ok = true with no positive flow")
+	t.Run("no negative flow undefined", func(t *testing.T) {
+		if _, ok := solveXIRR([]cashFlow{{d0, 1000}, {d0.AddDays(30), 1000}}); ok {
+			t.Error("solveXIRR() ok = true with no negative flow")
+		}
+	})
+}
+
+func newCASvc(env *testServiceEnv) *CorporateActionService {
+	return NewCorporateActionService(env.caRepo, env.lotRepo, env.positionRepo, env.priceRepo, env.invRepo, env.secRepo, env.db)
+}
+
+// Split processing rewrites the stored pre-split prices into post-split
+// units. A checkpoint before the split must still value pre-split shares at
+// the pre-split price, or the chain starts from half the true value.
+func TestPerformance_SplitDoesNotDistortTWR(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		num   int
+		den   int
+		final string // post-split price worth $120 pre-split per share
+	}{
+		{"2:1 forward", 2, 1, "60"},
+		{"1:2 reverse", 1, 2, "240"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := createFullTestService(t)
+			acct := createInvAccount(t, env.accountRepo, "Brokerage")
+			sec := createSec(t, env.secRepo, "NVDA")
+			d0 := types.NewDate(2024, time.January, 1)
+			dSplit := types.NewDate(2024, time.June, 1)
+			d2 := types.NewDate(2024, time.December, 1)
+
+			deposit(t, env, acct.ID, d0, "1000")
+			buy(t, env, acct.ID, sec.ID, d0, "10", "1000") // auto-price $100 on d0
+			// A flow on the split day exercises the on-date rule too.
+			deposit(t, env, acct.ID, dSplit, "500")
+			if _, err := newCASvc(env).Split(sec.ID, dSplit, SplitParams{Numerator: tc.num, Denominator: tc.den}); err != nil {
+				t.Fatalf("Split() error = %v", err)
+			}
+			addPrice(t, env, sec.ID, d2, tc.final)
+
+			val, err := env.valSvc.GetAccountValuation(acct.ID, d2, ValuationOptions{})
+			if err != nil {
+				t.Fatalf("GetAccountValuation() error = %v", err)
+			}
+			// 1000 → 1000 (flat to the split day) → 1200 + 500 cash from
+			// 1500: shares gained 20 %, cash none: (1700/1500) − 1 = 13.33 %.
+			requirePct(t, "TWR", val.TimeWeightedReturnPct, 13.3333, 0.01)
+		})
+	}
+}
+
+// Merger cash consideration is posted as a deposit but is proceeds of the
+// holding: it must count as return, not as a contribution.
+func TestPerformance_MergerCashIsReturnNotContribution(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	src := createSec(t, env.secRepo, "OLD")
+	dst := createSec(t, env.secRepo, "NEW")
+	d0 := types.NewDate(2024, time.January, 1)
+	d1 := types.NewDate(2024, time.June, 1)
+	d2 := types.NewDate(2024, time.December, 1)
+
+	deposit(t, env, acct.ID, d0, "1000")
+	buy(t, env, acct.ID, src.ID, d0, "10", "1000")
+	// 1 NEW per OLD at the same cost, plus $20/share cash.
+	if _, err := newCASvc(env).Merger(src.ID, dst.ID, d1, MergerParams{ExchangeRatio: 1, CashPerShare: 20}); err != nil {
+		t.Fatalf("Merger() error = %v", err)
+	}
+	addPrice(t, env, dst.ID, d2, "120")
+
+	val, err := env.valSvc.GetAccountValuation(acct.ID, d2, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+	// 1000 in; 10 NEW × 120 + 200 cash = 1400 out: +40 % with no flow at d1.
+	requirePct(t, "TWR", val.TimeWeightedReturnPct, 40.0, 0.01)
+	requirePct(t, "IRR", val.MoneyWeightedReturnPct, 40.0, 0.01)
+	if !val.TotalValue.Equal(types.MustNewMoney("1400")) {
+		t.Errorf("TotalValue = %s, want 1400", val.TotalValue)
+	}
+}
+
+// After a spin-off the parent keeps only its allocated share of cost. With
+// no parent price on file the cost-basis fallback must reflect that cut, or
+// the spun-off slice is counted twice (parent at full cost + child).
+func TestPerformance_SpinOffParentBasisCutMatchesLiveValue(t *testing.T) {
+	env := createFullTestService(t)
+	acct := createInvAccount(t, env.accountRepo, "Brokerage")
+	parent := createSec(t, env.secRepo, "PARENT")
+	child := createSec(t, env.secRepo, "CHILD")
+	d0 := types.NewDate(2024, time.January, 1)
+	dSpin := types.NewDate(2024, time.June, 1)
+	d2 := types.NewDate(2024, time.December, 1)
+
+	deposit(t, env, acct.ID, d0, "1000")
+	buy(t, env, acct.ID, parent.ID, d0, "10", "1000")
+	// Delete the buy's auto price so the parent is carried at cost.
+	hist, err := env.priceRepo.GetPriceHistory(parent.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("GetPriceHistory() error = %v", err)
+	}
+	for _, p := range hist {
+		if err := env.priceRepo.Delete(p.ID); err != nil {
+			t.Fatalf("Delete price error = %v", err)
+		}
+	}
+	// 0.5 CHILD per PARENT (5 whole shares, no fraction), parent keeps 80 %.
+	if _, err := newCASvc(env).SpinOff(parent.ID, child.ID, dSpin, SpinOffParams{ShareRatio: 0.5, ParentAllocationPct: 80}, types.MustNewMoney("40")); err != nil {
+		t.Fatalf("SpinOff() error = %v", err)
+	}
+
+	val, err := env.valSvc.GetAccountValuation(acct.ID, d2, ValuationOptions{})
+	if err != nil {
+		t.Fatalf("GetAccountValuation() error = %v", err)
+	}
+	// Parent at 800 cost + 5 CHILD × $40 = 1000: the live book. The chain
+	// from a single 1000 deposit must land on that same value.
+	wantTWR := (val.TotalValue.Float64()/1000 - 1) * 100
+	requirePct(t, "TWR", val.TimeWeightedReturnPct, wantTWR, 0.01)
+	if !val.TotalValue.Equal(types.MustNewMoney("1000")) {
+		t.Errorf("TotalValue = %s, want 1000 (800 parent cost + 200 child)", val.TotalValue)
+	}
+}
+
+// Short spans and total losses: the holding-period IRR is defined and
+// sensible where an annual-only solver would report nothing or nonsense.
+func TestPerformance_ShortSpanAndTotalLossIRR(t *testing.T) {
+	d0 := types.NewDate(2024, time.January, 1)
+	t.Run("one-day ten percent gain", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "VTI")
+		deposit(t, env, acct.ID, d0, "1000")
+		buy(t, env, acct.ID, sec.ID, d0, "10", "1000")
+		addPrice(t, env, sec.ID, d0.AddDays(1), "110")
+		val, err := env.valSvc.GetAccountValuation(acct.ID, d0.AddDays(1), ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetAccountValuation() error = %v", err)
+		}
+		requirePct(t, "IRR", val.MoneyWeightedReturnPct, 10.0, 0.01)
+		if val.MoneyWeightedReturnAnnualizedPct != nil {
+			t.Errorf("IRR annualized = %v, want nil under a year", *val.MoneyWeightedReturnAnnualizedPct)
+		}
+	})
+	t.Run("one-day half loss", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "VTI")
+		deposit(t, env, acct.ID, d0, "1000")
+		buy(t, env, acct.ID, sec.ID, d0, "10", "1000")
+		addPrice(t, env, sec.ID, d0.AddDays(1), "50")
+		val, err := env.valSvc.GetAccountValuation(acct.ID, d0.AddDays(1), ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetAccountValuation() error = %v", err)
+		}
+		requirePct(t, "IRR", val.MoneyWeightedReturnPct, -50.0, 0.01)
+	})
+	t.Run("year-long wipeout", func(t *testing.T) {
+		env := createFullTestService(t)
+		acct := createInvAccount(t, env.accountRepo, "Brokerage")
+		sec := createSec(t, env.secRepo, "VTI")
+		deposit(t, env, acct.ID, d0, "1000")
+		buy(t, env, acct.ID, sec.ID, d0, "10", "1000")
+		addPrice(t, env, sec.ID, d0.AddYears(1), "0.0001")
+		// Sell everything for the last cent: cash is now (almost) zero.
+		proceeds := types.MustNewMoney("0.001")
+		if _, err := env.svc.Sell(acct.ID, sec.ID, d0.AddYears(1), types.MustNewQuantity("10"), &proceeds, nil, types.ZeroMoney, "", nil); err != nil {
+			t.Fatalf("Sell() error = %v", err)
+		}
+		val, err := env.valSvc.GetAccountValuation(acct.ID, d0.AddYears(1), ValuationOptions{})
+		if err != nil {
+			t.Fatalf("GetAccountValuation() error = %v", err)
+		}
+		requirePct(t, "IRR", val.MoneyWeightedReturnPct, -100.0, 0.01)
+		requirePct(t, "IRR annualized", val.MoneyWeightedReturnAnnualizedPct, -100.0, 0.01)
+		requirePct(t, "TWR", val.TimeWeightedReturnPct, -100.0, 0.01)
+	})
+}
+
+func TestSolveXIRR_LogSpace(t *testing.T) {
+	d0 := types.NewDate(2024, time.January, 1)
+	holding := func(x float64, days float64) float64 { return math.Exp(x*days/daysPerYear) - 1 }
+	t.Run("one-day ten percent gain has a root", func(t *testing.T) {
+		x, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(1), 1100}})
+		if !ok {
+			t.Fatal("solveXIRR() ok = false")
+		}
+		if got := holding(x, 1); math.Abs(got-0.10) > 1e-6 {
+			t.Errorf("holding-period return = %.6f, want 0.10", got)
+		}
+	})
+	t.Run("one-day half loss has a root", func(t *testing.T) {
+		x, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(1), 500}})
+		if !ok {
+			t.Fatal("solveXIRR() ok = false")
+		}
+		if got := holding(x, 1); math.Abs(got+0.5) > 1e-6 {
+			t.Errorf("holding-period return = %.6f, want -0.50", got)
+		}
+	})
+	t.Run("zero terminal is a total loss", func(t *testing.T) {
+		x, ok := solveXIRR([]cashFlow{{d0, -1000}, {d0.AddDays(365), 0}})
+		if !ok || !math.IsInf(x, -1) {
+			t.Errorf("x, ok = %v, %v; want -Inf, true", x, ok)
 		}
 	})
 }

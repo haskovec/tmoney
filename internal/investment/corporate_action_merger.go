@@ -122,7 +122,7 @@ func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecur
 		for accountID, totalShares := range accountOldShares {
 			cashAmount := cashPerShareMoney.Mul(totalShares.Decimal())
 			cashTxn := NewTransaction(accountID, mergerDate, TransactionTypeDeposit, cashAmount)
-			cashTxn.SetMemo("Merger cash consideration")
+			cashTxn.SetMemo(MemoMergerCashConsideration)
 			if err := s.invRepo.Create(cashTxn); err != nil {
 				return fmt.Errorf("failed to create cash consideration transaction: %w", err)
 			}
@@ -188,7 +188,7 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 			cashPerShareMoney := types.NewMoneyFromFloat(params.CashPerShare)
 			cashAmount := cashPerShareMoney.Mul(oldShares.Decimal())
 			cashTxn := NewTransaction(pos.AccountID, mergerDate, TransactionTypeDeposit, cashAmount)
-			cashTxn.SetMemo("Merger cash consideration")
+			cashTxn.SetMemo(MemoMergerCashConsideration)
 			if err := s.invRepo.Create(cashTxn); err != nil {
 				return fmt.Errorf("failed to create cash consideration transaction: %w", err)
 			}

@@ -38,16 +38,17 @@ type AccountValuation struct {
 
 	// Performance against the money that crossed the account boundary
 	// (deposits, withdrawals, cash and share transfers) rather than against
-	// buys — see performance.go. MoneyWeightedReturnPct is the annualized
-	// IRR (XIRR) of those flows plus the closing value.
-	// TimeWeightedReturnPct is the cumulative growth chained across the
-	// sub-periods between flows; TimeWeightedReturnAnnualizedPct is that
-	// growth per year, set only when the ledger spans at least one year.
-	// Each is nil when the ledger cannot define it (no flows, no positive
-	// opening value, no solver root).
-	MoneyWeightedReturnPct          *float64 `json:"money_weighted_return_pct,omitzero"`
-	TimeWeightedReturnPct           *float64 `json:"time_weighted_return_pct,omitzero"`
-	TimeWeightedReturnAnnualizedPct *float64 `json:"time_weighted_return_annualized_pct,omitzero"`
+	// buys — see performance.go. The un-suffixed fields are holding-period
+	// figures over the ledger's whole span; the Annualized fields are per
+	// year and are set only when that span is at least one year. Each is
+	// nil when the ledger cannot define it (no flows, no positive opening
+	// value, no solver root). Unlike the other totals, these are replayed
+	// from the ledger as of asOf, so on a past asOf they describe the
+	// historical book while TotalValue prices today's positions.
+	MoneyWeightedReturnPct           *float64 `json:"money_weighted_return_pct,omitzero"`
+	MoneyWeightedReturnAnnualizedPct *float64 `json:"money_weighted_return_annualized_pct,omitzero"`
+	TimeWeightedReturnPct            *float64 `json:"time_weighted_return_pct,omitzero"`
+	TimeWeightedReturnAnnualizedPct  *float64 `json:"time_weighted_return_annualized_pct,omitzero"`
 
 	// AnyRealizedUnavailable is true when at least one of the
 	// contributing holdings has RealizedGainUnavailable=true (a non-lot

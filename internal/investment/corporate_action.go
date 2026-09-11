@@ -111,6 +111,24 @@ type CorporateAction struct {
 	CreatedAt        types.Timestamp  `json:"created_at"`
 }
 
+// Memos on the cash rows a corporate action posts as `deposit`. Reversal and
+// the performance figures identify those rows by memo, so the strings are
+// shared here rather than repeated.
+const (
+	MemoMergerCashConsideration = "Merger cash consideration"
+	MemoSpinOffCashInLieu       = "Spin-off cash-in-lieu for fractional shares"
+)
+
+// isCorporateActionCash reports whether a deposit row is merger cash
+// consideration or spin-off cash-in-lieu — proceeds of a holding rather than
+// money the investor put in.
+func isCorporateActionCash(t *Transaction) bool {
+	if t.Type != TransactionTypeDeposit || !t.Memo.Valid {
+		return false
+	}
+	return t.Memo.String == MemoMergerCashConsideration || t.Memo.String == MemoSpinOffCashInLieu
+}
+
 // NewCorporateAction creates a new CorporateAction with required fields.
 func NewCorporateAction(actionType ActionType, securityID types.ID, actionDate types.Date, parameters string) *CorporateAction {
 	return &CorporateAction{

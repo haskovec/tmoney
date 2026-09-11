@@ -123,7 +123,7 @@ func (s *CorporateActionService) spinOffProcessLots(parentSecurityID, spinOffSec
 		if fractionalPart.IsPositive() {
 			cashAmount := spinOffPrice.Mul(fractionalPart.Decimal())
 			cashTxn := NewTransaction(lot.AccountID, spinOffDate, TransactionTypeDeposit, cashAmount)
-			cashTxn.SetMemo("Spin-off cash-in-lieu for fractional shares")
+			cashTxn.SetMemo(MemoSpinOffCashInLieu)
 			if err := s.invRepo.Create(cashTxn); err != nil {
 				return fmt.Errorf("failed to create cash-in-lieu transaction: %w", err)
 			}
@@ -199,7 +199,7 @@ func (s *CorporateActionService) spinOffProcessPositions(parentSecurityID, spinO
 		if fractionalPart.IsPositive() {
 			cashAmount := spinOffPrice.Mul(fractionalPart.Decimal())
 			cashTxn := NewTransaction(pos.AccountID, spinOffDate, TransactionTypeDeposit, cashAmount)
-			cashTxn.SetMemo("Spin-off cash-in-lieu for fractional shares")
+			cashTxn.SetMemo(MemoSpinOffCashInLieu)
 			if err := s.invRepo.Create(cashTxn); err != nil {
 				return fmt.Errorf("failed to create cash-in-lieu transaction: %w", err)
 			}

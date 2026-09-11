@@ -565,7 +565,7 @@ func TestInvestmentPortfolio_AccountTotalsBlock(t *testing.T) {
 		"Fees paid",
 		"Total return",
 		"Total return %",
-		"IRR (annual)",
+		"IRR",
 		"TWR",
 	}
 	lastIdx := -1
