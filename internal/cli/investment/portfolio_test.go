@@ -565,6 +565,8 @@ func TestInvestmentPortfolio_AccountTotalsBlock(t *testing.T) {
 		"Fees paid",
 		"Total return",
 		"Total return %",
+		"IRR",
+		"TWR",
 	}
 	lastIdx := -1
 	var lastLabel string

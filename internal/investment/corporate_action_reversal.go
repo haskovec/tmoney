@@ -191,7 +191,7 @@ func (s *CorporateActionService) reverseSpinOff(ca *CorporateAction) error {
 		}
 		for _, t := range txns {
 			if t.Type == TransactionTypeDeposit && t.Date.Time().Equal(spinDate.Time()) &&
-				t.Memo.Valid && t.Memo.String == "Spin-off cash-in-lieu for fractional shares" {
+				t.Memo.Valid && t.Memo.String == MemoSpinOffCashInLieu {
 				if err := s.invRepo.Delete(t.ID); err != nil {
 					return fmt.Errorf("failed to delete cash-in-lieu transaction %s: %w", t.ID, err)
 				}

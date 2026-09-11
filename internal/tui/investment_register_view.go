@@ -459,7 +459,8 @@ func (a *App) renderInvestmentRegister() string {
 // renderInvestmentTotalReturnLines builds the two header lines that show the
 // total-return breakdown for the investment account: a components line
 // (Unrealized · Realized · Div · Int · Fees) and a summary line
-// (Total return $amount (pct%) · Value $total), where Value is the
+// (Total return $amount (pct%) · IRR pct% · TWR pct% · Value $total), where
+// IRR and TWR are the money- and time-weighted returns and Value is the
 // account's total worth (cash + holdings market value). Returns ("", "")
 // when no valuation is loaded so the register still renders during the
 // initial load.
@@ -511,14 +512,33 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	}
 	breakdown := strings.Join(parts, " · ")
 
-	pctStr := "—"
-	if v.TotalReturnPct != nil {
-		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
+	// pct renders a percent, or the "—" placeholder when the figure is
+	// undefined, so every line keeps the same shape.
+	pct := func(p *float64) string {
+		if p == nil {
+			return "—"
+		}
+		return fmt.Sprintf("%.2f%%", *p)
 	}
-	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pct(v.TotalReturnPct) + ")"
 	if v.AnyRealizedUnavailable {
 		total += " " + a.styles.Muted.Render("(partial)")
 	}
+	// IRR and TWR show the annual figure once the ledger spans a year;
+	// before that the holding-period figure is shown and marked "(cum.)".
+	perf := func(label string, annual, cumulative *float64) string {
+		s := " · " + a.styles.Muted.Render(label) + " "
+		if annual != nil {
+			return s + pct(annual)
+		}
+		s += pct(cumulative)
+		if cumulative != nil {
+			s += " " + a.styles.Muted.Render("(cum.)")
+		}
+		return s
+	}
+	total += perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct)
+	total += perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct)
 	// Account value (cash + holdings market value) is appended after the
 	// optional (partial) marker: total value is independent of the
 	// realized-gain partiality that marker qualifies, so it must sit

@@ -35,6 +35,11 @@ import (
 // HasClosedPositions is set whenever the account has at least one
 // fully-sold security, regardless of opts.IncludeClosed — it advises the
 // caller that there are closed positions to display.
+//
+// asOf governs pricing only for the value and gain fields: cash and
+// holdings are the current book, priced on or before asOf. The IRR / TWR
+// fields are the exception — they replay the ledger up to asOf — so on a
+// past asOf the two groups can describe different books.
 // ValuationService is the read model for an investment account: what is held,
 // what it is worth, and what it has returned.
 //
@@ -179,25 +184,34 @@ func (s *ValuationService) GetAccountValuation(accountID types.ID, asOf types.Da
 		totalReturnPct = &pct
 	}
 
+	perf, err := s.computeAccountPerformance(accountID, asOf)
+	if err != nil {
+		return nil, err
+	}
+
 	return &AccountValuation{
-		AccountID:              accountID,
-		CashBalance:            cashBalance,
-		MarketValue:            marketValue,
-		TotalValue:             totalValue,
-		TotalCostBasis:         totalCostBasis,
-		TotalGainLoss:          totalGainLoss,
-		TotalGainPct:           totalGainPct,
-		Holdings:               holdings,
-		RealizedGain:           realizedGain,
-		DividendsReceived:      dividendsReceived,
-		InterestReceived:       interestReceived,
-		FeesPaid:               feesPaid,
-		TotalCostDeployed:      totalCostDeployed,
-		TotalReturn:            totalReturn,
-		TotalReturnPct:         totalReturnPct,
-		HasClosedPositions:     hasClosedPositions,
-		ClosedPositionCount:    closedPositionCount,
-		AnyRealizedUnavailable: anyRealizedUnavailable,
+		AccountID:                        accountID,
+		CashBalance:                      cashBalance,
+		MarketValue:                      marketValue,
+		TotalValue:                       totalValue,
+		TotalCostBasis:                   totalCostBasis,
+		TotalGainLoss:                    totalGainLoss,
+		TotalGainPct:                     totalGainPct,
+		Holdings:                         holdings,
+		RealizedGain:                     realizedGain,
+		DividendsReceived:                dividendsReceived,
+		InterestReceived:                 interestReceived,
+		FeesPaid:                         feesPaid,
+		TotalCostDeployed:                totalCostDeployed,
+		TotalReturn:                      totalReturn,
+		TotalReturnPct:                   totalReturnPct,
+		MoneyWeightedReturnPct:           perf.MoneyWeightedReturnPct,
+		MoneyWeightedReturnAnnualizedPct: perf.MoneyWeightedReturnAnnualizedPct,
+		TimeWeightedReturnPct:            perf.TimeWeightedReturnPct,
+		TimeWeightedReturnAnnualizedPct:  perf.TimeWeightedReturnAnnualizedPct,
+		HasClosedPositions:               hasClosedPositions,
+		ClosedPositionCount:              closedPositionCount,
+		AnyRealizedUnavailable:           anyRealizedUnavailable,
 	}, nil
 }
 

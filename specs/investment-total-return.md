@@ -5,9 +5,10 @@
 > (investment register header, dashboard card, `View → Show closed
 > positions` toggle). See
 > [`implementation-plan-investment-total-return.md`](implementation-plan-investment-total-return.md)
-> for the per-task history. The next batch — money-weighted return (XIRR),
-> time-weighted return (TWR), and realized gain in non-lot accounts with
-> corporate actions — remains in **Follow-up (not in this spec)** below.
+> for the per-task history. Money-weighted (IRR) and time-weighted (TWR)
+> return are implemented at the account level (see **Money- and
+> time-weighted return** below). Realized gain in non-lot accounts with
+> corporate actions remains in **Follow-up (not in this spec)**.
 
 ## Overview
 
@@ -451,13 +452,74 @@ CLI tests in `internal/cli/investment_test.go`:
 - `investment portfolio --include-closed` adds Closed section
 - Account totals row matches the sum of per-security values
 
+## Money- and time-weighted return
+
+`total_return_pct` divides by the sum of buys, so turning idle cash into
+shares raises the denominator and dilutes the percent even though the
+account is worth exactly what it was a moment before. Two figures that
+measure against the money that crossed the account boundary instead are
+carried on `AccountValuation` (`internal/investment/performance.go`):
+
+| Field | Meaning |
+|---|---|
+| `MoneyWeightedReturnPct` | Holding-period IRR (XIRR) of the external flows plus the closing value, compounded over the ledger's span. The investor's own return: it rewards adding money before a rise and removing it before a fall. |
+| `MoneyWeightedReturnAnnualizedPct` | The IRR per year. Set only when the ledger spans at least 365 days, so a one-day move is never printed as an absurd annual rate. |
+| `TimeWeightedReturnPct` | Cumulative growth chained across the sub-periods between external flows. The holdings' return, independent of contribution size and timing, comparable to a fund's published figure. |
+| `TimeWeightedReturnAnnualizedPct` | The cumulative TWR per year. Set only when the ledger spans at least 365 days. |
+
+**External flows** are `deposit`, `withdrawal`, `transfer_cash` (signed
+`total_amount`) and `transfer_shares` (the cost basis that moved; the ledger
+stores no market value for it). Buys, sells, dividends, interest, fees and
+corporate-action `exchange` rows are internal and are not flows. The
+`deposit` rows a merger (cash consideration) or spin-off (cash-in-lieu)
+posts are proceeds of a holding, not contributions: they are recognised by
+their memo (`MemoMergerCashConsideration`, `MemoSpinOffCashInLieu`) and
+treated as internal.
+
+**Historical value.** Both need the account's value on every flow date. A
+single ascending pass over the ledger rebuilds cash from the cash-affecting
+types and shares from a per-security replay that applies splits (pre-split
+rule as `replayPosition`), scales a spin-off parent's running cost by its
+`parent_allocation_pct` on the action date, and zeroes a merger's source
+security on the merger date. Each position is priced from the stored
+history on or before that date. Split processing rewrites stored prices on
+or before the split day into post-split units, so when a checkpoint falls
+before a split the stored price is scaled back up by every split not yet
+applied to the walker's share count. With no price yet the position is
+carried at its running cost basis, the same fallback the live valuation
+uses. A share removal larger than the running position clamps to zero
+rather than failing the valuation.
+
+**TWR chain.** Checkpoints are the first ledger date plus every date with a
+net external flow `F`. For each checkpoint with value `V` (end of day,
+flow included) the sub-period factor is `(V − F) / V_prev`, taken only when
+`V_prev > 0`; a final factor `V_asOf / V_last` closes the chain. The result
+is `∏ factor − 1`. **IRR** solves `Σ −F_i · e^(−x · years_i) +
+V_asOf · e^(−x · years) = 0` for `x = ln(1+r)`, bracketing outward from 0
+and bisecting; solving in log space lets a large one-day gain or loss find
+its root. A ledger whose flows never return anything positive is a total
+loss and reports −100 %. The holding-period figure is `e^(x · span) − 1`.
+
+Each field is `nil` — rendered `—` — when the ledger cannot define it: no
+external flows, no sub-period with a positive opening value, or no root.
+
+**As-of.** IRR and TWR replay the ledger up to `asOf`. The other totals do
+not: cash and holdings are the current book priced on or before `asOf`. On
+`investment portfolio --as-of` in the past the two groups can therefore
+describe different books; full as-of holdings are out of scope here.
+
+The TUI investment register shows `IRR x% · TWR y%` between total return
+and value; each is the annualized figure when present, else the
+holding-period figure marked `(cum.)`. The CLI `investment portfolio`
+account totals end with `IRR` and `TWR` rows using the same rule, marked
+`(annual)` or `(cumulative)`.
+
 ## Follow-up (not in this spec)
 
-- **Money-weighted return (XIRR)** at the account and per-security level
-  over a user-selected date range. Adds an XIRR solver, per-cash-flow
-  series construction, and date-range UI.
-- **Time-weighted return (TWR)** which is comparable across portfolios
-  with different deposit/withdraw timings.
+- **Per-security IRR / TWR** and a **user-selected date range** for both.
+- **Share transfers at market value** — a transfer-in currently enters the
+  IRR/TWR flow series at its cost basis, so a transferred position with an
+  embedded gain understates the flow and overstates the return.
 - **Realized gain in non-lot accounts with corporate actions** — would
   require either an action-aware ledger replay or persisting realized
   gain on each sell at sell time.
