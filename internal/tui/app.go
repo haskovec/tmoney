@@ -300,8 +300,6 @@ type App struct {
 	corporateActionViewFilterEditing bool
 	corporateActionDetail            *investment.CorporateAction
 
-	// Repositories for investment dialogs
-
 	// File dialog state (Open / Save As / browse), including its double-click tracker
 	file fileSurface
 
