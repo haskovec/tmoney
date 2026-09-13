@@ -418,16 +418,16 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 			payeeMap: make(map[string]*payee.Payee),
 		}
 
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.accounts = accounts
 		}
 
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -461,16 +461,16 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 			isTransfer: st.IsTransfer(),
 		}
 
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.accounts = accounts
 		}
 
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -565,10 +565,10 @@ func (s *schedSurface) applyData(data *scheduledDialogData, categories []*catego
 // the lookup fails. A combo that has to be built now treats a failed lookup as
 // an empty list rather than as an error worth an error page.
 func (a *App) categoriesOrNil() []*category.Category {
-	if a.categorySvc == nil {
+	if a.services.Category == nil {
 		return nil
 	}
-	cats, err := a.categorySvc.List()
+	cats, err := a.services.Category.List()
 	if err != nil {
 		return nil
 	}
@@ -646,7 +646,7 @@ func (a *App) schedDialogIncludeValueAdjustment() bool {
 // selection by ID and is a no-op when nothing changed (so it is cheap
 // to call on every keypress).
 func (a *App) refreshSchedCategoryOptionsForAccount() {
-	if a.sched.dlg == nil || a.categorySvc == nil {
+	if a.sched.dlg == nil || a.services.Category == nil {
 		return
 	}
 	fields := a.sched.dlg.Fields()
@@ -666,7 +666,7 @@ func (a *App) refreshSchedCategoryOptionsForAccount() {
 		selectedID = a.sched.categoryIDs[catField.SelectedIndex]
 	}
 
-	cats, err := a.categorySvc.List()
+	cats, err := a.services.Category.List()
 	if err != nil {
 		return
 	}
@@ -921,7 +921,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	// child splits (and their loan_section tags), demoting it to a generic
 	// single-line schedule. Warn first.
 	demotesLoan := mode == scheduledDialogModeEdit && existingSched != nil &&
-		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(existingSched)
+		a.services.Scheduled != nil && a.services.Scheduled.IsLoanShaped(existingSched)
 
 	// Demotion guard: unchecking Split on a paycheck-shaped schedule clears
 	// its children (and their paycheck_section tags) too — the save closure
@@ -936,8 +936,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	save := func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
-		if payeeName != "" && a.payeeSvc != nil {
-			py, _, err := a.payeeSvc.GetOrCreate(payeeName)
+		if payeeName != "" && a.services.Payee != nil {
+			py, _, err := a.services.Payee.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -996,7 +996,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
@@ -1034,7 +1034,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 			}
@@ -1076,7 +1076,7 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 	// editor strips its loan_section tags, silently converting it to a generic
 	// schedule that books stale template interest. Warn first.
 	demotesLoan := pending.mode == scheduledDialogModeEdit && pending.existing != nil &&
-		a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(pending.existing)
+		a.services.Scheduled != nil && a.services.Scheduled.IsLoanShaped(pending.existing)
 
 	// Demotion guard: paycheck_section rides through this editor, so a save
 	// loses the paycheck shape only when the resulting children are no longer
@@ -1090,8 +1090,8 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 
 	save := func() tea.Msg {
 		var payeeID types.ID
-		if pending.payeeName != "" && a.payeeSvc != nil {
-			py, _, err := a.payeeSvc.GetOrCreate(pending.payeeName)
+		if pending.payeeName != "" && a.services.Payee != nil {
+			py, _, err := a.services.Payee.GetOrCreate(pending.payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -1131,14 +1131,14 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		if pending.mode == scheduledDialogModeEdit && pending.existing != nil {
 			st := pending.existing
 			applyScalars(st)
-			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
 		} else {
 			st := scheduled.NewTransaction(pending.accountID, pending.frequency, pending.startDate)
 			applyScalars(st)
-			cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 			}

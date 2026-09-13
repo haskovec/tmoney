@@ -245,9 +245,9 @@ type transferDeps struct {
 // — so each caller keeps its own nil guard.
 func (a *App) transferDeps() transferDeps {
 	return transferDeps{
-		accounts:   func() *account.Service { return a.accountSvc },
-		categories: func() *category.Service { return a.categorySvc },
-		transfers:  func() *transfer.Service { return a.transferSvc },
+		accounts:   func() *account.Service { return a.services.Account },
+		categories: func() *category.Service { return a.services.Category },
+		transfers:  func() *transfer.Service { return a.services.Transfer },
 		undo:       func() *undo.Manager { return a.undoManager },
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -1255,7 +1256,9 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		categorySvc: categorySvc,
+		services: app.Services{
+			Category: categorySvc,
+		},
 		txn: txnSurface{data: &transactionDialogData{categories: cats, payeeMap: make(map[string]*payee.Payee)},
 			categoryIDs: ids},
 	}

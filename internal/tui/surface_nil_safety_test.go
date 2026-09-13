@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
@@ -27,7 +28,7 @@ func TestSecurityEditSubmit_UsesTheCapturedEditID(t *testing.T) {
 		t.Fatalf("create security: %v", err)
 	}
 
-	app := &App{statusbar: widget.NewStatusBar(), securitySvc: svc}
+	app := &App{statusbar: widget.NewStatusBar(), services: app.Services{Security: svc}}
 	d := buildEditSecurityDialog(sec)
 	d.SetVisible(true)
 	app.security = securitySurface{modalSurface: modalSurface{dlg: d}, mode: securityDialogModeEdit, editID: sec.ID}

@@ -6,20 +6,11 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
-	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
-	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/price"
-	"github.com/haskovec/tmoney/internal/reconciliation"
-	"github.com/haskovec/tmoney/internal/report"
-	"github.com/haskovec/tmoney/internal/scheduled"
-	"github.com/haskovec/tmoney/internal/security"
-	"github.com/haskovec/tmoney/internal/transaction"
-	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -112,18 +103,16 @@ type App struct {
 	menubar   *widget.MenuBar
 	statusbar *widget.StatusBar
 
-	// Services (initialized on start)
-	accountSvc     *account.Service
-	transactionSvc *transaction.Service
-	// transferSvc owns whole-transaction cash transfers across both ledgers.
-	// Reads and writes of transfers go through it rather than branching between
-	// transactionSvc and investmentSvc on account type.
-	transferSvc       *transfer.Service
-	categorySvc       *category.Service
-	payeeSvc          *payee.Service
-	scheduledTxnSvc   *scheduled.Service
-	reportSvc         *report.Service
-	reconciliationSvc *reconciliation.Service
+	// services is every service and repository the TUI reaches, bound to the
+	// open database. It is ONE field on purpose: switchDatabase re-points it
+	// with a single assignment, so a newly added service cannot be left bound
+	// to the previous file (the bug TestSwitchDatabase_RepointsEveryService
+	// exists for). Held by value so a zero App hands out nil services rather
+	// than panicking; ~700 test literals rely on that.
+	//
+	// Transfers go through services.Transfer rather than branching between
+	// Transaction and Investment on account type.
+	services app.Services
 
 	// Dashboard data (loaded asynchronously)
 	dashboard                 *dashboardData
@@ -216,7 +205,6 @@ type App struct {
 	securityView  *securityViewData
 	securityTable *widget.Table
 	security      securitySurface
-	securitySvc   *security.Service
 
 	// After adding a security, the table build step moves the cursor onto the
 	// row whose security ID matches, so a freshly added ticker scrolls into
@@ -231,7 +219,6 @@ type App struct {
 	priceListTable    *widget.Table // list-mode: latest price per ticker
 	price             priceSurface
 	priceImportDialog *dialog.Dialog
-	priceSvc          *price.Service
 
 	// Bulk price refresh state. While refreshingPrices is true, the `u`
 	// shortcut on the Securities and Prices views is a no-op so the user
@@ -242,15 +229,8 @@ type App struct {
 	refreshNotifID   int
 
 	// Investment register state
-	investmentRegister *investmentRegisterData
-	investmentTable    *widget.Table
-	investmentSvc      *investment.Service
-	// investmentValuationSvc is the read-only half: holdings, valuation and
-	// total return. Views take it instead of the full service.
-	investmentValuationSvc *investment.ValuationService
-	// investmentEditSvc owns the ten edit entry points.
-	investmentEditSvc      *investment.EditService
-	investmentRepo         *investment.Repository
+	investmentRegister     *investmentRegisterData
+	investmentTable        *widget.Table
 	investmentTypeSelector *dialog.Dialog
 	investmentEditTxnID    types.ID // set when editing an existing transaction
 
@@ -301,9 +281,8 @@ type App struct {
 	portfolioLotsTable     *widget.Table
 	portfolioMode          portfolioViewMode
 
-	// Corporate action service and stock split dialog state
-	corporateActionSvc *investment.CorporateActionService
-	stockSplit         stockSplitSurface
+	// Stock split dialog state
+	stockSplit stockSplitSurface
 
 	// Merger dialog state
 	merger mergerSurface
@@ -320,10 +299,6 @@ type App struct {
 	corporateActionViewFilter        string
 	corporateActionViewFilterEditing bool
 	corporateActionDetail            *investment.CorporateAction
-
-	// Repositories for investment dialogs
-	lotRepo      *investment.LotRepository
-	positionRepo *investment.PositionRepository
 
 	// File dialog state (Open / Save As / browse), including its double-click tracker
 	file fileSurface
@@ -386,24 +361,8 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		statusbar:                 widget.NewStatusBar(),
 		undoManager:               undo.NewManager(),
 		keys:                      defaultKeyMap(),
-		accountSvc:                svc.Account,
-		transactionSvc:            svc.Transaction,
-		transferSvc:               svc.Transfer,
-		categorySvc:               svc.Category,
-		payeeSvc:                  svc.Payee,
-		scheduledTxnSvc:           svc.Scheduled,
-		reportSvc:                 svc.Report,
-		reconciliationSvc:         svc.Reconciliation,
-		securitySvc:               svc.Security,
-		priceSvc:                  svc.Price,
-		investmentSvc:             svc.Investment,
-		investmentValuationSvc:    svc.InvestmentValuation,
-		investmentEditSvc:         svc.InvestmentEdit,
-		investmentRepo:            svc.InvestmentRepo,
+		services:                  *svc,
 		dashboardExpandedAccounts: make(map[types.ID]bool),
-		lotRepo:                   svc.LotRepo,
-		positionRepo:              svc.PositionRepo,
-		corporateActionSvc:        svc.CorporateAction,
 		createCat:                 createCatSurface{origin: newCreateCatOrigin()},
 	}
 

@@ -81,7 +81,7 @@ func TestAmortizationView_NoSchedule(t *testing.T) {
 	carLoan := account.NewAccount("Car Loan", account.TypeLoan, "USD",
 		types.MustNewMoney("-20000"), types.NewDate(2024, time.January, 1))
 	carLoan.SetInterestRate(types.MustNewMoney("5.9"))
-	if err := env.app.accountSvc.Create(carLoan); err != nil {
+	if err := env.app.services.Account.Create(carLoan); err != nil {
 		t.Fatalf("create car loan: %v", err)
 	}
 
@@ -148,12 +148,12 @@ func TestAmortizationView_MissingAPR(t *testing.T) {
 
 	// Clear the loan's APR after the schedule exists — a loan-shaped schedule
 	// with no computable rate.
-	loanAcct, err := env.app.accountSvc.GetByID(env.loan.ID)
+	loanAcct, err := env.app.services.Account.GetByID(env.loan.ID)
 	if err != nil {
 		t.Fatalf("get loan: %v", err)
 	}
 	loanAcct.ClearInterestRate()
-	if err := env.app.accountSvc.Update(loanAcct); err != nil {
+	if err := env.app.services.Account.Update(loanAcct); err != nil {
 		t.Fatalf("clear APR: %v", err)
 	}
 

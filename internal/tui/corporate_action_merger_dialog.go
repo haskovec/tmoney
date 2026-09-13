@@ -70,9 +70,9 @@ func (a *App) loadMergerDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &mergerDialogData{}
 
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}

@@ -140,17 +140,17 @@ type priceChartHistoryLoadedMsg struct {
 // the list of latest prices per non-hidden security with any prices.
 func (a *App) loadPriceViewData() tea.Cmd {
 	return func() tea.Msg {
-		if a.securitySvc == nil || a.priceSvc == nil {
+		if a.services.Security == nil || a.services.Price == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		excludeHidden := true
-		securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+		securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 
-		latest, err := a.priceSvc.GetLatestPrices()
+		latest, err := a.services.Price.GetLatestPrices()
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load latest prices: %w", err)}
 		}
@@ -197,19 +197,19 @@ func (a *App) reloadPriceViewKeepingMode() tea.Cmd {
 // security's price history (detail mode).
 func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 	return func() tea.Msg {
-		if a.securitySvc == nil || a.priceSvc == nil {
+		if a.services.Security == nil || a.services.Price == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		excludeHidden := true
-		securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+		securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 
 		var prices []*price.Price
 		if sec != nil {
-			prices, err = a.priceSvc.GetPriceHistory(sec.ID, nil, nil)
+			prices, err = a.services.Price.GetPriceHistory(sec.ID, nil, nil)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to load prices: %w", err)}
 			}
@@ -536,10 +536,10 @@ func (a *App) schedulePriceListChartFetchIfActive() tea.Cmd {
 // chart simply stays in its current state until the next cursor move.
 func (a *App) fetchPriceChartHistory(secID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if a.priceSvc == nil {
+		if a.services.Price == nil {
 			return nil
 		}
-		prices, err := a.priceSvc.GetPriceHistory(secID, nil, nil)
+		prices, err := a.services.Price.GetPriceHistory(secID, nil, nil)
 		if err != nil {
 			return nil
 		}
@@ -727,10 +727,10 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				"Delete Price",
 				fmt.Sprintf("Delete price for %s?", dateStr),
 				func() tea.Msg {
-					if a.priceSvc == nil {
+					if a.services.Price == nil {
 						return errMsg{err: fmt.Errorf("price service not available")}
 					}
-					if err := a.priceSvc.DeletePrice(priceID); err != nil {
+					if err := a.services.Price.DeletePrice(priceID); err != nil {
 						return errMsg{err: err}
 					}
 					return priceDeletedMsg{}
@@ -919,10 +919,10 @@ func (a *App) lookupPriceCmd(ticker, dateStr string) tea.Cmd {
 		if err != nil {
 			return priceLookupResultMsg{err: fmt.Errorf("enter a valid date first (YYYY-MM-DD)")}
 		}
-		if a.priceSvc == nil {
+		if a.services.Price == nil {
 			return priceLookupResultMsg{err: fmt.Errorf("price service not available")}
 		}
-		provider, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName)
+		provider, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName)
 		if err != nil {
 			return priceLookupResultMsg{err: err}
 		}
@@ -1006,12 +1006,12 @@ func (a *App) submitPriceDialog() (tea.Model, tea.Cmd) {
 // createPrice creates a new price via the service.
 func (a *App) createPrice(securityID types.ID, date types.Date, amount types.Money) tea.Cmd {
 	return func() tea.Msg {
-		if a.priceSvc == nil {
+		if a.services.Price == nil {
 			return errMsg{err: fmt.Errorf("price service not available")}
 		}
 
 		p := price.NewPrice(securityID, date, amount, price.SourceManual)
-		if err := a.priceSvc.AddPrice(p); err != nil {
+		if err := a.services.Price.AddPrice(p); err != nil {
 			return errMsg{err: err}
 		}
 		return priceAddedMsg{}
@@ -1021,13 +1021,13 @@ func (a *App) createPrice(securityID types.ID, date types.Date, amount types.Mon
 // updatePrice updates an existing price via the service.
 func (a *App) updatePrice(id, securityID types.ID, date types.Date, amount types.Money) tea.Cmd {
 	return func() tea.Msg {
-		if a.priceSvc == nil {
+		if a.services.Price == nil {
 			return errMsg{err: fmt.Errorf("price service not available")}
 		}
 
 		p := price.NewPrice(securityID, date, amount, price.SourceManual)
 		p.ID = id
-		if err := a.priceSvc.UpdatePrice(p); err != nil {
+		if err := a.services.Price.UpdatePrice(p); err != nil {
 			return errMsg{err: err}
 		}
 		return priceUpdatedMsg{}
@@ -1092,7 +1092,7 @@ func (a *App) submitImportPriceDialog() (tea.Model, tea.Cmd) {
 // importPrices imports prices from a CSV file.
 func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
 	return func() tea.Msg {
-		if a.priceSvc == nil || a.securitySvc == nil {
+		if a.services.Price == nil || a.services.Security == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
@@ -1118,14 +1118,14 @@ func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
 		// Resolve tickers to security IDs
 		var prices []*price.Price
 		for _, rec := range result.Records {
-			sec, lookupErr := a.securitySvc.GetByTicker(rec.Ticker, "USD")
+			sec, lookupErr := a.services.Security.GetByTicker(rec.Ticker, "USD")
 			if lookupErr != nil {
 				return errMsg{err: fmt.Errorf("unknown ticker %q (line %d): %w", rec.Ticker, rec.SourceLine, lookupErr)}
 			}
 			prices = append(prices, price.NewPrice(sec.ID, rec.Date, rec.Price, price.SourceImport))
 		}
 
-		importResult, err := a.priceSvc.BulkImport(prices, overwrite)
+		importResult, err := a.services.Price.BulkImport(prices, overwrite)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("import failed: %w", err)}
 		}

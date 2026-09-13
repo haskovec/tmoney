@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -74,18 +75,20 @@ func newSchedTransferCategoryEnv(t *testing.T) *schedTransferCategoryEnv {
 	}
 
 	app := &App{
-		currentView:     ViewScheduled,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		transactionSvc:  txnSvc,
-		transferSvc:     transferSvc,
-		scheduledTxnSvc: schedSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		services: app.Services{
+			Account:     accountSvc,
+			Payee:       payeeSvc,
+			Category:    categorySvc,
+			Transaction: txnSvc,
+			Transfer:    transferSvc,
+			Scheduled:   schedSvc,
+		},
+		undoManager: undo.NewManager(),
 	}
 	return &schedTransferCategoryEnv{
 		app: app, schedS: schedSvc, txnRepo: txnRepo,

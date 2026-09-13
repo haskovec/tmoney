@@ -51,8 +51,8 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account
-		if a.accountSvc != nil {
-			acct, err := a.accountSvc.GetByID(accountID)
+		if a.services.Account != nil {
+			acct, err := a.services.Account.GetByID(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -60,9 +60,9 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account valuation
-		if a.investmentSvc != nil {
+		if a.services.Investment != nil {
 			asOf := types.Today()
-			val, err := a.investmentValuationSvc.GetAccountValuation(accountID, asOf, a.valuationOptions())
+			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, asOf, a.valuationOptions())
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -70,8 +70,8 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load security names for display
-		if a.securitySvc != nil {
-			securities, err := a.securitySvc.List(security.Filter{})
+		if a.services.Security != nil {
+			securities, err := a.services.Security.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
 					data.securityNames[sec.ID] = securityLabel(sec)
@@ -86,12 +86,12 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 // loadLotDetail returns a command that loads lot detail for a specific security.
 func (a *App) loadLotDetail(accountID, securityID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		asOf := types.Today()
-		lots, err := a.investmentValuationSvc.GetLotDetail(accountID, securityID, asOf)
+		lots, err := a.services.InvestmentValuation.GetLotDetail(accountID, securityID, asOf)
 		if err != nil {
 			return errMsg{err: err}
 		}

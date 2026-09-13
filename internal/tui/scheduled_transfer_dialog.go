@@ -214,8 +214,8 @@ func (a *App) loadNewScheduledTransferDialogData() tea.Cmd {
 			mode:       scheduledDialogModeNew,
 			isTransfer: true,
 		}
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -384,7 +384,7 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, st)
+			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transfer: %w", err)}
 			}
@@ -407,7 +407,7 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		st.SetAutoPost(autoPost)
 		st.SetPostLeadDays(leadDays)
 
-		cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+		cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transfer: %w", err)}
 		}

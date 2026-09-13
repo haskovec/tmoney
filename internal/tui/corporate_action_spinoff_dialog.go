@@ -80,9 +80,9 @@ func (a *App) loadSpinOffDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &spinOffDialogData{}
 
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -177,14 +177,14 @@ func (a *App) spinOffPriceLookupCmd(childID types.ID, dateStr string) tea.Cmd {
 		if err != nil {
 			return spinOffPriceLookupMsg{err: fmt.Errorf("enter a valid date first (MM/DD/YYYY)")}
 		}
-		if a.securitySvc == nil || a.priceSvc == nil {
+		if a.services.Security == nil || a.services.Price == nil {
 			return spinOffPriceLookupMsg{err: fmt.Errorf("price/security service not available")}
 		}
-		sec, err := a.securitySvc.GetByID(childID)
+		sec, err := a.services.Security.GetByID(childID)
 		if err != nil {
 			return spinOffPriceLookupMsg{err: err}
 		}
-		provider, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName)
+		provider, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName)
 		if err != nil {
 			return spinOffPriceLookupMsg{err: err}
 		}
@@ -327,12 +327,12 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 	a.closeSpinOffDialog()
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil || a.corporateActionSvc == nil {
+		if a.services.Investment == nil || a.services.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("investment services not available")}
 		}
 
 		// Derive the engine's share ratio from the parent's current total shares.
-		total, terr := a.investmentSvc.TotalSharesForSecurity(parentSecurityID)
+		total, terr := a.services.Investment.TotalSharesForSecurity(parentSecurityID)
 		if terr != nil {
 			return errMsg{err: fmt.Errorf("failed to read parent holding: %w", terr)}
 		}
@@ -345,7 +345,7 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 			ShareRatio:          resultingShares / totalF,
 			ParentAllocationPct: parentAllocPct,
 		}
-		_, err := a.corporateActionSvc.SpinOff(parentSecurityID, spinOffSecurityID, spinOffDate, params, priceMoney)
+		_, err := a.services.CorporateAction.SpinOff(parentSecurityID, spinOffSecurityID, spinOffDate, params, priceMoney)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute spin-off: %w", err)}
 		}

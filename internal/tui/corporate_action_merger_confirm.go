@@ -68,20 +68,20 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 		}
 
 		// Resolve source and target tickers
-		if a.securitySvc != nil {
-			if src, err := a.securitySvc.GetByID(sourceID); err == nil {
+		if a.services.Security != nil {
+			if src, err := a.services.Security.GetByID(sourceID); err == nil {
 				data.sourceTicker = src.Ticker
 			}
-			if tgt, err := a.securitySvc.GetByID(targetID); err == nil {
+			if tgt, err := a.services.Security.GetByID(targetID); err == nil {
 				data.targetTicker = tgt.Ticker
 			}
 		}
 
 		// Load open lots for the source security (lot-tracking accounts)
 		var lots []*investment.Lot
-		if a.lotRepo != nil {
+		if a.services.LotRepo != nil {
 			var err error
-			lots, err = a.lotRepo.GetOpenLotsBySecurity(sourceID)
+			lots, err = a.services.LotRepo.GetOpenLotsBySecurity(sourceID)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to load lots: %w", err)}
 			}
@@ -89,9 +89,9 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 
 		// Load positions for the source security (non-lot-tracking accounts)
 		var positions []*investment.Position
-		if a.positionRepo != nil {
+		if a.services.PositionRepo != nil {
 			var err error
-			positions, err = a.positionRepo.GetPositionsBySecurity(sourceID)
+			positions, err = a.services.PositionRepo.GetPositionsBySecurity(sourceID)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to load positions: %w", err)}
 			}
@@ -138,8 +138,8 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 
 // resolveAccountName looks up an account name by ID, returning a fallback if not found.
 func resolveAccountName(a *App, accountID types.ID) string {
-	if a.accountSvc != nil {
-		if acct, err := a.accountSvc.GetByID(accountID); err == nil {
+	if a.services.Account != nil {
+		if acct, err := a.services.Account.GetByID(accountID); err == nil {
 			return acct.Name
 		}
 	}
@@ -285,11 +285,11 @@ func (a *App) executeMerger() (tea.Model, tea.Cmd) {
 	a.closeMergerConfirmation()
 
 	return a, func() tea.Msg {
-		if a.corporateActionSvc == nil {
+		if a.services.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("corporate action service not available")}
 		}
 
-		_, err := a.corporateActionSvc.Merger(sourceID, targetID, mergerDate, mergerParams)
+		_, err := a.services.CorporateAction.Merger(sourceID, targetID, mergerDate, mergerParams)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute merger: %w", err)}
 		}

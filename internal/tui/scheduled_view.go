@@ -54,11 +54,11 @@ type autoPostCompletedMsg struct {
 
 // autoPostOnFileOpen returns a command that runs auto-posting on startup.
 func (a *App) autoPostOnFileOpen() tea.Cmd {
-	if a.scheduledTxnSvc == nil {
+	if a.services.Scheduled == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		summary, err := a.scheduledTxnSvc.AutoPost()
+		summary, err := a.services.Scheduled.AutoPost()
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -69,10 +69,10 @@ func (a *App) autoPostOnFileOpen() tea.Cmd {
 // loadScheduledDueCount returns a command that loads the count of due scheduled transactions.
 func (a *App) loadScheduledDueCount() tea.Cmd {
 	return func() tea.Msg {
-		if a.scheduledTxnSvc == nil {
+		if a.services.Scheduled == nil {
 			return nil
 		}
-		due, err := a.scheduledTxnSvc.ListDue()
+		due, err := a.services.Scheduled.ListDue()
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -90,8 +90,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load due scheduled transactions
-		if a.scheduledTxnSvc != nil {
-			due, err := a.scheduledTxnSvc.ListDue()
+		if a.services.Scheduled != nil {
+			due, err := a.services.Scheduled.ListDue()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -103,7 +103,7 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			// is. A bounded "upcoming" window hid monthly+ schedules from
 			// view right after posting, since the next occurrence was past
 			// the cutoff.
-			all, err := a.scheduledTxnSvc.List()
+			all, err := a.services.Scheduled.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -130,8 +130,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load payee names
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -140,8 +140,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load account names
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -150,8 +150,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load category names
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			categories, err := a.services.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					data.categoryNames[c.ID] = c.Name
@@ -229,7 +229,7 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // skipSelectedScheduled skips the currently selected scheduled transaction.
 func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
-	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
+	if a.scheduled == nil || a.scheduledTable == nil || a.services.Scheduled == nil {
 		return a, nil
 	}
 
@@ -243,7 +243,7 @@ func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-		cmd := undo.NewSkipScheduledTransactionCommand(a.scheduledTxnSvc, st.ID)
+		cmd := undo.NewSkipScheduledTransactionCommand(a.services.Scheduled, st.ID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
@@ -253,7 +253,7 @@ func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
 
 // deleteSelectedScheduled deletes the currently selected scheduled transaction.
 func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
-	if a.scheduled == nil || a.scheduledTable == nil || a.scheduledTxnSvc == nil {
+	if a.scheduled == nil || a.scheduledTable == nil || a.services.Scheduled == nil {
 		return a, nil
 	}
 
@@ -267,7 +267,7 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-		cmd := undo.NewDeleteScheduledTransactionCommand(a.scheduledTxnSvc, st.ID)
+		cmd := undo.NewDeleteScheduledTransactionCommand(a.services.Scheduled, st.ID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
@@ -470,8 +470,8 @@ func (a *App) applyAutoPostResult(summary *scheduled.AutoPostSummary) tea.Cmd {
 		widget.NotificationInfo,
 	)
 	// Register auto-post as a single undo step
-	if a.undoManager != nil && a.transactionSvc != nil && a.scheduledTxnSvc != nil {
-		a.undoManager.Push(undo.NewAutoPostCommand(a.transactionSvc, a.transferSvc, a.scheduledTxnSvc, summary))
+	if a.undoManager != nil && a.services.Transaction != nil && a.services.Scheduled != nil {
+		a.undoManager.Push(undo.NewAutoPostCommand(a.services.Transaction, a.services.Transfer, a.services.Scheduled, summary))
 	}
 	// Reload data since auto-posting created transactions
 	return tea.Batch(

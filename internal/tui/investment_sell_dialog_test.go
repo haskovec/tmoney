@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -1068,7 +1069,9 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 				TrackLots: true,
 			},
 		},
-		lotRepo: nil, // guarded: with no repo wired, the FIFO branch is skipped
+		services: app.Services{
+			LotRepo: nil, // guarded: with no repo wired, the FIFO branch is skipped
+		},
 	}
 
 	fields := app.sell.dlg.Fields()

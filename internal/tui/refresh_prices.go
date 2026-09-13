@@ -38,16 +38,16 @@ func (a *App) startPriceRefresh() tea.Cmd {
 }
 
 // refreshPricesCmd returns a tea.Cmd that calls
-// priceSvc.RefreshPrices for all visible securities using the default
+// services.Price.RefreshPrices for all visible securities using the default
 // provider. The result is delivered as a priceRefreshCompleteMsg.
 func (a *App) refreshPricesCmd() tea.Cmd {
-	if a.priceSvc == nil {
+	if a.services.Price == nil {
 		return func() tea.Msg {
 			return priceRefreshCompleteMsg{err: fmt.Errorf("price service not available")}
 		}
 	}
 	return func() tea.Msg {
-		result, err := a.priceSvc.RefreshPrices(defaultRefreshProviderName, nil)
+		result, err := a.services.Price.RefreshPrices(defaultRefreshProviderName, nil)
 		return priceRefreshCompleteMsg{result: result, err: err}
 	}
 }

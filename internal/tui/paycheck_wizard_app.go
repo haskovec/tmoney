@@ -31,8 +31,8 @@ type paycheckWizardDataMsg struct {
 func (a *App) loadPaycheckWizardData() tea.Cmd {
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.accountSvc != nil {
-			acs, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			acs, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -40,8 +40,8 @@ func (a *App) loadPaycheckWizardData() tea.Cmd {
 		}
 
 		var categories []*category.Category
-		if a.categorySvc != nil {
-			cs, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			cs, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -133,13 +133,13 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 	a.closePaycheckWizard()
 
 	return a, func() tea.Msg {
-		if a.undoManager == nil || a.scheduledTxnSvc == nil {
+		if a.undoManager == nil || a.services.Scheduled == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		var payeeID types.ID
-		if employer != "" && a.payeeSvc != nil {
-			py, _, err := a.payeeSvc.GetOrCreate(employer)
+		if employer != "" && a.services.Payee != nil {
+			py, _, err := a.services.Payee.GetOrCreate(employer)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -200,7 +200,7 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 
 		if existing != nil {
 			applyWizard(existing)
-			cmd := undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, existing)
+			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, existing)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
@@ -209,7 +209,7 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 
 		st := scheduled.NewTransaction(accountID, freqOpt.frequency, nextDate)
 		applyWizard(st)
-		cmd := undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, st)
+		cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 		}

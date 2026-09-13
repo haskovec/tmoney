@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -71,7 +72,9 @@ func setupRefreshTUITest(t *testing.T, tickers ...string) (*App, *fakeRefreshPro
 		keys:      defaultKeyMap(),
 		statusbar: widget.NewStatusBar(),
 		styles:    widget.NewStyles(),
-		priceSvc:  priceSvc,
+		services: app.Services{
+			Price: priceSvc,
+		},
 	}
 	return a, fp, seeded
 }
@@ -108,7 +111,7 @@ func TestRefreshPricesCmd_DispatchesAndPersists(t *testing.T) {
 
 	// Verify both prices are now in the DB.
 	for _, sec := range secs {
-		stored, err := a.priceSvc.GetCurrentPrice(sec.ID, types.Today())
+		stored, err := a.services.Price.GetCurrentPrice(sec.ID, types.Today())
 		if err != nil {
 			t.Errorf("GetCurrentPrice(%s): %v", sec.Ticker, err)
 			continue
@@ -250,7 +253,7 @@ func TestNewApp_RegistersYahooProvider(t *testing.T) {
 	database := dbtest.New(t)
 
 	a := NewApp(database, nil)
-	if _, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
+	if _, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
 		t.Errorf("yahoo provider missing after NewApp: %v", err)
 	}
 }
@@ -268,7 +271,7 @@ func TestSwitchDatabase_RegistersYahooProvider(t *testing.T) {
 
 	a.switchDatabase(secondDB)
 
-	if _, err := a.priceSvc.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
+	if _, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName); err != nil {
 		t.Errorf("yahoo provider missing after switchDatabase: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -325,7 +326,7 @@ func TestBuildCreateCategoryDialog_SeedsNewParentAsQuery(t *testing.T) {
 // created with the requested Type.
 func TestPersistCategory_TopLevel(t *testing.T) {
 	svc, _ := newCategorySvcForPersistTest(t)
-	app := &App{categorySvc: svc}
+	app := &App{services: app.Services{Category: svc}}
 
 	got, err := app.persistCategory(createCategoryRequest{
 		Name: "Hobbies",
@@ -352,7 +353,7 @@ func TestPersistCategory_TopLevel(t *testing.T) {
 // NewParent=false → child inherits the parent's Type even if req.Type differs.
 func TestPersistCategory_ExistingParent(t *testing.T) {
 	svc, cats := newCategorySvcForPersistTest(t)
-	app := &App{categorySvc: svc}
+	app := &App{services: app.Services{Category: svc}}
 
 	var foodType category.Type
 	var hasFood bool
@@ -388,7 +389,7 @@ func TestPersistCategory_ExistingParent(t *testing.T) {
 // NewParent=true → both parent and child persisted; child references parent.
 func TestPersistCategory_NewParent(t *testing.T) {
 	svc, _ := newCategorySvcForPersistTest(t)
-	app := &App{categorySvc: svc}
+	app := &App{services: app.Services{Category: svc}}
 
 	got, err := app.persistCategory(createCategoryRequest{
 		Name:       "Endowment",
@@ -706,7 +707,9 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
 func TestApplyCreatedCategory_UnknownSourceClearsDialog(t *testing.T) {
 	svc, _ := newCategorySvcForPersistTest(t)
 	app := &App{
-		categorySvc: svc,
+		services: app.Services{
+			Category: svc,
+		},
 		createCat: createCatSurface{modalSurface: modalSurface{dlg: buildCreateCategoryDialog("X", "", nil, category.TypeExpense)},
 			origin: newCreateCatOrigin()},
 	}

@@ -50,21 +50,21 @@ func (a *App) loadReportsViewData(rt reportType, year, month int, includeTransfe
 
 		switch rt {
 		case reportTypeNetWorth:
-			if a.reportSvc != nil {
-				report, err := a.reportSvc.NetWorthReport()
+			if a.services.Report != nil {
+				report, err := a.services.Report.NetWorthReport()
 				if err != nil {
 					return errMsg{err: err}
 				}
 				data.netWorth = report
 			}
 		case reportTypeSpending:
-			if a.reportSvc != nil {
+			if a.services.Report != nil {
 				var report *report.Spending
 				var err error
 				if month > 0 {
-					report, err = a.reportSvc.SpendingByCategoryMonth(year, month, includeTransfers)
+					report, err = a.services.Report.SpendingByCategoryMonth(year, month, includeTransfers)
 				} else {
-					report, err = a.reportSvc.SpendingByCategoryYear(year, includeTransfers)
+					report, err = a.services.Report.SpendingByCategoryYear(year, includeTransfers)
 				}
 				if err != nil {
 					return errMsg{err: err}

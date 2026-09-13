@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
@@ -33,9 +34,11 @@ func TestSpinOffDialog_PriceLookupFillsChildPrice(t *testing.T) {
 
 	ids := []types.ID{child.ID}
 	app := &App{
-		statusbar:   widget.NewStatusBar(),
-		priceSvc:    priceSvc,
-		securitySvc: securitySvc,
+		statusbar: widget.NewStatusBar(),
+		services: app.Services{
+			Price:    priceSvc,
+			Security: securitySvc,
+		},
 		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil)},
 			securityIDs: ids},
 	}
@@ -83,9 +86,11 @@ func TestSpinOffDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 
 	ids := []types.ID{child.ID}
 	app := &App{
-		statusbar:   widget.NewStatusBar(),
-		priceSvc:    priceSvc,
-		securitySvc: security.NewService(secRepo, database),
+		statusbar: widget.NewStatusBar(),
+		services: app.Services{
+			Price:    priceSvc,
+			Security: security.NewService(secRepo, database),
+		},
 		spinOff: spinOffSurface{modalSurface: modalSurface{dlg: buildSpinOffDialog([]string{"BTC - Grayscale Bitcoin Mini Trust"}, ids, nil)},
 			securityIDs: ids},
 	}

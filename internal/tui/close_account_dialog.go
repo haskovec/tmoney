@@ -41,10 +41,10 @@ func buildCloseAccountDialog(acct *account.Account, scheduledCount int) *dialog.
 // retarget the close.
 func (a *App) showCloseAccountDialog() {
 	accountID := a.sidebar.SelectedAccountID()
-	if accountID == types.NilID || a.accountSvc == nil {
+	if accountID == types.NilID || a.services.Account == nil {
 		return
 	}
-	acct, err := a.accountSvc.GetByID(accountID)
+	acct, err := a.services.Account.GetByID(accountID)
 	if err != nil {
 		a.statusbar.AddNotification(fmt.Sprintf("Cannot close account: %v", err), widget.NotificationAlert)
 		return
@@ -55,8 +55,8 @@ func (a *App) showCloseAccountDialog() {
 	}
 
 	scheduledCount := 0
-	if a.scheduledTxnSvc != nil {
-		if refs, rerr := a.scheduledTxnSvc.ListReferencing(accountID); rerr == nil {
+	if a.services.Scheduled != nil {
+		if refs, rerr := a.services.Scheduled.ListReferencing(accountID); rerr == nil {
 			scheduledCount = len(refs)
 		}
 	}
@@ -105,12 +105,12 @@ func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
 	}
 
 	accountID := a.closeAcct.targetID
-	if accountID == types.NilID || a.accountSvc == nil || a.undoManager == nil {
+	if accountID == types.NilID || a.services.Account == nil || a.undoManager == nil {
 		a.closeAcct.dlg.SetErrorMsg("Account service not available.")
 		return a, nil
 	}
 
-	cmd := undo.NewCloseAccountCommand(a.accountSvc, accountID, closeDate)
+	cmd := undo.NewCloseAccountCommand(a.services.Account, accountID, closeDate)
 	if err := a.undoManager.Execute(cmd); err != nil {
 		a.closeAcct.dlg.SetErrorMsg(closeAccountErrorMessage(err))
 		return a, nil
@@ -146,10 +146,10 @@ func (a *App) selectedAccountClosed() bool {
 func (a *App) reopenSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
 	return func() tea.Msg {
-		if a.accountSvc == nil || a.undoManager == nil {
+		if a.services.Account == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
-		cmd := undo.NewReopenAccountCommand(a.accountSvc, accountID)
+		cmd := undo.NewReopenAccountCommand(a.services.Account, accountID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to reopen account: %w", err)}
 		}

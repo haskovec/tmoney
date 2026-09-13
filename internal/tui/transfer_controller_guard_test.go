@@ -122,18 +122,17 @@ func TestTransferDeps_FollowADatabaseSwitch(t *testing.T) {
 		t.Fatal("an App with no services must hand out nil services, not a panic")
 	}
 
-	// Re-point the four App fields the closures read. switchDatabase does this
-	// for the three services (file_dialog.go) and NOT for undoManager, which is
-	// assigned once in NewApp — the inherited item-5 mismatch. So this proves
-	// the closures re-read their field; it does not claim undo follows a file
-	// switch in production, because it does not.
+	// Re-point the four App fields the closures read. switchDatabase re-points
+	// the three services and clears undoManager rather than replacing it
+	// (file_dialog.go), so the manager swap here is synthetic: it proves the
+	// closures re-read their field, which is the property the deps rely on.
 	transfers := &transfer.Service{}
 	accounts := &account.Service{}
 	categories := &category.Service{}
 	manager := undo.NewManager()
-	app.transferSvc = transfers
-	app.accountSvc = accounts
-	app.categorySvc = categories
+	app.services.Transfer = transfers
+	app.services.Account = accounts
+	app.services.Category = categories
 	app.undoManager = manager
 
 	if deps.transfers() != transfers {

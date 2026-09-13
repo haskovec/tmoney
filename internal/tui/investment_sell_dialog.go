@@ -125,9 +125,9 @@ func (a *App) loadSellDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &sellDialogData{}
 
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -136,17 +136,17 @@ func (a *App) loadSellDialogData() tea.Cmd {
 
 		// Load lots if the account is lot-tracking
 		if a.investmentRegister != nil && a.investmentRegister.account != nil &&
-			a.investmentRegister.account.TrackLots && a.lotRepo != nil {
+			a.investmentRegister.account.TrackLots && a.services.LotRepo != nil {
 
 			acctID := a.investmentRegister.account.ID
 
 			// If editing, get the security from the existing transaction
 			// For new transactions, lots will be loaded after security selection
 			// For now, if editing, load lots for that security
-			if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-				editTxn, err := a.investmentRepo.GetByID(a.investmentEditTxnID)
+			if a.investmentEditTxnID != types.NilID && a.services.InvestmentRepo != nil {
+				editTxn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
-					lots, err := a.lotRepo.ListByAccountAndSecurity(acctID, editTxn.SecurityID.ID, false)
+					lots, err := a.services.LotRepo.ListByAccountAndSecurity(acctID, editTxn.SecurityID.ID, false)
 					if err == nil {
 						data.lots = lots
 					}
@@ -349,10 +349,10 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	// per-lot allocation fields when editing an existing sell; for a new sell
 	// we default to FIFO (matching the lot-backfill default) so the sale isn't
 	// blocked with "lot allocations required".
-	if !hasErrors && numLots == 0 && a.lotRepo != nil &&
+	if !hasErrors && numLots == 0 && a.services.LotRepo != nil &&
 		a.investmentRegister != nil && a.investmentRegister.account != nil &&
 		a.investmentRegister.account.TrackLots {
-		openLots, lerr := a.lotRepo.ListByAccountAndSecurity(a.investmentRegister.account.ID, securityID, false)
+		openLots, lerr := a.services.LotRepo.ListByAccountAndSecurity(a.investmentRegister.account.ID, securityID, false)
 		if lerr != nil {
 			fields[2].Error = "Could not load lots for allocation"
 			hasErrors = true
@@ -384,14 +384,14 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	a.closeSellDialog()
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentEditSvc.UpdateSell(
+			saved, err = a.services.InvestmentEdit.UpdateSell(
 				editTxnID,
 				accountID,
 				securityID,
@@ -404,7 +404,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			saved, err = a.investmentSvc.Sell(
+			saved, err = a.services.Investment.Sell(
 				accountID,
 				securityID,
 				date,

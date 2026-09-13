@@ -439,16 +439,16 @@ func findLoanInterestCategoryID(categories []*category.Category) types.ID {
 func (a *App) loadLoanWizardData() tea.Cmd {
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.accountSvc != nil {
-			acs, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			acs, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			accounts = acs
 		}
 		var categories []*category.Category
-		if a.categorySvc != nil {
-			cs, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			cs, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -474,16 +474,16 @@ type loanWizardDataMsg struct {
 func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.accountSvc != nil {
-			acs, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			acs, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			accounts = acs
 		}
 		var categories []*category.Category
-		if a.categorySvc != nil {
-			cs, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			cs, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -491,12 +491,12 @@ func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
 		}
 		// The loan's live balance as of the next payment date → owed magnitude.
 		owed := types.ZeroMoney
-		if a.accountSvc != nil {
+		if a.services.Account != nil {
 			for _, sp := range st.Splits {
 				if !sp.TransferAccountID.Valid {
 					continue
 				}
-				bal, err := a.accountSvc.BalanceAsOf(sp.TransferAccountID.ID, st.NextDate)
+				bal, err := a.services.Account.BalanceAsOf(sp.TransferAccountID.ID, st.NextDate)
 				if err == nil {
 					owed = bal.Neg()
 				}
@@ -514,13 +514,13 @@ func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
 // split tags cannot coexist), so this only guards the rare untagged-adoptable
 // schedule that also passes the paycheck heuristic.
 func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
-	if a.scheduledTxnSvc == nil || st == nil {
+	if a.services.Scheduled == nil || st == nil {
 		return false
 	}
-	if a.scheduledTxnSvc.IsLoanShaped(st) {
+	if a.services.Scheduled.IsLoanShaped(st) {
 		return true
 	}
-	return a.scheduledTxnSvc.IsLoanAdoptable(st) && !looksLikePaycheck(st)
+	return a.services.Scheduled.IsLoanAdoptable(st) && !looksLikePaycheck(st)
 }
 
 // maybeAddEditAsLoanButton replaces the Edit Series dialog's buttons with an
@@ -1055,15 +1055,15 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 	a.closeLoanWizard()
 
 	return a, func() tea.Msg {
-		if a.accountSvc == nil || a.scheduledTxnSvc == nil || a.undoManager == nil {
+		if a.services.Account == nil || a.services.Scheduled == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		// Payee (get-or-create outside the atomic unit, matching the paycheck
 		// wizard: a shared payee must not be deleted on undo).
 		var payeeID types.ID
-		if payeeName != "" && a.payeeSvc != nil {
-			py, _, pErr := a.payeeSvc.GetOrCreate(payeeName)
+		if payeeName != "" && a.services.Payee != nil {
+			py, _, pErr := a.services.Payee.GetOrCreate(payeeName)
 			if pErr != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", pErr)}
 			}
@@ -1073,10 +1073,10 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		// Interest category (also get-or-create outside the atomic unit).
 		interestCatID := interestPickedID
 		if aprPositive && interestDefault {
-			if a.categorySvc == nil {
+			if a.services.Category == nil {
 				return errMsg{err: fmt.Errorf("category service not available")}
 			}
-			cat, cErr := a.categorySvc.GetOrCreateLoanInterestCategory()
+			cat, cErr := a.services.Category.GetOrCreateLoanInterestCategory()
 			if cErr != nil {
 				return errMsg{err: fmt.Errorf("failed to resolve interest category: %w", cErr)}
 			}
@@ -1086,10 +1086,10 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		// Principal category (also get-or-create outside the atomic unit).
 		principalCatID := principalPickedID
 		if principalDefault {
-			if a.categorySvc == nil {
+			if a.services.Category == nil {
 				return errMsg{err: fmt.Errorf("category service not available")}
 			}
-			cat, cErr := a.categorySvc.GetOrCreateLoanPrincipalCategory()
+			cat, cErr := a.services.Category.GetOrCreateLoanPrincipalCategory()
 			if cErr != nil {
 				return errMsg{err: fmt.Errorf("failed to resolve principal category: %w", cErr)}
 			}
@@ -1123,12 +1123,12 @@ func (a *App) submitNewLoanWizard() (tea.Model, tea.Cmd) {
 		// Assemble the atomic, single-undo compound: loan account → optional
 		// asset account → schedule. CompoundCommand rolls back earlier steps if
 		// a later one fails.
-		cmds := []undo.Command{undo.NewCreateAccountCommand(a.accountSvc, loanAcct)}
+		cmds := []undo.Command{undo.NewCreateAccountCommand(a.services.Account, loanAcct)}
 		if trackAsset {
 			assetAcct := account.NewAccount(assetName, account.TypeAsset, currency, assetValue, openingDate)
-			cmds = append(cmds, undo.NewCreateAccountCommand(a.accountSvc, assetAcct))
+			cmds = append(cmds, undo.NewCreateAccountCommand(a.services.Account, assetAcct))
 		}
-		cmds = append(cmds, undo.NewCreateScheduledTransactionCommand(a.scheduledTxnSvc, schedule))
+		cmds = append(cmds, undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, schedule))
 
 		compound := undo.NewCompoundCommand("Create loan", cmds...)
 		if err := a.undoManager.Execute(compound); err != nil {
@@ -1241,16 +1241,16 @@ func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
 	a.closeLoanWizard()
 
 	return a, func() tea.Msg {
-		if a.accountSvc == nil || a.scheduledTxnSvc == nil || a.undoManager == nil {
+		if a.services.Account == nil || a.services.Scheduled == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		interestCatID := interestPickedID
 		if aprPositive && interestDefault {
-			if a.categorySvc == nil {
+			if a.services.Category == nil {
 				return errMsg{err: fmt.Errorf("category service not available")}
 			}
-			cat, cErr := a.categorySvc.GetOrCreateLoanInterestCategory()
+			cat, cErr := a.services.Category.GetOrCreateLoanInterestCategory()
 			if cErr != nil {
 				return errMsg{err: fmt.Errorf("failed to resolve interest category: %w", cErr)}
 			}
@@ -1259,10 +1259,10 @@ func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
 
 		principalCatID := principalPickedID
 		if principalDefault {
-			if a.categorySvc == nil {
+			if a.services.Category == nil {
 				return errMsg{err: fmt.Errorf("category service not available")}
 			}
-			cat, cErr := a.categorySvc.GetOrCreateLoanPrincipalCategory()
+			cat, cErr := a.services.Category.GetOrCreateLoanPrincipalCategory()
 			if cErr != nil {
 				return errMsg{err: fmt.Errorf("failed to resolve principal category: %w", cErr)}
 			}
@@ -1296,8 +1296,8 @@ func (a *App) submitEditLoanWizard() (tea.Model, tea.Cmd) {
 
 		// One atomic, single-undo operation: account edit + template rewrite.
 		compound := undo.NewCompoundCommand("Edit loan",
-			undo.NewEditAccountCommand(a.accountSvc, loanAcct),
-			undo.NewEditScheduledTransactionCommand(a.scheduledTxnSvc, schedule),
+			undo.NewEditAccountCommand(a.services.Account, loanAcct),
+			undo.NewEditScheduledTransactionCommand(a.services.Scheduled, schedule),
 		)
 		if err := a.undoManager.Execute(compound); err != nil {
 			return errMsg{err: fmt.Errorf("failed to save loan edit: %w", err)}

@@ -39,22 +39,22 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account
-		if a.accountSvc != nil {
-			acct, err := a.accountSvc.GetByID(accountID)
+		if a.services.Account != nil {
+			acct, err := a.services.Account.GetByID(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.account = acct
 
 			// Load balance
-			bal, err := a.accountSvc.GetBalance(accountID)
+			bal, err := a.services.Account.GetBalance(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.balance = bal
 
 			// Load account names for transfer display
-			accounts, err := a.accountSvc.List(true)
+			accounts, err := a.services.Account.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -63,8 +63,8 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load transactions
-		if a.transactionSvc != nil {
-			txns, err := a.transactionSvc.ListByAccount(accountID)
+		if a.services.Transaction != nil {
+			txns, err := a.services.Transaction.ListByAccount(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -72,8 +72,8 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load payee names
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -82,8 +82,8 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load category names
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			categories, err := a.services.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					data.categoryNames[c.ID] = c.Name
@@ -210,7 +210,7 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 
 // toggleTransactionStatus toggles the cleared/uncleared status of the selected transaction.
 func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.transactionSvc == nil {
+	if a.table == nil || a.register == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
@@ -259,12 +259,12 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 			// This used to go through EditTransactionCommand →
 			// transaction.Service.Update, which rewrites the whole row and has
 			// no transfer-aware path at all.
-			if a.transferSvc == nil {
+			if a.services.Transfer == nil {
 				return errMsg{err: fmt.Errorf("transfer service not available")}
 			}
-			cmd = undo.NewSetTransferLegStatusCommand(a.transferSvc, txnID, nextStatus)
+			cmd = undo.NewSetTransferLegStatusCommand(a.services.Transfer, txnID, nextStatus)
 		} else {
-			current, err := a.transactionSvc.GetByID(txnID)
+			current, err := a.services.Transaction.GetByID(txnID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -274,7 +274,7 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 			} else {
 				updated.Clear()
 			}
-			cmd = undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+			cmd = undo.NewEditTransactionCommand(a.services.Transaction, &updated)
 		}
 
 		if err := a.undoManager.Execute(cmd); err != nil {
@@ -288,7 +288,7 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 
 // showVoidConfirmation shows a confirmation dialog before voiding the selected transaction.
 func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.transactionSvc == nil {
+	if a.table == nil || a.register == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
@@ -336,9 +336,9 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 			// Addressed by transfer_id rather than by a leg's row id: the void
 			// applies to the whole transfer, and an investment-involving one is
 			// refused by name instead of failing with "expected 2 transactions".
-			cmd = undo.NewVoidTransferCommand(a.transferSvc, transferID)
+			cmd = undo.NewVoidTransferCommand(a.services.Transfer, transferID)
 		} else {
-			cmd = undo.NewVoidTransactionCommand(a.transactionSvc, txnID)
+			cmd = undo.NewVoidTransactionCommand(a.services.Transaction, txnID)
 		}
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
@@ -354,7 +354,7 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 // entirely rather than zeroing them out. Runs through the undo manager so
 // Ctrl+Z restores the deletion.
 func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.transactionSvc == nil {
+	if a.table == nil || a.register == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
@@ -394,9 +394,9 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 
 		var cmd undo.Command
 		if isTransfer {
-			cmd = undo.NewDeleteTransferCommand(a.transferSvc, txn.TransferID.ID)
+			cmd = undo.NewDeleteTransferCommand(a.services.Transfer, txn.TransferID.ID)
 		} else {
-			cmd = undo.NewDeleteTransactionCommand(a.transactionSvc, txnID)
+			cmd = undo.NewDeleteTransactionCommand(a.services.Transaction, txnID)
 		}
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
