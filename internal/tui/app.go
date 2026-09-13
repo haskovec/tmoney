@@ -172,7 +172,7 @@ type App struct {
 	// New Paycheck Schedule… (MS-026). MS-026 only lands the open path;
 	// the save handler that builds a multi-line scheduled transaction
 	// from the wizard's fields lands in MS-027/MS-028.
-	paycheckWizard *PaycheckWizard
+	paycheck paycheckSurface
 
 	// Loan wizard state. Opens from Accounts → New Loan…. Built on the
 	// generic dialog.Dialog form widget (see loan_wizard.go); creates a loan

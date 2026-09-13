@@ -7,32 +7,85 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
-// App integration: the async data load, the key/action dispatchers the modal
-// registry calls, submit, and the create-category divert's opener and applier.
-// Every function here is a method on *App or is called only by one.
+// The paycheck surface: the controller half of the wizard. paycheckSurface
+// owns open, submit, close and the create-category hooks; App supplies the
+// services through paycheckDeps and the divert into the create-category
+// sub-dialog, which is a sibling surface's state. The App glue at the end of
+// this file is thin on purpose — an action the surface owns must not have a
+// second implementation on App.
+
+// paycheckDeps is what the paycheck surface needs from outside itself. The two
+// constraints are the ones the transfer pilot established, and both are live:
+//
+//   - Every dep is a func, because switchDatabase replaces App's services and
+//     closes the previous *db.DB. A closure re-reads the field at call time; a
+//     captured pointer would be a use-after-close.
+//   - Deps are passed to each call and never stored on the surface, because
+//     close() resets the surface to its zero value and would zero them.
+//
+// Both are pinned by tests: TestGuard_ControllerDepsAreLiveIndirections and
+// TestGuard_NoSurfaceStructHoldsItsDeps.
+type paycheckDeps struct {
+	accounts   func() *account.Service
+	categories func() *category.Service
+	payees     func() *payee.Service
+	scheduled  func() *scheduled.Service
+	undo       func() *undo.Manager
+}
+
+// paycheckDeps binds the paycheck surface to the services App owns. Every
+// accessor may legitimately return nil — an App built by a test has no services
+// — so each caller keeps its own nil guard.
+func (a *App) paycheckDeps() paycheckDeps {
+	return paycheckDeps{
+		accounts:   func() *account.Service { return a.services.Account },
+		categories: func() *category.Service { return a.services.Category },
+		payees:     func() *payee.Service { return a.services.Payee },
+		scheduled:  func() *scheduled.Service { return a.services.Scheduled },
+		undo:       func() *undo.Manager { return a.undoManager },
+	}
+}
+
+// paycheckSurface is the paycheck wizard as a modal surface. Its zero value is
+// closed; close() resets it to that.
+//
+// Unlike the dialog-backed surfaces it does not embed modalSurface: the wizard
+// is its own form widget with its own Render and hit-testing, so the surface
+// wraps the wizard rather than a *dialog.Dialog.
+type paycheckSurface struct {
+	wizard *PaycheckWizard
+}
+
+func (s *paycheckSurface) IsVisible() bool { return s != nil && s.wizard.IsVisible() }
+
+func (s *paycheckSurface) Render(styles widget.Styles) string { return s.wizard.Render(styles) }
 
 // paycheckWizardDataMsg carries the dependencies needed to construct
-// a PaycheckWizard. Dispatched asynchronously by loadPaycheckWizardData.
+// a PaycheckWizard. Dispatched asynchronously by open.
 type paycheckWizardDataMsg struct {
 	accounts        []*account.Account
 	categoryOptions []string
 	categoryIDs     []types.ID
 }
 
-// loadPaycheckWizardData fetches accounts + categories and emits a
-// paycheckWizardDataMsg that the message handler in app_update.go
-// uses to construct the wizard.
-func (a *App) loadPaycheckWizardData() tea.Cmd {
+// open returns the command that loads the accounts and categories a new
+// wizard needs. The wizard is built when the resulting message reaches
+// applyData; there is nothing to mutate before the data lands, so the receiver
+// goes unread — open is a method because opening is the surface's operation,
+// not App's.
+func (s *paycheckSurface) open(deps paycheckDeps) tea.Cmd {
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.services.Account != nil {
-			acs, err := a.services.Account.List(true)
+		if svc := deps.accounts(); svc != nil {
+			acs, err := svc.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -40,8 +93,8 @@ func (a *App) loadPaycheckWizardData() tea.Cmd {
 		}
 
 		var categories []*category.Category
-		if a.services.Category != nil {
-			cs, err := a.services.Category.List()
+		if svc := deps.categories(); svc != nil {
+			cs, err := svc.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -57,56 +110,71 @@ func (a *App) loadPaycheckWizardData() tea.Cmd {
 	}
 }
 
-// closePaycheckWizard clears the wizard state.
-func (a *App) closePaycheckWizard() {
-	a.paycheckWizard = nil
+// applyData builds a fresh wizard over the loaded accounts and categories.
+func (s *paycheckSurface) applyData(msg paycheckWizardDataMsg) {
+	s.wizard = NewPaycheckWizard(msg.categoryOptions, msg.categoryIDs, msg.accounts)
 }
 
-// handlePaycheckWizardKey routes a key event through the wizard and
-// translates the resulting action.
-func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.paycheckWizard == nil {
-		return a, nil
+// openFromSchedule builds the wizard pre-filled from an existing paycheck
+// schedule, for the Edit-as-paycheck relaunch. The caller has already checked
+// that every account the schedule names is one the pickers will offer.
+func (s *paycheckSurface) openFromSchedule(
+	st *scheduled.Transaction,
+	accounts []*account.Account,
+	payees []*payee.Payee,
+	categoryOptions []string,
+	categoryIDs []types.ID,
+) {
+	s.wizard = NewPaycheckWizardFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
+}
+
+// handleKey gives the wizard the key and reports what it wants done about it.
+// An unbuilt surface asks for nothing.
+func (s *paycheckSurface) handleKey(msg tea.KeyPressMsg) dialog.DialogAction {
+	if s.wizard == nil {
+		return dialog.DialogActionNone
 	}
-	return a.paycheckWizardAction(a.paycheckWizard.HandleKey(msg))
+	return s.wizard.HandleKey(msg)
 }
 
-// paycheckWizardAction dispatches a DialogAction for the paycheck wizard, from either input path.
-func (a *App) paycheckWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
-	switch action {
-	case dialog.DialogActionSubmit:
-		return a.submitPaycheckWizard()
-	case dialog.DialogActionCancel:
-		a.closePaycheckWizard()
-		return a, nil
-	case dialog.DialogActionAddNew:
-		return a.openCreateCategorySubDialogFromPaycheck()
+// handleMouse translates a click into the wizard's action. The wizard's
+// hit-testing is style-dependent, which is why this is not the mouseTarget
+// shape the dialog-backed surfaces share (see modalMouseAction).
+func (s *paycheckSurface) handleMouse(msg tea.MouseMsg, styles widget.Styles, screenWidth, screenHeight int) dialog.DialogAction {
+	if s.wizard == nil {
+		return dialog.DialogActionNone
 	}
-	return a, nil
+	return s.wizard.HandleMouse(msg, styles, screenWidth, screenHeight)
 }
 
-// submitPaycheckWizard validates the wizard's state and persists the
-// schedule. Validation errors leave the wizard open with errorMsg set.
+// close clears the surface. The zero value is the closed state, so this is the
+// whole of it — and it stays that way only because the deps are a call
+// parameter rather than a field.
+func (s *paycheckSurface) close() { *s = paycheckSurface{} }
+
+// submit validates the wizard's state and returns the command that persists
+// the schedule. A nil command means validation failed: the wizard stays open
+// with errorMsg set. On success the surface is closed before the command runs.
 //
 // A wizard opened by Edit-as-paycheck carries the schedule it came from, and
 // then this updates that record instead of creating a second one — which is
 // what "two paychecks pending after one edit" was.
-func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
-	w := a.paycheckWizard
+func (s *paycheckSurface) submit(deps paycheckDeps) tea.Cmd {
+	w := s.wizard
 	if w == nil {
-		return a, nil
+		return nil
 	}
 
 	accountID := w.lookupAccountID(w.accountField.SelectedIndex)
 	if accountID.IsNil() {
 		w.errorMsg = "Pick a deposit account"
-		return a, nil
+		return nil
 	}
 
 	nextDate, err := parseDateInput(w.nextPaydayField.Value)
 	if err != nil {
 		w.errorMsg = "Next payday: invalid date (MM/DD/YYYY)"
-		return a, nil
+		return nil
 	}
 
 	freqOpt := paycheckFrequencyForIndex(w.frequencyField.SelectedIndex)
@@ -114,14 +182,14 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 	parentAmount, splits, err := w.BuildSplits()
 	if err != nil {
 		w.errorMsg = err.Error()
-		return a, nil
+		return nil
 	}
 
 	// Reject self-transfers: a row that targets the deposit account.
 	for _, sp := range splits {
 		if sp.TransferAccountID.Valid && sp.TransferAccountID.ID == accountID {
 			w.errorMsg = "A transfer row's destination cannot be the deposit account"
-			return a, nil
+			return nil
 		}
 	}
 
@@ -130,16 +198,17 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 	// Read the edit target before closing the wizard clears it.
 	existing := w.editSchedule
 
-	a.closePaycheckWizard()
+	s.close()
 
-	return a, func() tea.Msg {
-		if a.undoManager == nil || a.services.Scheduled == nil {
+	return func() tea.Msg {
+		undoMgr, schedSvc := deps.undo(), deps.scheduled()
+		if undoMgr == nil || schedSvc == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		var payeeID types.ID
-		if employer != "" && a.services.Payee != nil {
-			py, _, err := a.services.Payee.GetOrCreate(employer)
+		if payeeSvc := deps.payees(); employer != "" && payeeSvc != nil {
+			py, _, err := payeeSvc.GetOrCreate(employer)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -200,8 +269,8 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 
 		if existing != nil {
 			applyWizard(existing)
-			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, existing)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewEditScheduledTransactionCommand(schedSvc, existing)
+			if err := undoMgr.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
 			return scheduledDialogSavedMsg{}
@@ -209,68 +278,46 @@ func (a *App) submitPaycheckWizard() (tea.Model, tea.Cmd) {
 
 		st := scheduled.NewTransaction(accountID, freqOpt.frequency, nextDate)
 		applyWizard(st)
-		cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewCreateScheduledTransactionCommand(schedSvc, st)
+		if err := undoMgr.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 		}
 		return scheduledDialogSavedMsg{}
 	}
 }
 
-// openCreateCategorySubDialogFromPaycheck hides the paycheck wizard and opens
-// the inline create-category sub-dialog for the wizard line that activated the
-// [+ Add new category…] sentinel. The wizard's row state is preserved by
-// keeping the wizard instance alive (just hidden) for the duration of the
-// divert; restoration on cancel and post-create wiring happen through the
-// createCatDialog handlers.
+// beginCreateCategory hides the wizard and reports the line whose select field
+// activated the [+ Add new category…] sentinel. The wizard is kept alive
+// (hidden) so its row state survives the divert; applyCreatedCategory re-shows
+// it with the new category selected, reshow does so after a cancel. It reports
+// false when no line's select field is focused, in which case nothing was
+// hidden and the caller must not open the sub-dialog.
 //
 // Unlike the typeahead-combo surfaces, the wizard has no typed query to
 // harvest — the sub-dialog opens with empty Name and Parent fields.
-func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
-	w := a.paycheckWizard
+func (s *paycheckSurface) beginCreateCategory() (line *PaycheckLine, ok bool) {
+	w := s.wizard
 	if w == nil {
-		return a, nil
+		return nil, false
 	}
-	line := w.lineForSelectField(w.focusedTarget().field)
+	line = w.lineForSelectField(w.focusedTarget().field)
 	if line == nil {
-		return a, nil
+		return nil, false
 	}
-
-	a.createCat.origin.surface = createCatSourcePaycheckWizard
-	a.createCat.origin.line = line
-	parents := a.parentsForCreateCatDialog()
-	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
 	w.SetVisible(false)
-	return a, nil
+	return line, true
 }
 
-// defaultTypeForPaycheckSection returns the create-category Type default for a
-// paycheck-wizard section. Earnings and Net Pay Destination rows describe
-// money flowing in (Income); Tax, Pre-Tax, and Post-Tax rows describe money
-// flowing out (Expense).
-func defaultTypeForPaycheckSection(s PaycheckSection) category.Type {
-	switch s {
-	case PaycheckEarnings, PaycheckNetPayDestination:
-		return category.TypeIncome
-	default:
-		return category.TypeExpense
-	}
-}
-
-// applyCreatedCategoryToPaycheck is the per-surface applier called by the
-// createCategoryRequestMsg router when the originating surface was the
-// paycheck wizard. It rebuilds the wizard's combined picker options to include
+// applyCreatedCategory rebuilds the wizard's combined picker options to include
 // the freshly-persisted category, points the originating line at the new
 // category, preserves every other category-mode line's selection by ID, and
 // shifts every transfer-mode line's SelectedIndex by the new-category-count
-// delta so the same account remains selected. The wizard is re-shown and the
-// sub-dialog is cleared.
-func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
-	defer func() {
-		a.createCat.dlg = nil
-		a.createCat.origin.line = nil
-	}()
-	w := a.paycheckWizard
+// delta so the same account remains selected. The wizard is re-shown.
+// Persistence already happened in persistCategory; the router passes the
+// fresh category in. The persist is asynchronous, so a surface the user has
+// closed in the meantime is left alone.
+func (s *paycheckSurface) applyCreatedCategory(newCat *category.Category, cats []*category.Category, originating *PaycheckLine) {
+	w := s.wizard
 	if w == nil {
 		return
 	}
@@ -303,9 +350,8 @@ func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*
 		newCatIdx = idx
 	}
 
-	originating := a.createCat.origin.line
-	for s := PaycheckEarnings; s <= PaycheckNetPayDestination; s++ {
-		for _, line := range w.sections[s] {
+	for sec := PaycheckEarnings; sec <= PaycheckNetPayDestination; sec++ {
+		for _, line := range w.sections[sec] {
 			// Lines were built with selectField.Options pointing at the prior
 			// combinedOptions slice; reassigning w.combinedOptions does not
 			// propagate, so each line's Options must be updated explicitly.
@@ -338,4 +384,81 @@ func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*
 	}
 
 	w.SetVisible(true)
+}
+
+// reshow makes the wizard visible again after a create-category divert the
+// user cancelled. Nil-safe, because the divert can outlive the surface.
+func (s *paycheckSurface) reshow() {
+	if s.wizard != nil {
+		s.wizard.SetVisible(true)
+	}
+}
+
+// defaultTypeForPaycheckSection returns the create-category Type default for a
+// paycheck-wizard section. Earnings and Net Pay Destination rows describe
+// money flowing in (Income); Tax, Pre-Tax, and Post-Tax rows describe money
+// flowing out (Expense).
+func defaultTypeForPaycheckSection(s PaycheckSection) category.Type {
+	switch s {
+	case PaycheckEarnings, PaycheckNetPayDestination:
+		return category.TypeIncome
+	default:
+		return category.TypeExpense
+	}
+}
+
+// -----------------------------------------------------------------------------
+// App glue. Everything below is a thin wrapper supplying the services and the
+// divert into a sibling surface. No behaviour lives here: an action the
+// surface owns must not have a second implementation on App.
+// -----------------------------------------------------------------------------
+
+// handlePaycheckWizardKey routes a key event through the wizard and
+// translates the resulting action.
+func (a *App) handlePaycheckWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	return a.paycheckWizardAction(a.paycheck.handleKey(msg))
+}
+
+// paycheckWizardAction dispatches a DialogAction for the paycheck wizard, from
+// either input path.
+//
+// AddNew is the one arm that stays on App: it writes createCat, which is
+// another surface's state, and a surface must not reach into a sibling.
+func (a *App) paycheckWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	switch action {
+	case dialog.DialogActionSubmit:
+		return a, a.paycheck.submit(a.paycheckDeps())
+	case dialog.DialogActionCancel:
+		a.paycheck.close()
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromPaycheck()
+	}
+	return a, nil
+}
+
+// openCreateCategorySubDialogFromPaycheck hides the paycheck wizard and opens
+// the inline create-category sub-dialog for the wizard line that activated the
+// [+ Add new category…] sentinel. Restoration on cancel and post-create wiring
+// happen through the createCatDialog handlers.
+func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
+	line, ok := a.paycheck.beginCreateCategory()
+	if !ok {
+		return a, nil
+	}
+	a.createCat.origin.surface = createCatSourcePaycheckWizard
+	a.createCat.origin.line = line
+	parents := a.parentsForCreateCatDialog()
+	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
+	return a, nil
+}
+
+// applyCreatedCategoryToPaycheck is the per-surface applier called by the
+// createCategoryRequestMsg router when the originating surface was the
+// paycheck wizard. The surface applies the category to its own lines; App
+// clears the sub-dialog and the originating-line handle, which are its own
+// state.
+func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
+	a.paycheck.applyCreatedCategory(newCat, cats, a.createCat.origin.line)
+	a.createCat.dlg = nil
+	a.createCat.origin.line = nil
 }

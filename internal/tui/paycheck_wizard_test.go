@@ -761,8 +761,8 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 		},
 		undoManager: undo.NewManager(),
 	}
-	app.paycheckWizard = NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
-	w := app.paycheckWizard
+	app.paycheck.wizard = NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
+	w := app.paycheck.wizard
 
 	// Set header fields.
 	w.Employer().Value = "Acme Corp"
@@ -801,13 +801,13 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 	transfer.SetAccountIndex(retireAcctIdx)
 	transfer.AmountField().Value = "-500"
 
-	model, cmd := app.submitPaycheckWizard()
+	model, cmd := app.paycheckWizardAction(dialog.DialogActionSubmit)
 	app2 := model.(*App)
-	if app2.paycheckWizard != nil {
-		t.Errorf("wizard should be cleared after a successful save; errorMsg=%q", app2.paycheckWizard.errorMsg)
+	if app2.paycheck.wizard != nil {
+		t.Errorf("wizard should be cleared after a successful save; errorMsg=%q", app2.paycheck.wizard.errorMsg)
 	}
 	if cmd == nil {
-		t.Fatal("submitPaycheckWizard should return a non-nil command")
+		t.Fatal("submit should return a non-nil command")
 	}
 	if msg := cmd(); msg != nil {
 		if e, ok := msg.(errMsg); ok {
@@ -1369,7 +1369,7 @@ func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats [
 		services: app.Services{
 			Category: categorySvc,
 		},
-		paycheckWizard: w,
+		paycheck: paycheckSurface{wizard: w},
 	}
 	return app, line
 }
@@ -1391,10 +1391,10 @@ func TestApp_PaycheckWizard_AddNew_OpensCreateCategoryDialog(t *testing.T) {
 	if updated.createCat.origin.line != line {
 		t.Error("createCatPaycheckLine should reference the originating line")
 	}
-	if updated.paycheckWizard == nil {
+	if updated.paycheck.wizard == nil {
 		t.Fatal("paycheckWizard should be kept (hidden) so its state survives the divert")
 	}
-	if updated.paycheckWizard.IsVisible() {
+	if updated.paycheck.wizard.IsVisible() {
 		t.Error("paycheckWizard should be hidden while createCatDialog is shown")
 	}
 	if updated.createCat.dlg.Title() != "New Category" {
@@ -1426,13 +1426,13 @@ func TestApp_PaycheckWizard_AddNew_CancelRestoresState(t *testing.T) {
 	if app.createCat.origin.line != nil {
 		t.Error("createCatPaycheckLine should be cleared after cancel")
 	}
-	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
+	if app.paycheck.wizard == nil || !app.paycheck.wizard.IsVisible() {
 		t.Fatal("paycheckWizard should be restored to visible after cancel")
 	}
-	if got := app.paycheckWizard.Employer().Value; got != "Acme" {
+	if got := app.paycheck.wizard.Employer().Value; got != "Acme" {
 		t.Errorf("Employer preserved? got %q, want %q", got, "Acme")
 	}
-	if got := app.paycheckWizard.Memo().Value; got != "Biweekly" {
+	if got := app.paycheck.wizard.Memo().Value; got != "Biweekly" {
 		t.Errorf("Memo preserved? got %q, want %q", got, "Biweekly")
 	}
 }
@@ -1505,12 +1505,12 @@ func TestApp_PaycheckWizard_AddNew_AppliesToOriginatingLine(t *testing.T) {
 	if app.createCat.origin.line != nil {
 		t.Error("createCatPaycheckLine should be cleared after submit")
 	}
-	if app.paycheckWizard == nil || !app.paycheckWizard.IsVisible() {
+	if app.paycheck.wizard == nil || !app.paycheck.wizard.IsVisible() {
 		t.Fatal("paycheckWizard should be visible again after submit")
 	}
 
 	// Originating line points at the new category.
-	w := app.paycheckWizard
+	w := app.paycheck.wizard
 	if line.IsAddNew() {
 		t.Error("originating line should no longer be on the AddNew sentinel")
 	}
@@ -1548,7 +1548,7 @@ func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
 	}
 
 	app, _ := newAppForPaycheckAddNew(t, svc, cats)
-	w := app.paycheckWizard
+	w := app.paycheck.wizard
 
 	// Find the transfer-mode line and the account name it points at, so
 	// we can re-verify identity after the rebuild.
@@ -1585,7 +1585,7 @@ func TestPaycheckWizard_AddNew_PreservesTransferLineSelections(t *testing.T) {
 	model, _ = app.Update(cmd())
 	app = model.(*App)
 
-	w = app.paycheckWizard
+	w = app.paycheck.wizard
 	// Transfer line identity is preserved across the rebuild: still in
 	// transfer mode, still pointing at the same account by name.
 	if !transferLine.IsTransfer() {
@@ -1821,21 +1821,21 @@ func (env *paycheckEditEnv) seed(t *testing.T) *scheduled.Transaction {
 
 // openEditor pre-fills the wizard from st, as Edit-as-paycheck does.
 func (env *paycheckEditEnv) openEditor(st *scheduled.Transaction) *PaycheckWizard {
-	env.app.paycheckWizard = NewPaycheckWizardFromSchedule(
+	env.app.paycheck.wizard = NewPaycheckWizardFromSchedule(
 		st, env.accounts, env.payees, env.categoryOptions, env.categoryIDs)
-	return env.app.paycheckWizard
+	return env.app.paycheck.wizard
 }
 
 // submit runs the save and fails on an errMsg or a wizard left open.
 func (env *paycheckEditEnv) submit(t *testing.T) {
 	t.Helper()
-	model, cmd := env.app.submitPaycheckWizard()
+	model, cmd := env.app.paycheckWizardAction(dialog.DialogActionSubmit)
 	app := model.(*App)
-	if app.paycheckWizard != nil {
-		t.Fatalf("wizard left open after save; errorMsg=%q", app.paycheckWizard.errorMsg)
+	if app.paycheck.wizard != nil {
+		t.Fatalf("wizard left open after save; errorMsg=%q", app.paycheck.wizard.errorMsg)
 	}
 	if cmd == nil {
-		t.Fatal("submitPaycheckWizard returned no command")
+		t.Fatal("submit returned no command")
 	}
 	switch msg := cmd().(type) {
 	case errMsg:

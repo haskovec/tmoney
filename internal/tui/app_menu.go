@@ -203,7 +203,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 
 	case widget.MenuActionNewPaycheckSchedule:
 		a.menubar.Deactivate()
-		return a, a.loadPaycheckWizardData()
+		return a, a.paycheck.open(a.paycheckDeps())
 
 	case widget.MenuActionUndo:
 		a.menubar.Deactivate()

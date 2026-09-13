@@ -311,6 +311,6 @@ func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
 	}
 
 	a.closeScheduledDialog()
-	a.paycheckWizard = NewPaycheckWizardFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
+	a.paycheck.openFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
 	return a, nil
 }

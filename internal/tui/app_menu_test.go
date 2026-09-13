@@ -379,7 +379,7 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 
 	// Synchronous side-effect: nothing yet. The wizard is constructed
 	// when the data message is dispatched through Update.
-	if app.paycheckWizard != nil {
+	if app.paycheck.wizard != nil {
 		t.Error("paycheck wizard should not be set synchronously — the loader runs as a tea.Cmd")
 	}
 
@@ -402,10 +402,10 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 	model, _ := app.Update(dataMsg)
 	final := model.(*App)
 
-	if final.paycheckWizard == nil {
+	if final.paycheck.wizard == nil {
 		t.Fatal("paycheckWizard should be set after paycheckWizardDataMsg")
 	}
-	if !final.paycheckWizard.IsVisible() {
+	if !final.paycheck.wizard.IsVisible() {
 		t.Error("paycheck wizard should be visible after construction")
 	}
 }

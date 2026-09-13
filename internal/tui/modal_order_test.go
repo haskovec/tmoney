@@ -117,7 +117,7 @@ func surfaceSetters() map[string]func(*App) {
 		"schedulePreview": func(a *App) {
 			a.schedPreviewDialog = &SchedulePreviewDialog{headerDialog: visibleDialog("Preview")}
 		},
-		"paycheckWizard": func(a *App) { a.paycheckWizard = newVisiblePaycheckWizard() },
+		"paycheckWizard": func(a *App) { a.paycheck.wizard = newVisiblePaycheckWizard() },
 		"loanWizard": func(a *App) {
 			a.loan = loanSurface{
 				modalSurface: visibleSurface("Loan"),

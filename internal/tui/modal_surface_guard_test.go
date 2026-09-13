@@ -127,11 +127,13 @@ func callIsVisibleOnNil(ptrType reflect.Type) (visible, panicked bool) {
 	return m.Call(nil)[0].Bool(), false
 }
 
-// surfaceStructTypes returns every struct type reachable from an App field that
-// embeds modalSurface — the phase 3 per-surface state structs.
+// surfaceStructTypes returns every per-surface state struct App holds: a struct
+// type declared in this package whose pointer implements Modal. Most embed
+// modalSurface; splitSurface and paycheckSurface wrap a widget of their own
+// instead, and the earlier "embeds modalSurface" rule silently skipped both.
 func surfaceStructTypes(t *testing.T) []reflect.Type {
 	t.Helper()
-	base := reflect.TypeFor[modalSurface]()
+	modalT := reflect.TypeFor[Modal]()
 	appT := reflect.TypeFor[App]()
 	var out []reflect.Type
 	for i := range appT.NumField() {
@@ -139,14 +141,11 @@ func surfaceStructTypes(t *testing.T) []reflect.Type {
 		if ft.Kind() == reflect.Ptr {
 			ft = ft.Elem()
 		}
-		if ft.Kind() != reflect.Struct {
+		if ft.Kind() != reflect.Struct || ft.PkgPath() != appT.PkgPath() {
 			continue
 		}
-		for j := range ft.NumField() {
-			if f := ft.Field(j); f.Anonymous && f.Type == base {
-				out = append(out, ft)
-				break
-			}
+		if reflect.PointerTo(ft).Implements(modalT) {
+			out = append(out, ft)
 		}
 	}
 	return out
@@ -230,11 +229,13 @@ func TestGuard_SurfaceGuardSelfTest(t *testing.T) {
 			names = append(names, st.Name())
 		}
 		joined := strings.Join(names, ",")
-		// All six current surfaces, so the nil-safety guard cannot go quiet on
-		// one the finder stopped seeing.
+		// A sample of the surfaces, including the two that do not embed
+		// modalSurface, so the nil-safety guard cannot go quiet on one the
+		// finder stopped seeing.
 		for _, want := range []string{
 			"closeAcctSurface", "securitySurface", "priceSurface",
 			"loanSurface", "importSurface", "linkTransfersSurface",
+			"splitSurface", "paycheckSurface",
 		} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("surfaceStructTypes missed %s (found %v)", want, names)

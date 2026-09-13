@@ -20,7 +20,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 |---|---|---|
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
-| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 pilots one surface; the rest is deferred |
+| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck followed 2026-09-13 (see the note after phase 5). Loan, split and create-category remain |
 | **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck, loan, split, scheduled and scheduled-preview split 2026-09-13, each into files of 135–480 lines. Other modal surfaces were not in the table and were not split: `transfer_dialog.go` is 895 lines, `transaction_dialog.go` 750, `account_dialog.go` 507, `import_dialog.go` 505. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
@@ -1262,6 +1262,53 @@ legible: one deps struct, one guard pair, and a count of the methods that touch
 the chrome. Create-category stays last — it is the surface every other one
 diverts into, and the two methods this phase added to reach it are a preview of
 what defining its contract will cost.
+
+#### Built (second surface, 2026-09-13): paycheck, and the guards became a table
+
+`*App` 427 -> **423 methods (-4)**. Three left (`loadPaycheckWizardData`,
+`closePaycheckWizard`, `submitPaycheckWizard`), one arrived (`paycheckDeps`).
+**Twelve methods hang off `*paycheckSurface`**, none of which names `App`:
+`IsVisible`, `Render`, `open`, `applyData`, `openFromSchedule`, `handleKey`,
+`handleMouse`, `close`, `submit`, `beginCreateCategory`, `applyCreatedCategory`,
+`reshow`. Five stayed on `App`, for the pilot's reasons: `paycheckDeps` is the
+binding; `handlePaycheckWizardKey` and `paycheckWizardAction` have the
+registry's `func(*App, …)` signature; the two create-category methods write
+`createCat`, a sibling surface. Nothing paycheck-specific touches the chrome:
+the save emits `scheduledDialogSavedMsg`, whose arm already belonged to App.
+
+**The wizard became a surface struct.** `App.paycheckWizard *PaycheckWizard`
+was the last bare pointer in the registry; it is now `paycheck paycheckSurface`,
+a value whose zero state is closed, like every phase 3 surface. It does not
+embed `modalSurface`, because the wizard is its own widget with its own `Render`
+and style-dependent hit-testing. That exposed a gap in the phase 3 guards:
+`surfaceStructTypes` found surfaces by "embeds `modalSurface`", so `splitSurface`
+had been invisible to the nil-safety and stored-deps guards since phase 3. The
+finder is now "a struct on `App` whose pointer implements `Modal`", and the
+self-test names both previously unseen surfaces.
+
+**The guard pair generalised.** `transfer_controller_guard_test.go` became
+`controller_guard_test.go`, a table with one row per controller surface. The
+three structural guards and the database-switch behaviour test run over the
+table. Two additions keep the table from becoming a fifth list:
+`TestGuard_ControllerTableMatchesApp` fails when a `<name>Deps` struct exists
+with no row, so a third surface cannot skip the guards; and each row carries an
+explicit probe per dep, because `reflect` cannot call an unexported func field,
+with the test refusing a probe count that differs from the struct's field count.
+All six guards were mutation-verified: a surface method taking `*App` in another
+file, a production read of `a.paycheck.wizard`, a `deps` field on the surface, a
+captured service pointer in the binding, a deps struct with no table row, and an
+`IsVisible` without its nil check each fail exactly one named test.
+
+**Test churn was 28 lines in five files**, all `app.paycheckWizard` ->
+`app.paycheck.wizard` plus four `submitPaycheckWizard()` calls that now go
+through `paycheckWizardAction(dialog.DialogActionSubmit)`, the same path the
+registry uses. No test assertion changed.
+
+**Next: loan**, per §4's ordering. Its `*App` glue is already in
+`loan_wizard_app.go` and `loan_wizard_submit.go`, with two derived-state methods
+in `loan_wizard_derive.go` (the 4d note names them). It touches the status bar
+in `afterLoanWizardSave` and the scheduled dialog in `relaunchAsLoanWizard`, so
+unlike transfer and paycheck it will leave more than the divert on `App`.
 
 ### Note — the create-category divert is the most coupled surface, not the least
 
