@@ -1,8 +1,9 @@
 # Design sketch: TUI decomposition — one modal registry, and the god struct's other half
 
 **Date:** 2026-08-08 (revised 2026-08-09 after design review)
-**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4b and 4d are untouched;
-4c is piloted on one surface, not delivered. See the closeout table below.
+**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4b is untouched; 4d is
+built for `paycheck_wizard.go` only (see the note at the end of §4); 4c is
+piloted on one surface, not delivered. See the closeout table below.
 
 **Addresses:** `specs/code-quality-review.md` item 4 (TUI god-objects: dialog
 state on `App`, wizards past 1k–1.8k lines) — **partially**.
@@ -18,7 +19,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
 | **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 pilots one surface; the rest is deferred |
-| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | No — the note at the end of §4 explains why it is cheap and independent |
+| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Paycheck only** — split 2026-09-13 into six files; loan and split are still whole. The note at the end of §4 explains why it is cheap and independent |
 
 **4d is the slice that actually closes the review's line table, and it does not
 depend on 4a or 4c.** Measured: 1,462 of `paycheck_wizard.go`'s 1,886 lines are
@@ -1333,6 +1334,36 @@ clusters cleanly for it:
 Five or six files of 270–405 lines. No design risk, no test churn, no dependency
 on 4a or 4c. **4d could ship before this design does.** It is listed as a
 non-goal here only to keep one change reviewable — not because it is hard.
+
+#### Built (paycheck only): six files, 92 declarations moved verbatim
+
+`paycheck_wizard.go` 1,996 -> **373 lines**, in six files:
+
+| File | Lines | Holds |
+|---|---|---|
+| `paycheck_wizard.go` | 373 | wizard and section types, frequency table, constructor, accessors |
+| `paycheck_wizard_rows.go` | 233 | `PaycheckLine`; add and remove rows |
+| `paycheck_wizard_schedule.go` | 311 | `BuildSplits`, `computeTotal`, `looksLikePaycheck`, `NewPaycheckWizardFromSchedule` |
+| `paycheck_wizard_focus.go` | 350 | focus model, `HandleKey`, `HandleMouse` |
+| `paycheck_wizard_render.go` | 410 | `Render` and its pieces |
+| `paycheck_wizard_app.go` | 342 | the 7 `*App` methods and the data message |
+
+The clusters match the table above to within a few lines; the row model and the
+schedule mapping were split apart where the table had them under "declarations"
+and "build / derive". `relaunchAsPaycheckWizard` — the misfiled method the phase
+5 section names as paycheck's only coupling to the scheduled dialog's internals —
+went to `scheduled_dialog.go`, so no `paycheck_wizard*.go` file now reads
+`a.sched`. That is the "move that first" step 4c on paycheck was told to take.
+
+Verified by a throwaway `go/ast` comparer: every one of the 92 top-level
+declarations, doc comment included, is byte-identical to the original; none is
+missing or duplicated. No field renamed, no signature changed, no test edited.
+The only text that is not a verbatim move is one file-scope comment per new
+file and the two section banners that would have repeated it.
+
+`loan_wizard.go` (1,346), `split_dialog.go` (1,241) and
+`scheduled_preview_dialog.go` (1,189) are unchanged and still open for the same
+motion.
 
 ---
 
