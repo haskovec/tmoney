@@ -35,16 +35,16 @@ type corporateActionDeletedMsg struct{}
 // untouched so callers may pre-populate it before dispatching the load.
 func (a *App) loadCorporateActionViewData() tea.Cmd {
 	return func() tea.Msg {
-		if a.corporateActionSvc == nil || a.securitySvc == nil {
+		if a.services.CorporateAction == nil || a.services.Security == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
-		actions, err := a.corporateActionSvc.ListAll()
+		actions, err := a.services.CorporateAction.ListAll()
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load corporate actions: %w", err)}
 		}
 
-		allSecurities, err := a.securitySvc.List(security.Filter{})
+		allSecurities, err := a.services.Security.List(security.Filter{})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
@@ -362,10 +362,10 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 		"Reverse Corporate Action",
 		msg,
 		func() tea.Msg {
-			if a.corporateActionSvc == nil {
+			if a.services.CorporateAction == nil {
 				return errMsg{err: fmt.Errorf("corporate action service not available")}
 			}
-			if err := a.corporateActionSvc.DeleteAction(actionID); err != nil {
+			if err := a.services.CorporateAction.DeleteAction(actionID); err != nil {
 				var dse *investment.DownstreamEventsError
 				var ure *investment.UnsupportedReversalError
 				switch {

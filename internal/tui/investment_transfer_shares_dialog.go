@@ -132,9 +132,9 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 		data := &transferSharesDialogData{}
 
 		// Load securities
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -142,8 +142,8 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 		}
 
 		// Load investment accounts (excluding current)
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -158,14 +158,14 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 
 		// Load lots if source account is lot-tracking
 		if a.investmentRegister != nil && a.investmentRegister.account != nil &&
-			a.investmentRegister.account.TrackLots && a.lotRepo != nil {
+			a.investmentRegister.account.TrackLots && a.services.LotRepo != nil {
 
 			acctID := a.investmentRegister.account.ID
 
-			if a.investmentEditTxnID != types.NilID && a.investmentRepo != nil {
-				editTxn, err := a.investmentRepo.GetByID(a.investmentEditTxnID)
+			if a.investmentEditTxnID != types.NilID && a.services.InvestmentRepo != nil {
+				editTxn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
-					lots, err := a.lotRepo.ListByAccountAndSecurity(acctID, editTxn.SecurityID.ID, false)
+					lots, err := a.services.LotRepo.ListByAccountAndSecurity(acctID, editTxn.SecurityID.ID, false)
 					if err == nil {
 						data.lots = lots
 					}
@@ -362,14 +362,14 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 	a.closeTransferSharesDialog()
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var result *investment.ShareTransferResult
 		var txnErr error
 		if editTxnID != types.NilID {
-			result, txnErr = a.investmentEditSvc.UpdateTransferShares(
+			result, txnErr = a.services.InvestmentEdit.UpdateTransferShares(
 				editTxnID,
 				sourceAccountID,
 				destAccountID,
@@ -380,7 +380,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			result, txnErr = a.investmentSvc.TransferShares(
+			result, txnErr = a.services.Investment.TransferShares(
 				sourceAccountID,
 				destAccountID,
 				securityID,

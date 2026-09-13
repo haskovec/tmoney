@@ -130,9 +130,9 @@ func TestTransferDeps_FollowADatabaseSwitch(t *testing.T) {
 	accounts := &account.Service{}
 	categories := &category.Service{}
 	manager := undo.NewManager()
-	app.transferSvc = transfers
-	app.accountSvc = accounts
-	app.categorySvc = categories
+	app.services.Transfer = transfers
+	app.services.Account = accounts
+	app.services.Category = categories
 	app.undoManager = manager
 
 	if deps.transfers() != transfers {

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -1672,16 +1673,18 @@ func createMultiLineScheduledTestApp(t *testing.T) (*App, *scheduled.Service, *a
 	}
 
 	app := &App{
-		currentView:     ViewScheduled,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		services: app.Services{
+			Account:   accountSvc,
+			Payee:     payeeSvc,
+			Category:  categorySvc,
+			Scheduled: schedSvc,
+		},
+		undoManager: undo.NewManager(),
 	}
 	return app, schedSvc, acct, incomeCat, taxCat
 }
@@ -2115,7 +2118,9 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		categorySvc: categorySvc,
+		services: app.Services{
+			Category: categorySvc,
+		},
 		sched: schedSurface{data: &scheduledDialogData{
 			mode:     scheduledDialogModeNew,
 			payeeMap: make(map[string]*payee.Payee),

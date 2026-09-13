@@ -260,7 +260,7 @@ func submitCreateCategoryDialog(d *dialog.Dialog, existingParents []string) tea.
 // parent path where the child inherits the parent's Type (matches the prior
 // behavior of applyCreatedCategory).
 func (a *App) persistCategory(req createCategoryRequest) (*category.Category, error) {
-	if a.categorySvc == nil {
+	if a.services.Category == nil {
 		return nil, fmt.Errorf("category service unavailable")
 	}
 
@@ -269,12 +269,12 @@ func (a *App) persistCategory(req createCategoryRequest) (*category.Category, er
 	if req.ParentName != "" {
 		if req.NewParent {
 			parent := category.NewCategory(req.ParentName, catType)
-			if err := a.categorySvc.Create(parent); err != nil {
+			if err := a.services.Category.Create(parent); err != nil {
 				return nil, fmt.Errorf("create parent: %w", err)
 			}
 			parentID = parent.ID
 		} else {
-			existing, err := a.categorySvc.GetByName(req.ParentName, nil)
+			existing, err := a.services.Category.GetByName(req.ParentName, nil)
 			if err != nil {
 				return nil, fmt.Errorf("lookup parent: %w", err)
 			}
@@ -289,7 +289,7 @@ func (a *App) persistCategory(req createCategoryRequest) (*category.Category, er
 	} else {
 		newCat = category.NewSubcategory(req.Name, parentID, catType)
 	}
-	if err := a.categorySvc.Create(newCat); err != nil {
+	if err := a.services.Category.Create(newCat); err != nil {
 		return nil, fmt.Errorf("create category: %w", err)
 	}
 	return newCat, nil
@@ -306,7 +306,7 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		return err
 	}
 
-	cats, err := a.categorySvc.List()
+	cats, err := a.services.Category.List()
 	if err != nil {
 		return fmt.Errorf("reload categories: %w", err)
 	}

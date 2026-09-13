@@ -135,9 +135,9 @@ func (a *App) refreshStockSplitDialogMessage() {
 	// date — the only shares the split will adjust — so the projection reflects
 	// the date-scoped engine instead of naively scaling every holding.
 	affected := map[types.ID]types.Quantity{}
-	if a.investmentSvc != nil && secIdx >= 0 && secIdx < len(a.stockSplit.securityIDs) {
+	if a.services.Investment != nil && secIdx >= 0 && secIdx < len(a.stockSplit.securityIDs) {
 		if d, err := parseDateInput(dateStr); err == nil {
-			if asOf, err := a.investmentSvc.SharesBySecurityAsOf(a.stockSplit.securityIDs[secIdx], d); err == nil {
+			if asOf, err := a.services.Investment.SharesBySecurityAsOf(a.stockSplit.securityIDs[secIdx], d); err == nil {
 				for _, as := range asOf {
 					affected[as.AccountID] = as.Shares
 				}
@@ -162,18 +162,18 @@ func (a *App) loadStockSplitDialogData() tea.Cmd {
 			sharesMap: make(map[types.ID][]investment.AccountShares),
 		}
 
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.securities = securities
 		}
 
-		if a.investmentSvc != nil {
+		if a.services.Investment != nil {
 			for _, sec := range data.securities {
-				shares, err := a.investmentSvc.SharesBySecurity(sec.ID)
+				shares, err := a.services.Investment.SharesBySecurity(sec.ID)
 				if err != nil {
 					return errMsg{err: err}
 				}
@@ -298,11 +298,11 @@ func (a *App) submitStockSplitDialog() (tea.Model, tea.Cmd) {
 	a.closeStockSplitDialog()
 
 	return a, func() tea.Msg {
-		if a.corporateActionSvc == nil {
+		if a.services.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("corporate action service not available")}
 		}
 
-		_, err := a.corporateActionSvc.Split(securityID, splitDate, *splitParams)
+		_, err := a.services.CorporateAction.Split(securityID, splitDate, *splitParams)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute stock split: %w", err)}
 		}

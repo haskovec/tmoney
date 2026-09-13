@@ -54,10 +54,10 @@ type amortizationLoadedMsg struct {
 // state rather than an error.
 func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.services.Account == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
-		acct, err := a.accountSvc.GetByID(accountID)
+		acct, err := a.services.Account.GetByID(accountID)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -71,8 +71,8 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 		// account; its own AccountID is the funding account, so it can only be
 		// found by transfer target.
 		var sched *scheduled.Transaction
-		if a.scheduledTxnSvc != nil {
-			sched, err = a.scheduledTxnSvc.FindLoanSchedule(accountID)
+		if a.services.Scheduled != nil {
+			sched, err = a.services.Scheduled.FindLoanSchedule(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -80,7 +80,7 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 
 		if sched == nil {
 			// No schedule: show the current balance owed and APR only.
-			bal, gerr := a.accountSvc.GetBalance(accountID)
+			bal, gerr := a.services.Account.GetBalance(accountID)
 			if gerr != nil {
 				return errMsg{err: gerr}
 			}
@@ -95,7 +95,7 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 
 		// owed is the loan balance as of the next payment date — the same as-of
 		// balance the next post will compute against.
-		signedBal, berr := a.accountSvc.BalanceAsOf(accountID, sched.NextDate)
+		signedBal, berr := a.services.Account.BalanceAsOf(accountID, sched.NextDate)
 		if berr != nil {
 			return errMsg{err: berr}
 		}

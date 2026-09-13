@@ -17,17 +17,17 @@ type sidebarLoadedMsg struct {
 // loadSidebarData returns a command that loads accounts and balances for the sidebar.
 func (a *App) loadSidebarData() tea.Cmd {
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.services.Account == nil {
 			return nil
 		}
 		// Load all accounts (including closed) so the sidebar can show a
 		// dimmed "Closed Accounts" section at the bottom. Pickers elsewhere
 		// still use List(true) to exclude closed accounts.
-		accounts, err := a.accountSvc.List(false)
+		accounts, err := a.services.Account.List(false)
 		if err != nil {
 			return errMsg{err: err}
 		}
-		balances, err := a.accountSvc.GetAllBalances()
+		balances, err := a.services.Account.GetAllBalances()
 		if err != nil {
 			return errMsg{err: err}
 		}

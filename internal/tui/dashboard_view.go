@@ -42,8 +42,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load net worth report
-		if a.reportSvc != nil {
-			report, err := a.reportSvc.NetWorthReport()
+		if a.services.Report != nil {
+			report, err := a.services.Report.NetWorthReport()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -51,14 +51,14 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load due scheduled transactions
-		if a.scheduledTxnSvc != nil {
-			due, err := a.scheduledTxnSvc.ListDue()
+		if a.services.Scheduled != nil {
+			due, err := a.services.Scheduled.ListDue()
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.dueTxns = due
 
-			upcoming, err := a.scheduledTxnSvc.ListUpcoming(30)
+			upcoming, err := a.services.Scheduled.ListUpcoming(30)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -77,8 +77,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load payee names for scheduled transactions
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -87,8 +87,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load account names
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -97,7 +97,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load investment account valuations with holdings for dashboard display
-		if a.investmentSvc != nil && data.netWorth != nil {
+		if a.services.Investment != nil && data.netWorth != nil {
 			data.investmentHoldings = make(map[types.ID]*investment.AccountValuation)
 			data.securityTickers = make(map[types.ID]string)
 
@@ -105,14 +105,14 @@ func (a *App) loadDashboardData() tea.Cmd {
 				if !account.Type(acct.Type).IsInvestmentType() {
 					continue
 				}
-				val, err := a.investmentValuationSvc.GetAccountValuation(acct.AccountID, types.Today(), a.valuationOptions())
+				val, err := a.services.InvestmentValuation.GetAccountValuation(acct.AccountID, types.Today(), a.valuationOptions())
 				if err == nil {
 					data.investmentHoldings[acct.AccountID] = val
 				}
 			}
 
 			// Load security tickers for all holdings
-			if a.securitySvc != nil {
+			if a.services.Security != nil {
 				securityIDs := make(map[types.ID]bool)
 				for _, val := range data.investmentHoldings {
 					for _, h := range val.Holdings {
@@ -120,7 +120,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 					}
 				}
 				for secID := range securityIDs {
-					sec, err := a.securitySvc.GetByID(secID)
+					sec, err := a.services.Security.GetByID(secID)
 					if err == nil {
 						data.securityTickers[secID] = sec.Ticker
 					}

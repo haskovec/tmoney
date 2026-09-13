@@ -144,10 +144,10 @@ func (a *App) isDialogVisible() bool {
 // to Delete a phantom row. The caller checks the returned (txn, ok); when
 // ok is false the caller should abort dialog construction.
 func (a *App) loadInvestmentEditTxn() (*investment.Transaction, bool) {
-	if a.investmentEditTxnID == types.NilID || a.investmentRepo == nil {
+	if a.investmentEditTxnID == types.NilID || a.services.InvestmentRepo == nil {
 		return nil, true
 	}
-	txn, err := a.investmentRepo.GetByID(a.investmentEditTxnID)
+	txn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
 	if err != nil {
 		a.err = fmt.Errorf("failed to load transaction for editing: %w", err)
 		a.investmentEditTxnID = types.NilID

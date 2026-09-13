@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"charm.land/bubbletea/v2"
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/dbtest"
@@ -122,14 +122,16 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 	}
 
 	a := &App{
-		currentView:   ViewInvestmentRegister,
-		keys:          defaultKeyMap(),
-		menubar:       widget.NewMenuBar(),
-		statusbar:     widget.NewStatusBar(),
-		sidebar:       NewSidebar(),
-		investmentSvc: svc.Investment,
-		transferSvc:   svc.Transfer,
-		undoManager:   undo.NewManager(),
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		services: app.Services{
+			Investment: svc.Investment,
+			Transfer:   svc.Transfer,
+		},
+		undoManager: undo.NewManager(),
 		investmentRegister: &investmentRegisterData{
 			account:      brokerage,
 			transactions: []*investment.Transaction{invLeg},

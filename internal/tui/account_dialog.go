@@ -265,11 +265,11 @@ func (a *App) loadNewAccountDialogData() tea.Cmd {
 func (a *App) loadEditAccountDialogData() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.services.Account == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		account, err := a.accountSvc.GetByID(accountID)
+		account, err := a.services.Account.GetByID(accountID)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load account: %w", err)}
 		}
@@ -431,7 +431,7 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	a.closeAccountDialog()
 
 	return a, func() tea.Msg {
-		if a.accountSvc == nil || a.undoManager == nil {
+		if a.services.Account == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
@@ -463,12 +463,12 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		acct.InterestRate = interestRate
 
 		if mode == accountDialogModeEdit {
-			cmd := undo.NewEditAccountCommand(a.accountSvc, acct)
+			cmd := undo.NewEditAccountCommand(a.services.Account, acct)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
 			}
 		} else {
-			cmd := undo.NewCreateAccountCommand(a.accountSvc, acct)
+			cmd := undo.NewCreateAccountCommand(a.services.Account, acct)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create account: %w", err)}
 			}
@@ -482,11 +482,11 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 func (a *App) deleteSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
 	return func() tea.Msg {
-		if a.accountSvc == nil || a.undoManager == nil {
+		if a.services.Account == nil || a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		cmd := undo.NewDeleteAccountCommand(a.accountSvc, accountID)
+		cmd := undo.NewDeleteAccountCommand(a.services.Account, accountID)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to delete account: %w", err)}
 		}

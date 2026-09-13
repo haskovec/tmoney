@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
@@ -314,20 +315,22 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 	}
 
 	app := &App{
-		currentView:     ViewScheduled,
-		width:           120,
-		height:          30,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		styles:          widget.NewStyles(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		transactionSvc:  txnSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewScheduled,
+		width:       120,
+		height:      30,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		services: app.Services{
+			Account:     accountSvc,
+			Payee:       payeeSvc,
+			Category:    categorySvc,
+			Scheduled:   schedSvc,
+			Transaction: txnSvc,
+		},
+		undoManager: undo.NewManager(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{dueTxn},
 			dueTxns:       []*scheduled.Transaction{dueTxn},
@@ -670,20 +673,22 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 	}
 
 	app := &App{
-		currentView:     ViewScheduled,
-		width:           120,
-		height:          30,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		styles:          widget.NewStyles(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		transactionSvc:  txnSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewScheduled,
+		width:       120,
+		height:      30,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		services: app.Services{
+			Account:     accountSvc,
+			Payee:       payeeSvc,
+			Category:    categorySvc,
+			Scheduled:   schedSvc,
+			Transaction: txnSvc,
+		},
+		undoManager: undo.NewManager(),
 		scheduled: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{dueTxn},
 			dueTxns:       []*scheduled.Transaction{dueTxn},
@@ -1055,7 +1060,7 @@ func TestApp_SchedPreview_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 	app = model.(*App)
 
 	// New category persisted.
-	got, err := env.app.categorySvc.List()
+	got, err := env.app.services.Category.List()
 	if err != nil {
 		t.Fatalf("categorySvc.List: %v", err)
 	}

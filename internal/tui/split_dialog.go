@@ -1165,8 +1165,8 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 	return a, func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
-		if pending.payeeName != "" && a.payeeSvc != nil {
-			payee, _, err := a.payeeSvc.GetOrCreate(pending.payeeName)
+		if pending.payeeName != "" && a.services.Payee != nil {
+			payee, _, err := a.services.Payee.GetOrCreate(pending.payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -1192,8 +1192,8 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 				s.TransactionID = updated.ID
 			}
 
-			if a.transactionSvc != nil && a.undoManager != nil {
-				cmd := undo.NewEditTransactionWithSplitsCommand(a.transactionSvc, &updated, splits)
+			if a.services.Transaction != nil && a.undoManager != nil {
+				cmd := undo.NewEditTransactionWithSplitsCommand(a.services.Transaction, &updated, splits)
 				if err := a.undoManager.Execute(cmd); err != nil {
 					return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
 				}
@@ -1206,8 +1206,8 @@ func (a *App) submitSplitDialog() (tea.Model, tea.Cmd) {
 		txn.Status = pending.status
 
 		// Save with splits via undo manager
-		if a.transactionSvc != nil && a.undoManager != nil {
-			cmd := undo.NewCreateTransactionWithSplitsCommand(a.transactionSvc, txn, splits)
+		if a.services.Transaction != nil && a.undoManager != nil {
+			cmd := undo.NewCreateTransactionWithSplitsCommand(a.services.Transaction, txn, splits)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
 			}

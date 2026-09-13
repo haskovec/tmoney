@@ -225,10 +225,10 @@ func importDuplicateFromIndex(idx int) imexport.DuplicateHandling {
 // account list. Called from the File menu action handler.
 func (a *App) startImport() tea.Cmd {
 	return func() tea.Msg {
-		if a.accountSvc == nil {
+		if a.services.Account == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
-		accounts, err := a.accountSvc.List(true)
+		accounts, err := a.services.Account.List(true)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to list accounts: %w", err)}
 		}

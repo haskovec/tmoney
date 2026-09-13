@@ -1207,11 +1207,11 @@ func TestRenderPriceView_ListMode_NarrowOmitsChartPanel(t *testing.T) {
 	d := types.MustParseDate("2026-04-15")
 	m1, _ := types.NewMoney("100.00")
 	m2, _ := types.NewMoney("110.00")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m1, price.SourceManual)); err != nil {
+	if err := a.services.Price.AddPrice(price.NewPrice(secs[0].ID, d, m1, price.SourceManual)); err != nil {
 		t.Fatalf("AddPrice: %v", err)
 	}
 	d2 := types.MustParseDate("2026-04-22")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)); err != nil {
+	if err := a.services.Price.AddPrice(price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)); err != nil {
 		t.Fatalf("AddPrice: %v", err)
 	}
 
@@ -1501,7 +1501,7 @@ func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) 
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("100.00")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
+	if err := a.services.Price.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
 		t.Fatalf("AddPrice: %v", err)
 	}
 
@@ -1841,10 +1841,10 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	m2, _ := types.NewMoney("110.00")
 	older := price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)
 	newer := price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)
-	if err := a.priceSvc.AddPrice(older); err != nil {
+	if err := a.services.Price.AddPrice(older); err != nil {
 		t.Fatalf("AddPrice older: %v", err)
 	}
-	if err := a.priceSvc.AddPrice(newer); err != nil {
+	if err := a.services.Price.AddPrice(newer); err != nil {
 		t.Fatalf("AddPrice newer: %v", err)
 	}
 
@@ -1874,7 +1874,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	// chart-render path queried priceSvc, the next render would route
 	// to the 1-price placeholder. With the cache as the sole source,
 	// the chart is unaffected.
-	if err := a.priceSvc.DeletePrice(older.ID); err != nil {
+	if err := a.services.Price.DeletePrice(older.ID); err != nil {
 		t.Fatalf("DeletePrice: %v", err)
 	}
 
@@ -2029,7 +2029,7 @@ func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("180.00")
-	if err := a.priceSvc.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
+	if err := a.services.Price.AddPrice(price.NewPrice(secs[0].ID, d, m, price.SourceManual)); err != nil {
 		t.Fatalf("AddPrice: %v", err)
 	}
 

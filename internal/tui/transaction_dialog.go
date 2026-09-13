@@ -316,8 +316,8 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 			payeeMap: make(map[string]*payee.Payee),
 		}
 
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -327,16 +327,16 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 			}
 		}
 
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			categories, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.categories = categories
 		}
 
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -358,8 +358,8 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 			mode:     transactionDialogModeEdit,
 		}
 
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -369,30 +369,30 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 			}
 		}
 
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			categories, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.categories = categories
 		}
 
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.accounts = accounts
 		}
 
-		if a.transactionSvc != nil {
-			txn, err := a.transactionSvc.GetByID(txnID)
+		if a.services.Transaction != nil {
+			txn, err := a.services.Transaction.GetByID(txnID)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.existing = txn
 
-			splits, err := a.transactionSvc.GetSplits(txnID)
+			splits, err := a.services.Transaction.GetSplits(txnID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -647,8 +647,8 @@ func (a *App) parentsForCreateCatDialog() []string {
 			return names
 		}
 	}
-	if a.categorySvc != nil {
-		if cats, err := a.categorySvc.List(); err == nil {
+	if a.services.Category != nil {
+		if cats, err := a.services.Category.List(); err == nil {
 			return topLevelParentNames(cats)
 		}
 	}
@@ -798,8 +798,8 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	return a, func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
-		if payeeName != "" && a.payeeSvc != nil {
-			py, _, err := a.payeeSvc.GetOrCreate(payeeName)
+		if payeeName != "" && a.services.Payee != nil {
+			py, _, err := a.services.Payee.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -823,16 +823,16 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 				updated.CategoryID = types.NullableID{Valid: false}
 			}
 
-			if a.transactionSvc != nil && a.undoManager != nil {
+			if a.services.Transaction != nil && a.undoManager != nil {
 				// Use the splits-aware edit command when the prior state had
 				// splits — this clears them as part of the same undo unit
 				// (split→plain conversion). Otherwise the plain edit command
 				// is sufficient.
 				var cmd undo.Command
 				if hadSplits {
-					cmd = undo.NewEditTransactionWithSplitsCommand(a.transactionSvc, &updated, nil)
+					cmd = undo.NewEditTransactionWithSplitsCommand(a.services.Transaction, &updated, nil)
 				} else {
-					cmd = undo.NewEditTransactionCommand(a.transactionSvc, &updated)
+					cmd = undo.NewEditTransactionCommand(a.services.Transaction, &updated)
 				}
 				if err := a.undoManager.Execute(cmd); err != nil {
 					return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
@@ -846,8 +846,8 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		txn.Status = status
 
 		// Save via undo manager
-		if a.transactionSvc != nil && a.undoManager != nil {
-			cmd := undo.NewCreateTransactionCommand(a.transactionSvc, txn)
+		if a.services.Transaction != nil && a.undoManager != nil {
+			cmd := undo.NewCreateTransactionCommand(a.services.Transaction, txn)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 			}

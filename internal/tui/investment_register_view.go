@@ -45,8 +45,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account
-		if a.accountSvc != nil {
-			acct, err := a.accountSvc.GetByID(accountID)
+		if a.services.Account != nil {
+			acct, err := a.services.Account.GetByID(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -54,8 +54,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load investment transactions via repository
-		if a.investmentRepo != nil {
-			txns, err := a.investmentRepo.ListByAccount(accountID, investment.TransactionFilter{})
+		if a.services.InvestmentRepo != nil {
+			txns, err := a.services.InvestmentRepo.ListByAccount(accountID, investment.TransactionFilter{})
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -63,14 +63,14 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load cash balance via service
-		if a.investmentSvc != nil {
-			cash, err := a.investmentSvc.GetCashBalance(accountID)
+		if a.services.Investment != nil {
+			cash, err := a.services.Investment.GetCashBalance(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.cashBalance = cash
 
-			val, err := a.investmentValuationSvc.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
+			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -78,8 +78,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load security names for display
-		if a.securitySvc != nil {
-			securities, err := a.securitySvc.List(security.Filter{})
+		if a.services.Security != nil {
+			securities, err := a.services.Security.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
 					data.securityNames[sec.ID] = securityLabel(sec)
@@ -663,7 +663,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 				"Delete Transaction",
 				prompt,
 				func() tea.Msg {
-					if a.investmentSvc == nil {
+					if a.services.Investment == nil {
 						return errMsg{err: fmt.Errorf("investment service not available")}
 					}
 					// A cash-transfer row is one LEG of a pair whose counterpart may
@@ -676,16 +676,16 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 					// investment rows owned by this package, and their cascade also
 					// reverses lot and position effects.
 					if isTransferLeg {
-						if a.transferSvc == nil || a.undoManager == nil {
+						if a.services.Transfer == nil || a.undoManager == nil {
 							return errMsg{err: fmt.Errorf("transfer service not available")}
 						}
-						cmd := undo.NewDeleteTransferCommand(a.transferSvc, transferID)
+						cmd := undo.NewDeleteTransferCommand(a.services.Transfer, transferID)
 						if err := a.undoManager.Execute(cmd); err != nil {
 							return errMsg{err: err}
 						}
 						return investmentTransactionDeletedMsg{}
 					}
-					if err := a.investmentSvc.DeleteTransaction(txnID); err != nil {
+					if err := a.services.Investment.DeleteTransaction(txnID); err != nil {
 						return errMsg{err: err}
 					}
 					return investmentTransactionDeletedMsg{}
@@ -784,7 +784,7 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 	isTransferLeg := isCashTransferLeg(txn)
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
@@ -808,14 +808,14 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 		// Only this leg moves — clearing your side of a transfer says your
 		// institution posted it, independent of the other account.
 		if isTransferLeg {
-			if a.transferSvc == nil || a.undoManager == nil {
+			if a.services.Transfer == nil || a.undoManager == nil {
 				return errMsg{err: fmt.Errorf("transfer service not available")}
 			}
 			status := transaction.StatusCleared
 			if !cleared {
 				status = transaction.StatusUncleared
 			}
-			cmd := undo.NewSetTransferLegStatusCommand(a.transferSvc, txnID, status)
+			cmd := undo.NewSetTransferLegStatusCommand(a.services.Transfer, txnID, status)
 			if err := a.undoManager.Execute(cmd); err != nil {
 				return errMsg{err: err}
 			}
@@ -823,7 +823,7 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 		}
 
 		// Route through the service so the closed-account freeze gate applies.
-		if err := a.investmentSvc.SetClearedStatus(txnID, cleared); err != nil {
+		if err := a.services.Investment.SetClearedStatus(txnID, cleared); err != nil {
 			return errMsg{err: err}
 		}
 		return investmentTransactionClearedMsg{}

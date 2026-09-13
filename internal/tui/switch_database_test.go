@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/dbtest"
 )
@@ -12,51 +11,41 @@ import (
 // TestSwitchDatabase_RepointsEveryService is a STRUCTURAL test, not a behavioral
 // one, and it exists because of a real bug that reached a user.
 //
-// switchDatabase re-points each service at the newly opened file by hand, one
-// assignment per field. Adding a service field to App and updating only NewApp
-// leaves that field bound to the STARTUP database: the app then reads and writes
-// the wrong file, silently. That is what happened when investmentValuationSvc and
-// investmentEditSvc were added — opening a data file left both pointing at the
-// previous database, so valuing an account reported "account not found" for an ID
-// that plainly existed, and the dashboard, which swallows that error, simply
-// stopped showing total return.
+// switchDatabase used to re-point each service at the newly opened file by
+// hand, one assignment per App field. Adding a service field to App and
+// updating only NewApp left that field bound to the STARTUP database: the app
+// then read and wrote the wrong file, silently. That is what happened when
+// investmentValuationSvc and investmentEditSvc were added — opening a data file
+// left both pointing at the previous database, so valuing an account reported
+// "account not found" for an ID that plainly existed, and the dashboard, which
+// swallows that error, simply stopped showing total return.
 //
-// Rather than assert the two fields that broke, this walks App by reflection and
-// requires that EVERY field whose type also appears on *app.Services is a
-// different pointer after the switch. A new service field is then caught by this
-// test the day it is added, without anyone remembering to extend a list.
+// App now holds one app.Services value and switchDatabase replaces it whole, so
+// the per-field mistake has no place to happen. This test keeps the property
+// pinned from the outside anyway: EVERY pointer field of a.services must be a
+// different pointer after the switch. It catches a future return to per-field
+// assignment, a Services field that newTUIServices stops populating, and a
+// switch that forgets the assignment altogether.
 func TestSwitchDatabase_RepointsEveryService(t *testing.T) {
 	first := dbtest.New(t)
 	second := dbtest.New(t)
 
 	a := NewApp(first, &config.Config{})
 
-	// Every type that *app.Services hands out. A field on App of one of these
-	// types came from a Services built for a specific database.
-	serviceTypes := map[reflect.Type]bool{}
-	svcT := reflect.TypeOf(app.Services{})
-	for i := 0; i < svcT.NumField(); i++ {
-		if f := svcT.Field(i); f.Type.Kind() == reflect.Pointer {
-			serviceTypes[f.Type] = true
-		}
-	}
-
 	before := map[string]uintptr{}
-	appV := reflect.ValueOf(a).Elem()
-	appT := appV.Type()
-	for i := 0; i < appT.NumField(); i++ {
-		f := appT.Field(i)
-		if !serviceTypes[f.Type] {
+	svcV := reflect.ValueOf(a.services)
+	svcT := svcV.Type()
+	for i := 0; i < svcT.NumField(); i++ {
+		f := svcT.Field(i)
+		if f.Type.Kind() != reflect.Pointer {
 			continue
 		}
-		v := appV.Field(i)
-		if v.IsNil() {
-			continue
+		if v := svcV.Field(i); !v.IsNil() {
+			before[f.Name] = v.Pointer()
 		}
-		before[f.Name] = v.Pointer()
 	}
 	if len(before) == 0 {
-		t.Fatal("no service-typed fields found on App; the reflection rule is not matching anything")
+		t.Fatal("no populated pointer fields on a.services; the reflection rule is not matching anything")
 	}
 
 	if _, cmd := a.switchDatabase(second); cmd == nil {
@@ -64,21 +53,21 @@ func TestSwitchDatabase_RepointsEveryService(t *testing.T) {
 	}
 
 	var stale []string
-	for i := 0; i < appT.NumField(); i++ {
-		f := appT.Field(i)
+	svcV = reflect.ValueOf(a.services)
+	for i := 0; i < svcT.NumField(); i++ {
+		f := svcT.Field(i)
 		old, tracked := before[f.Name]
 		if !tracked {
 			continue
 		}
-		v := appV.Field(i)
-		if v.IsNil() || v.Pointer() == old {
+		if v := svcV.Field(i); v.IsNil() || v.Pointer() == old {
 			stale = append(stale, f.Name)
 		}
 	}
 	if len(stale) > 0 {
-		t.Errorf("switchDatabase left %d service field(s) bound to the previous database: %v\n"+
-			"Add the missing assignment(s) in switchDatabase — a field left behind reads and "+
-			"writes the wrong file with no error the user can interpret.", len(stale), stale)
+		t.Errorf("switchDatabase left %d service(s) bound to the previous database: %v\n"+
+			"a.services must be replaced whole by newTUIServices(newDB) — a service left "+
+			"behind reads and writes the wrong file with no error the user can interpret.", len(stale), stale)
 	}
 }
 

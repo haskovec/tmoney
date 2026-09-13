@@ -1711,10 +1711,16 @@ constraint on phase size.
 - **The view layer (4b).** Out of scope, and a real second design. `price_view.go`
   and `investment_register_view.go` are the two files that most deserve it, and
   `switchView`'s 12-arm focus switch is the seam.
-- **`undoManager` is never re-pointed on a database switch** (§5.5). A
+- ~~**`undoManager` is never re-pointed on a database switch** (§5.5). A
   pre-existing bug found while planning this. It belongs with
   **review item 5** (boundary leaks / `app.Services`), whose owner will already
-  be touching the composition root — not here.
+  be touching the composition root — not here.~~ **Fixed 2026-09-13, after
+  phase 5.** Re-pointing was the wrong fix: every undo command captures the
+  service it was built against, so the commands already on the stacks would
+  have run against the closed file whichever manager held them.
+  `switchDatabase` now calls `undoManager.Clear()`, as `reloadAfterRestore`
+  already did. `TestSwitchDatabase_ClearsUndoHistory` pins it and fails
+  without the call.
 - **`app.NewServices` called inside four `tea.Cmd` goroutines**
   (`import_dialog.go:373, 425`; `link_transfers_dialog.go:31, 45`). Each builds
   a second registry and re-runs the write side effects — `EnsurePaycheckCategories`
@@ -1732,12 +1738,27 @@ constraint on phase size.
   Out of scope for this design, but **phase 0 is what makes these paths
   reachable**, so phase 0 owes the item-6 follow-up before it merges (see
   phase 0).
-- **`App` holds 17 service fields rather than one `*app.Services`.** Collapsing
+- ~~**`App` holds 17 service fields rather than one `*app.Services`.** Collapsing
   them would make `switchDatabase`'s 18-line re-point block one assignment and
   the `6dede4d` bug class structurally impossible. This is **review item 5**'s
   territory. Attractive, orthogonal, and not part of item 4 — but phase 5's
   deps design should be written so it does not have to change if item 5 later
-  collapses those 17 fields into one.
+  collapses those 17 fields into one.~~ **Done 2026-09-13, in the same change
+  as the undo fix.** `App` holds one `services app.Services` and `switchDatabase`
+  is `a.services = *newTUIServices(newDB)`. `App` 107 -> **91 fields**. Three
+  things the collapse settled:
+  - **Held by value, not by pointer.** ~700 `&App{…}` literals in tests build
+    an `App` with no services and rely on `a.<svc> != nil` guards. A pointer
+    field would turn each of those into a nil dereference; a value field keeps
+    the zero `App` handing out nil services.
+  - **The phase 5 prediction held.** The four `transferDeps` closures changed
+    to read `a.services.X` and no signature moved — the migration §4 phase 5
+    sketched, verbatim.
+  - **`TestSwitchDatabase_RepointsEveryService` was rewritten, not deleted.**
+    It now walks every pointer field of `a.services` and requires a different
+    pointer after the switch. Mutation-verified: dropping the assignment
+    names all 29 services as stale. A return to per-field assignment that
+    misses one would fail the same way.
 - ~~**`themeReloadFailedMsg` is emitted (`app_theme.go:44`) with no case arm**, so
   the error is dropped. One-line fix; belongs with phase 3, which touches the
   switch.~~ **Wrong — checked in phase 3, no change made.** The error is not

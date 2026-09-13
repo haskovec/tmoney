@@ -134,16 +134,16 @@ func (a *App) submitStartReconciliation() (tea.Model, tea.Cmd) {
 // startReconciliation starts a reconciliation session and loads view data.
 func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, statementBalance types.Money) tea.Cmd {
 	return func() tea.Msg {
-		if a.reconciliationSvc == nil {
+		if a.services.Reconciliation == nil {
 			return errMsg{err: fmt.Errorf("reconciliation service not available")}
 		}
 
-		session, err := a.reconciliationSvc.StartReconciliation(accountID, statementDate, statementBalance)
+		session, err := a.services.Reconciliation.StartReconciliation(accountID, statementDate, statementBalance)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to start reconciliation: %w", err)}
 		}
 
-		acct, err := a.accountSvc.GetByID(accountID)
+		acct, err := a.services.Account.GetByID(accountID)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to get account: %w", err)}
 		}
@@ -155,7 +155,7 @@ func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, 
 // loadReconciliationData loads reconciliation view data for an active session.
 func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account) tea.Cmd {
 	return func() tea.Msg {
-		candidates, err := a.reconciliationSvc.GetCandidateTransactions(
+		candidates, err := a.services.Reconciliation.GetCandidateTransactions(
 			session.AccountID, session.StatementDate,
 		)
 		if err != nil {
@@ -164,8 +164,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		// Load payee names
 		payeeNames := make(map[types.ID]string)
-		if a.payeeSvc != nil {
-			payees, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			payees, err := a.services.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					payeeNames[p.ID] = p.Name
@@ -175,8 +175,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		// Load category names
 		categoryNames := make(map[types.ID]string)
-		if a.categorySvc != nil {
-			categories, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			categories, err := a.services.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					categoryNames[c.ID] = c.Name
@@ -186,8 +186,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		// Load account names for transfers
 		accountNames := make(map[types.ID]string)
-		if a.accountSvc != nil {
-			accounts, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			accounts, err := a.services.Account.List(true)
 			if err == nil {
 				for _, acct := range accounts {
 					accountNames[acct.ID] = acct.Name
@@ -196,7 +196,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 		}
 
 		// Calculate initial cleared total (no checked transactions)
-		clearedTotal, err := a.reconciliationSvc.CalculateClearedTotal(session.AccountID, nil)
+		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, nil)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to calculate cleared total: %w", err)}
 		}
@@ -218,7 +218,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 // recalculateClearedTotal recalculates the cleared total based on checked transactions.
 func (a *App) recalculateClearedTotal() tea.Cmd {
-	if a.reconciliation == nil || a.reconciliationSvc == nil {
+	if a.reconciliation == nil || a.services.Reconciliation == nil {
 		return nil
 	}
 
@@ -226,7 +226,7 @@ func (a *App) recalculateClearedTotal() tea.Cmd {
 	checkedIDs := a.getCheckedTransactionIDs()
 
 	return func() tea.Msg {
-		total, err := a.reconciliationSvc.CalculateClearedTotal(accountID, checkedIDs)
+		total, err := a.services.Reconciliation.CalculateClearedTotal(accountID, checkedIDs)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to recalculate cleared total: %w", err)}
 		}
@@ -506,7 +506,7 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	if a.reconciliationSvc == nil || a.undoManager == nil {
+	if a.services.Reconciliation == nil || a.undoManager == nil {
 		return a, nil
 	}
 
@@ -515,7 +515,7 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 
 	return a, func() tea.Msg {
 		cmd := undo.NewFinishReconciliationCommand(
-			a.reconciliationSvc, a.transactionSvc, accountID, txnIDs,
+			a.services.Reconciliation, a.services.Transaction, accountID, txnIDs,
 		)
 		if err := a.undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to finish reconciliation: %w", err)}
@@ -526,14 +526,14 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 
 // cancelReconciliation cancels the current reconciliation session.
 func (a *App) cancelReconciliation() (tea.Model, tea.Cmd) {
-	if a.reconciliation == nil || a.reconciliationSvc == nil {
+	if a.reconciliation == nil || a.services.Reconciliation == nil {
 		return a, nil
 	}
 
 	accountID := a.reconciliation.session.AccountID
 
 	return a, func() tea.Msg {
-		err := a.reconciliationSvc.CancelReconciliation(accountID)
+		err := a.services.Reconciliation.CancelReconciliation(accountID)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to cancel reconciliation: %w", err)}
 		}

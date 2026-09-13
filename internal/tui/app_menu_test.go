@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -353,18 +354,20 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 	}
 
 	app := &App{
-		currentView:     ViewDashboard,
-		width:           120,
-		height:          30,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		styles:          widget.NewStyles(),
-		accountSvc:      accountSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		transactionSvc:  txnSvc,
+		currentView: ViewDashboard,
+		width:       120,
+		height:      30,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		services: app.Services{
+			Account:     accountSvc,
+			Category:    categorySvc,
+			Scheduled:   schedSvc,
+			Transaction: txnSvc,
+		},
 	}
 
 	// Dispatch the menu action directly (avoids depending on dropdown

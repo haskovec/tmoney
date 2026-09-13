@@ -370,8 +370,8 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 		cmd := undo.NewPostScheduledTransferCommand(
-			a.scheduledTxnSvc,
-			a.transferSvc,
+			a.services.Scheduled,
+			a.services.Transfer,
 			templateID,
 			date,
 			magnitude,
@@ -607,8 +607,8 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.accountSvc != nil {
-			acs, err := a.accountSvc.List(true)
+		if a.services.Account != nil {
+			acs, err := a.services.Account.List(true)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -616,8 +616,8 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		}
 
 		var payees []*payee.Payee
-		if a.payeeSvc != nil {
-			ps, err := a.payeeSvc.List()
+		if a.services.Payee != nil {
+			ps, err := a.services.Payee.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -625,8 +625,8 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		}
 
 		var categories []*category.Category
-		if a.categorySvc != nil {
-			cs, err := a.categorySvc.List()
+		if a.services.Category != nil {
+			cs, err := a.services.Category.List()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -648,8 +648,8 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		// cannot be previewed with correct numbers, so the loader blocks the
 		// open with a reason rather than seeding stale template values.
 		var loanSplits *scheduled.LoanSplits
-		if a.scheduledTxnSvc != nil && a.scheduledTxnSvc.IsLoanShaped(template) {
-			ls, err := a.scheduledTxnSvc.ComputeLoanSplits(template, template.NextDate)
+		if a.services.Scheduled != nil && a.services.Scheduled.IsLoanShaped(template) {
+			ls, err := a.services.Scheduled.ComputeLoanSplits(template, template.NextDate)
 			switch {
 			case err == nil:
 				loanSplits = ls
@@ -663,7 +663,7 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 				// a closed funding account tripping the pre-check) means the
 				// schedule was NOT completed, so surface that instead of a
 				// misleading "paid off" toast.
-				if _, perr := a.scheduledTxnSvc.Post(template.ID, nil); perr != nil &&
+				if _, perr := a.services.Scheduled.Post(template.ID, nil); perr != nil &&
 					!errors.Is(perr, scheduled.ErrLoanPaidOff) {
 					return schedulePreviewLoanBlockedMsg{err: perr}
 				}
@@ -949,7 +949,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 // in place.
 func (a *App) maybeReseedLoanPreview() {
 	p := a.schedPreviewDialog
-	if p == nil || !p.loanShaped || p.loanSeedFrozen || a.scheduledTxnSvc == nil {
+	if p == nil || !p.loanShaped || p.loanSeedFrozen || a.services.Scheduled == nil {
 		return
 	}
 	if p.userEditedLines() {
@@ -968,7 +968,7 @@ func (a *App) maybeReseedLoanPreview() {
 	if err != nil || newDate.Equal(p.loanSeedDate) {
 		return
 	}
-	ls, err := a.scheduledTxnSvc.ComputeLoanSplits(p.template, newDate)
+	ls, err := a.services.Scheduled.ComputeLoanSplits(p.template, newDate)
 	if err != nil {
 		return
 	}
@@ -1041,14 +1041,14 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 
 		switch {
 		case a.schedPreviewDialog.loanShaped && !a.schedPreviewDialog.loanSeedFrozen &&
-			!hasErrors && a.scheduledTxnSvc != nil:
+			!hasErrors && a.services.Scheduled != nil:
 			// A loan-shaped preview the user has not hand-edited is recomputed
 			// authoritatively at the posting date here, not trusted from the
 			// (possibly stale or reseed-refused) split editor. This closes the
 			// date/seed desync: posting a date at which the loan is paid off (or
 			// otherwise fails to compute) is refused with a clear error instead
 			// of silently posting the old date's interest/principal.
-			ls, cerr := a.scheduledTxnSvc.ComputeLoanSplits(template, date)
+			ls, cerr := a.services.Scheduled.ComputeLoanSplits(template, date)
 			if cerr != nil {
 				header.SetErrorMsg("Cannot post this loan payment: " + cerr.Error())
 				return a, nil
@@ -1133,8 +1133,8 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		if payeeName != "" {
 			if id, ok := payeeLookup[strings.ToLower(payeeName)]; ok {
 				parent.SetPayee(id)
-			} else if a.payeeSvc != nil {
-				py, _, err := a.payeeSvc.GetOrCreate(payeeName)
+			} else if a.services.Payee != nil {
+				py, _, err := a.services.Payee.GetOrCreate(payeeName)
 				if err != nil {
 					return errMsg{err: fmt.Errorf("failed to resolve payee: %w", err)}
 				}
@@ -1143,8 +1143,8 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		}
 
 		cmd := undo.NewPostScheduledTransactionWithEditsCommand(
-			a.scheduledTxnSvc,
-			a.transactionSvc,
+			a.services.Scheduled,
+			a.services.Transaction,
 			templateID,
 			parent,
 			multiSplits,
@@ -1159,8 +1159,8 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		// the schedule to surface that as a payoff toast; the handler runs
 		// on the main loop, so it does the SetToast (never this closure).
 		paidOff := false
-		if loanShaped && a.scheduledTxnSvc != nil {
-			if st, gerr := a.scheduledTxnSvc.GetByID(templateID); gerr == nil && st != nil {
+		if loanShaped && a.services.Scheduled != nil {
+			if st, gerr := a.services.Scheduled.GetByID(templateID); gerr == nil && st != nil {
 				paidOff = st.IsCompleted()
 			}
 		}

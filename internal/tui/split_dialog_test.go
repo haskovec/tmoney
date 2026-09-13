@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -1550,11 +1551,13 @@ func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*c
 	}
 
 	app := &App{
-		keys:        defaultKeyMap(),
-		menubar:     widget.NewMenuBar(),
-		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
-		categorySvc: categorySvc,
+		keys:      defaultKeyMap(),
+		menubar:   widget.NewMenuBar(),
+		statusbar: widget.NewStatusBar(),
+		sidebar:   NewSidebar(),
+		services: app.Services{
+			Category: categorySvc,
+		},
 		split: splitSurface{editor: sd,
 
 			pendingTxn: &pendingSplitTransaction{

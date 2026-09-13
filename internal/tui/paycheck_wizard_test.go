@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -746,17 +747,19 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 	categoryOptions, categoryIDs := buildCategoryOptions(cats)
 
 	app := &App{
-		currentView:     ViewDashboard,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		transactionSvc:  txnSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		services: app.Services{
+			Account:     accountSvc,
+			Payee:       payeeSvc,
+			Category:    categorySvc,
+			Scheduled:   schedSvc,
+			Transaction: txnSvc,
+		},
+		undoManager: undo.NewManager(),
 	}
 	app.paycheckWizard = NewPaycheckWizard(categoryOptions, categoryIDs, accounts)
 	w := app.paycheckWizard
@@ -1359,11 +1362,13 @@ func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats [
 	}
 
 	app := &App{
-		keys:           defaultKeyMap(),
-		menubar:        widget.NewMenuBar(),
-		statusbar:      widget.NewStatusBar(),
-		sidebar:        NewSidebar(),
-		categorySvc:    categorySvc,
+		keys:      defaultKeyMap(),
+		menubar:   widget.NewMenuBar(),
+		statusbar: widget.NewStatusBar(),
+		sidebar:   NewSidebar(),
+		services: app.Services{
+			Category: categorySvc,
+		},
 		paycheckWizard: w,
 	}
 	return app, line
@@ -1713,20 +1718,22 @@ func newPaycheckEditEnv(t *testing.T) *paycheckEditEnv {
 	}
 
 	app := &App{
-		currentView:     ViewDashboard,
-		width:           120,
-		height:          40,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		statusbar:       widget.NewStatusBar(),
-		sidebar:         NewSidebar(),
-		styles:          widget.NewStyles(),
-		accountSvc:      accountSvc,
-		payeeSvc:        payeeSvc,
-		categorySvc:     categorySvc,
-		scheduledTxnSvc: schedSvc,
-		transactionSvc:  txnSvc,
-		undoManager:     undo.NewManager(),
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		styles:      widget.NewStyles(),
+		services: app.Services{
+			Account:     accountSvc,
+			Payee:       payeeSvc,
+			Category:    categorySvc,
+			Scheduled:   schedSvc,
+			Transaction: txnSvc,
+		},
+		undoManager: undo.NewManager(),
 	}
 
 	return &paycheckEditEnv{

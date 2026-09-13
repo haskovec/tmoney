@@ -154,9 +154,9 @@ func (a *App) loadDividendDialogData() tea.Cmd {
 	return func() tea.Msg {
 		data := &dividendDialogData{}
 
-		if a.securitySvc != nil {
+		if a.services.Security != nil {
 			excludeHidden := true
-			securities, err := a.securitySvc.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -301,16 +301,16 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 	a.closeDividendDialog()
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentEditSvc.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
+			saved, err = a.services.InvestmentEdit.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
 		} else {
-			saved, err = a.investmentSvc.Dividend(accountID, securityID, date, *amount, memo)
+			saved, err = a.services.Investment.Dividend(accountID, securityID, date, *amount, memo)
 		}
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
@@ -405,14 +405,14 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 	a.closeDividendDialog()
 
 	return a, func() tea.Msg {
-		if a.investmentSvc == nil {
+		if a.services.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.investmentEditSvc.UpdateReinvestDividend(
+			saved, err = a.services.InvestmentEdit.UpdateReinvestDividend(
 				editTxnID,
 				accountID,
 				securityID,
@@ -423,7 +423,7 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 				memo,
 			)
 		} else {
-			saved, err = a.investmentSvc.ReinvestDividend(
+			saved, err = a.services.Investment.ReinvestDividend(
 				accountID,
 				securityID,
 				date,

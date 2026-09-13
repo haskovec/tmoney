@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -309,9 +310,11 @@ func TestParentsForCreateCatDialog_LoadedWithNoParentsDoesNotHitTheService(t *te
 	// Only a subcategory: IsTopLevel() is false, so the surface's answer is nil.
 	child := category.NewSubcategory("Streaming", seeded.ID, category.TypeExpense)
 	app := &App{
-		categorySvc: svc,
-		createCat:   createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
-		transfer:    transferSurface{data: &transferDialogData{categories: []*category.Category{child}}},
+		services: app.Services{
+			Category: svc,
+		},
+		createCat: createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
+		transfer:  transferSurface{data: &transferDialogData{categories: []*category.Category{child}}},
 	}
 
 	if got := app.parentsForCreateCatDialog(); len(got) != 0 {
@@ -326,9 +329,11 @@ func TestParentsForCreateCatDialog_UnloadedSurfaceFallsBackToTheService(t *testi
 	svc, seeded := newCategorySvcForParentTest(t)
 
 	app := &App{
-		categorySvc: svc,
-		createCat:   createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
-		transfer:    transferSurface{}, // data is nil: nothing loaded
+		services: app.Services{
+			Category: svc,
+		},
+		createCat: createCatSurface{origin: createCatOrigin{surface: createCatSourceTransferDialog}},
+		transfer:  transferSurface{}, // data is nil: nothing loaded
 	}
 
 	got := app.parentsForCreateCatDialog()

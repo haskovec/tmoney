@@ -267,24 +267,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 
 	// Set new database and reinitialize ALL services
 	a.db = newDB
-	svc := newTUIServices(newDB)
-	a.accountSvc = svc.Account
-	a.transactionSvc = svc.Transaction
-	a.categorySvc = svc.Category
-	a.payeeSvc = svc.Payee
-	a.scheduledTxnSvc = svc.Scheduled
-	a.reportSvc = svc.Report
-	a.reconciliationSvc = svc.Reconciliation
-	a.securitySvc = svc.Security
-	a.priceSvc = svc.Price
-	a.investmentSvc = svc.Investment
-	a.investmentValuationSvc = svc.InvestmentValuation
-	a.investmentEditSvc = svc.InvestmentEdit
-	a.investmentRepo = svc.InvestmentRepo
-	a.corporateActionSvc = svc.CorporateAction
-	a.transferSvc = svc.Transfer
-	a.lotRepo = svc.LotRepo
-	a.positionRepo = svc.PositionRepo
+	a.services = *newTUIServices(newDB)
 
 	// The undo history describes rows in the file we just left, and every
 	// command on it captured the OLD services when it was built. Undoing one
