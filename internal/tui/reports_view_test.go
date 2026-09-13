@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -868,4 +870,45 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			t.Error("a fresh entry via the Spending menu must reset includeTransfers to false")
 		}
 	})
+}
+
+// TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth pins the header to
+// one terminal line. The padding between the title and the "As of" date used to
+// be sized from the bare date, while the row rendered "As of: " in front of it,
+// so the row was seven cells too wide and the terminal wrapped the year onto
+// the next line.
+func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
+	styles := widget.NewStyles()
+	styles.Resize(120, 30)
+
+	app := &App{
+		currentView: ViewReports,
+		width:       120,
+		height:      30,
+		styles:      styles,
+		reports: &reportsViewData{
+			rtype: reportTypeNetWorth,
+			netWorth: &report.NetWorth{
+				AsOfDate: types.Today().Time(),
+				NetWorth: types.MustNewMoney("0.00"),
+			},
+		},
+	}
+
+	var titleLine string
+	for _, line := range strings.Split(app.renderNetWorthReport(), "\n") {
+		if strings.Contains(line, "NET WORTH REPORT") {
+			titleLine = line
+			break
+		}
+	}
+	if titleLine == "" {
+		t.Fatal("no line contains the report title")
+	}
+	if !strings.Contains(titleLine, "As of:") {
+		t.Fatal("the As-of date must share the title's line")
+	}
+	if w, limit := lipgloss.Width(titleLine), styles.ContentWidth(); w > limit {
+		t.Errorf("title row is %d cells wide, content area is %d: the terminal wraps it", w, limit)
+	}
 }

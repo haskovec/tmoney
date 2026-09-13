@@ -212,8 +212,11 @@ func (a *App) renderNetWorthReport() string {
 	// Title row: NET WORTH REPORT + date
 	dateStr := nw.AsOfDate.Format("Jan 2, 2006")
 	titleText := "NET WORTH REPORT"
-	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(dateStr)-4, 1)
-	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render("As of: "+dateStr)
+	asOf := "As of: " + dateStr
+	// Measure the text that is rendered, prefix included: sizing the gap from the
+	// bare date once left the row seven cells over and wrapped the year.
+	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(asOf)-4, 1)
+	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(asOf)
 	sections = append(sections, titleRow)
 
 	// Separator
