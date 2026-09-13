@@ -16,22 +16,15 @@ import (
 )
 
 // A controller surface owns open, submit and close, and nothing about it needs
-// *App. These guards pin the two halves of that claim from opposite sides — the
-// surface does not reach out, and App does not reach in — because both are one
-// careless line from being false again, and neither is a compile error while
-// the two live in one package.
+// *App. These guards pin that claim from both sides: no method on the surface
+// names App, no production code reads a surface field through App, and every
+// dependency the surface is handed is a live func rather than a captured
+// pointer. All three run over controllerSurfaces, which is the only list of
+// controller surfaces; TestGuard_ControllerTableMatchesApp keeps it complete.
 //
-// The transfer pilot (phase 5) wrote them for one surface. The paycheck
-// controller made them a table: add a row per surface, and every guard below
-// runs over it. A guard that names an invariant it only partly checks is worse
-// than no guard, so the table is the only list — nothing else enumerates the
-// controller surfaces.
-//
-// What they deliberately do NOT claim is that a surface could compile in its
-// own package today. transferSurface still names errMsg, parseAmountInput and
-// buildCategoryOptions; paycheckSurface names parseDateInput and errMsg too.
-// Section 3 of the design measures that cost and defers the decision; these
-// guards are about the *App boundary, which is the one 4c moves.
+// They do NOT claim a surface could compile in its own package: each still
+// names package-level helpers such as errMsg and buildCategoryOptions. The
+// guards are about the *App boundary only.
 
 // controllerSurface is one row of the table: the App field that holds the
 // surface, its struct type, its deps type, and the App method that binds them.

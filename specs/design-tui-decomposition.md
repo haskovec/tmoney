@@ -1210,7 +1210,8 @@ guards:
    It is what forced `handleKey` onto the surface — `handleTransferDialogKey`
    still read `a.transfer.dlg` for its nil check.
 3. **Every dep is a func, and `App.transferDeps` populates all of them.** Plus
-   `TestTransferDeps_FollowADatabaseSwitch`, which takes a deps struct, re-points
+   `TestTransferDeps_FollowADatabaseSwitch` (since the paycheck controller, the
+   table-driven `TestControllerDeps_FollowADatabaseSwitch`), which takes a deps struct, re-points
    all four fields the closures read, and asserts the deps see the new ones.
    That one is the behaviour; the guard is the shape. Note that `switchDatabase`
    re-points the three services and **not** `undoManager`, so the test proves
@@ -1265,7 +1266,7 @@ what defining its contract will cost.
 
 #### Built (second surface, 2026-09-13): paycheck, and the guards became a table
 
-`*App` 427 -> **423 methods (-4)**. Three left (`loadPaycheckWizardData`,
+`*App` 425 -> **423 methods (-2)**. Three left (`loadPaycheckWizardData`,
 `closePaycheckWizard`, `submitPaycheckWizard`), one arrived (`paycheckDeps`).
 **Twelve methods hang off `*paycheckSurface`**, none of which names `App`:
 `IsVisible`, `Render`, `open`, `applyData`, `openFromSchedule`, `handleKey`,
