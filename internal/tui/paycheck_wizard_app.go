@@ -17,7 +17,6 @@ import (
 // registry calls, submit, and the create-category divert's opener and applier.
 // Every function here is a method on *App or is called only by one.
 
-
 // paycheckWizardDataMsg carries the dependencies needed to construct
 // a PaycheckWizard. Dispatched asynchronously by loadPaycheckWizardData.
 type paycheckWizardDataMsg struct {

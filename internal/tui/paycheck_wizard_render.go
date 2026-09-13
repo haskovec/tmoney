@@ -12,7 +12,6 @@ import (
 // Rendering: the overlay string, its per-row and per-field pieces, and the
 // hit zones Render records for HandleMouse.
 
-
 // Render returns the wizard's overlay-ready string. As a side-effect
 // it rebuilds w.hitZones so HandleMouse can dispatch clicks.
 func (w *PaycheckWizard) Render(styles widget.Styles) string {
