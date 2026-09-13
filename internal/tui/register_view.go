@@ -165,7 +165,7 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.New):
 		return a, a.loadTransactionDialogData()
 	case msg.String() == "t":
-		return a, a.loadTransferDialogData()
+		return a, a.transfer.open(a.transferDeps())
 	case key.Matches(msg, a.keys.Enter):
 		return a.openEditTransactionFlow()
 	}
@@ -202,7 +202,7 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 	}
 
 	if txn.IsTransfer() {
-		return a, a.loadEditTransferDialogData(txn.ID)
+		return a, a.transfer.openForEdit(a.transferDeps(), txn.ID)
 	}
 
 	return a, a.loadEditTransactionDialogData(txn.ID)

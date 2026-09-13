@@ -1,7 +1,8 @@
 # Design sketch: TUI decomposition — one modal registry, and the god struct's other half
 
 **Date:** 2026-08-08 (revised 2026-08-09 after design review)
-**Status:** PROPOSED — **covers item 4a only.** See the closeout table below.
+**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4b and 4d are untouched;
+4c is piloted on one surface, not delivered. See the closeout table below.
 
 **Addresses:** `specs/code-quality-review.md` item 4 (TUI god-objects: dialog
 state on `App`, wizards past 1k–1.8k lines) — **partially**.
@@ -37,7 +38,7 @@ names 4b and 4d with the measurement that sizes them.
 | 2 | **yes** | Move the mouse cascade onto the registry; close the mouse/keyboard gap that `specs/tui.md` forbids |
 | 3 | **yes** | Group each surface's loose fields into one struct; `App` sheds ~65 fields |
 | 4 | **yes** | Move `app_update.go`'s message bodies onto those structs — **off** `App`, not into another `App` method |
-| 5 | — | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
+| 5 | **yes** | One pilot controller: `open`/`submit`/`close` off `*App` for a single surface, proving 4c is reachable |
 
 Read §1 first for the measurement, then §3 for the one prescription in the
 review that this design rejects, then the phases.
@@ -1135,6 +1136,130 @@ If the pilot lands cleanly, 4c becomes a per-surface decision with a known cost.
 If it does not, that is the answer, and it is cheaper to learn on one 753-line
 file than on eight.
 
+#### Built: the first phase that shrinks `App`, and the file was not the boundary
+
+`*App` 432 -> **425 methods (-7)**. Eight methods left `App`; one arrived
+(`transferDeps`). Every earlier phase in this design added methods; this is the
+first that removes them, which is the result the pilot existed to produce.
+
+`transfer_dialog.go` 825 -> 902 lines, of which **+23 are code and +54 are
+comment**. The design priced phase 5 at "~0 net" production lines and that was
+right about the motion: the growth is the deps type's rationale and the two
+guards' preambles. §7 already recorded this from item 3 — a decomposition is
+mostly an opportunity to write down why each boundary is a boundary.
+
+**Thirteen methods now hang off `*transferSurface`**, none of which names `App`:
+`handleKey`, `open`, `openForEdit`, `applyData`, `close`, `submit`,
+`submitEdit`, `categoryFieldIndex`, `beginCreateCategory`,
+`parentCategoryNames`, `applyCreatedCategory`, `reshow`, `IsVisible`.
+
+**Six stayed on `App`, and each names something that is not the surface:**
+
+| Method | Why it cannot move |
+|---|---|
+| `transferDeps` | it *is* the binding — it reads `App`'s service fields |
+| `handleTransferDialogKey` | `modalEntry.onKey`'s signature is `func(*App, …)` |
+| `transferDialogAction` | same, for `onAction`; 8 lines, one line per arm |
+| `openCreateCategorySubDialogForTransfer` | writes `createCat` — a sibling surface |
+| `applyCreatedCategoryToTransfer` | closes `createCat` after the surface applies |
+| `afterTransferSave` | status bar, sticky date, pending select, `reloadCurrentView` |
+
+The last row is the one the design predicted would not move, and it did not.
+The two create-category rows are the divert, and they are the whole of what a
+surface cannot own: `AddNew` is the only `DialogAction` arm still on `App`.
+
+**The deps are a call parameter, not a field, and the reason is phase 3's
+contract.** The design sketched `transferDeps` as though the surface would hold
+one. It cannot: `close()` is `*s = transferSurface{}` because a surface's zero
+value is its closed state, so a stored dep would have to survive that reset and
+the first `close` that forgot would leave a live-looking surface with nil
+services. Passing them in also keeps the §5.3 rule — nothing about the outside
+world is cached on a surface — true of deps as well as of styles.
+
+**Two methods the design did not predict, because the pilot's own file was not
+the boundary.** The create-category router in `transaction_dialog.go` was
+reading `a.transfer.dlg` and `a.transfer.data.categories` from another file —
+exactly the reads that a package move would break, and the ones a pilot
+measured only by its own file would miss. They are now `reshow()` and
+`parentCategoryNames()`. The second returns `(names, ok)` rather than a slice:
+`topLevelParentNames` returns nil for "loaded, and no parents", the router falls
+back to a live `categorySvc.List()` only for "loaded nothing", and collapsing
+the two answers into one nil would have changed behaviour silently.
+
+**Two deletions the design did not price.** `loadEditTransferDialogData` and
+`loadEditInvestmentTransferDialogData` were two names for one call, kept
+"because the two registers call them by different names"; both callers now say
+`openForEdit`. And the two loaders' identical 20-line preamble — accounts,
+categories, the parallel ID slice — is `loadTransferAccountsAndCategories` once.
+
+**Four guards, each mutation-verified rather than assumed** — the first three
+in `transfer_controller_guard_test.go`, the fourth alongside the phase 3 surface
+guards:
+
+1. **No method on `*transferSurface` names `App`.** Parsed with `go/ast`, not
+   grepped, so `App` in a comment is not a hit. Walks **every** production file,
+   because Go lets a method live in any file of the package. Verified by adding
+   `func (s *transferSurface) mutantElsewhere(a *App) {}` to `app_menu.go`.
+2. **No production file reads a `transferSurface` field through `App`.** Both
+   sides are mechanical: the field set comes from reflection over the struct
+   (following the embedded `modalSurface`, so `dlg` counts), the reads come from
+   the syntax tree. Verified by adding `_ = a.transfer.dlg` to `app_menu.go`.
+   It is what forced `handleKey` onto the surface — `handleTransferDialogKey`
+   still read `a.transfer.dlg` for its nil check.
+3. **Every dep is a func, and `App.transferDeps` populates all of them.** Plus
+   `TestTransferDeps_FollowADatabaseSwitch`, which takes a deps struct, re-points
+   all four fields the closures read, and asserts the deps see the new ones.
+   That one is the behaviour; the guard is the shape. Note that `switchDatabase`
+   re-points the three services and **not** `undoManager`, so the test proves
+   the closure re-reads its field — it does not claim undo follows a file switch.
+4. **No surface struct holds a dependency bag.** `close()` is
+   `*s = surface{}` for every surface, so a stored deps struct would be zeroed
+   and the next call through it would panic on a nil func. The rule is narrow by
+   necessity: `confirmSurface.action` is a single func field and is legitimate
+   per-open state that `close()` *should* clear, so the predicate rejects only a
+   struct whose **every** field is a func. Verified by adding
+   `deps transferDeps` to `transferSurface`.
+
+Test files are outside guard 2 deliberately, and saying so is the honest
+measure: §3 counts 2,084 `app.<unexported>` references across the 66 test files
+as the reason a package split is expensive, and phase 5 does not change that
+number. The production code no longer reaches in. The tests still do.
+
+**The PR review found no bugs and four places where a guard or a comment
+claimed more than it enforced.** That is the failure mode worth recording,
+because it is the one a green suite hides: guard 1 parsed a single file while
+advertising a package-wide rule; nothing stopped a later surface from storing
+its deps, which is the exact trap the `transferDeps` comment describes; and the
+`(names, ok)` split in `parentCategoryNames` was load-bearing with no test on
+either arm — collapsing it compiled, passed every guard, and would have started
+offering the create-category combo parents the open dialog does not know about.
+Three tests now pin that split, one of them at the signature so the collapse is
+a compile error. The lesson generalises to the surfaces after this one: **a
+guard that names an invariant it only partly checks is worse than no guard**,
+because the next reader trusts it.
+
+**What the pilot does not prove.** `transferSurface` still names `errMsg`,
+`parseAmountInput`, `parseDateInput`, `buildCategoryOptions`,
+`topLevelParentNames`, `openingDateFieldError` and `buildAccountOptions`, all
+declared in `package tui`. The `*App` boundary is closed; the **package**
+boundary is not, and §3's six costs are unchanged. Do not read "the transfer
+surface owns its behaviour" as "the transfer surface can move to
+`internal/tui/transfer`".
+
+**The inherited undo/database mismatch is present and is not a regression.**
+`undoManager` is assigned once in `NewApp` and `switchDatabase` never re-points
+it, so the undo stack outlives the database its commands were built against.
+`deps.undo` reproduces that faithfully, because it returns what `App` holds.
+Post-switch undo misbehaviour in the transfer dialog bisects to `NewApp`, not to
+this phase. It belongs with review item 5 (§8).
+
+**The pilot landed cleanly, so 4c is a per-surface decision with a known cost.**
+The next surface is paycheck, per §4's ordering, and its price is now
+legible: one deps struct, one guard pair, and a count of the methods that touch
+the chrome. Create-category stays last — it is the surface every other one
+diverts into, and the two methods this phase added to reach it are a preview of
+what defining its contract will cost.
+
 ### Note — the create-category divert is the most coupled surface, not the least
 
 Worth stating as a number, because its small own-file footprint is misleading:
@@ -1431,7 +1556,7 @@ Per phase, checkable:
 | 2 | `handleDialogMouse` contains no per-dialog `if`; every mouse Cancel routes through the same `onCancel` as Esc; the pre-audited test assertions updated deliberately; visual smoke check |
 | 3 | **Met at 107 fields**: `App` under ~100 fields; each surface's state is one field; **no surface struct holds a service pointer** (§5.5); every surface struct is nil-safe and guard 1 is re-run against the new registry (§5.0); guard 2's filter updated in the same commit as the first surface struct (§6.1); `createCatOrigin` replaces the five scratch fields |
 | 4 | **Met on the method measure, missed on lines**: `app_update.go` 1,009 -> 399, not under ~300 (the floor is ~264 for 88 arms — see the phase 4 notes); `*App` +32 for 42 pinned arms, against a bound of ≤ 41; the 29 arms that stayed are listed with their reason |
-| 5 | The transfer surface owns `open`/`submit`/`close`; its registry entry is a thin wrapper, not a second implementation (§2.2); `App` supplies only services; the deps are a live indirection, not captured pointers; the inherited undo/DB mismatch is noted in the commit, not treated as a regression |
+| 5 | **Met, and `*App` fell for the first time**: 432 -> 425 methods; the transfer surface owns `open`/`submit`/`close` and 10 more; the dispatcher is 8 lines; `App` supplies the services, the on-screen register account and the create-category divert — the last of those is the one arm a surface cannot own; the deps are closures, pinned by a guard and by a switch test; the inherited undo/DB mismatch is recorded below |
 
 **What these criteria deliberately do not claim.** No phase reduces
 `paycheck_wizard.go`, `loan_wizard.go`, `split_dialog.go` or

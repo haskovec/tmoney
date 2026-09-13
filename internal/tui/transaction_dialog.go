@@ -609,9 +609,7 @@ func (a *App) cancelCreateCatDialog() {
 		}
 		a.createCat.origin.loanField = -1
 	case createCatSourceTransferDialog:
-		if a.transfer.dlg != nil {
-			a.transfer.dlg.SetVisible(true)
-		}
+		a.transfer.reshow()
 	}
 	a.createCat.origin.surface = createCatSourceNone
 }
@@ -645,8 +643,8 @@ func (a *App) parentsForCreateCatDialog() []string {
 			return topLevelParentNames(a.txn.data.categories)
 		}
 	case createCatSourceTransferDialog:
-		if a.transfer.data != nil {
-			return topLevelParentNames(a.transfer.data.categories)
+		if names, ok := a.transfer.parentCategoryNames(); ok {
+			return names
 		}
 	}
 	if a.categorySvc != nil {
