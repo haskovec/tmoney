@@ -399,7 +399,13 @@ func (a *App) submitImportOptions() (tea.Model, tea.Cmd) {
 // user hasn't already picked one (state.sourceAccount empty), it returns
 // importNeedsSourceMsg so the picker dialog opens. Once the user has
 // chosen, this re-runs filtered to that source.
+// The services are captured here, on the main goroutine, not inside the
+// command: a command built before a file switch must not read a.db or
+// a.services after it, and it must never build a second registry —
+// app.NewServices heals scheduled dates and investment accounts as a side
+// effect, so calling it here rewrote data the user had not asked to touch.
 func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
+	svc := a.services
 	return func() tea.Msg {
 		format := state.format
 		if format == "" {
@@ -417,13 +423,10 @@ func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 		}
 		defer f.Close()
 
-		svc := app.NewServices(a.db)
-		importSvc := imexport.NewImportService(
-			imexport.NewServiceCategoryResolver(svc.Category),
-			imexport.NewServicePayeeResolver(svc.Payee),
-			imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
-			imexport.NewServiceTransactionCreator(svc.Transaction),
-		)
+		importSvc, err := newImportService(svc)
+		if err != nil {
+			return errMsg{err: err}
+		}
 
 		parseResult, err := importSvc.Parse(f, format)
 		if err != nil {
@@ -468,14 +471,12 @@ func (a *App) submitImportConfirm() (tea.Model, tea.Cmd) {
 
 // runImportExecute applies the import to the database.
 func (a *App) runImportExecute(state *importDialogState) tea.Cmd {
+	svc := a.services // captured on the main goroutine; see runImportPreview
 	return func() tea.Msg {
-		svc := app.NewServices(a.db)
-		importSvc := imexport.NewImportService(
-			imexport.NewServiceCategoryResolver(svc.Category),
-			imexport.NewServicePayeeResolver(svc.Payee),
-			imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
-			imexport.NewServiceTransactionCreator(svc.Transaction),
-		)
+		importSvc, err := newImportService(svc)
+		if err != nil {
+			return errMsg{err: err}
+		}
 		if err := importSvc.Execute(state.preview, state.accountID); err != nil {
 			return errMsg{err: fmt.Errorf("import execution failed: %w", err)}
 		}
@@ -502,4 +503,19 @@ func (a *App) applyImportResult(msg importCompletedMsg) tea.Cmd {
 			len(msg.errors), strings.Join(msg.errors, "\n"))
 	}
 	return a.reloadAfterBulkWrite()
+}
+
+// newImportService assembles the import pipeline over the services App
+// already holds. It reports an error rather than building a registry of its
+// own when they are absent, which is the state of an App a test built bare.
+func newImportService(svc app.Services) (*imexport.ImportService, error) {
+	if svc.Category == nil || svc.Payee == nil || svc.Transaction == nil || svc.TransactionRepo == nil || svc.PayeeRepo == nil {
+		return nil, fmt.Errorf("services not available")
+	}
+	return imexport.NewImportService(
+		imexport.NewServiceCategoryResolver(svc.Category),
+		imexport.NewServicePayeeResolver(svc.Payee),
+		imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
+		imexport.NewServiceTransactionCreator(svc.Transaction),
+	), nil
 }

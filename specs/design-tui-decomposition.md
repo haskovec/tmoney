@@ -1817,6 +1817,17 @@ constraint on phase size.
   Out of scope for this design, but **phase 0 is what makes these paths
   reachable**, so phase 0 owes the item-6 follow-up before it merges (see
   phase 0).
+
+  **Fixed 2026-09-13, on its own branch.** All four commands now use the
+  services `App` already holds, copied on the main goroutine before the
+  command closure is built. That closes both defects at once: no second
+  registry, so no re-run of the heal side effects; and the capture happens at
+  construction, so a command built before a file switch cannot read the new
+  `a.db`. A bare `App` gets an `errMsg` instead of a panic or a registry.
+  `TestGuard_OnlyNewTUIServicesBuildsAServiceRegistry` scans every production
+  file and allows the call only in `newTUIServices`; mutation-verified. Item 6
+  proper — `NewServices` healing on construction — is untouched and still
+  belongs to the composition root.
 - ~~**`App` holds 17 service fields rather than one `*app.Services`.** Collapsing
   them would make `switchDatabase`'s 18-line re-point block one assignment and
   the `6dede4d` bug class structurally impossible. This is **review item 5**'s
