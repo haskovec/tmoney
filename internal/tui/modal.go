@@ -211,7 +211,7 @@ func (a *App) modals() []modalEntry {
 		},
 		{
 			name:     "paycheckWizard",
-			modal:    a.paycheckWizard,
+			modal:    &a.paycheck,
 			onKey:    (*App).handlePaycheckWizardKey,
 			onAction: (*App).paycheckWizardAction,
 		},

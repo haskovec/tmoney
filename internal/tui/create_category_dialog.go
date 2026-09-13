@@ -391,9 +391,7 @@ func (a *App) cancelCreateCatDialog() {
 		}
 		a.createCat.origin.splitRow = -1
 	case createCatSourcePaycheckWizard:
-		if a.paycheckWizard != nil {
-			a.paycheckWizard.SetVisible(true)
-		}
+		a.paycheck.reshow()
 		a.createCat.origin.line = nil
 	case createCatSourceLoanWizard:
 		if a.loan.dlg != nil {

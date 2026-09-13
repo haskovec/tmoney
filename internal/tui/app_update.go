@@ -247,7 +247,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.handleSchedulePreviewLoanBlocked(msg.paidOff, msg.err)
 
 	case paycheckWizardDataMsg:
-		a.paycheckWizard = NewPaycheckWizard(msg.categoryOptions, msg.categoryIDs, msg.accounts)
+		a.paycheck.applyData(msg)
 		return a, nil
 
 	case loanWizardDataMsg:

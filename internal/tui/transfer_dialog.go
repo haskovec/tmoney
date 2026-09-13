@@ -231,7 +231,7 @@ func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
 //   - Deps are passed to each call and never stored on the surface, because
 //     close() resets the surface to its zero value and would zero them.
 //
-// Both are pinned by tests: TestTransferDeps_FollowADatabaseSwitch and
+// Both are pinned by tests: TestControllerDeps_FollowADatabaseSwitch and
 // TestGuard_NoSurfaceStructHoldsItsDeps.
 type transferDeps struct {
 	accounts   func() *account.Service

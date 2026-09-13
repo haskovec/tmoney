@@ -628,7 +628,7 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection(t *testing.T) {
 	app, _ := newAppForPaycheckAddNew(t, nil, nil) // helper parks on a Pre-Tax line
 	// The helper parks the focused line in Pre-Tax (which also defaults to
 	// Expense). Pin the section to confirm and assert the default.
-	if app.paycheckWizard == nil {
+	if app.paycheck.wizard == nil {
 		t.Fatal("paycheckWizard should be set")
 	}
 
@@ -648,7 +648,7 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection(t *testing.T) {
 // preselected.
 func TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection(t *testing.T) {
 	app, _ := newAppForPaycheckAddNew(t, nil, nil)
-	w := app.paycheckWizard
+	w := app.paycheck.wizard
 	// Replace the parked Pre-Tax line with an Earnings line parked on AddNew.
 	earnings := w.AddRow(PaycheckEarnings)
 	earnings.SelectField().SelectedIndex = len(earnings.SelectField().Options) - 1
@@ -678,7 +678,7 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection(t *testing.T) 
 // accounts but the AddNew sentinel is reachable; Net Pay defaults to Income.
 func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
 	app, _ := newAppForPaycheckAddNew(t, nil, nil)
-	w := app.paycheckWizard
+	w := app.paycheck.wizard
 	netPay := w.AddRow(PaycheckNetPayDestination)
 	netPay.SelectField().SelectedIndex = len(netPay.SelectField().Options) - 1
 	if !netPay.IsAddNew() {

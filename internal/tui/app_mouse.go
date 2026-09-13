@@ -267,8 +267,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // interface, so the divergence is stated here instead, in one place.
 func (a *App) modalMouseAction(m Modal, msg tea.MouseMsg) dialog.DialogAction {
 	switch s := m.(type) {
-	case *PaycheckWizard:
-		return s.HandleMouse(msg, a.styles, a.width, a.height)
+	case *paycheckSurface:
+		return s.handleMouse(msg, a.styles, a.width, a.height)
 	case mouseTarget:
 		return s.HandleMouse(msg, a.width, a.height)
 	default:

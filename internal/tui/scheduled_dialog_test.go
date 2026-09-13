@@ -1900,10 +1900,10 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 	if app2.sched.dlg != nil {
 		t.Error("scheduled dialog should close after Edit-as-paycheck relaunch")
 	}
-	if app2.paycheckWizard == nil {
+	if app2.paycheck.wizard == nil {
 		t.Fatal("paycheck wizard should open after Edit-as-paycheck relaunch")
 	}
-	w := app2.paycheckWizard
+	w := app2.paycheck.wizard
 
 	if got, want := w.Employer().Value, "Acme Corp"; got != want {
 		t.Errorf("employer pre-fill = %q, want %q", got, want)
