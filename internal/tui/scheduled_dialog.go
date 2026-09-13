@@ -14,6 +14,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -1155,4 +1156,39 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	return a, save
+}
+
+// relaunchAsPaycheckWizard closes the scheduled-edit dialog and
+// opens the paycheck wizard pre-filled from the in-flight schedule.
+func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
+	if a.sched.dlg == nil || a.sched.data == nil {
+		return a, nil
+	}
+	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
+		return a, nil
+	}
+	st := a.sched.data.scheduled
+	accounts := a.sched.data.accounts
+	payees := a.sched.data.payees
+	categoryOptions := a.sched.categoryOptions
+	categoryIDs := a.sched.categoryIDs
+
+	// Refuse rather than pre-fill wrong. The wizard's pickers only offer
+	// active accounts, so a closed deposit account would silently resolve to
+	// the first active one and a closed transfer destination to "(None)" —
+	// and saving now rewrites the live schedule rather than misfiling a
+	// duplicate.
+	if missingAccountForPaycheckEdit(st, accounts) {
+		if a.statusbar != nil {
+			a.statusbar.SetToast(
+				"This paycheck uses a closed account. Reopen the account to edit it as a paycheck.",
+				widget.NotificationAlert,
+			)
+		}
+		return a, widget.ClearToastCmd()
+	}
+
+	a.closeScheduledDialog()
+	a.paycheckWizard = NewPaycheckWizardFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
+	return a, nil
 }
