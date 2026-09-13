@@ -1,9 +1,11 @@
 # Design sketch: TUI decomposition — one modal registry, and the god struct's other half
 
 **Date:** 2026-08-08 (revised 2026-08-09 after design review)
-**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4d is built: every
-surface file is under 500 lines (see the note at the end of §4). 4b is untouched;
-4c is piloted on one surface, not delivered. See the closeout table below.
+**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4d is built for the
+five files item 4 named — paycheck, loan, split, scheduled, scheduled-preview —
+and no `internal/tui` production file over 1,000 lines remains except the two
+4b views (see the note at the end of §4). 4b is untouched; 4c is piloted on one
+surface, not delivered. See the closeout table below.
 
 **Addresses:** `specs/code-quality-review.md` item 4 (TUI god-objects: dialog
 state on `App`, wizards past 1k–1.8k lines) — **partially**.
@@ -19,7 +21,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
 | **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 pilots one surface; the rest is deferred |
-| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck split 2026-09-13; loan, split, scheduled and scheduled-preview split the same day. Every surface file is under 500 lines. The note at the end of §4 has the numbers |
+| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck, loan, split, scheduled and scheduled-preview split 2026-09-13, each into files of 135–480 lines. Other modal surfaces were not in the table and were not split: `transfer_dialog.go` is 895 lines, `transaction_dialog.go` 750, `account_dialog.go` 507, `import_dialog.go` 505. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
 depend on 4a or 4c.** Measured: 1,462 of `paycheck_wizard.go`'s 1,886 lines are
@@ -1376,7 +1378,10 @@ would orphan (it reported none). One commit per file:
 
 172 declarations verified byte-identical across the four; no signature, field
 or test changed. Every `*App` method of each surface now sits in its `_app.go`
-or `_submit.go` file, which is the boundary a later 4c extraction starts from.
+or `_submit.go` file, with one deliberate exception: `refreshLoanWizardDerived`
+and `updateLoanPaymentPrefill` are in `loan_wizard_derive.go`, beside the free
+functions they call, because they recompute derived state rather than glue the
+wizard to `App`. A 4c pass on loan must read all three files, not two.
 
 **The create-category router moved too.** `handleCreateCatDialogKey`,
 `createCatDialogAction`, `cancelCreateCatDialog`, `submitCreateCatDialog` and
