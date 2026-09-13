@@ -338,3 +338,111 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 	a.createCat.origin.surface = createCatSourceNone
 	return nil
 }
+
+// handleCreateCatDialogKey routes key events to the create-category
+// sub-dialog. Esc closes the sub-dialog and re-shows the transaction dialog
+// with all field state preserved. Submit produces the
+// createCategoryRequestMsg that the App.Update path consumes.
+func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if a.createCat.dlg == nil {
+		return a, nil
+	}
+	return a.createCatDialogAction(a.createCat.dlg.HandleKey(msg))
+}
+
+// createCatDialogAction dispatches a DialogAction for the create cat dialog, from either input path.
+func (a *App) createCatDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	switch action {
+	case dialog.DialogActionSubmit:
+		return a.submitCreateCatDialog()
+	case dialog.DialogActionCancel:
+		a.cancelCreateCatDialog()
+		return a, nil
+	}
+	return a, nil
+}
+
+// cancelCreateCatDialog closes the sub-dialog and re-shows whichever
+// originating transaction-entry surface is current. All originating-dialog
+// field state is preserved (the dialog was hidden, not destroyed). Focus is
+// left wherever it was (Category field). The createCatSource discriminator
+// is reset so a future open from a different surface starts in a clean
+// state.
+func (a *App) cancelCreateCatDialog() {
+	a.createCat.dlg = nil
+	switch a.createCat.origin.surface {
+	case createCatSourceTxnDialog:
+		if a.txn.dlg != nil {
+			a.txn.dlg.SetVisible(true)
+		}
+	case createCatSourceSchedDialog, createCatSourceSchedTransferDialog:
+		if a.sched.dlg != nil {
+			a.sched.dlg.SetVisible(true)
+		}
+	case createCatSourceSchedPreview:
+		if a.schedPreviewDialog != nil {
+			if header := a.schedPreviewDialog.HeaderDialog(); header != nil {
+				header.SetVisible(true)
+			}
+		}
+	case createCatSourceSplitDialog:
+		if a.split.editor != nil {
+			a.split.editor.SetVisible(true)
+		}
+		a.createCat.origin.splitRow = -1
+	case createCatSourcePaycheckWizard:
+		if a.paycheckWizard != nil {
+			a.paycheckWizard.SetVisible(true)
+		}
+		a.createCat.origin.line = nil
+	case createCatSourceLoanWizard:
+		if a.loan.dlg != nil {
+			a.loan.dlg.SetVisible(true)
+		}
+		a.createCat.origin.loanField = -1
+	case createCatSourceTransferDialog:
+		a.transfer.reshow()
+	}
+	a.createCat.origin.surface = createCatSourceNone
+}
+
+// submitCreateCatDialog validates the sub-dialog and, on success, returns a
+// command that emits a createCategoryRequestMsg the App.Update path consumes
+// to persist the category and reopen the transaction dialog. Validation
+// failures keep the sub-dialog open with inline errors set.
+func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
+	if a.createCat.dlg == nil {
+		return a, nil
+	}
+	parents := a.parentsForCreateCatDialog()
+	cmd := submitCreateCategoryDialog(a.createCat.dlg, parents)
+	if cmd == nil {
+		return a, nil
+	}
+	return a, cmd
+}
+
+// parentsForCreateCatDialog returns the existing top-level parent names that
+// should be presented to the create-category sub-dialog's parent combo. The
+// list is sourced from whichever transaction-entry surface opened the sub-
+// dialog; for surfaces that don't cache categories (e.g. the schedule
+// preview dialog) it falls back to a live categorySvc.List() call. An empty
+// slice is returned when no source matches and no service is available.
+func (a *App) parentsForCreateCatDialog() []string {
+	switch a.createCat.origin.surface {
+	case createCatSourceTxnDialog:
+		if a.txn.data != nil {
+			return topLevelParentNames(a.txn.data.categories)
+		}
+	case createCatSourceTransferDialog:
+		if names, ok := a.transfer.parentCategoryNames(); ok {
+			return names
+		}
+	}
+	if a.services.Category != nil {
+		if cats, err := a.services.Category.List(); err == nil {
+			return topLevelParentNames(cats)
+		}
+	}
+	return nil
+}
