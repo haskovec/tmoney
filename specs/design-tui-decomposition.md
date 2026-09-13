@@ -1,9 +1,9 @@
 # Design sketch: TUI decomposition — one modal registry, and the god struct's other half
 
 **Date:** 2026-08-08 (revised 2026-08-09 after design review)
-**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4b is untouched; 4d is
-built for `paycheck_wizard.go` only (see the note at the end of §4); 4c is
-piloted on one surface, not delivered. See the closeout table below.
+**Status:** BUILT, phases 0–5 — **covers item 4a only.** 4d is built: every
+surface file is under 500 lines (see the note at the end of §4). 4b is untouched;
+4c is piloted on one surface, not delivered. See the closeout table below.
 
 **Addresses:** `specs/code-quality-review.md` item 4 (TUI god-objects: dialog
 state on `App`, wizards past 1k–1.8k lines) — **partially**.
@@ -19,7 +19,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
 | **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 pilots one surface; the rest is deferred |
-| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Paycheck only** — split 2026-09-13 into six files; loan and split are still whole. The note at the end of §4 explains why it is cheap and independent |
+| **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck split 2026-09-13; loan, split, scheduled and scheduled-preview split the same day. Every surface file is under 500 lines. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
 depend on 4a or 4c.** Measured: 1,462 of `paycheck_wizard.go`'s 1,886 lines are
@@ -1361,9 +1361,35 @@ missing or duplicated. No field renamed, no signature changed, no test edited.
 The only text that is not a verbatim move is one file-scope comment per new
 file and the two section banners that would have repeated it.
 
-`loan_wizard.go` (1,346), `split_dialog.go` (1,241) and
-`scheduled_preview_dialog.go` (1,189) are unchanged and still open for the same
-motion.
+#### Built (the rest): four more files split, and the router moved
+
+The same motion, the same day, by a small `go/ast` tool that moves
+declarations by name rather than by line range and reports any comment it
+would orphan (it reported none). One commit per file:
+
+| File | Before | After (main file + siblings) |
+|---|---|---|
+| `loan_wizard.go` | 1,346 | 456 + `_derive` 135, `_submit` 480, `_app` 316 |
+| `split_dialog.go` | 1,241 | 371 + `_rows` 159, `_input` 313, `_render` 189, `_app` 251 |
+| `scheduled_dialog.go` | 1,194 | 315 + `_build` 177, `_submit` 425, `_app` 316 |
+| `scheduled_preview_dialog.go` | 1,189 | 301 + `_build` 228, `_submit` 279, `_app` 423 |
+
+172 declarations verified byte-identical across the four; no signature, field
+or test changed. Every `*App` method of each surface now sits in its `_app.go`
+or `_submit.go` file, which is the boundary a later 4c extraction starts from.
+
+**The create-category router moved too.** `handleCreateCatDialogKey`,
+`createCatDialogAction`, `cancelCreateCatDialog`, `submitCreateCatDialog` and
+`parentsForCreateCatDialog` left `transaction_dialog.go` (750 lines now) for
+`create_category_dialog.go` (448). That is the "free, compiler-proven first
+step" the note above asked for, and the file that was misleading by an order of
+magnitude now holds the router it was named for.
+
+**Item 4's line table is closed for surface files.** The only production files
+in `internal/tui` over 1,000 lines are `price_view.go` (1,231) and
+`investment_register_view.go` (1,055) — the two 4b files, where 40 of 46 and
+21 of 28 functions are `*App` methods. A split would only spread `App` glue
+across files; that is the view-layer design §8 defers to.
 
 ---
 
