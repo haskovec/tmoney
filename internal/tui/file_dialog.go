@@ -286,6 +286,12 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.lotRepo = svc.LotRepo
 	a.positionRepo = svc.PositionRepo
 
+	// The undo history describes rows in the file we just left, and every
+	// command on it captured the OLD services when it was built. Undoing one
+	// after the switch would write to a closed database. Clear it, exactly as
+	// reloadAfterRestore does when the rows change underneath it.
+	a.undoManager.Clear()
+
 	// Clear all cached view data
 	a.dashboard = nil
 	a.register = nil

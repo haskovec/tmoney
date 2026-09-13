@@ -81,3 +81,42 @@ func TestSwitchDatabase_RepointsEveryService(t *testing.T) {
 			"writes the wrong file with no error the user can interpret.", len(stale), stale)
 	}
 }
+
+// staleCommand stands in for any undo command: every real one captures the
+// service it was built against, so after a database switch it points at a
+// closed file. The test needs only the shape, not a real write.
+type staleCommand struct{}
+
+func (staleCommand) Execute() error      { return nil }
+func (staleCommand) Undo() error         { return nil }
+func (staleCommand) Description() string { return "stale" }
+
+// TestSwitchDatabase_ClearsUndoHistory pins the other half of a file switch.
+// Re-pointing the services is not enough: the commands already on the undo
+// and redo stacks hold the OLD services, so Undo after a switch would write to
+// the database switchDatabase just retired. The history has to go, as it does
+// in reloadAfterRestore.
+func TestSwitchDatabase_ClearsUndoHistory(t *testing.T) {
+	first := dbtest.New(t)
+	second := dbtest.New(t)
+
+	a := NewApp(first, &config.Config{})
+	if err := a.undoManager.Execute(staleCommand{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.undoManager.Execute(staleCommand{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.undoManager.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if a.undoManager.UndoLen() != 1 || a.undoManager.RedoLen() != 1 {
+		t.Fatalf("setup: want 1 undo + 1 redo, got %d + %d", a.undoManager.UndoLen(), a.undoManager.RedoLen())
+	}
+
+	a.switchDatabase(second)
+
+	if n, r := a.undoManager.UndoLen(), a.undoManager.RedoLen(); n != 0 || r != 0 {
+		t.Errorf("switchDatabase left %d undo and %d redo command(s) built against the previous database", n, r)
+	}
+}
