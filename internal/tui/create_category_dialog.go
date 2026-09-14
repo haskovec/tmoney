@@ -392,9 +392,7 @@ func (a *App) cancelCreateCatDialog() {
 		a.paycheck.reshow()
 		a.createCat.origin.line = nil
 	case createCatSourceLoanWizard:
-		if a.loan.dlg != nil {
-			a.loan.dlg.SetVisible(true)
-		}
+		a.loan.reshow()
 		a.createCat.origin.loanField = -1
 	case createCatSourceTransferDialog:
 		a.transfer.reshow()

@@ -20,7 +20,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 |---|---|---|
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
-| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck and split followed 2026-09-13 (see the notes after phase 5). Loan and create-category remain |
+| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck, split and loan followed 2026-09-13 (see the notes after phase 5). Only create-category, the terminal step, remains |
 | **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck, loan, split, scheduled and scheduled-preview split 2026-09-13, each into files of 135–480 lines. Other modal surfaces were not in the table and were not split: `transfer_dialog.go` is 895 lines, `transaction_dialog.go` 750, `account_dialog.go` 507, `import_dialog.go` 505. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
@@ -1347,13 +1347,56 @@ tests are outside the reach guard) and call `handleSplitDialogKey`,
 `submitScheduledSplitDialog` and `openCreateCategorySubDialogFromSplit`, all of
 which stayed on `App`.
 
-**Next: loan**, now the only surface left before create-category. Its `*App`
-glue is in `loan_wizard_app.go` and `loan_wizard_submit.go`, with two
-derived-state methods in `loan_wizard_derive.go` (the 4d note names them). It
-reads the scheduled dialog's data in nine places for the Edit-as-loan relaunch
-and posts a toast and four view reloads after a save, so it will leave more on
-`App` than any surface so far; the measurement of what stays is the result to
-get from it.
+#### Built (fourth surface, 2026-09-13): loan, and what a coupled surface leaves behind
+
+`*App` 422 -> **415 methods (-7)**, the largest drop of the four. Eight left
+(`loadLoanWizardData`, `loadLoanWizardEditData`, `closeLoanWizard`,
+`submitLoanWizard`, `submitNewLoanWizard`, `submitEditLoanWizard`,
+`refreshLoanWizardDerived`, `updateLoanPaymentPrefill`), one arrived
+(`loanDeps`). **Fourteen methods hang off `*loanSurface`**, none naming `App`:
+`IsVisible`, `applyData`, `open`, `openForEdit`, `handleKey`, `close`, `submit`,
+`submitNew`, `submitEdit`, `refreshDerived`, `updatePaymentPrefill`,
+`beginCreateCategory`, `applyCreatedCategory`, `reshow`. The two save paths
+moved whole, closures included; the only edit inside them is that the
+services are read through the deps at the top of the goroutine, where the
+`a.services.X` reads were.
+
+**What stayed, measured.** The prediction was that loan would leave more on
+`App` than any surface so far, and it did — but not in the loan files:
+
+| Stayed on `App` | Where | Why |
+|---|---|---|
+| `loanDeps` | `loan_wizard_app.go` | the binding |
+| `handleLoanWizardKey`, `loanWizardAction` | `loan_wizard_app.go` | registry signatures |
+| `openCreateCategorySubDialogFromLoan`, `applyCreatedCategoryToLoan` | `loan_wizard_app.go` | write `createCat` |
+| `afterLoanWizardSave` | `loan_wizard_submit.go` | toast and four view reloads |
+| `scheduleWantsLoanEdit`, `maybeAddEditAsLoanButton`, `relaunchScheduledAlternate`, `relaunchAsLoanWizard` | **`scheduled_dialog_app.go`** | read and write `a.sched` |
+
+The last row is the nine scheduled-dialog reads the earlier note counted.
+They were never the loan surface's coupling — they are the scheduled dialog's
+Edit-as-loan affordance, which happened to live in the loan file. Moved beside
+`relaunchAsPaycheckWizard`, which the 4d split had already moved for the same
+reason, they leave **no `loan_wizard*.go` file reading `a.sched`**, and the
+only chrome the loan surface touches is `afterLoanWizardSave`, which the
+transfer pilot had already shown is the shape of what cannot move.
+
+**Guards: one row, four mutations.** A production read of `a.loan.state`, a
+loan method taking `*App`, a captured pointer in `loanDeps`, and deleting the
+row each fail exactly one named test.
+
+**Test churn: 12 lines in two files.** Eight `refreshLoanWizardDerived()` calls
+became `loan.refreshDerived()`, two `submitLoanWizard()` calls now go through
+`loanWizardAction(dialog.DialogActionSubmit)`, and the nil-surface submit table
+calls the three surface methods with the App's deps. No assertion changed.
+
+**Next: create-category**, the last surface. Every one of its eight
+originating surfaces now reaches it through a `beginCreateCategory` /
+`applyCreatedCategory` / `reshow` triple, or the transaction dialog's
+equivalent, so the contract the note below said would have to be defined first
+has been defined one surface at a time. What remains is the router itself:
+`applyCreatedCategory`'s eight-arm switch, `cancelCreateCatDialog`'s eight-arm
+reshow, and `parentsForCreateCatDialog`. Those are the terminal step, and the
+origin handles (`line`, `splitRow`, `loanField`) are the contract's shape.
 
 ### Note — the create-category divert is the most coupled surface, not the least
 

@@ -4,36 +4,45 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
-// App integration: the async data loads for new and edit, the Edit-as-loan
-// affordance on the scheduled dialog, the key/action dispatchers the modal
-// registry calls, and the create-category divert's opener and applier.
+// The loan surface: the controller half of the wizard. loanSurface owns open,
+// submit (loan_wizard_submit.go), close, the derived-state refresh
+// (loan_wizard_derive.go) and the create-category hooks; App supplies the
+// services through loanDeps and the divert into the create-category
+// sub-dialog, which is a sibling surface's state. The Edit-as-loan affordance
+// on the scheduled dialog lives with that dialog (scheduled_dialog_app.go),
+// because it reads and writes the scheduled dialog's state, not this surface's.
 
-// loadLoanWizardData fetches accounts + categories off the UI loop and emits a
-// loanWizardDataMsg the app-update handler uses to construct the wizard.
-func (a *App) loadLoanWizardData() tea.Cmd {
-	return func() tea.Msg {
-		var accounts []*account.Account
-		if a.services.Account != nil {
-			acs, err := a.services.Account.List(true)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			accounts = acs
-		}
-		var categories []*category.Category
-		if a.services.Category != nil {
-			cs, err := a.services.Category.List()
-			if err != nil {
-				return errMsg{err: err}
-			}
-			categories = cs
-		}
-		return loanWizardDataMsg{accounts: accounts, categories: categories}
+// loanDeps is what the loan surface needs from outside itself. Every dep is a
+// func, because switchDatabase replaces App's services and closes the previous
+// *db.DB; and deps are passed to each call, never stored, because close()
+// resets the surface to its zero value. Both rules are pinned by
+// TestGuard_ControllerDepsAreLiveIndirections and
+// TestGuard_NoSurfaceStructHoldsItsDeps.
+type loanDeps struct {
+	accounts   func() *account.Service
+	categories func() *category.Service
+	payees     func() *payee.Service
+	scheduled  func() *scheduled.Service
+	undo       func() *undo.Manager
+}
+
+// loanDeps binds the loan surface to the services App owns. Every accessor may
+// legitimately return nil — an App built by a test has no services — so each
+// caller keeps its own nil guard.
+func (a *App) loanDeps() loanDeps {
+	return loanDeps{
+		accounts:   func() *account.Service { return a.services.Account },
+		categories: func() *category.Service { return a.services.Category },
+		payees:     func() *payee.Service { return a.services.Payee },
+		scheduled:  func() *scheduled.Service { return a.services.Scheduled },
+		undo:       func() *undo.Manager { return a.undoManager },
 	}
 }
 
@@ -47,35 +56,43 @@ type loanWizardDataMsg struct {
 	editOwed     types.Money
 }
 
-// loadLoanWizardEditData fetches accounts + categories and computes the loan's
-// live balance for the Edit-as-loan flow, emitting a loanWizardDataMsg carrying
-// the schedule so the app-update handler builds the wizard in edit mode.
-func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
+// loanWizardSavedMsg is emitted after a successful save so the app reloads the
+// affected views.
+type loanWizardSavedMsg struct{}
+
+// open returns the command that loads the accounts and categories a new
+// wizard needs. The wizard is built when the resulting message reaches
+// applyData; there is nothing to mutate before the data lands, so the receiver
+// goes unread — open is a method because opening is the surface's operation,
+// not App's.
+func (s *loanSurface) open(deps loanDeps) tea.Cmd {
 	return func() tea.Msg {
-		var accounts []*account.Account
-		if a.services.Account != nil {
-			acs, err := a.services.Account.List(true)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			accounts = acs
+		accounts, categories, err := loadLoanAccountsAndCategories(deps)
+		if err != nil {
+			return errMsg{err: err}
 		}
-		var categories []*category.Category
-		if a.services.Category != nil {
-			cs, err := a.services.Category.List()
-			if err != nil {
-				return errMsg{err: err}
-			}
-			categories = cs
+		return loanWizardDataMsg{accounts: accounts, categories: categories}
+	}
+}
+
+// openForEdit returns the command that loads the accounts and categories and
+// computes the loan's live balance for the Edit-as-loan flow, emitting a
+// loanWizardDataMsg carrying the schedule so applyData builds the wizard in
+// edit mode.
+func (s *loanSurface) openForEdit(deps loanDeps, st *scheduled.Transaction) tea.Cmd {
+	return func() tea.Msg {
+		accounts, categories, err := loadLoanAccountsAndCategories(deps)
+		if err != nil {
+			return errMsg{err: err}
 		}
 		// The loan's live balance as of the next payment date → owed magnitude.
 		owed := types.ZeroMoney
-		if a.services.Account != nil {
+		if svc := deps.accounts(); svc != nil {
 			for _, sp := range st.Splits {
 				if !sp.TransferAccountID.Valid {
 					continue
 				}
-				bal, err := a.services.Account.BalanceAsOf(sp.TransferAccountID.ID, st.NextDate)
+				bal, err := svc.BalanceAsOf(sp.TransferAccountID.ID, st.NextDate)
 				if err == nil {
 					owed = bal.Neg()
 				}
@@ -86,145 +103,79 @@ func (a *App) loadLoanWizardEditData(st *scheduled.Transaction) tea.Cmd {
 	}
 }
 
-// scheduleWantsLoanEdit reports whether the Edit Series dialog should offer
-// "Edit as loan →" for st (and route the alternate action to the loan wizard):
-// loan-shaped, or loan-adoptable and not paycheck-shaped. Loan-shaped takes
-// precedence; loan-shaped and paycheck-shaped are mutually exclusive (their
-// split tags cannot coexist), so this only guards the rare untagged-adoptable
-// schedule that also passes the paycheck heuristic.
-func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
-	if a.services.Scheduled == nil || st == nil {
-		return false
+// loadLoanAccountsAndCategories fetches what both open paths need identically.
+// It runs on the command's own goroutine, so it reaches every service through
+// deps rather than holding one.
+func loadLoanAccountsAndCategories(deps loanDeps) ([]*account.Account, []*category.Category, error) {
+	var accounts []*account.Account
+	if svc := deps.accounts(); svc != nil {
+		acs, err := svc.List(true)
+		if err != nil {
+			return nil, nil, err
+		}
+		accounts = acs
 	}
-	if a.services.Scheduled.IsLoanShaped(st) {
-		return true
+	var categories []*category.Category
+	if svc := deps.categories(); svc != nil {
+		cs, err := svc.List()
+		if err != nil {
+			return nil, nil, err
+		}
+		categories = cs
 	}
-	return a.services.Scheduled.IsLoanAdoptable(st) && !looksLikePaycheck(st)
+	return accounts, categories, nil
 }
 
-// maybeAddEditAsLoanButton replaces the Edit Series dialog's buttons with an
-// "Edit as loan →" affordance (mirroring "Edit as paycheck →") when st wants a
-// loan edit. Called after buildEditScheduledDialog, so it overrides that
-// function's default Save/Cancel set.
-func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
-	if a.sched.dlg == nil || !a.scheduleWantsLoanEdit(st) {
-		return
+// handleKey gives the dialog the key and reports what it wants done about it.
+// An unbuilt surface asks for nothing.
+func (s *loanSurface) handleKey(msg tea.KeyPressMsg) dialog.DialogAction {
+	if s.dlg == nil {
+		return dialog.DialogActionNone
 	}
-	a.sched.dlg.SetButtons([]dialog.DialogButton{
-		{Label: "Save", Primary: true},
-		{Label: "Cancel"},
-		{Label: "Edit as loan →", Action: dialog.DialogActionAlternate},
-	})
+	return s.dlg.HandleKey(msg)
 }
 
-// relaunchScheduledAlternate dispatches the Edit Series dialog's alternate
-// action to the loan wizard for a loan-shaped / loan-adoptable schedule, else
-// to the paycheck wizard (its original owner).
-func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
-	if a.sched.data != nil && a.scheduleWantsLoanEdit(a.sched.data.scheduled) {
-		return a.relaunchAsLoanWizard()
-	}
-	return a.relaunchAsPaycheckWizard()
-}
+// close clears the surface. The zero value is the closed state, so this is the
+// whole of it — and it stays that way only because the deps are a call
+// parameter rather than a field.
+func (s *loanSurface) close() { *s = loanSurface{} }
 
-// relaunchAsLoanWizard closes the scheduled-edit dialog and opens the loan
-// wizard prefilled from the in-flight loan-shaped / loan-adoptable schedule.
-func (a *App) relaunchAsLoanWizard() (tea.Model, tea.Cmd) {
-	if a.sched.dlg == nil || a.sched.data == nil {
-		return a, nil
+// beginCreateCategory takes the typed query off whichever category combo
+// (interest, principal or an escrow row) activated [+ Add new category…],
+// consumes the trigger, hides the dialog and reports the field's index so the
+// applier can point it at the new category. The dialog is kept alive (hidden)
+// so its field state survives the divert; applyCreatedCategory re-shows it,
+// reshow does so after a cancel. It reports false when no field is focused, in
+// which case nothing was hidden and the caller must not open the sub-dialog.
+func (s *loanSurface) beginCreateCategory() (query string, fieldIdx int, ok bool) {
+	if s.dlg == nil {
+		return "", -1, false
 	}
-	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
-		return a, nil
-	}
-	st := a.sched.data.scheduled
-	a.closeScheduledDialog()
-	return a, a.loadLoanWizardEditData(st)
-}
-
-// loanWizardSavedMsg is emitted after a successful save so the app reloads the
-// affected views.
-type loanWizardSavedMsg struct{}
-
-// closeLoanWizard clears the wizard state.
-func (a *App) closeLoanWizard() {
-	a.loan = loanSurface{}
-}
-
-// handleLoanWizardKey routes a key event through the wizard dialog and
-// translates the resulting action, refreshing conditional visibility and the
-// payment prefill after ordinary edits.
-func (a *App) handleLoanWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.loan.dlg == nil {
-		return a, nil
-	}
-	return a.loanWizardAction(a.loan.dlg.HandleKey(msg))
-}
-
-// loanWizardAction dispatches a DialogAction for the loan wizard, from either input path.
-func (a *App) loanWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
-	switch action {
-	case dialog.DialogActionSubmit:
-		return a.submitLoanWizard()
-	case dialog.DialogActionCancel:
-		a.closeLoanWizard()
-		return a, nil
-	case dialog.DialogActionAddNew:
-		return a.openCreateCategorySubDialogFromLoan()
-	}
-	a.refreshLoanWizardDerived()
-	return a, nil
-}
-
-// openCreateCategorySubDialogFromLoan hides the loan wizard and opens the shared
-// inline create-category sub-dialog, seeded from the typed query on whichever
-// category combo (interest or an escrow row) activated [+ Add new category…].
-// The focused field is the trigger; its index is recorded so the applier can
-// point it at the new category. The wizard's field state is preserved by
-// keeping the dialog alive (just hidden); cancelCreateCatDialog and
-// applyCreatedCategoryToLoan restore it.
-func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
-	if a.loan.dlg == nil {
-		return a, nil
-	}
-	fields := a.loan.dlg.Fields()
-	fieldIdx := a.loan.dlg.FocusIndex()
+	fields := s.dlg.Fields()
+	fieldIdx = s.dlg.FocusIndex()
 	if fieldIdx < 0 || fieldIdx >= len(fields) {
-		return a, nil
+		return "", -1, false
 	}
 	catField := fields[fieldIdx]
-	query := catField.Query
+	query = catField.Query
 	// Consume the trigger and clear the typed query — the sub-dialog owns it now.
 	catField.AddNewTriggered = false
 	catField.Query = ""
-
-	a.createCat.origin.loanField = fieldIdx
-	// Set the source before parentsForCreateCatDialog so it resolves the right
-	// parents (falls back to a live category list for the loan wizard).
-	a.createCat.origin.surface = createCatSourceLoanWizard
-	parents := a.parentsForCreateCatDialog()
-	parent, name := splitCategoryQuery(query)
-	// Loan interest and escrow lines are always expenses.
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
-	a.loan.dlg.SetVisible(false)
-	return a, nil
+	s.dlg.SetVisible(false)
+	return query, fieldIdx, true
 }
 
-// applyCreatedCategoryToLoan is the per-surface applier for the loan wizard. It
-// rebuilds every category combo's options to include newCat, then points the
-// originating field (a.createCatLoanField) at it. Because inserting a category
-// into the sorted list shifts option indices, each *other* combo's existing
-// selection is re-resolved by ID rather than by its stale index — otherwise a
-// filled escrow row would silently jump to a different category.
-func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*category.Category) {
-	// The wizard may have been closed while the category was persisting.
-	var d *dialog.Dialog
-	var st *loanWizardData
-	if a.loan.dlg != nil {
-		d, st = a.loan.dlg, a.loan.state
-	}
+// applyCreatedCategory rebuilds every category combo's options to include
+// newCat, then points the originating field at it. Because inserting a
+// category into the sorted list shifts option indices, each *other* combo's
+// existing selection is re-resolved by ID rather than by its stale index —
+// otherwise a filled escrow row would silently jump to a different category.
+// Persistence already happened in persistCategory; the router passes the fresh
+// category in. The persist is asynchronous, so a surface the user has closed
+// in the meantime is left alone.
+func (s *loanSurface) applyCreatedCategory(newCat *category.Category, cats []*category.Category, originField int) {
+	d, st := s.dlg, s.state
 	if d == nil || st == nil || len(d.Fields()) < loanFieldFieldsCount {
-		a.createCat.dlg = nil
-		a.createCat.origin.loanField = -1
 		return
 	}
 	fields := d.Fields()
@@ -296,7 +247,7 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 	}
 
 	// Point the originating field at the freshly-created category and focus it.
-	if fld := a.createCat.origin.loanField; fld >= 0 && fld < len(fields) {
+	if fld := originField; fld >= 0 && fld < len(fields) {
 		switch fld {
 		case loanFieldInterestCategory:
 			fields[fld].SelectedIndex = indexOf(interestIDs, newCat.ID)
@@ -311,6 +262,74 @@ func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*cate
 
 	updateLoanWizardVisibility(d)
 	d.SetVisible(true)
+}
+
+// reshow makes the dialog visible again after a create-category divert the
+// user cancelled. Nil-safe, because the divert can outlive the surface.
+func (s *loanSurface) reshow() {
+	if s.dlg != nil {
+		s.dlg.SetVisible(true)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// App glue. Everything below is a thin wrapper supplying the services and the
+// divert into a sibling surface. No behaviour lives here: an action the
+// surface owns must not have a second implementation on App. The save's
+// after-effects (afterLoanWizardSave, loan_wizard_submit.go) are App's too,
+// because they touch the status bar and reload views.
+// -----------------------------------------------------------------------------
+
+// handleLoanWizardKey routes a key event through the wizard dialog and
+// translates the resulting action.
+func (a *App) handleLoanWizardKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	return a.loanWizardAction(a.loan.handleKey(msg))
+}
+
+// loanWizardAction dispatches a DialogAction for the loan wizard, from either
+// input path. An ordinary edit refreshes conditional visibility and the
+// payment prefill.
+//
+// AddNew is the one arm that stays on App: it writes createCat, which is
+// another surface's state, and a surface must not reach into a sibling.
+func (a *App) loanWizardAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	switch action {
+	case dialog.DialogActionSubmit:
+		return a, a.loan.submit(a.loanDeps())
+	case dialog.DialogActionCancel:
+		a.loan.close()
+		return a, nil
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromLoan()
+	}
+	a.loan.refreshDerived()
+	return a, nil
+}
+
+// openCreateCategorySubDialogFromLoan hides the loan wizard and opens the shared
+// inline create-category sub-dialog, seeded from the typed query on whichever
+// category combo activated [+ Add new category…]. Loan interest and escrow
+// lines are always expenses, so the sub-dialog defaults to an Expense type.
+func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
+	query, fieldIdx, ok := a.loan.beginCreateCategory()
+	if !ok {
+		return a, nil
+	}
+	a.createCat.origin.loanField = fieldIdx
+	// Set the source before parentsForCreateCatDialog so it resolves the right
+	// parents (falls back to a live category list for the loan wizard).
+	a.createCat.origin.surface = createCatSourceLoanWizard
+	parents := a.parentsForCreateCatDialog()
+	parent, name := splitCategoryQuery(query)
+	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	return a, nil
+}
+
+// applyCreatedCategoryToLoan is the per-surface applier for the loan wizard.
+// The surface applies the category to its own combos; App clears the
+// sub-dialog and the originating-field handle, which are its own state.
+func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*category.Category) {
+	a.loan.applyCreatedCategory(newCat, cats, a.createCat.origin.loanField)
 	a.createCat.dlg = nil
 	a.createCat.origin.loanField = -1
 }

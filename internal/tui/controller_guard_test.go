@@ -86,6 +86,22 @@ var controllerSurfaces = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "loan",
+		surface: reflect.TypeFor[loanSurface](),
+		deps:    reflect.TypeFor[loanDeps](),
+		bind:    func(a *App) any { return a.loanDeps() },
+		probes: func(a *App) []func() any {
+			d := a.loanDeps()
+			return []func() any{
+				func() any { return d.accounts() },
+				func() any { return d.categories() },
+				func() any { return d.payees() },
+				func() any { return d.scheduled() },
+				func() any { return d.undo() },
+			}
+		},
+	},
 }
 
 // TestGuard_ControllerTableMatchesApp keeps the table honest from the App side:

@@ -142,7 +142,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 
 	case widget.MenuActionNewLoan:
 		a.menubar.Deactivate()
-		return a, a.loadLoanWizardData()
+		return a, a.loan.open(a.loanDeps())
 
 	case widget.MenuActionEditAccount:
 		if a.sidebar.SelectedAccountID() != types.NilID {

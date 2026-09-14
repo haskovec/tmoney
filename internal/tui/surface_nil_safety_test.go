@@ -84,9 +84,9 @@ func TestApplyCreatedCategoryToLoan_ToleratesAClosedWizard(t *testing.T) {
 func TestSubmitPaths_AreNoOpsOnANilSurface(t *testing.T) {
 	app := &App{statusbar: widget.NewStatusBar()}
 	for name, fn := range map[string]func() (any, any){
-		"submitLoanWizard":          func() (any, any) { return app.submitLoanWizard() },
-		"submitNewLoanWizard":       func() (any, any) { return app.submitNewLoanWizard() },
-		"submitEditLoanWizard":      func() (any, any) { return app.submitEditLoanWizard() },
+		"loan.submit":               func() (any, any) { return app.loan.submit(app.loanDeps()), nil },
+		"loan.submitNew":            func() (any, any) { return app.loan.submitNew(app.loanDeps()), nil },
+		"loan.submitEdit":           func() (any, any) { return app.loan.submitEdit(app.loanDeps()), nil },
 		"submitImportDialog":        func() (any, any) { return app.submitImportDialog() },
 		"submitLinkTransfersDialog": func() (any, any) { return app.submitLinkTransfersDialog() },
 	} {
