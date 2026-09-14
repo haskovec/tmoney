@@ -1926,7 +1926,11 @@ constraint on phase size.
   surface phase 3 is mid-conversion on.
 - **The view layer (4b).** Out of scope, and a real second design. `price_view.go`
   and `investment_register_view.go` are the two files that most deserve it, and
-  `switchView`'s 12-arm focus switch is the seam.
+  `switchView`'s 12-arm focus switch is the seam. **Written 2026-09-14:
+  `specs/design-tui-view-layer.md`**, status PROPOSED. It measures 98 per-view
+  switch arms across 12 switches, 41 loose view fields, and one view with no
+  help section, and proposes a view table, per-view state structs, and the 4d
+  split of the two files — with the controller step priced and not committed.
 - ~~**`undoManager` is never re-pointed on a database switch** (§5.5). A
   pre-existing bug found while planning this. It belongs with
   **review item 5** (boundary leaks / `app.Services`), whose owner will already
