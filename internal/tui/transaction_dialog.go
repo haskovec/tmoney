@@ -662,24 +662,26 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		if editing {
 			pending.existing = existing
 		}
-		a.split.pendingTxn = pending
-
 		// Build category options for the split dialog (reuse loaded data)
 		categoryOptions, categoryIDs := buildCategoryOptions(a.txn.data.categories)
-		seedSplits := a.txn.data.existingSplits
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.txn.data.accounts)
-
-		// Close the transaction dialog
-		a.closeTransactionDialog()
-
-		// Open split dialog — seeded with existing splits when editing a
-		// transaction that already had splits.
-		if editing && hadSplits {
-			a.split.editor = NewSplitDialogFromExisting(amount, categoryOptions, categoryIDs, seedSplits)
-		} else {
-			a.split.editor = NewSplitDialog(amount, categoryOptions, categoryIDs)
+		open := splitOpen{
+			amount:          amount,
+			categoryOptions: categoryOptions,
+			categoryIDs:     categoryIDs,
+			accountOptions:  accountOptions,
+			accountIDs:      accountIDs,
+			accountID:       accountID,
 		}
-		a.split.editor.SetTransferTargets(accountOptions, accountIDs, accountID)
+		// Seed the editor with the existing splits when editing a transaction
+		// that already had them.
+		if editing && hadSplits {
+			open.seedSplits = a.txn.data.existingSplits
+		}
+
+		// Close the transaction dialog, then open the split editor.
+		a.closeTransactionDialog()
+		a.split.openForTransaction(pending, open)
 
 		return a, nil
 	}

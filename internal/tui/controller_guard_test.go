@@ -72,6 +72,20 @@ var controllerSurfaces = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "split",
+		surface: reflect.TypeFor[splitSurface](),
+		deps:    reflect.TypeFor[splitDeps](),
+		bind:    func(a *App) any { return a.splitDeps() },
+		probes: func(a *App) []func() any {
+			d := a.splitDeps()
+			return []func() any{
+				func() any { return d.payees() },
+				func() any { return d.transactions() },
+				func() any { return d.undo() },
+			}
+		},
+	},
 }
 
 // TestGuard_ControllerTableMatchesApp keeps the table honest from the App side:
