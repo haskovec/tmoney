@@ -31,8 +31,10 @@ import (
 type controllerSurface struct {
 	field   string
 	surface reflect.Type
-	deps    reflect.Type
-	bind    func(*App) any
+	// deps and bind are nil for a surface that needs no service; the two deps
+	// guards skip such a row and the two state guards still run over it.
+	deps reflect.Type
+	bind func(*App) any
 	// probes calls each dep accessor in turn. It is a hand list because reflect
 	// cannot call an unexported func field; TestControllerDeps_FollowADatabaseSwitch
 	// requires exactly one probe per dep so the list cannot fall behind the struct.
@@ -102,12 +104,23 @@ var controllerSurfaces = []controllerSurface{
 			}
 		},
 	},
+	{
+		// The sub-dialog every other surface diverts into. It emits a message
+		// and touches no service, so it has no deps; the router that persists
+		// the category and re-shows the originator is App's, because it
+		// coordinates eight sibling surfaces.
+		field:   "createCat",
+		surface: reflect.TypeFor[createCatSurface](),
+	},
 }
 
 // TestGuard_ControllerTableMatchesApp keeps the table honest from the App side:
-// every row names a real App field of the row's surface type, and every App
-// field whose type has a matching <name>Deps struct is in the table. Without
-// this, a third controller surface could be added and never guarded.
+// every row names a real App field of the row's surface type, and every
+// controller surface is in the table. A surface is a controller when it has a
+// <name>Deps struct OR declares a no-arg close() — the second detector exists
+// because a surface that needs no service (createCatSurface) has no deps
+// struct and would otherwise never trip the check. Without this, a surface
+// could be added and never guarded.
 func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 	appT := reflect.TypeFor[App]()
 	for _, row := range controllerSurfaces {
@@ -132,6 +145,15 @@ func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 			if !inTable[surface] {
 				t.Errorf("%s declares %s, so %s is a controller surface, but it is not in "+
 					"controllerSurfaces. Add a row; the guards run over the table only.", path, name, surface)
+			}
+		}
+		// A surface that owns close() has been through the controller motion,
+		// whether or not it needed deps — createCatSurface has none. This is
+		// the detector that catches a deps-free surface left out of the table.
+		for _, surface := range receiversDeclaringClose(t, readSourceFile(t, path)) {
+			if !inTable[surface] {
+				t.Errorf("%s declares (*%s).close, so it is a controller surface, but it is not in "+
+					"controllerSurfaces. Add a row; the guards run over the table only.", path, surface)
 			}
 		}
 	}
@@ -201,6 +223,9 @@ func TestGuard_ControllerStateIsReachedOnlyByMethod(t *testing.T) {
 func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
 	for _, row := range controllerSurfaces {
 		t.Run(row.field, func(t *testing.T) {
+			if row.deps == nil {
+				t.Skip("surface has no deps")
+			}
 			if row.deps.NumField() == 0 {
 				t.Fatalf("%s has no fields; this guard would pass vacuously", row.deps.Name())
 			}
@@ -244,6 +269,9 @@ func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
 func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
 	for _, row := range controllerSurfaces {
 		t.Run(row.field, func(t *testing.T) {
+			if row.deps == nil {
+				t.Skip("surface has no deps")
+			}
 			app := &App{}
 			probes := row.probes(app)
 			if len(probes) != row.deps.NumField() {
@@ -276,6 +304,26 @@ func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
 			}
 		})
 	}
+}
+
+// receiversDeclaringClose returns the receiver type of every `func (s *T) close()`
+// in src — the method every controller surface declares and no other does.
+func receiversDeclaringClose(t *testing.T, src string) []string {
+	t.Helper()
+	var out []string
+	for _, d := range parseSource(t, src).Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || len(fn.Recv.List) != 1 || fn.Name.Name != "close" {
+			continue
+		}
+		if fn.Type.Params.NumFields() != 0 || fn.Type.Results.NumFields() != 0 {
+			continue
+		}
+		if name := receiverTypeName(fn.Recv.List[0].Type); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // depsStructNames returns the names of every struct type in src whose name ends
@@ -511,4 +559,19 @@ func isNilPointer(v any) bool {
 	}
 	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Pointer && rv.IsNil()
+}
+
+// TestGuard_ControllerSelfTest_CloseFinder proves the close() detector sees a
+// controller surface and ignores a close with a different shape.
+func TestGuard_ControllerSelfTest_CloseFinder(t *testing.T) {
+	got := receiversDeclaringClose(t, `package tui
+
+func (s *fooSurface) close() { *s = fooSurface{} }
+func (s *barSurface) close(force bool) {}
+func (s *bazSurface) closeAll() {}
+func close() {}
+`)
+	if !slices.Equal(got, []string{"fooSurface"}) {
+		t.Errorf("receiversDeclaringClose = %v, want [fooSurface]", got)
+	}
 }

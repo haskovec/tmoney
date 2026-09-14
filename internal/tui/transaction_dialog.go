@@ -517,17 +517,13 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	var parents []string
-	if a.txn.data != nil {
-		parents = topLevelParentNames(a.txn.data.categories)
-	}
+	parents := a.createCatParentsFor(createCatSourceTxnDialog)
 	parent, name := splitCategoryQuery(query)
 	defaultType := category.TypeExpense
 	if len(fields) > 3 {
 		defaultType = inferCategoryTypeFromAmount(fields[3].Value)
 	}
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
-	a.createCat.origin.surface = createCatSourceTxnDialog
+	a.createCat.open(originFrom(createCatSourceTxnDialog), name, parent, parents, defaultType)
 	a.txn.dlg.SetVisible(false)
 	return a, nil
 }
@@ -576,7 +572,7 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 		a.txn.dlg.SetFocusIndex(3)
 		a.txn.dlg.SetVisible(true)
 	}
-	a.createCat.dlg = nil
+	a.createCat.close()
 }
 
 // submitTransactionDialog parses dialog fields, validates, and saves the transaction.
