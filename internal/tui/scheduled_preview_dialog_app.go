@@ -261,10 +261,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	// createCatSource must be set before parentsForCreateCatDialog so the
-	// helper picks the right source for the parents list.
-	a.createCat.origin.surface = createCatSourceSchedPreview
-	parents := a.parentsForCreateCatDialog()
+	parents := a.createCatParentsFor(createCatSourceSchedPreview)
 	parent, name := splitCategoryQuery(query)
 	// A transfer's always-positive amount carries no income/expense signal, so
 	// its create-category divert defaults to Expense; the single-line preview
@@ -273,7 +270,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 	if !a.schedPreviewDialog.IsTransfer() && len(fields) > previewSingleFieldAmount {
 		defaultType = inferCategoryTypeFromAmount(fields[previewSingleFieldAmount].Value)
 	}
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
+	a.createCat.open(originFrom(createCatSourceSchedPreview), name, parent, parents, defaultType)
 	header.SetVisible(false)
 	return a, nil
 }
@@ -287,17 +284,17 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 // freshly-created category.
 func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats []*category.Category) {
 	if a.schedPreviewDialog == nil {
-		a.createCat.dlg = nil
+		a.createCat.close()
 		return
 	}
 	header := a.schedPreviewDialog.HeaderDialog()
 	if header == nil {
-		a.createCat.dlg = nil
+		a.createCat.close()
 		return
 	}
 	catIdx := a.schedPreviewDialog.categoryFieldIndex()
 	if catIdx < 0 || catIdx >= len(header.Fields()) {
-		a.createCat.dlg = nil
+		a.createCat.close()
 		return
 	}
 
@@ -327,7 +324,7 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 	// Focus advances to the field after Category so the user can keep typing.
 	header.SetFocusIndex(catIdx + 1)
 	header.SetVisible(true)
-	a.createCat.dlg = nil
+	a.createCat.close()
 }
 
 // handleSchedulePreviewMultiLineKey routes keys for a multi-line

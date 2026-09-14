@@ -376,10 +376,9 @@ func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
 	if !ok {
 		return a, nil
 	}
-	a.createCat.origin.surface = createCatSourceSplitDialog
-	a.createCat.origin.splitRow = row
-	parents := a.parentsForCreateCatDialog()
-	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultType)
+	origin := originFrom(createCatSourceSplitDialog)
+	origin.splitRow = row
+	a.createCat.open(origin, "", "", a.createCatParentsFor(origin.surface), defaultType)
 	return a, nil
 }
 
@@ -388,7 +387,6 @@ func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
 // dialog. The surface applies the category to its own rows; App clears the
 // sub-dialog and the originating-row handle, which are its own state.
 func (a *App) applyCreatedCategoryToSplit(newCat *category.Category, cats []*category.Category) {
-	a.split.applyCreatedCategory(newCat, cats, a.createCat.origin.splitRow)
-	a.createCat.dlg = nil
-	a.createCat.origin.splitRow = -1
+	a.split.applyCreatedCategory(newCat, cats, a.createCat.openedFrom().splitRow)
+	a.createCat.close()
 }

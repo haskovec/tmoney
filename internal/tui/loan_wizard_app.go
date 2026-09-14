@@ -315,13 +315,10 @@ func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
 	if !ok {
 		return a, nil
 	}
-	a.createCat.origin.loanField = fieldIdx
-	// Set the source before parentsForCreateCatDialog so it resolves the right
-	// parents (falls back to a live category list for the loan wizard).
-	a.createCat.origin.surface = createCatSourceLoanWizard
-	parents := a.parentsForCreateCatDialog()
+	origin := originFrom(createCatSourceLoanWizard)
+	origin.loanField = fieldIdx
 	parent, name := splitCategoryQuery(query)
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.open(origin, name, parent, a.createCatParentsFor(origin.surface), category.TypeExpense)
 	return a, nil
 }
 
@@ -329,7 +326,6 @@ func (a *App) openCreateCategorySubDialogFromLoan() (tea.Model, tea.Cmd) {
 // The surface applies the category to its own combos; App clears the
 // sub-dialog and the originating-field handle, which are its own state.
 func (a *App) applyCreatedCategoryToLoan(newCat *category.Category, cats []*category.Category) {
-	a.loan.applyCreatedCategory(newCat, cats, a.createCat.origin.loanField)
-	a.createCat.dlg = nil
-	a.createCat.origin.loanField = -1
+	a.loan.applyCreatedCategory(newCat, cats, a.createCat.openedFrom().loanField)
+	a.createCat.close()
 }

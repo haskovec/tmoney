@@ -38,6 +38,50 @@ type createCatSurface struct {
 
 func (s *createCatSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
 
+// open records where the divert came from and builds the sub-dialog over it.
+// name and parent seed the fields from the typed query the originating combo
+// gave up; parents is the Parent combo's option list; defaultType preselects
+// the Type radio. The originating surface has already hidden itself.
+func (s *createCatSurface) open(origin createCatOrigin, name, parent string, parents []string, defaultType category.Type) {
+	s.origin = origin
+	s.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
+}
+
+// source reports which surface the open sub-dialog was diverted from, or
+// createCatSourceNone when it is closed.
+func (s *createCatSurface) source() createCategorySource { return s.origin.surface }
+
+// openedFrom is the full origin: the surface and, where it has more than one
+// category field, which one. The router hands the positional part back to the
+// originating surface's applier.
+func (s *createCatSurface) openedFrom() createCatOrigin { return s.origin }
+
+// handleKey gives the dialog the key and reports what it wants done about it.
+// An unbuilt surface asks for nothing.
+func (s *createCatSurface) handleKey(msg tea.KeyPressMsg) dialog.DialogAction {
+	if s.dlg == nil {
+		return dialog.DialogActionNone
+	}
+	return s.dlg.HandleKey(msg)
+}
+
+// submit validates the sub-dialog and returns the command that emits the
+// createCategoryRequestMsg the router consumes. parents is the same list the
+// Parent combo was built over, so a typed parent resolves against it. A nil
+// command means validation failed: the sub-dialog stays open with inline
+// errors set.
+func (s *createCatSurface) submit(parents []string) tea.Cmd {
+	if s.dlg == nil {
+		return nil
+	}
+	return submitCreateCategoryDialog(s.dlg, parents)
+}
+
+// close clears the surface. The closed state is the idle origin rather than
+// the bare zero value, because the positional handles use -1 for "none" and 0
+// would name a real row or field; IsVisible reads false either way.
+func (s *createCatSurface) close() { *s = createCatSurface{origin: newCreateCatOrigin()} }
+
 // createCatOrigin says which surface diverted into the sub-dialog and, where
 // that surface has more than one category field, which one. Exactly one of
 // the positional fields is live at a time, chosen by surface; the others keep
@@ -59,6 +103,14 @@ type createCatOrigin struct {
 // newCreateCatOrigin is the idle origin: no surface, both indexes at -1.
 func newCreateCatOrigin() createCatOrigin {
 	return createCatOrigin{surface: createCatSourceNone, splitRow: -1, loanField: -1}
+}
+
+// originFrom is the idle origin with the surface set: what every opener starts
+// from, adding its own positional handle when it has one.
+func originFrom(src createCategorySource) createCatOrigin {
+	o := newCreateCatOrigin()
+	o.surface = src
+	return o
 }
 
 // createCategoryRequest captures the user's intent to create a new category.
@@ -297,9 +349,9 @@ func (a *App) persistCategory(req createCategoryRequest) (*category.Category, er
 
 // applyCreatedCategory is the router for the createCategoryRequestMsg path. It
 // persists the requested category and dispatches to the per-surface applier
-// matching a.createCatSource so the new category lands back in the originating
-// field of whichever transaction-entry surface opened the sub-dialog. Surface
-// scratch fields (e.g. createCatSource) are cleared after dispatch.
+// matching the sub-dialog's recorded source so the new category lands back in
+// the originating field of whichever transaction-entry surface opened it. Each
+// applier closes the sub-dialog once it has applied.
 func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 	newCat, err := a.persistCategory(req)
 	if err != nil {
@@ -311,7 +363,7 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		return fmt.Errorf("reload categories: %w", err)
 	}
 
-	switch a.createCat.origin.surface {
+	switch a.createCat.source() {
 	case createCatSourceTxnDialog:
 		a.applyCreatedCategoryToTxn(newCat, cats)
 	case createCatSourceSchedDialog:
@@ -332,10 +384,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		// No source recorded — surface plumbing not wired (or the source
 		// enum was reset before the router fired). Close the sub-dialog
 		// so the user isn't stuck on an inert overlay.
-		a.createCat.dlg = nil
+		a.createCat.close()
 	}
-
-	a.createCat.origin.surface = createCatSourceNone
 	return nil
 }
 
@@ -344,10 +394,7 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 // with all field state preserved. Submit produces the
 // createCategoryRequestMsg that the App.Update path consumes.
 func (a *App) handleCreateCatDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.createCat.dlg == nil {
-		return a, nil
-	}
-	return a.createCatDialogAction(a.createCat.dlg.HandleKey(msg))
+	return a.createCatDialogAction(a.createCat.handleKey(msg))
 }
 
 // createCatDialogAction dispatches a DialogAction for the create cat dialog, from either input path.
@@ -369,8 +416,9 @@ func (a *App) createCatDialogAction(action dialog.DialogAction) (tea.Model, tea.
 // is reset so a future open from a different surface starts in a clean
 // state.
 func (a *App) cancelCreateCatDialog() {
-	a.createCat.dlg = nil
-	switch a.createCat.origin.surface {
+	origin := a.createCat.openedFrom()
+	a.createCat.close()
+	switch origin.surface {
 	case createCatSourceTxnDialog:
 		if a.txn.dlg != nil {
 			a.txn.dlg.SetVisible(true)
@@ -387,17 +435,13 @@ func (a *App) cancelCreateCatDialog() {
 		}
 	case createCatSourceSplitDialog:
 		a.split.reshow()
-		a.createCat.origin.splitRow = -1
 	case createCatSourcePaycheckWizard:
 		a.paycheck.reshow()
-		a.createCat.origin.line = nil
 	case createCatSourceLoanWizard:
 		a.loan.reshow()
-		a.createCat.origin.loanField = -1
 	case createCatSourceTransferDialog:
 		a.transfer.reshow()
 	}
-	a.createCat.origin.surface = createCatSourceNone
 }
 
 // submitCreateCatDialog validates the sub-dialog and, on success, returns a
@@ -405,25 +449,24 @@ func (a *App) cancelCreateCatDialog() {
 // to persist the category and reopen the transaction dialog. Validation
 // failures keep the sub-dialog open with inline errors set.
 func (a *App) submitCreateCatDialog() (tea.Model, tea.Cmd) {
-	if a.createCat.dlg == nil {
-		return a, nil
-	}
-	parents := a.parentsForCreateCatDialog()
-	cmd := submitCreateCategoryDialog(a.createCat.dlg, parents)
-	if cmd == nil {
-		return a, nil
-	}
-	return a, cmd
+	return a, a.createCat.submit(a.parentsForCreateCatDialog())
 }
 
-// parentsForCreateCatDialog returns the existing top-level parent names that
-// should be presented to the create-category sub-dialog's parent combo. The
-// list is sourced from whichever transaction-entry surface opened the sub-
-// dialog; for surfaces that don't cache categories (e.g. the schedule
-// preview dialog) it falls back to a live categorySvc.List() call. An empty
-// slice is returned when no source matches and no service is available.
+// parentsForCreateCatDialog returns the existing top-level parent names for
+// the open sub-dialog's Parent combo, drawn from the surface it was opened
+// from.
 func (a *App) parentsForCreateCatDialog() []string {
-	switch a.createCat.origin.surface {
+	return a.createCatParentsFor(a.createCat.source())
+}
+
+// createCatParentsFor returns the existing top-level parent names that the
+// create-category sub-dialog's Parent combo should offer when opened from src.
+// The list comes from the surface's own loaded categories where it has them;
+// for surfaces that don't cache categories (e.g. the schedule preview dialog)
+// it falls back to a live category list. Openers call it before open, so the
+// combo is built over the same list submit resolves against.
+func (a *App) createCatParentsFor(src createCategorySource) []string {
+	switch src {
 	case createCatSourceTxnDialog:
 		if a.txn.data != nil {
 			return topLevelParentNames(a.txn.data.categories)

@@ -436,12 +436,9 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	// createCatSource must be set before parentsForCreateCatDialog so the
-	// helper picks the right parents source.
-	a.createCat.origin.surface = createCatSourceSchedTransferDialog
-	parents := a.parentsForCreateCatDialog()
+	parents := a.createCatParentsFor(createCatSourceSchedTransferDialog)
 	parent, name := splitCategoryQuery(query)
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
+	a.createCat.open(originFrom(createCatSourceSchedTransferDialog), name, parent, parents, category.TypeExpense)
 	a.sched.dlg.SetVisible(false)
 	return a, nil
 }
@@ -452,7 +449,7 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 // advances focus to Memo, re-shows the dialog, and clears the sub-dialog.
 func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cats []*category.Category) {
 	if a.sched.dlg == nil {
-		a.createCat.dlg = nil
+		a.createCat.close()
 		return
 	}
 	options, ids := buildCategoryOptions(cats)
@@ -474,5 +471,5 @@ func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cat
 		a.sched.dlg.SetFocusIndex(schedXferFieldMemo)
 		a.sched.dlg.SetVisible(true)
 	}
-	a.createCat.dlg = nil
+	a.createCat.close()
 }

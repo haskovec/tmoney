@@ -235,16 +235,13 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	// createCatSource must be set before parentsForCreateCatDialog so the
-	// helper picks the right parents source.
-	a.createCat.origin.surface = createCatSourceSchedDialog
-	parents := a.parentsForCreateCatDialog()
+	parents := a.createCatParentsFor(createCatSourceSchedDialog)
 	parent, name := splitCategoryQuery(query)
 	defaultType := category.TypeExpense
 	if len(fields) > schedFieldAmount {
 		defaultType = inferCategoryTypeFromAmount(fields[schedFieldAmount].Value)
 	}
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
+	a.createCat.open(originFrom(createCatSourceSchedDialog), name, parent, parents, defaultType)
 	a.sched.dlg.SetVisible(false)
 	return a, nil
 }
@@ -256,7 +253,7 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 // re-shows the scheduled dialog, and clears the create-category sub-dialog.
 func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*category.Category) {
 	if a.sched.dlg == nil {
-		a.createCat.dlg = nil
+		a.createCat.close()
 		return
 	}
 	options, ids := buildCategoryOptionsFor(cats, a.schedDialogIncludeValueAdjustment())
@@ -278,7 +275,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 		a.sched.dlg.SetFocusIndex(schedFieldAmount)
 		a.sched.dlg.SetVisible(true)
 	}
-	a.createCat.dlg = nil
+	a.createCat.close()
 }
 
 // relaunchAsPaycheckWizard closes the scheduled-edit dialog and

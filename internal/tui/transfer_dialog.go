@@ -861,8 +861,7 @@ func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	parent, name := splitCategoryQuery(query)
-	a.createCat.dlg = buildCreateCategoryDialog(name, parent, parents, category.TypeExpense)
-	a.createCat.origin.surface = createCatSourceTransferDialog
+	a.createCat.open(originFrom(createCatSourceTransferDialog), name, parent, parents, category.TypeExpense)
 	return a, nil
 }
 
@@ -872,7 +871,7 @@ func (a *App) openCreateCategorySubDialogForTransfer() (tea.Model, tea.Cmd) {
 // which is its own state.
 func (a *App) applyCreatedCategoryToTransfer(newCat *category.Category, cats []*category.Category) {
 	a.transfer.applyCreatedCategory(newCat, cats)
-	a.createCat.dlg = nil
+	a.createCat.close()
 }
 
 // afterTransferSave applies the state a saved transfer leaves behind: the

@@ -4,8 +4,9 @@
 **Status:** BUILT, phases 0–5 — **covers item 4a only.** 4d is built for the
 five files item 4 named — paycheck, loan, split, scheduled, scheduled-preview —
 and no `internal/tui` production file over 1,000 lines remains except the two
-4b views (see the note at the end of §4). 4b is untouched; 4c is piloted on one
-surface, not delivered. See the closeout table below.
+4b views (see the note at the end of §4). 4b is untouched; 4c is built for the five
+surfaces §4 ordered (transfer, paycheck, split, loan, create-category) and not
+for the rest. See the closeout table below.
 
 **Addresses:** `specs/code-quality-review.md` item 4 (TUI god-objects: dialog
 state on `App`, wizards past 1k–1.8k lines) — **partially**.
@@ -20,7 +21,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 |---|---|---|
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
-| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck, split and loan followed 2026-09-13 (see the notes after phase 5). Only create-category, the terminal step, remains |
+| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | **Yes, for the five surfaces §4 ordered** — transfer (phase 5), then paycheck, split, loan and create-category on 2026-09-13 (see the notes after phase 5). The other modal surfaces have not been through the motion |
 | **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck, loan, split, scheduled and scheduled-preview split 2026-09-13, each into files of 135–480 lines. Other modal surfaces were not in the table and were not split: `transfer_dialog.go` is 895 lines, `transaction_dialog.go` 750, `account_dialog.go` 507, `import_dialog.go` 505. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
@@ -1389,14 +1390,62 @@ became `loan.refreshDerived()`, two `submitLoanWizard()` calls now go through
 `loanWizardAction(dialog.DialogActionSubmit)`, and the nil-surface submit table
 calls the three surface methods with the App's deps. No assertion changed.
 
-**Next: create-category**, the last surface. Every one of its eight
-originating surfaces now reaches it through a `beginCreateCategory` /
-`applyCreatedCategory` / `reshow` triple, or the transaction dialog's
-equivalent, so the contract the note below said would have to be defined first
-has been defined one surface at a time. What remains is the router itself:
-`applyCreatedCategory`'s eight-arm switch, `cancelCreateCatDialog`'s eight-arm
-reshow, and `parentsForCreateCatDialog`. Those are the terminal step, and the
-origin handles (`line`, `splitRow`, `loanField`) are the contract's shape.
+#### Built (fifth and last surface, 2026-09-13): create-category, and what "terminal" meant
+
+`*App` 415 -> **416 methods (+1)**. Nothing left; `createCatParentsFor` arrived.
+That is the honest measure of the terminal step, and it is the right one: this
+surface's `App` methods are the router, and the router coordinates eight
+sibling surfaces and a service, so none of it could ever move. What the step
+closes is the **reach**. Before it, eight production files wrote
+`a.createCat.dlg` and `a.createCat.origin.*` directly — 30-odd sites. After it,
+none does; the guard that forbids reading a controller surface's fields
+through `App` now runs over `createCat` and passes.
+
+**Seven methods on `*createCatSurface`**, none naming `App`: `IsVisible`,
+`open`, `source`, `openedFrom`, `handleKey`, `submit`, `close`. `open` takes the
+origin, the seed text, the parent list and the default type and builds the
+dialog; every opener became one call to it. `close` resets to the **idle**
+origin rather than the bare zero value, because the positional handles use -1
+for "none" and 0 would name a real row or field. It is the one surface whose
+closed state is not its zero value, and the comment on `close` says why.
+
+**What stayed on `App`, and why each is App's:**
+
+| Method | Why |
+|---|---|
+| `handleCreateCatDialogKey`, `createCatDialogAction` | registry signatures |
+| `submitCreateCatDialog` | hands `submit` the parent list, which comes from a sibling |
+| `cancelCreateCatDialog` | re-shows one of eight sibling surfaces |
+| `applyCreatedCategory` (the router) | persists through a service, then dispatches to one of eight sibling appliers |
+| `persistCategory` | a service operation |
+| `parentsForCreateCatDialog`, `createCatParentsFor` | read `txn.data`, the transfer surface, or a service |
+
+`createCatParentsFor(src)` exists because the openers used to write the source
+field *first* so that the no-arg lookup could read it back; with the field
+private, the opener names the source and gets the list before it opens. The
+no-arg form stays for the submit path and for the two tests that call it.
+
+**No deps struct, and the guard table had to learn that.** The sub-dialog
+emits a message and touches no service, so a `createCatDeps` would have been
+an empty ritual. The row has nil deps; the two deps guards skip it and the two
+state guards run. That exposed a gap in `TestGuard_ControllerTableMatchesApp`:
+its only detector for an unlisted surface was "a `<name>Deps` struct exists",
+which a deps-free surface never trips. It now has a second detector — a
+`func (s *T) close()` declaration — and exactly the five controller surfaces
+declare one. Deleting the `createCat` row fails the guard by that route.
+
+**Test churn: zero lines.** Tests reach `createCat.dlg` and `createCat.origin`
+directly (allowed), and every App method they call stayed.
+
+**4c is complete for the five surfaces §4 ordered.** Transfer, paycheck, split,
+loan and create-category own open, submit and close; `*App` went 425 -> 416
+across the five, against the ~270 that §1 priced for a *full* 4c over all 357
+original methods. The remaining modal surfaces (transaction, scheduled,
+scheduled-transfer, schedule-preview, account, security, price, import,
+link-transfers, and the investment dialogs) have not been through the motion.
+Each is now a per-surface decision with a known cost — one deps struct, one
+table row, and a count of what touches the chrome — and the table's two
+detectors mean none can be half-done silently.
 
 ### Note — the create-category divert is the most coupled surface, not the least
 

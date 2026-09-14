@@ -445,10 +445,9 @@ func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
 	if !ok {
 		return a, nil
 	}
-	a.createCat.origin.surface = createCatSourcePaycheckWizard
-	a.createCat.origin.line = line
-	parents := a.parentsForCreateCatDialog()
-	a.createCat.dlg = buildCreateCategoryDialog("", "", parents, defaultTypeForPaycheckSection(line.Section))
+	origin := originFrom(createCatSourcePaycheckWizard)
+	origin.line = line
+	a.createCat.open(origin, "", "", a.createCatParentsFor(origin.surface), defaultTypeForPaycheckSection(line.Section))
 	return a, nil
 }
 
@@ -458,7 +457,6 @@ func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
 // clears the sub-dialog and the originating-line handle, which are its own
 // state.
 func (a *App) applyCreatedCategoryToPaycheck(newCat *category.Category, cats []*category.Category) {
-	a.paycheck.applyCreatedCategory(newCat, cats, a.createCat.origin.line)
-	a.createCat.dlg = nil
-	a.createCat.origin.line = nil
+	a.paycheck.applyCreatedCategory(newCat, cats, a.createCat.openedFrom().line)
+	a.createCat.close()
 }
