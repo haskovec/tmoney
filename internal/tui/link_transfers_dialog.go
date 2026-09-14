@@ -26,11 +26,9 @@ type linkTransfersCompletedMsg struct {
 
 // startLinkTransfers kicks off a FindUnlinked scan and returns a message
 // that opens the preview dialog.
-// The service is captured here, on the main goroutine, not inside the
-// command: a command built before a file switch must not read a.db or
-// a.services after it, and it must never build a second registry —
-// app.NewServices heals scheduled dates and investment accounts as a side
-// effect, so calling it here rewrote data the user had not asked to touch.
+// The service is copied before the closure so a later switchDatabase cannot
+// retarget a command already in flight. Never call app.NewServices here: the
+// constructor heals data as a side effect.
 func (a *App) startLinkTransfers() tea.Cmd {
 	svc := a.services.TransferLink
 	return func() tea.Msg {
@@ -49,7 +47,7 @@ func (a *App) startLinkTransfers() tea.Cmd {
 // the scan so we link against current state (the user may have edited
 // transactions in between preview and confirm).
 func (a *App) runLinkTransfersExecute() tea.Cmd {
-	svc := a.services.TransferLink // captured on the main goroutine; see startLinkTransfers
+	svc := a.services.TransferLink
 	return func() tea.Msg {
 		if svc == nil {
 			return errMsg{err: fmt.Errorf("services not available")}

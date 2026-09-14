@@ -2,6 +2,8 @@ package tui
 
 import (
 	"go/ast"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -102,13 +104,26 @@ func TestLinkTransfers_UsesTheServicesAppHolds(t *testing.T) {
 // TestImport_UsesTheServicesAppHolds covers the other two commands the same
 // way: a bare App gets an error, and a real one gets as far as the file.
 func TestImport_UsesTheServicesAppHolds(t *testing.T) {
-	bare := &App{}
-	state := &importDialogState{filePath: t.TempDir() + "/missing.csv", format: "csv"}
-	if _, ok := bare.runImportPreview(state)().(errMsg); !ok {
-		t.Error("runImportPreview on an App with no services must return errMsg")
+	// The file must exist: the preview opens it before it assembles the
+	// services, and a missing file would fail there without proving anything
+	// about the services path.
+	path := filepath.Join(t.TempDir(), "empty.csv")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := bare.runImportExecute(&importDialogState{})().(errMsg); !ok {
-		t.Error("runImportExecute on an App with no services must return errMsg")
+	bare := &App{}
+	for name, cmd := range map[string]tea.Cmd{
+		"runImportPreview": bare.runImportPreview(&importDialogState{filePath: path, format: "csv"}),
+		"runImportExecute": bare.runImportExecute(&importDialogState{}),
+	} {
+		msg, ok := cmd().(errMsg)
+		if !ok {
+			t.Errorf("%s on an App with no services returned %T, want errMsg", name, cmd())
+			continue
+		}
+		if msg.err == nil || msg.err.Error() != "services not available" {
+			t.Errorf("%s error = %v, want \"services not available\"", name, msg.err)
+		}
 	}
 	if _, err := newImportService(NewApp(dbtest.New(t), &config.Config{}).services); err != nil {
 		t.Errorf("a real App's services must assemble the import pipeline: %v", err)
