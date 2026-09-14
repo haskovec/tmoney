@@ -336,9 +336,8 @@ func (a *App) handleSplitDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // splitDialogAction dispatches a DialogAction for the split dialog. Both the
-// keyboard and the mouse path call it, so clicking a button is exactly
-// equivalent to the keyboard action -- the rule specs/tui.md states and the
-// two hand-kept switches used to break.
+// key path and the mouse path call it, so a click cannot drift from a
+// keypress (specs/tui.md).
 //
 // AddNew is the one arm that stays on App: it writes createCat, which is
 // another surface's state, and a surface must not reach into a sibling. The
@@ -360,11 +359,10 @@ func (a *App) splitDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd)
 	return a, nil
 }
 
-// handleSplitDialogMouse routes a mouse event through the split editor and
-// translates the resulting action, mirroring handleSplitDialogKey. Without
-// this the editor was keyboard-only: handleDialogMouse swallowed every click,
-// so the Save button did not respond to the mouse even though SplitDialog has
-// hit testing for it.
+// handleSplitDialogMouse is the registry's onMouse override for the split
+// editor. The editor is not a dialog.Dialog, so the default mouse walk cannot
+// hit-test its rows; the surface maps the click itself and the result goes
+// through the same dispatcher as the keyboard.
 func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a.splitDialogAction(a.split.handleMouse(msg, a.styles, a.width, a.height))
 }
