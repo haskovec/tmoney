@@ -1449,7 +1449,10 @@ detectors mean none can be half-done silently.
 
 ### Note — the create-category divert is the most coupled surface, not the least
 
-Worth stating as a number, because its small own-file footprint is misleading:
+**As measured when this design was written (2026-08-08).** It is kept because
+it is why create-category was ordered last, and because the Built note above
+is the record of how the numbers changed. Its small own-file footprint was
+misleading:
 
 | File | Openers + appliers |
 |---|---|
@@ -1462,28 +1465,26 @@ Worth stating as a number, because its small own-file footprint is misleading:
 | `loan_wizard.go` | 2 |
 | `transaction_dialog.go` | 1 (+ the router) |
 
-**16 functions across 8 files**, plus the 8-arm router at
-`create_category_dialog.go:271-308`. Counting the router and its helpers, the
-whole cluster is **22 `*App` methods across 9 files**.
+**16 functions across 8 files**, plus the 8-arm router. Counting the router
+and its helpers, the whole cluster was **22 `*App` methods across 9 files**.
+Two details made it worse than the file layout suggested:
 
-Two details make it worse than the file layout suggests:
-
-- **The router does not live in its own file.** `handleCreateCatDialogKey`,
-  `cancelCreateCatDialog`, `submitCreateCatDialog` and
-  `parentsForCreateCatDialog` are all in **`transaction_dialog.go:533-633`**,
-  not in `create_category_dialog.go`. So the 308-line file holds 2 of the
-  cluster's 22 methods. Anyone sizing this surface by its filename will be
-  wrong by an order of magnitude.
-- **Three of its five fields are typed handles into other surfaces' guts.**
-  `createCatPaycheckLine` is a `*PaycheckLine`; `createCatSplitRow` indexes
-  `splitDialog.rows`; `createCatLoanField` indexes `loanWizard.Fields()`. It is
-  not a surface with dependencies — it is a surface that reaches inside three
-  others.
+- **The router did not live in its own file.** The key handler, cancel,
+  submit and the parent lookup were in `transaction_dialog.go`, so the
+  create-category file held 2 of the cluster's 22 methods. *Fixed in the 4d
+  pull request (#32): all five router methods are in
+  `create_category_dialog.go`.*
+- **Three of its five fields were typed handles into other surfaces' guts.**
+  A `*PaycheckLine`, a split-editor row index, and a loan-wizard field index.
+  *Still true by design, and now the contract's shape: they are
+  `createCatOrigin.line`, `.splitRow` and `.loanField`, set by the originating
+  surface's opener through `open` and handed back to its applier through
+  `openedFrom`. The surface reaches inside no one; each originator reaches into
+  its own state with the handle it recorded.*
 
 Anything that touches this touches every transaction-entry surface at once.
-Last in phase 3; never a pilot. Moving the four misfiled router methods into
-`create_category_dialog.go` is a free, compiler-proven first step, and worth
-doing whenever the file is next open.
+That is why it was last in phase 3, never the pilot, and the fifth of five in
+4c — and why, when its turn came, nothing was left to move but the reach.
 
 ### Note — surface **file** size is 4d, and it is the cheap one
 

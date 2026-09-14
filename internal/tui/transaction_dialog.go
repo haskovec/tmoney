@@ -517,10 +517,7 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 	catField.AddNewTriggered = false
 	catField.Query = ""
 
-	var parents []string
-	if a.txn.data != nil {
-		parents = topLevelParentNames(a.txn.data.categories)
-	}
+	parents := a.createCatParentsFor(createCatSourceTxnDialog)
 	parent, name := splitCategoryQuery(query)
 	defaultType := category.TypeExpense
 	if len(fields) > 3 {

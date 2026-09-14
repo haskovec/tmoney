@@ -115,9 +115,12 @@ var controllerSurfaces = []controllerSurface{
 }
 
 // TestGuard_ControllerTableMatchesApp keeps the table honest from the App side:
-// every row names a real App field of the row's surface type, and every App
-// field whose type has a matching <name>Deps struct is in the table. Without
-// this, a third controller surface could be added and never guarded.
+// every row names a real App field of the row's surface type, and every
+// controller surface is in the table. A surface is a controller when it has a
+// <name>Deps struct OR declares a no-arg close() — the second detector exists
+// because a surface that needs no service (createCatSurface) has no deps
+// struct and would otherwise never trip the check. Without this, a surface
+// could be added and never guarded.
 func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 	appT := reflect.TypeFor[App]()
 	for _, row := range controllerSurfaces {

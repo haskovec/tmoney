@@ -41,7 +41,8 @@ func (s *createCatSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible
 // open records where the divert came from and builds the sub-dialog over it.
 // name and parent seed the fields from the typed query the originating combo
 // gave up; parents is the Parent combo's option list; defaultType preselects
-// the Type radio. The originating surface has already hidden itself.
+// the Type radio. Hiding the originating surface is the opener's job, before
+// or after this call; open only records and builds.
 func (s *createCatSurface) open(origin createCatOrigin, name, parent string, parents []string, defaultType category.Type) {
 	s.origin = origin
 	s.dlg = buildCreateCategoryDialog(name, parent, parents, defaultType)
@@ -463,8 +464,10 @@ func (a *App) parentsForCreateCatDialog() []string {
 // create-category sub-dialog's Parent combo should offer when opened from src.
 // The list comes from the surface's own loaded categories where it has them;
 // for surfaces that don't cache categories (e.g. the schedule preview dialog)
-// it falls back to a live category list. Openers call it before open, so the
-// combo is built over the same list submit resolves against.
+// it falls back to a live category list. The dialog-backed openers call it
+// before open, so the combo is built over the same list submit resolves
+// against; the transfer opener takes its list from the transfer surface, which
+// is the same source without the live fallback.
 func (a *App) createCatParentsFor(src createCategorySource) []string {
 	switch src {
 	case createCatSourceTxnDialog:
