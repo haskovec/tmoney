@@ -386,9 +386,7 @@ func (a *App) cancelCreateCatDialog() {
 			}
 		}
 	case createCatSourceSplitDialog:
-		if a.split.editor != nil {
-			a.split.editor.SetVisible(true)
-		}
+		a.split.reshow()
 		a.createCat.origin.splitRow = -1
 	case createCatSourcePaycheckWizard:
 		a.paycheck.reshow()

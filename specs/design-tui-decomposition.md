@@ -20,7 +20,7 @@ them is how this work would acquire a permanent, wrong TODO. Split explicitly:
 |---|---|---|
 | **4a** | The modal layer has no single concept: 81 loose fields, four hand-maintained lists, two invisible dialogs | **Yes** — phases 0–4 |
 | **4b** | View-layer god files (`price_view.go` 1,116, `investment_register_view.go` 1,032) | No — separate design (§8) |
-| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck followed 2026-09-13 (see the note after phase 5). Loan, split and create-category remain |
+| **4c** | Controller boundary: `Open`/`Submit`/`Close` move off `*App` onto the surface type | Phase 5 piloted transfer; paycheck and split followed 2026-09-13 (see the notes after phase 5). Loan and create-category remain |
 | **4d** | Surface **file** size: `paycheck_wizard.go` 1,886, `loan_wizard.go` 1,288, `split_dialog.go` 1,172 | **Yes** — paycheck, loan, split, scheduled and scheduled-preview split 2026-09-13, each into files of 135–480 lines. Other modal surfaces were not in the table and were not split: `transfer_dialog.go` is 895 lines, `transaction_dialog.go` 750, `account_dialog.go` 507, `import_dialog.go` 505. The note at the end of §4 has the numbers |
 
 **4d is the slice that actually closes the review's line table, and it does not
@@ -1305,11 +1305,55 @@ captured service pointer in the binding, a deps struct with no table row, and an
 through `paycheckWizardAction(dialog.DialogActionSubmit)`, the same path the
 registry uses. No test assertion changed.
 
-**Next: loan**, per §4's ordering. Its `*App` glue is already in
-`loan_wizard_app.go` and `loan_wizard_submit.go`, with two derived-state methods
-in `loan_wizard_derive.go` (the 4d note names them). It touches the status bar
-in `afterLoanWizardSave` and the scheduled dialog in `relaunchAsLoanWizard`, so
-unlike transfer and paycheck it will leave more than the divert on `App`.
+~~**Next: loan**, per §4's ordering.~~ **Split went before loan, on measurement**:
+seven `*App` methods touching only the undo manager and the divert, against
+loan's seventeen touching the scheduled dialog and the status bar. §4's order
+was an estimate; the two later surfaces were measured before choosing.
+
+#### Built (third surface, 2026-09-13): split, and the first save a parent keeps
+
+`*App` 423 -> **422 methods (-1)**. Two left (`closeSplitDialog`,
+`submitSplitDialog`), one arrived (`splitDeps`). **Thirteen methods hang off
+`*splitSurface`**, none naming `App`: `IsVisible`, `Render`, `openForTransaction`,
+`openForSchedule`, `editsSchedule`, `handleKey`, `handleMouse`, `close`,
+`submit`, `takeScheduledSplits`, `beginCreateCategory`, `applyCreatedCategory`,
+`reshow`. Six stayed on `App`: the binding, the three registry dispatchers
+(key, action, mouse — the mouse one now only supplies styles and screen size;
+the coordinate transform moved onto the surface), and the two create-category
+methods.
+
+**Two parents open this surface, and one of them keeps its save.** The
+transaction dialog and the scheduled dialog both used to build the editor by
+hand, in two near-identical blocks that set `a.split.editor` and one of two
+pending fields. Both now call an `openFor*` method with a `splitOpen` value —
+the amount, the pickers, the transfer targets, and the seed rows when editing
+— so the two openers cannot drift. The scheduled save stays where it was:
+`submitScheduledSplitDialog` is the scheduled dialog's method, because it may
+show a demotion confirm before saving and then saves a *schedule*. It used to
+read three split fields directly; it now calls `takeScheduledSplits`, which
+validates, hands back the pending schedule and the built rows, and closes the
+surface. `splitDialogAction`'s Submit arm therefore has two branches, and the
+scheduled one stays on `App` for the same reason AddNew does: it is another
+surface's work.
+
+**Guards: one table row, four mutations.** Adding the row was the whole cost on
+the test side. Verified: a production read of `a.split.editor`, a split method
+taking `*App`, a captured pointer in `splitDeps`, and deleting the row itself
+each fail exactly one named test. The last is the new guard from the paycheck
+round doing its job on the first surface after it.
+
+**Test churn: zero lines.** Tests reach `app.split.editor` directly (allowed;
+tests are outside the reach guard) and call `handleSplitDialogKey`,
+`submitScheduledSplitDialog` and `openCreateCategorySubDialogFromSplit`, all of
+which stayed on `App`.
+
+**Next: loan**, now the only surface left before create-category. Its `*App`
+glue is in `loan_wizard_app.go` and `loan_wizard_submit.go`, with two
+derived-state methods in `loan_wizard_derive.go` (the 4d note names them). It
+reads the scheduled dialog's data in nine places for the Edit-as-loan relaunch
+and posts a toast and four view reloads after a save, so it will leave more on
+`App` than any surface so far; the measurement of what stays is the result to
+get from it.
 
 ### Note — the create-category divert is the most coupled surface, not the least
 

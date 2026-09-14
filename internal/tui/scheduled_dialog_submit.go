@@ -169,17 +169,21 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		categoryIDs := a.sched.categoryIDs
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.sched.data.accounts)
 
+		open := splitOpen{
+			amount:          amount.Money,
+			categoryOptions: categoryOptions,
+			categoryIDs:     categoryIDs,
+			accountOptions:  accountOptions,
+			accountIDs:      accountIDs,
+			accountID:       accountID,
+		}
 		// Seed the split dialog from existing children when editing a
 		// schedule that already carries a multi-line template.
-		seedSplits := transactionSplitsFromScheduled(existingSched)
-		a.closeScheduledDialog()
-		a.split.pendingScheduled = pending
-		if mode == scheduledDialogModeEdit && len(seedSplits) > 0 {
-			a.split.editor = NewSplitDialogFromExisting(amount.Money, categoryOptions, categoryIDs, seedSplits)
-		} else {
-			a.split.editor = NewSplitDialog(amount.Money, categoryOptions, categoryIDs)
+		if mode == scheduledDialogModeEdit {
+			open.seedSplits = transactionSplitsFromScheduled(existingSched)
 		}
-		a.split.editor.SetTransferTargets(accountOptions, accountIDs, accountID)
+		a.closeScheduledDialog()
+		a.split.openForSchedule(pending, open)
 		return a, nil
 	}
 
@@ -326,17 +330,10 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 // this handler translates them to scheduled.Split children and dispatches
 // the appropriate undo command.
 func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
-	if a.split.editor == nil || a.split.pendingScheduled == nil {
+	pending, splits, ok := a.split.takeScheduledSplits()
+	if !ok {
 		return a, nil
 	}
-
-	splits, err := a.split.editor.buildSplits()
-	if err != nil {
-		a.split.editor.errorMsg = err.Error()
-		return a, nil
-	}
-
-	pending := a.split.pendingScheduled
 	children := scheduledSplitsFromTransaction(splits)
 	// Demotion guard: saving a loan-shaped schedule through the generic split
 	// editor strips its loan_section tags, silently converting it to a generic
@@ -352,7 +349,6 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 	demotesPaycheck := pending.mode == scheduledDialogModeEdit && pending.existing != nil &&
 		looksLikePaycheck(pending.existing) &&
 		!looksLikePaycheck(&scheduled.Transaction{Splits: children})
-	a.closeSplitDialog()
 
 	save := func() tea.Msg {
 		var payeeID types.ID
