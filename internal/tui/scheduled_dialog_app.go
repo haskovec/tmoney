@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
+	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -313,4 +314,59 @@ func (a *App) relaunchAsPaycheckWizard() (tea.Model, tea.Cmd) {
 	a.closeScheduledDialog()
 	a.paycheck.openFromSchedule(st, accounts, payees, categoryOptions, categoryIDs)
 	return a, nil
+}
+
+// scheduleWantsLoanEdit reports whether the Edit Series dialog should offer
+// "Edit as loan →" for st (and route the alternate action to the loan wizard):
+// loan-shaped, or loan-adoptable and not paycheck-shaped. Loan-shaped takes
+// precedence; loan-shaped and paycheck-shaped are mutually exclusive (their
+// split tags cannot coexist), so this only guards the rare untagged-adoptable
+// schedule that also passes the paycheck heuristic.
+func (a *App) scheduleWantsLoanEdit(st *scheduled.Transaction) bool {
+	if a.services.Scheduled == nil || st == nil {
+		return false
+	}
+	if a.services.Scheduled.IsLoanShaped(st) {
+		return true
+	}
+	return a.services.Scheduled.IsLoanAdoptable(st) && !looksLikePaycheck(st)
+}
+
+// maybeAddEditAsLoanButton replaces the Edit Series dialog's buttons with an
+// "Edit as loan →" affordance (mirroring "Edit as paycheck →") when st wants a
+// loan edit. Called after buildEditScheduledDialog, so it overrides that
+// function's default Save/Cancel set.
+func (a *App) maybeAddEditAsLoanButton(st *scheduled.Transaction) {
+	if a.sched.dlg == nil || !a.scheduleWantsLoanEdit(st) {
+		return
+	}
+	a.sched.dlg.SetButtons([]dialog.DialogButton{
+		{Label: "Save", Primary: true},
+		{Label: "Cancel"},
+		{Label: "Edit as loan →", Action: dialog.DialogActionAlternate},
+	})
+}
+
+// relaunchScheduledAlternate dispatches the Edit Series dialog's alternate
+// action to the loan wizard for a loan-shaped / loan-adoptable schedule, else
+// to the paycheck wizard (its original owner).
+func (a *App) relaunchScheduledAlternate() (tea.Model, tea.Cmd) {
+	if a.sched.data != nil && a.scheduleWantsLoanEdit(a.sched.data.scheduled) {
+		return a.relaunchAsLoanWizard()
+	}
+	return a.relaunchAsPaycheckWizard()
+}
+
+// relaunchAsLoanWizard closes the scheduled-edit dialog and opens the loan
+// wizard prefilled from the in-flight loan-shaped / loan-adoptable schedule.
+func (a *App) relaunchAsLoanWizard() (tea.Model, tea.Cmd) {
+	if a.sched.dlg == nil || a.sched.data == nil {
+		return a, nil
+	}
+	if a.sched.data.mode != scheduledDialogModeEdit || a.sched.data.scheduled == nil {
+		return a, nil
+	}
+	st := a.sched.data.scheduled
+	a.closeScheduledDialog()
+	return a, a.loan.openForEdit(a.loanDeps(), st)
 }

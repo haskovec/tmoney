@@ -12,14 +12,14 @@ import (
 // Derived state: which fields are visible, and the payment estimate the wizard
 // recomputes from the principal, rate and term fields as the user types.
 
-// refreshLoanWizardDerived recomputes conditional field visibility and the
-// payment prefill. Called after every key/mouse edit.
-func (a *App) refreshLoanWizardDerived() {
-	if a.loan.dlg == nil || a.loan.state == nil {
+// refreshDerived recomputes conditional field visibility and the payment
+// prefill. Called after every key/mouse edit.
+func (s *loanSurface) refreshDerived() {
+	if s.dlg == nil || s.state == nil {
 		return
 	}
-	updateLoanWizardVisibility(a.loan.dlg)
-	a.updateLoanPaymentPrefill()
+	updateLoanWizardVisibility(s.dlg)
+	s.updatePaymentPrefill()
 }
 
 // updateLoanWizardVisibility toggles the Hidden state of conditional fields:
@@ -67,12 +67,12 @@ func updateLoanWizardVisibility(d *dialog.Dialog) {
 	}
 }
 
-// updateLoanPaymentPrefill refreshes the Payment field from the amortization
+// updatePaymentPrefill refreshes the Payment field from the amortization
 // formula while the field is untouched (empty, or still equal to the last
 // auto-computed value). Once the user types a different value the field is
 // considered edited and the prefill stops overwriting it.
-func (a *App) updateLoanPaymentPrefill() {
-	d, st := a.loan.dlg, a.loan.state
+func (s *loanSurface) updatePaymentPrefill() {
+	d, st := s.dlg, s.state
 	fields := d.Fields()
 	if len(fields) < loanFieldFieldsCount {
 		return

@@ -141,8 +141,8 @@ func (env *loanWizardEnv) selectOption(t *testing.T, idx int, name string) {
 // failure that leaves the wizard open).
 func (env *loanWizardEnv) submit(t *testing.T) any {
 	t.Helper()
-	env.app.refreshLoanWizardDerived()
-	_, cmd := env.app.submitLoanWizard()
+	env.app.loan.refreshDerived()
+	_, cmd := env.app.loanWizardAction(dialog.DialogActionSubmit)
 	if cmd == nil {
 		return nil
 	}
@@ -324,7 +324,7 @@ func TestLoanWizard_ZeroRateOmitsInterestLine(t *testing.T) {
 	env.selectOption(t, loanFieldFromAccount, "Checking")
 
 	// Interest category field is hidden at 0% APR.
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 	if !env.app.loan.dlg.Fields()[loanFieldInterestCategory].Hidden {
 		t.Error("interest category field should be hidden at 0% APR")
 	}
@@ -352,7 +352,7 @@ func TestLoanWizard_PaymentPrefill(t *testing.T) {
 	env.set(loanFieldOrigPrincipal, "380000")
 	env.set(loanFieldAPR, "6.5")
 	env.set(loanFieldTermMonths, "360")
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 
 	payment := env.app.loan.dlg.Fields()[loanFieldPayment]
 	if payment.Value != "2401.86" {
@@ -362,7 +362,7 @@ func TestLoanWizard_PaymentPrefill(t *testing.T) {
 	// A user edit sticks: further prefill recomputes do not overwrite it.
 	payment.Value = "2400.00"
 	env.set(loanFieldTermMonths, "180") // would recompute to a different value
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 	if payment.Value != "2400.00" {
 		t.Errorf("payment overwrote a user edit: %q, want 2400.00", payment.Value)
 	}
@@ -903,7 +903,7 @@ func TestLoanWizard_CreateCategoryPreservesOtherSelectionsByID(t *testing.T) {
 func TestLoanWizard_CreateInterestCategoryFromInterestCombo(t *testing.T) {
 	env := newLoanWizardEnv(t)
 	env.set(loanFieldAPR, "6.5") // interest field visible
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 
 	env.openAddNewFromLoan(t, loanFieldInterestCategory, "Mortgage Interest")
 	if err := env.app.applyCreatedCategory(createCategoryRequest{
@@ -997,7 +997,7 @@ func TestLoanWizard_EditPrefilledComboSurvivesTab(t *testing.T) {
 func TestLoanWizard_CreateLoanInterestFromEscrowKeepsDefault(t *testing.T) {
 	env := newLoanWizardEnv(t)
 	env.set(loanFieldAPR, "6.5") // interest field visible
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 
 	if env.selectedLabel(loanFieldInterestCategory) != loanInterestDefaultDisplay {
 		t.Fatalf("interest should start on the synthetic default, got %q", env.selectedLabel(loanFieldInterestCategory))
@@ -1255,7 +1255,7 @@ func TestLoanWizard_PaymentPrefill_AnchorsCursor(t *testing.T) {
 	env.set(loanFieldOrigPrincipal, "380000")
 	env.set(loanFieldAPR, "6.5")
 	env.set(loanFieldTermMonths, "360")
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 
 	payment := env.app.loan.dlg.Fields()[loanFieldPayment]
 	if payment.Value == "" {
@@ -1267,7 +1267,7 @@ func TestLoanWizard_PaymentPrefill_AnchorsCursor(t *testing.T) {
 	// field against the last computed string, and the anchor must not disturb it.
 	payment.DeleteBack()
 	edited := payment.Value
-	env.app.refreshLoanWizardDerived()
+	env.app.loan.refreshDerived()
 	if got := env.app.loan.dlg.Fields()[loanFieldPayment].Value; got != edited {
 		t.Errorf("refresh overwrote the edited payment: got %q, want %q", got, edited)
 	}
