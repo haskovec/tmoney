@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -27,10 +26,16 @@ type linkTransfersCompletedMsg struct {
 
 // startLinkTransfers kicks off a FindUnlinked scan and returns a message
 // that opens the preview dialog.
+// The service is copied before the closure so a later switchDatabase cannot
+// retarget a command already in flight. Never call app.NewServices here: the
+// constructor heals data as a side effect.
 func (a *App) startLinkTransfers() tea.Cmd {
+	svc := a.services.TransferLink
 	return func() tea.Msg {
-		svc := app.NewServices(a.db)
-		res, err := svc.TransferLink.FindUnlinked(transferlink.DefaultMaxDateDiffDays)
+		if svc == nil {
+			return errMsg{err: fmt.Errorf("services not available")}
+		}
+		res, err := svc.FindUnlinked(transferlink.DefaultMaxDateDiffDays)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("scan failed: %w", err)}
 		}
@@ -42,13 +47,16 @@ func (a *App) startLinkTransfers() tea.Cmd {
 // the scan so we link against current state (the user may have edited
 // transactions in between preview and confirm).
 func (a *App) runLinkTransfersExecute() tea.Cmd {
+	svc := a.services.TransferLink
 	return func() tea.Msg {
-		svc := app.NewServices(a.db)
-		res, err := svc.TransferLink.FindUnlinked(transferlink.DefaultMaxDateDiffDays)
+		if svc == nil {
+			return errMsg{err: fmt.Errorf("services not available")}
+		}
+		res, err := svc.FindUnlinked(transferlink.DefaultMaxDateDiffDays)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("scan failed: %w", err)}
 		}
-		linked, errs := svc.TransferLink.Link(res.Clean)
+		linked, errs := svc.Link(res.Clean)
 		return linkTransfersCompletedMsg{
 			linked:    linked,
 			ambiguous: len(res.Ambiguous),

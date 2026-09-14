@@ -218,6 +218,12 @@ The heal-on-open re-run and the `a.db` read are the real defects. Whoever
 centralises `HealOnOpen` should fix all four in the same pass, and the `a.db`
 read should become a synchronous capture regardless.
 
+**Fixed 2026-09-13 in the TUI (`fix/tui-no-second-services`).** The four
+commands use `a.services`, captured on the main goroutine before the closure;
+no second registry is built and the capture is synchronous. A guard test in
+`internal/tui` allows `app.NewServices` only in `newTUIServices`. The
+constructor side effect itself (6, above) is still open.
+
 ---
 
 ## 7. Secondary (still real) maintainability debt

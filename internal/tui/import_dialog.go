@@ -399,7 +399,11 @@ func (a *App) submitImportOptions() (tea.Model, tea.Cmd) {
 // user hasn't already picked one (state.sourceAccount empty), it returns
 // importNeedsSourceMsg so the picker dialog opens. Once the user has
 // chosen, this re-runs filtered to that source.
+// The services are copied before the closure so a later switchDatabase
+// cannot retarget a command already in flight. Never call app.NewServices
+// here: the constructor heals data as a side effect.
 func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
+	svc := a.services
 	return func() tea.Msg {
 		format := state.format
 		if format == "" {
@@ -417,13 +421,10 @@ func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 		}
 		defer f.Close()
 
-		svc := app.NewServices(a.db)
-		importSvc := imexport.NewImportService(
-			imexport.NewServiceCategoryResolver(svc.Category),
-			imexport.NewServicePayeeResolver(svc.Payee),
-			imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
-			imexport.NewServiceTransactionCreator(svc.Transaction),
-		)
+		importSvc, err := newImportService(svc)
+		if err != nil {
+			return errMsg{err: err}
+		}
 
 		parseResult, err := importSvc.Parse(f, format)
 		if err != nil {
@@ -468,14 +469,12 @@ func (a *App) submitImportConfirm() (tea.Model, tea.Cmd) {
 
 // runImportExecute applies the import to the database.
 func (a *App) runImportExecute(state *importDialogState) tea.Cmd {
+	svc := a.services
 	return func() tea.Msg {
-		svc := app.NewServices(a.db)
-		importSvc := imexport.NewImportService(
-			imexport.NewServiceCategoryResolver(svc.Category),
-			imexport.NewServicePayeeResolver(svc.Payee),
-			imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
-			imexport.NewServiceTransactionCreator(svc.Transaction),
-		)
+		importSvc, err := newImportService(svc)
+		if err != nil {
+			return errMsg{err: err}
+		}
 		if err := importSvc.Execute(state.preview, state.accountID); err != nil {
 			return errMsg{err: fmt.Errorf("import execution failed: %w", err)}
 		}
@@ -502,4 +501,18 @@ func (a *App) applyImportResult(msg importCompletedMsg) tea.Cmd {
 			len(msg.errors), strings.Join(msg.errors, "\n"))
 	}
 	return a.reloadAfterBulkWrite()
+}
+
+// newImportService assembles the import pipeline over the services App holds,
+// and reports an error rather than building a registry when they are absent.
+func newImportService(svc app.Services) (*imexport.ImportService, error) {
+	if svc.Category == nil || svc.Payee == nil || svc.Transaction == nil || svc.TransactionRepo == nil || svc.PayeeRepo == nil {
+		return nil, fmt.Errorf("services not available")
+	}
+	return imexport.NewImportService(
+		imexport.NewServiceCategoryResolver(svc.Category),
+		imexport.NewServicePayeeResolver(svc.Payee),
+		imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
+		imexport.NewServiceTransactionCreator(svc.Transaction),
+	), nil
 }
