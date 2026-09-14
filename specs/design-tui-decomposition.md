@@ -115,7 +115,7 @@ and it must not be read into the status line. Phases 0–5 claim none of it.
   reason, with a blast radius roughly 50× larger here.
 - **No view-layer work.** `price_view.go` (1,116 lines, 33 `App` methods) and
   `investment_register_view.go` (1,032 / 20) are god files, but they are feature
-  slices, not modal state. A `View` interface would also collapse the 12-arm
+  slices, not modal state. A `View` interface would also collapse the 11-arm
   focus switch in `switchView` (`app_menu.go:296`). That is a separate design.
   Mixing the two produces one change nobody can review.
 - **No bubbletea sub-models.** A controller must not implement `tea.Model`.
@@ -1926,7 +1926,7 @@ constraint on phase size.
   surface phase 3 is mid-conversion on.
 - **The view layer (4b).** Out of scope, and a real second design. `price_view.go`
   and `investment_register_view.go` are the two files that most deserve it, and
-  `switchView`'s 12-arm focus switch is the seam. **Written 2026-09-14:
+  `switchView`'s 11-arm focus switch is the seam. **Written 2026-09-14:
   `specs/design-tui-view-layer.md`**, status PROPOSED. It measures 98 per-view
   switch arms across 12 switches, 41 loose view fields, and one view with no
   help section, and proposes a view table, per-view state structs, and the 4d

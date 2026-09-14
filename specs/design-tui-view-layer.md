@@ -36,7 +36,7 @@ Target numbers at the end of phase 3:
 
 | Measure | Now | Target |
 |---|---|---|
-| `App` fields | 91 | ~55 |
+| `App` fields | 91 | ~57 |
 | Methods on `*App` | 416 | **~416 — unchanged, and stated honestly** — see below |
 | Copies of the view list | 7 full + 2 subsets | 1 |
 | Views with no help section | 1 | 0 |
@@ -101,9 +101,10 @@ here by the view that owns them and nowhere in the code:
 | Reports | `reports` |
 | Reconciliation | `reconciliation`, `reconciliationTable` |
 | Securities | `securityView`, `securityTable`, `pendingSecuritySelectID` |
-| Prices | `priceView`, `priceTable`, `priceListTable`, `priceListClicks`, `refreshingPrices`, `refreshNotifID` |
-| Corporate actions | `corporateActionView`, `corporateActionViewTable`, `corporateActionDetail` |
+| Prices | `priceView`, `priceTable`, `priceListTable`, `priceListClicks` |
+| Corporate actions | `corporateActionView`, `corporateActionViewTable`, `corporateActionDetail`, `corporateActionViewFilter`, `corporateActionViewFilterEditing` |
 | Amortization | `amortizationData`, `amortizationTable` |
+| Shared chrome that looks like view state | `refreshingPrices`, `refreshNotifID` — the bulk price refresh's in-flight guard (`refresh_prices.go`), started by `u` on **both** the Securities and Prices views |
 | Navigation | `currentView`, `previousView` |
 
 The shape is the one the earlier design found for dialogs: a `*xData` pointer,
@@ -112,6 +113,13 @@ cost. `investmentFilterQuery` and `investmentFilterLockedSec` are only
 meaningful while `currentView == ViewInvestmentRegister`, and `switchView`
 has a special case to clear them on the way out (`app_menu.go:300`). Nothing
 says they belong to that view except their prefix.
+
+Not every prefixed field is private to its view, and the table says so where
+it matters. `corporateActionViewFilter` is written by the Securities view (a
+ticker drill-in, `security_view.go:371`) and by the menu (`app_menu.go:136`)
+before the Corporate Actions load reads it. The two refresh fields are written
+from two views. Phase 2 treats both as cross-surface handoffs, not as one
+view's state.
 
 ### 1.2 The same list is written seven times, and a subset twice more
 
@@ -262,26 +270,47 @@ type viewEntry struct {
 	reload func(*App) []tea.Cmd
 }
 
-func (a *App) views() []viewEntry
-func (a *App) view(v View) viewEntry
+// allViews is the one list. Package-level, filled with method values exactly
+// as modals() fills onKey — (*App).renderDashboard is a func(*App) string —
+// so it allocates nothing and needs no App to read. views() exists so the
+// guards and the lookup have one accessor to call.
+var allViews = []viewEntry{ … }
+
+func views() []viewEntry { return allViews }
+
+// viewFor looks an entry up by id, never by slice index: View(999) must miss
+// cleanly, because View.String() is pinned to return "Unknown" for it.
+func viewFor(v View) (viewEntry, bool)
 ```
 
-Then each of the seven switches becomes one line:
+Then each of the seven switches becomes a lookup and one call, with the
+existing fallbacks kept:
 
 ```go
+func (v View) String() string {
+	if e, ok := viewFor(v); ok && e.name != "" {
+		return e.name
+	}
+	return "Unknown" // TestViewString pins this for View(999)
+}
+
 func (a *App) renderContent(height int) string {
-	e := a.view(a.currentView)
-	viewContent := e.render(a)
+	viewContent := "Unknown view"
+	e, ok := viewFor(a.currentView)
+	if ok {
+		viewContent = e.render(a)
+	}
 	if e.fullScreen || a.styles.SidebarWidth() == 0 { … }
 	…
 }
 ```
 
-and `handleKeyPress`, `getKeyHints`, `viewShortcutSections`, `activeTable`,
-`reloadCurrentView` and `switchView`'s focus block read the same entry. The
-five feature switches (§1.2) stay as they are; they are not lists of views,
-they are lists of *which* views have a feature, and a boolean per entry for
-each would be the generic component framework the earlier design refused.
+and `handleKeyPress`'s view switch, `getKeyHints`, `viewShortcutSections`,
+`activeTable`, `reloadCurrentView` and `switchView`'s focus block read the
+same entry. The five feature switches (§1.2) stay as they are; they are not
+lists of views, they are lists of *which* views have a feature, and a boolean
+per entry for each would be the generic component framework the earlier
+design refused.
 
 **The funcs take `*App`, exactly as `modalEntry.onKey` does.** That is not a
 retreat from the controller idea; it is §1.5. Whether a given view's `render`
@@ -303,17 +332,18 @@ type priceViewState struct {
 	table     *widget.Table // detail mode
 	listTable *widget.Table // list mode
 	clicks    *widget.ClickTracker
-	refreshing    bool
-	refreshNotifID int
 }
 ```
 
 and `a.priceView` becomes `a.prices.data`, `a.priceTable` becomes
-`a.prices.table`, and so on for the eleven views. `App` sheds ~36 fields
-(`currentView` and `previousView` stay; the three `pending*SelectID` fields
-are discussed in the phase 2 notes). The `switchView` special case for the
-investment filter becomes the view's own `leave()` hook on its entry, which
-is the honest home for "what to forget on the way out."
+`a.prices.table`, and so on for the eleven views. `App` sheds ~34 fields.
+What stays on `App` is what more than one surface writes: `currentView` and
+`previousView`; the two register `pending*SelectID` handoffs; the bulk-refresh
+flag and its notification id, which two views start; and the corporate-action
+ticker filter, which the Securities view and the menu write (the phase 2
+notes take each in turn). The two `switchView` departure special cases become
+the view's own `leave()` hook on its entry, which is the honest home for "what
+to forget on the way out."
 
 ### 2.3 What the table cannot do
 
@@ -349,22 +379,57 @@ later one. Phase 3 depends on nothing and may go first.
 
 ### Phase 0 — give the Corporate Actions view a help section
 
-Add `corporateActionShortcuts()` listing `/` search, Enter for details, Esc,
-`g`/`G`, PgUp/PgDn, and the eleventh arm in `viewShortcutSections`. Ten
-lines plus a test that renders the help overlay for every `View` value and
-asserts a view-specific section is present — the test that would have caught
-this, written generically so it keeps catching it.
+Add `corporateActionShortcuts()` and the eleventh arm in
+`viewShortcutSections`. The section must match what the view binds and what
+its status-bar hint already shows (`app_view.go:174`: "↑↓ navigate  / filter
+enter details  d delete  esc back"): `/` filter, Enter for details, **`d`
+delete (reverse the action, after a confirm — the destructive key is the one
+that most needs to be discoverable)**, Esc, and `g`/`G`/PgUp/PgDn for parity
+with the amortization section even though Navigation lists them too. About
+fifteen lines plus a test that renders the help overlay for every `View`
+value and asserts a view-specific section is present — the test that would
+have caught this, written generically so it keeps catching it.
 
 **This is a bug fix and ships alone**, ahead of the design work, under the
 rule that bug fixes go first.
 
 ### Phase 1 — the view table
 
-Declare `viewEntry` and `views()` in a new `views.go`. Move the body of each
-arm of the seven switches into its entry, verbatim: `render` is the existing
-`renderX`, `onKey` the existing `handleXKeys`, and so on — no method moves,
-only the switch collapses. `fullScreen` replaces both five-way predicates.
-`View.String()` reads `name`.
+Declare `viewEntry`, `allViews`, `views()` and `viewFor()` in a new
+`views.go`. Move the body of each arm of the seven switches into its entry,
+verbatim: `render` is the existing `renderX`, `onKey` the existing
+`handleXKeys`, and so on — no method moves, only the switch collapses.
+`View.String()` and `renderContent` keep their `"Unknown"` fallbacks (§2.1).
+
+**Only the switches move; three earlier branches in `handleKeyPress` stay
+exactly where they are.** They are per-view, but they are not the list, and
+each is load-bearing:
+
+- `app.go:447`: while the investment register's filter is being typed, every
+  key goes to that view, so digits do not switch views mid-query.
+- `app.go:495`: on the Reconciliation view only Quit and Help are global;
+  everything else, including `1`–`5` and Esc, goes to the view, so a
+  reconciliation in progress cannot be abandoned by a stray key.
+- `app.go:548`: Esc on the Prices detail mode, or with a locked investment
+  filter, is claimed by the view instead of `switchView(previousView)`.
+
+`fullScreen` replaces the five-view list in both predicates, and **only that
+list**. Both keep their other half. `renderContent` is
+`e.fullScreen || a.styles.SidebarWidth() == 0`, as §2.1 shows. `handleMouseContent`
+is the same disjunct, and *inside* it the Dashboard branch stays:
+
+```go
+if e.fullScreen || sidebarWidth == 0 {
+	if a.currentView == ViewDashboard {
+		return a.handleMouseDashboard(m, contentY, 0)
+	}
+	return a.handleMouseTable(msg, contentY)
+}
+```
+
+Dropping the `sidebarWidth == 0` half would send a narrow-terminal Dashboard
+click to the `m.X == sidebarWidth` border check with `sidebarWidth` zero, and
+discard it.
 
 Two facts get recorded rather than changed:
 
@@ -373,16 +438,22 @@ Two facts get recorded rather than changed:
   save from a dialog opened over the reconciliation view does not refresh it)
   is filed as a question for the owner of those views; phase 1 preserves the
   behaviour.
-- `focus` for Amortization and CorporateActions does not focus a table,
-  because their tables are built when data arrives and focused then. The
-  entries say so in a comment, as `switchView` does now.
+- `focus` differs for the two views whose tables are built when data
+  arrives, and the two are **not** the same. Amortization's arm
+  (`app_menu.go:366`) only unfocuses the sidebar; `buildAmortizationTable`
+  focuses the table on load. Corporate Actions' arm (`app_menu.go:353`)
+  unfocuses the sidebar **and** focuses the table when it is non-nil, so
+  returning to an already-loaded history lands the cursor on it. Each entry
+  copies its own arm verbatim; an implementer who levels the two changes
+  back-navigation.
 
 **Guards, in `views_guard_test.go`, in this order:**
 
 1. **Every `View` constant has exactly one entry.** Both sides mechanical: the
    constants from `go/ast` over `app.go`'s const block (reflection cannot
-   enumerate untyped constants), the entries from calling `views()` on a zero
-   `App`. Fail on an empty constant set, so the parser going stale is loud.
+   enumerate constants), the entries by ranging over `views()`, which needs
+   no `App`. Fail on an empty constant set, so the parser going stale is
+   loud, and fail on a duplicate `id`.
 2. **No switch outside `views.go` enumerates the views.** Parse every
    production file; a `switch` whose cases name **more than four** `View`
    constants is a second list and fails. Four is the largest feature switch
@@ -397,12 +468,12 @@ Two facts get recorded rather than changed:
 ### Phase 2 — per-view state structs
 
 One struct per view as §2.2 sketches, eleven of them, in the view's own file.
-`App` goes from 91 fields to ~55. This is the earlier design's phase 3 and
+`App` goes from 91 fields to ~57. This is the earlier design's phase 3 and
 carries the same cost: the 335 test lines that set a view field in an `App`
 literal move under the new struct, across roughly thirty test files. The
 literal shape changes; no assertion does.
 
-Three decisions to make in the phase, recorded here so they are not made by
+Five decisions to make in the phase, recorded here so they are not made by
 accident:
 
 - **The `pending*SelectID` trio.** `pendingRegisterSelectID` and
@@ -411,6 +482,18 @@ accident:
   cross-surface handoffs, like the sticky date, and stay on `App`.
   `pendingSecuritySelectID` is written and read only by the securities view
   and moves into its struct.
+- **The corporate-action ticker filter is a handoff too.**
+  `corporateActionViewFilter` is set by the Securities view's drill-in and
+  cleared by the menu before the history loads; `loadCorporateActionViewData`
+  documents that callers may pre-populate it. It stays on `App` with the
+  pending IDs. `corporateActionViewFilterEditing` is the view's own typing
+  mode and moves into its struct. **The filter is not cleared on `leave()`**:
+  `switchView` today drops only `corporateActionDetail` on the way out, and
+  the filter survives a round trip on purpose.
+- **The bulk-refresh flag stays on `App`.** `refreshingPrices` and
+  `refreshNotifID` are the in-flight guard for a refresh that `u` starts from
+  the Securities view as well as the Prices view. Nesting them in the Prices
+  struct would have one view's key handler writing another view's state.
 - **`switchView`'s two departure special cases** (drop the investment filter,
   drop the corporate-action detail) become a `leave func(*App)` on the two
   entries. That puts "what to forget on the way out" beside "what to focus on
@@ -424,7 +507,11 @@ The phase-3 guards of the earlier design (`TestGuard_NoSurfaceStructHoldsAServic
 and the nil-safety guard) are keyed to `Modal`; view structs do not implement
 it. Phase 2 adds one guard of its own: **no view struct holds a service
 pointer** — the same `switchDatabase` use-after-close argument, reusing
-`servicePointerTypes()`.
+`servicePointerTypes()`. It must find the view structs without a hand list,
+which would go stale the first time a twelfth view landed: walk `App`'s
+fields for struct types declared in this package whose pointer does **not**
+implement `Modal` (the modal guard takes the ones that do), and fail if that
+set is empty, as the modal guard does.
 
 ### Phase 3 — split the two god files (the 4d motion)
 
@@ -432,15 +519,21 @@ Independent of phases 1–2 and may run first, under the 4d rule: move
 functions between files, rename nothing, change no signature.
 
 `price_view.go` (1,231) → `price_view.go` (data, load, apply; ~250),
-`price_view_render.go` (~350), `price_view_chart.go` (~150),
-`price_view_keys.go` (~200), **`price_dialog.go`** (the add/edit dialog and
-lookup; ~200) and **`price_import_dialog.go`** (~100). The two dialog files
-are the point: they are modal surfaces and belong beside the other dialogs,
-not inside a view.
+`price_view_render.go` (~350), `price_view_keys.go` (~200),
+**`price_dialog.go`** (the add/edit dialog and lookup; ~200) and
+**`price_import_dialog.go`** (~100). The five `*App` chart methods (~130
+lines) go into the **existing** `price_chart.go`, which today holds the
+chart's free helpers and history cache (383 lines, no `*App` methods), so the
+chart has one file rather than two that the comparer cannot tell apart. The
+two dialog files are the point: they are modal surfaces and belong beside the
+other dialogs, not inside a view.
 
-`investment_register_view.go` (1,055) → `investment_register_view.go`
-(~500), `investment_register_filter.go` (the security filter; ~250),
-`investment_type_selector.go` (the dialog; ~200).
+`investment_register_view.go` (1,055) → four files, because the register
+proper is ~650 lines and would miss the exit gate as three:
+`investment_register_view.go` (data, load, table build, status toggle; ~450),
+`investment_register_render.go` (~200), `investment_register_filter.go` (the
+security filter and its search-key handler; ~190), and
+`investment_type_selector.go` (the dialog and its type helpers; ~210).
 
 Verified the way 4d was: a `go/ast` comparison of every declaration, doc
 comment included, against the original, and the splitter's orphan-comment
@@ -486,9 +579,17 @@ row without rendering first must get a no-op, not a stale account.
 
 `switchView` guards each table with `if a.xTable != nil`, because the table
 is built when data arrives. The entry's `focus` func must keep every guard.
-Phase 1 adds a test that calls `switchView(v)` for every `View` on a zero
-`App` — the view-layer twin of the earlier design's guard 1 — so a lost nil
-check is a test failure, not a panic on first use of a fresh database.
+Phase 1 adds a test that exercises exactly those guards: build
+`&App{sidebar: NewSidebar(), statusbar: widget.NewStatusBar(), styles: widget.NewStyles()}`
+with every table nil, and for each `View` value set `currentView` to some
+*other* view and call `switchView(v)`. A zero `App` will not do —
+`switchView` calls `updateStatusBar`, which dereferences the status bar, and
+the whole focus block sits behind `if a.sidebar != nil`, so on a zero `App`
+the test would panic before, or skip, the code it exists to check. This is
+not a twin of the earlier design's nil-safety guard (which calls `IsVisible`
+on a nil pointer); it is a walk over the live focus funcs with the tables
+absent, so a lost nil check is a test failure rather than a panic on first
+use of a fresh database.
 
 ### 5.3 `activeTable` depends on view *mode*, not only view
 
@@ -515,11 +616,13 @@ test lines; that is part of why they are ordered first.
 ### 5.6 `views()` must not allocate per key
 
 `modals()` builds a fresh slice per call and the earlier design measured that
-as unobservable. `views()` is called on every key, paint and mouse event, and
-the entries hold nothing but funcs and constants, so a package-level `var`
-indexed by `View` is the natural form. If an entry ever needs per-`App` state
-it is doing phase 4's job in phase 1's clothes; the guard is that `views()`
-takes no receiver.
+as unobservable. `views()` is consulted on every key, paint and mouse event,
+and the entries hold nothing but funcs and constants, so §2.1's package-level
+`allViews` is the form: filled once with method values, read through
+`views()` and `viewFor()`, never indexed by `View` directly (§2.1 says why:
+`View(999)` must miss, not panic). If an entry ever needs per-`App` state it
+is doing phase 4's job in phase 1's clothes; the guard is that `views()` and
+`viewFor()` take no receiver.
 
 ---
 
@@ -528,9 +631,9 @@ takes no receiver.
 | Phase | Exit criteria |
 |---|---|
 | 0 | `?` on the Corporate Actions view lists its keys; a test renders the overlay for every `View` value and requires a view-specific section |
-| 1 | Seven switches gone, two predicates gone, `View.String()` reads the table; guards 1–3 land with self-tests; the nil-`App` `switchView` walk passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll** |
-| 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the no-service guard runs over the view structs; the 335 test literals moved and no assertion changed |
-| 3 | `price_view.go` ≤ 450 and `investment_register_view.go` ≤ 500, each split by the declaration comparer with zero problems and zero orphaned comments; the two price dialogs in files of their own |
+| 1 | Seven switches gone, the five-view list gone from both predicates (their `SidebarWidth() == 0` halves and the Dashboard mouse branch kept), `View.String()` reads the table and still returns `"Unknown"` for a miss; the three pre-switch `handleKeyPress` branches untouched; guards 1–3 land with self-tests; the tables-nil `switchView` walk (§5.2) passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back** |
+| 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the five recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the 335 test literals moved and no assertion changed |
+| 3 | `price_view.go` ≤ 450 and `investment_register_view.go` ≤ 500, each split by the declaration comparer with zero problems and zero orphaned comments; the two price dialogs in files of their own; the chart's `*App` methods in `price_chart.go` |
 | 4 | Not an exit; a table of per-view decisions with the measured count of what moved and what stayed, appended to this document as the 4c notes were to the earlier one |
 
 **What these criteria do not claim.** No phase reduces `*App`'s method count.
