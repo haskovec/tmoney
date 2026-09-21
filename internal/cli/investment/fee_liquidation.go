@@ -44,8 +44,8 @@ func newInvestmentFeeLiquidationCmd() *cobra.Command {
 			"balance. Supply either --amount (the fee total) or --price-per-share, " +
 			"or both; the third value is derived. For lot-tracked accounts pass " +
 			"--lot to allocate against a specific open lot.",
-		Example: "  tmoney investment fee-liquidation --account \"Fidelity 401k\" --ticker FXAIX --shares 0.123 --amount 5.00\n" +
-			"  tmoney investment fee-liquidation --account \"Fidelity 401k\" --ticker FXAIX --shares 0.123 --price-per-share 40.65 --memo \"Q2 recordkeeping fee\"",
+		Example: "  tmoney investment fee-liquidation --account \"Acme 401k\" --ticker FXAIX --shares 0.123 --amount 5.00\n" +
+			"  tmoney investment fee-liquidation --account \"Acme 401k\" --ticker FXAIX --shares 0.123 --price-per-share 40.65 --memo \"Q2 recordkeeping fee\"",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

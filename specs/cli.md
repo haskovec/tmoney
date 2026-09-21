@@ -92,7 +92,7 @@ tmoney account add --name "Chase Checking" --type checking \
   --currency USD --opening-balance 1000.00 --opening-date 2024-01-15 \
   --institution "Chase Bank" --account-number 1234567890 \
   --notes "Primary checking account"
-tmoney account add --name "Wealthfront IRA" --type investment --track-lots=false
+tmoney account add --name "Acme IRA" --type investment --track-lots=false
 ```
 
 ```
@@ -670,8 +670,8 @@ rebuilt from the ledger.
 Exactly one of `--account` or `--all` is required.
 
 ```bash
-tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k"
-tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k" --confirm
+tmoney -f personal.tdb investment disable-lots --account "Acme 401k"
+tmoney -f personal.tdb investment disable-lots --account "Acme 401k" --confirm
 tmoney -f personal.tdb investment disable-lots --all --confirm
 ```
 
@@ -772,8 +772,8 @@ Exactly one of `--account` or `--all` is required.
 The command refuses to run when the target account is not an investment/HSA account, or when it already has lots (lots are never double-created). It also refuses, per account, any account that holds a security with recorded corporate actions (splits, mergers, spin-offs), since the naive replay cannot reproduce those — a corporate action on a security held in an *unrelated* account does not block accounts that don't hold it. A sell that open lots can't fully cover is reported as a shortfall in the summary rather than aborting the run.
 
 ```bash
-tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA"
-tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" --confirm
+tmoney -f personal.tdb investment enable-lots --account "Acme IRA"
+tmoney -f personal.tdb investment enable-lots --account "Acme IRA" --confirm
 tmoney -f personal.tdb investment enable-lots --account Brokerage --method hifo --confirm
 tmoney -f personal.tdb investment enable-lots --all --confirm
 ```
@@ -820,9 +820,9 @@ both; the third value is derived. For lot-tracked accounts pass
 - `--lot string` — Lot ID to allocate against (lot-tracked accounts)
 
 ```bash
-tmoney investment fee-liquidation --account "Fidelity 401k" --ticker FXAIX \
+tmoney investment fee-liquidation --account "Acme 401k" --ticker FXAIX \
   --shares 0.123 --amount 5.00
-tmoney investment fee-liquidation --account "Fidelity 401k" --ticker FXAIX \
+tmoney investment fee-liquidation --account "Acme 401k" --ticker FXAIX \
   --shares 0.123 --price-per-share 40.65 --memo "Q2 recordkeeping fee"
 ```
 

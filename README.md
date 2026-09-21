@@ -862,7 +862,7 @@ tmoney -f personal.tdb security add --name "MFS Mid Cap Value CT" --type other \
 # Reference a tickerless security on any security/price/investment command by
 # --isin or exact --name instead of --ticker
 tmoney -f personal.tdb security show --isin US0378331005
-tmoney -f personal.tdb investment buy --account "Fidelity 401k" \
+tmoney -f personal.tdb investment buy --account "Acme 401k" \
   --name "MFS Mid Cap Value CT" --shares 12.34 --price-per-share 25.10
 
 # List securities
@@ -1204,18 +1204,18 @@ from the account; share counts are unchanged. Date defaults to today.
 
 ```bash
 # Pay a fee by liquidating shares (no cash effect; share count drops)
-tmoney -f personal.tdb investment fee-liquidation --account "Fidelity 401k" \
+tmoney -f personal.tdb investment fee-liquidation --account "Acme 401k" \
   --ticker FXAIX --shares 0.123 --amount 5.00
 
 # Specify the price per share instead of the fee total
-tmoney -f personal.tdb investment fee-liquidation --account "Fidelity 401k" \
+tmoney -f personal.tdb investment fee-liquidation --account "Acme 401k" \
   --ticker FXAIX --shares 0.123 --price-per-share 40.65 \
   --memo "Q2 recordkeeping fee"
 ```
 
 `investment fee-liquidation` records a fee paid by **selling shares of a
 security** rather than debiting cash — the model some retirement plans
-(e.g. a Fidelity 401k) use when there's no cash balance to charge. The
+(e.g. a 401k) use when there's no cash balance to charge. The
 share count drops and the dollar amount is booked as a fee, with **no net
 cash effect**. It requires `--account`, `--ticker`, and `--shares`, plus
 either `--amount` (the fee total) or `--price-per-share` (the third value
@@ -1376,16 +1376,16 @@ corporate-action history.
 
 ```bash
 # Preview enabling lot tracking on an existing account (no changes made)
-tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA"
+tmoney -f personal.tdb investment enable-lots --account "Acme IRA"
 
 # Execute the backfill once the previewed plan looks right
-tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" --confirm
+tmoney -f personal.tdb investment enable-lots --account "Acme IRA" --confirm
 
 # Enable lots on every investment/HSA account at once
 tmoney -f personal.tdb investment enable-lots --all --confirm
 
 # Choose which lots historical sells consume (default fifo)
-tmoney -f personal.tdb investment enable-lots --account "Wealthfront IRA" \
+tmoney -f personal.tdb investment enable-lots --account "Acme IRA" \
   --method hifo --confirm
 ```
 
@@ -1416,10 +1416,10 @@ producing an incorrect cost basis.
 
 ```bash
 # Preview disabling lot tracking on an account (no changes made)
-tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k"
+tmoney -f personal.tdb investment disable-lots --account "Acme 401k"
 
 # Execute: revert the account to average cost
-tmoney -f personal.tdb investment disable-lots --account "Fidelity 401k" --confirm
+tmoney -f personal.tdb investment disable-lots --account "Acme 401k" --confirm
 
 # Disable lots on every lot-tracked investment/HSA account at once
 tmoney -f personal.tdb investment disable-lots --all --confirm
