@@ -34,8 +34,8 @@ func newInvestmentDisableLotsCmd() *cobra.Command {
 			"stock split is fine (the split replays into average cost), but a held " +
 			"merger or spin-off is refused — those holdings live only in lots and " +
 			"their average cost cannot be rebuilt from the ledger.",
-		Example: "  tmoney -f personal.tdb investment disable-lots --account \"Fidelity 401k\"\n" +
-			"  tmoney -f personal.tdb investment disable-lots --account \"Fidelity 401k\" --confirm\n" +
+		Example: "  tmoney -f personal.tdb investment disable-lots --account \"Acme 401k\"\n" +
+			"  tmoney -f personal.tdb investment disable-lots --account \"Acme 401k\" --confirm\n" +
 			"  tmoney -f personal.tdb investment disable-lots --all --confirm",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,

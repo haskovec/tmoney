@@ -12,6 +12,8 @@ Accounts represent financial accounts that hold money or track balances. Each ac
 | `savings` | Bank savings account | - |
 | `credit_card` | Credit card account | Credit limit |
 | `investment` | Investment/brokerage account | Holdings (lot-level) |
+| `hsa` | Health Savings Account, cash side (debit card, payroll contributions, medical expenses). Regular ledger; behaves like `checking`. | Interest rate |
+| `hsa_investment` | Health Savings Account, invested side. Behaves like `investment`. | Holdings (lot-level), interest rate |
 | `cash` | Physical cash tracking | - |
 | `loan` | Loans and mortgages | Interest rate |
 | `asset` | Other assets (property, vehicles) | - |
@@ -135,6 +137,14 @@ effect, and passing an empty string to a nullable field clears it. Changing the
 type clears fields the new type doesn't support (credit limit, interest rate,
 lot tracking), matching the dialog. Lot tracking is **not** editable here; use
 `investment enable-lots` / `disable-lots`.
+
+A type change that crosses ledgers (an investment type ⇄ a regular type) is
+guarded, because the two ledgers are different tables. Investment → regular
+moves the rows when every row is cash-kind (`deposit`, `withdrawal`,
+`interest`, `fee`, `transfer_cash`) and is refused when any security row
+exists. Regular → investment is refused when the account has any rows. Both
+paths print or show a plan and require confirmation before anything is
+written. See `design-hsa-split.md` §5.
 
 ### Close Account
 

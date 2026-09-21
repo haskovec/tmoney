@@ -37,8 +37,8 @@ func newInvestmentEnableLotsCmd() *cobra.Command {
 			"prints the plan and makes no changes; pass --confirm to execute. " +
 			"Run `db backup` first. Refuses when the account already has lots or " +
 			"holds a security with a recorded corporate action.",
-		Example: "  tmoney -f personal.tdb investment enable-lots --account \"Wealthfront IRA\"\n" +
-			"  tmoney -f personal.tdb investment enable-lots --account \"Wealthfront IRA\" --confirm\n" +
+		Example: "  tmoney -f personal.tdb investment enable-lots --account \"Acme IRA\"\n" +
+			"  tmoney -f personal.tdb investment enable-lots --account \"Acme IRA\" --confirm\n" +
 			"  tmoney -f personal.tdb investment enable-lots --all --confirm",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
