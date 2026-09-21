@@ -22,7 +22,7 @@ func TestBuildTransferAccountOptions_IncludesInvestment(t *testing.T) {
 		account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today()),
 		account.NewAccount("Visa", account.TypeCreditCard, "USD", types.ZeroMoney, types.Today()),
 		account.NewAccount("401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today()),
-		account.NewAccount("HSA", account.TypeHSA, "USD", types.ZeroMoney, types.Today()),
+		account.NewAccount("HSA", account.TypeHSAInvestment, "USD", types.ZeroMoney, types.Today()),
 		account.NewAccount("Savings", account.TypeSavings, "USD", types.ZeroMoney, types.Today()),
 	}
 

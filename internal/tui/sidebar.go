@@ -17,20 +17,22 @@ var accountGroupOrder = []account.Type{
 	account.TypeCreditCard,
 	account.TypeInvestment,
 	account.TypeHSA,
+	account.TypeHSAInvestment,
 	account.TypeLoan,
 	account.TypeAsset,
 }
 
 // accountGroupLabels maps account types to their sidebar group display names.
 var accountGroupLabels = map[account.Type]string{
-	account.TypeChecking:   "Bank Accounts",
-	account.TypeSavings:    "Bank Accounts",
-	account.TypeCash:       "Cash",
-	account.TypeCreditCard: "Credit Cards",
-	account.TypeInvestment: "Investments",
-	account.TypeHSA:        "Health Savings",
-	account.TypeLoan:       "Loans",
-	account.TypeAsset:      "Assets",
+	account.TypeChecking:      "Bank Accounts",
+	account.TypeSavings:       "Bank Accounts",
+	account.TypeCash:          "Cash",
+	account.TypeCreditCard:    "Credit Cards",
+	account.TypeInvestment:    "Investments",
+	account.TypeHSA:           "Health Savings",
+	account.TypeHSAInvestment: "Health Savings",
+	account.TypeLoan:          "Loans",
+	account.TypeAsset:         "Assets",
 }
 
 // sidebarItemKind distinguishes between group headers and account items.

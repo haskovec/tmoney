@@ -1,8 +1,20 @@
 # Design: split the HSA account type into `hsa` and `hsa_investment`
 
 **Date:** 2026-09-21
-**Status:** PROPOSED — awaiting review. No code, no migration, no data change
-has shipped.
+**Status:** IMPLEMENTED. Two deviations from the proposal, both stronger than
+what was specified:
+
+1. §5.1 proposed an `arch_test` as the guard against a stray cross-ledger
+   type change. The implementation puts the guard in the domain instead:
+   `account.Service.Update` refuses a cross-ledger change while the departing
+   ledger has rows (`account.LedgerChangeError`). Every caller is covered, not
+   only the two the test would have listed.
+2. §5.5/§5.6 said a backup is written before the move. The CLI does that
+   (close, auto backup, reopen, move). The TUI cannot copy an open DuckDB
+   file mid-session, so it relies on the auto backup written on exit and
+   says so in the confirm dialog.
+
+The runbook in §7 is unchanged.
 
 ## 1. Problem
 

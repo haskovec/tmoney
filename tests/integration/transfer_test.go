@@ -56,7 +56,7 @@ func TestTransferWiring_AllFourShapesThroughTheCompositionRoot(t *testing.T) {
 		{"reg-to-reg", account.TypeChecking, account.TypeSavings, transfer.KindRegToReg},
 		{"inv-to-reg", account.TypeInvestment, account.TypeChecking, transfer.KindInvToReg},
 		{"reg-to-inv", account.TypeChecking, account.TypeInvestment, transfer.KindRegToInv},
-		{"inv-to-inv", account.TypeInvestment, account.TypeHSA, transfer.KindInvToInv},
+		{"inv-to-inv", account.TypeInvestment, account.TypeHSAInvestment, transfer.KindInvToInv},
 	}
 
 	for _, sh := range shapes {

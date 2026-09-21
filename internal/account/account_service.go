@@ -47,11 +47,45 @@ func (s *Service) GetByName(name string) (*Account, error) {
 }
 
 // Update validates and updates an existing account.
+//
+// A type change that crosses ledgers (regular ⇄ investment) is refused with a
+// LedgerChangeError while the ledger the account is leaving still holds rows
+// for it. Same-ledger changes (checking → savings, investment →
+// hsa_investment) pass through unchanged.
 func (s *Service) Update(account *Account) error {
 	if err := s.validateAccount(account); err != nil {
 		return err
 	}
+	if err := s.guardLedgerChange(account); err != nil {
+		return err
+	}
 	return s.repo.Update(account)
+}
+
+// guardLedgerChange compares the stored type's ledger with the requested one
+// and refuses when the departing ledger is not empty.
+func (s *Service) guardLedgerChange(account *Account) error {
+	before, err := s.repo.GetByID(account.ID)
+	if err != nil {
+		return err
+	}
+	fromInv := before.Type.IsInvestmentType()
+	if fromInv == account.Type.IsInvestmentType() {
+		return nil
+	}
+	rows, err := s.repo.CountLedgerRows(account.ID, fromInv)
+	if err != nil {
+		return err
+	}
+	if rows > 0 {
+		return &LedgerChangeError{
+			AccountID: account.ID.String(),
+			From:      before.Type,
+			To:        account.Type,
+			Rows:      rows,
+		}
+	}
+	return nil
 }
 
 // Delete removes an account. The account must have no transactions and no

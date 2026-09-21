@@ -389,3 +389,23 @@ func (r *Repository) Delete(id types.ID) error {
 
 	return nil
 }
+
+// CountLedgerRows returns how many rows the account owns in one ledger. With
+// investment true it counts investment_transactions; otherwise it counts
+// transactions plus scheduled_transactions, because a schedule posts into the
+// regular ledger and would strand its next post if the account left it.
+func (r *Repository) CountLedgerRows(accountID types.ID, investment bool) (int, error) {
+	query := `
+		SELECT (SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?)
+		     + (SELECT COUNT(*) FROM scheduled_transactions WHERE CAST(account_id AS VARCHAR) = ?)`
+	args := []any{accountID.String(), accountID.String()}
+	if investment {
+		query = `SELECT COUNT(*) FROM investment_transactions WHERE CAST(account_id AS VARCHAR) = ?`
+		args = args[:1]
+	}
+	var n int
+	if err := r.q().QueryRow(query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("failed to count ledger rows: %w", err)
+	}
+	return n, nil
+}

@@ -77,3 +77,27 @@ type NotInvestmentError struct {
 func (e *NotInvestmentError) Error() string {
 	return fmt.Sprintf("account %s is not an investment account (type: %s)", e.AccountID, e.Type)
 }
+
+// LedgerChangeError is returned by Service.Update when a type change would
+// move an account between the regular ledger (transactions) and the
+// investment ledger (investment_transactions) while the ledger it is leaving
+// still holds rows for it. The rows would become invisible to every read
+// path, so the domain refuses. transfer.Service.ChangeAccountType is the
+// door that moves cash-only rows first and then applies the type.
+type LedgerChangeError struct {
+	AccountID string
+	From      Type
+	To        Type
+	Rows      int
+}
+
+func (e *LedgerChangeError) Error() string {
+	ledger := "regular"
+	if e.From.IsInvestmentType() {
+		ledger = "investment"
+	}
+	return fmt.Sprintf(
+		"cannot change account %s from %s to %s: it has %d row(s) in the %s ledger; move or delete them first",
+		e.AccountID, e.From, e.To, e.Rows, ledger,
+	)
+}

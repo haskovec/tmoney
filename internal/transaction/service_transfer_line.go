@@ -68,7 +68,7 @@ func (s *Service) createTransferLineCounterpart(
 }
 
 // targetIsInvestment reports whether the given account is an investment-
-// type account (TypeInvestment or TypeHSA). Returns false (no error) if
+// type account (TypeInvestment or TypeHSAInvestment). Returns false (no error) if
 // accountRepo is not wired — only test fixtures hit that path.
 func (s *Service) targetIsInvestment(acctID types.ID) (bool, error) {
 	if s.accountRepo == nil {

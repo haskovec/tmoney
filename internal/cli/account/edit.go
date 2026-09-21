@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/dberrors"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +31,7 @@ type accountEditOptions struct {
 	notes         string
 	creditLimit   string
 	interestRate  string
+	confirm       bool
 
 	newNameChanged       bool
 	typeChanged          bool
@@ -57,7 +60,12 @@ func newAccountEditCmd() *cobra.Command {
 			"`--notes`, `--credit-limit`, or `--interest-rate` to clear that field. " +
 			"Changing `--type` clears fields the new type doesn't support (credit " +
 			"limit outside credit_card; interest rate outside checking/savings/" +
-			"credit_card/investment/hsa/loan; lot tracking outside investment/hsa). " +
+			"credit_card/investment/hsa/hsa_investment/loan; lot tracking outside " +
+			"investment/hsa_investment). A type change that crosses ledgers (an " +
+			"investment type to a regular one or back) prints a plan and needs " +
+			"`--confirm`: investment→regular moves cash-only rows into the register " +
+			"and is refused when any security row exists; regular→investment is " +
+			"refused when the account has any rows. " +
 			"Opening balance and opening date are locked while the account is closed " +
 			"— reopen it first (`tmoney account reopen`). Lot tracking is not editable " +
 			"here; use `tmoney investment enable-lots` / `disable-lots`.",
@@ -77,12 +85,13 @@ func newAccountEditCmd() *cobra.Command {
 			opts.notesChanged = cmd.Flags().Changed("notes")
 			opts.creditLimitChanged = cmd.Flags().Changed("credit-limit")
 			opts.interestRateChanged = cmd.Flags().Changed("interest-rate")
+			opts.confirm, _ = cmd.Flags().GetBool("confirm")
 			return runAccountEdit(opts, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "Name of the account to edit (required)")
 	cmd.Flags().StringVar(&opts.newName, "new-name", "", "Rename the account")
-	cmd.Flags().StringVar(&opts.accountType, "type", "", "New account type: checking, savings, credit_card, investment, hsa, cash, loan, asset")
+	cmd.Flags().StringVar(&opts.accountType, "type", "", "New account type: checking, savings, credit_card, investment, hsa, hsa_investment, cash, loan, asset")
 	cmd.Flags().StringVar(&opts.currency, "currency", "", "New currency code")
 	cmd.Flags().StringVar(&opts.openingBal, "opening-balance", "", "New opening balance (locked while closed)")
 	cmd.Flags().StringVar(&opts.openingDate, "opening-date", "", "New opening date YYYY-MM-DD (locked while closed)")
@@ -91,6 +100,7 @@ func newAccountEditCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.notes, "notes", "", "Free-form notes (pass an empty string to clear)")
 	cmd.Flags().StringVar(&opts.creditLimit, "credit-limit", "", "Credit limit, credit_card only (pass an empty string to clear)")
 	cmd.Flags().StringVar(&opts.interestRate, "interest-rate", "", "Interest rate / APR (pass an empty string to clear)")
+	cmd.Flags().BoolVar(&opts.confirm, "confirm", false, "Apply a type change that moves rows between ledgers (without it the plan is printed and nothing changes)")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
@@ -111,11 +121,50 @@ func runAccountEdit(opts *accountEditOptions, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	acct, err := svc.Account.GetByName(opts.name)
 	if err != nil {
 		return fmt.Errorf("account %q not found", opts.name)
+	}
+
+	// A type change that crosses ledgers is planned, shown, and only applied
+	// with --confirm. The move runs before the other edits so the ordinary
+	// Update below sees a same-ledger account.
+	if opts.typeChanged {
+		to, err := accountdom.ParseType(opts.accountType)
+		if err != nil {
+			return invalidTypeError(opts.accountType)
+		}
+		plan, err := svc.Transfer.PlanAccountTypeChange(acct.ID, to)
+		if err != nil {
+			return err
+		}
+		if plan.MovesRows() {
+			printLedgerMovePlan(w, plan)
+			if !opts.confirm {
+				fmt.Fprintln(w, "Re-run with --confirm to apply (a backup is written first).")
+				return nil
+			}
+			// Back up before the one-way write, then reopen.
+			if err := database.Close(); err != nil {
+				return fmt.Errorf("failed to close database for backup: %w", err)
+			}
+			if _, err := backup.CreateAutoBackup(database.Path()); err != nil {
+				return fmt.Errorf("failed to write backup: %w", err)
+			}
+			database, svc, err = cmdutil.OpenServices(opts.file)
+			if err != nil {
+				return err
+			}
+			if err := svc.Transfer.ChangeAccountType(plan); err != nil {
+				return err
+			}
+			fmt.Fprintf(w, "Moved %d row(s) to the register.\n", plan.Total)
+			if acct, err = svc.Account.GetByName(opts.name); err != nil {
+				return fmt.Errorf("account %q not found after move", opts.name)
+			}
+		}
 	}
 
 	if err := applyAccountEdits(acct, opts); err != nil {
@@ -155,11 +204,7 @@ func applyAccountEdits(acct *accountdom.Account, opts *accountEditOptions) error
 	if opts.typeChanged {
 		t, err := accountdom.ParseType(opts.accountType)
 		if err != nil {
-			validTypes := make([]string, 0, len(accountdom.AllTypes()))
-			for _, at := range accountdom.AllTypes() {
-				validTypes = append(validTypes, string(at))
-			}
-			return fmt.Errorf("invalid --type %q: valid types are %s", opts.accountType, strings.Join(validTypes, ", "))
+			return invalidTypeError(opts.accountType)
 		}
 		finalType = t
 	}
@@ -170,7 +215,7 @@ func applyAccountEdits(acct *accountdom.Account, opts *accountEditOptions) error
 		return fmt.Errorf("--credit-limit is only valid for credit_card accounts")
 	}
 	if opts.interestRateChanged && opts.interestRate != "" && !accountTypeSupportsInterestRate(finalType) {
-		return fmt.Errorf("--interest-rate is only valid for checking, savings, credit_card, investment, hsa, or loan accounts")
+		return fmt.Errorf("--interest-rate is only valid for checking, savings, credit_card, investment, hsa, hsa_investment, or loan accounts")
 	}
 
 	// Opening balance/date are locked while the account is closed.
@@ -262,12 +307,33 @@ func applyAccountEdits(acct *accountdom.Account, opts *accountEditOptions) error
 	return nil
 }
 
+func invalidTypeError(got string) error {
+	validTypes := make([]string, 0, len(accountdom.AllTypes()))
+	for _, at := range accountdom.AllTypes() {
+		validTypes = append(validTypes, string(at))
+	}
+	return fmt.Errorf("invalid --type %q: valid types are %s", got, strings.Join(validTypes, ", "))
+}
+
+// printLedgerMovePlan writes what a cross-ledger type change will do, in the
+// shape specs/design-hsa-split.md §5.6 shows.
+func printLedgerMovePlan(w io.Writer, plan *transfer.LedgerMovePlan) {
+	fmt.Fprintf(w, "%s: %s -> %s\n", plan.AccountName, plan.From.DisplayName(), plan.To.DisplayName())
+	fmt.Fprintf(w, "This moves %d row(s) from the investment ledger to the register:\n", plan.Total)
+	for _, t := range plan.SortedTypes() {
+		fmt.Fprintf(w, "  %-14s %d\n", t, plan.RowsByType[t])
+	}
+	fmt.Fprintln(w, "Moved rows keep their transfer links. They get no payee and no category.")
+	fmt.Fprintln(w, "This cannot be undone.")
+}
+
 // accountTypeSupportsInterestRate mirrors the TUI dialog's interest-rate
-// visibility set (checking, savings, credit_card, investment, hsa, loan).
+// visibility set (checking, savings, credit_card, investment, hsa,
+// hsa_investment, loan).
 func accountTypeSupportsInterestRate(at accountdom.Type) bool {
 	switch at {
 	case accountdom.TypeChecking, accountdom.TypeSavings, accountdom.TypeCreditCard,
-		accountdom.TypeInvestment, accountdom.TypeHSA, accountdom.TypeLoan:
+		accountdom.TypeInvestment, accountdom.TypeHSA, accountdom.TypeHSAInvestment, accountdom.TypeLoan:
 		return true
 	default:
 		return false

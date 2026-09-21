@@ -9,7 +9,7 @@ import (
 func TestType(t *testing.T) {
 	t.Run("AllTypes returns all types", func(t *testing.T) {
 		allTypes := AllTypes()
-		expected := 8
+		expected := 9
 		if len(allTypes) != expected {
 			t.Errorf("Expected %d account types, got %d", expected, len(allTypes))
 		}
@@ -31,6 +31,7 @@ func TestType(t *testing.T) {
 			TypeCreditCard,
 			TypeInvestment,
 			TypeHSA,
+			TypeHSAInvestment,
 			TypeCash,
 			TypeLoan,
 			TypeAsset,
@@ -59,6 +60,7 @@ func TestType(t *testing.T) {
 			{TypeCreditCard, "Credit Card"},
 			{TypeInvestment, "Investment"},
 			{TypeHSA, "HSA"},
+			{TypeHSAInvestment, "HSA Investment"},
 			{TypeCash, "Cash"},
 			{TypeLoan, "Loan"},
 			{TypeAsset, "Asset"},
@@ -77,6 +79,7 @@ func TestType(t *testing.T) {
 			TypeSavings,
 			TypeInvestment,
 			TypeHSA,
+			TypeHSAInvestment,
 			TypeCash,
 			TypeAsset,
 		}
@@ -88,7 +91,7 @@ func TestType(t *testing.T) {
 	})
 
 	t.Run("IsInvestmentType returns true for investment-like types", func(t *testing.T) {
-		investmentTypes := []Type{TypeInvestment, TypeHSA}
+		investmentTypes := []Type{TypeInvestment, TypeHSAInvestment}
 		for _, at := range investmentTypes {
 			if !at.IsInvestmentType() {
 				t.Errorf("IsInvestmentType should return true for %q", at)
@@ -99,7 +102,7 @@ func TestType(t *testing.T) {
 	t.Run("IsInvestmentType returns false for all other types", func(t *testing.T) {
 		nonInvestmentTypes := []Type{
 			TypeChecking, TypeSavings, TypeCreditCard,
-			TypeCash, TypeLoan, TypeAsset,
+			TypeHSA, TypeCash, TypeLoan, TypeAsset,
 		}
 		for _, at := range nonInvestmentTypes {
 			if at.IsInvestmentType() {
@@ -138,6 +141,7 @@ func TestType(t *testing.T) {
 			TypeSavings,
 			TypeInvestment,
 			TypeHSA,
+			TypeHSAInvestment,
 			TypeCash,
 			TypeAsset,
 		}
