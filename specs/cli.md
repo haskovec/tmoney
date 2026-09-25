@@ -85,7 +85,7 @@ Create a new account. `--name` and `--type` are required; other fields take sens
 - `--notes string` — Free-form notes
 - `--credit-limit string` — Credit limit (credit-card accounts only)
 - `--interest-rate string` — Interest rate / APR (loan accounts only)
-- `--track-lots` — Track individual tax lots (`investment`/`hsa` accounts only; default on for those types). Pass `--track-lots=false` to opt out and use the average-cost path instead. To enable lots on an *existing* account (with a historical backfill), use `investment enable-lots`, not `account edit`.
+- `--track-lots` — Track individual tax lots (`investment`/`hsa_investment` accounts only; default on for those types). Pass `--track-lots=false` to opt out and use the average-cost path instead. To enable lots on an *existing* account (with a historical backfill), use `investment enable-lots`, not `account edit`.
 
 ```bash
 tmoney account add --name "Chase Checking" --type checking \
@@ -197,7 +197,7 @@ effect (delta semantics); at least one editable flag is required.
 
 **Optional flags:**
 - `--new-name string` — Rename the account (cannot be empty; a name collision is a hard error)
-- `--type string` — New account type
+- `--type string` — New account type. A change that crosses ledgers (investment type ⇄ regular type) is planned first, see below.
 - `--currency string` — New currency code (cannot be empty)
 - `--opening-balance string` — New opening balance
 - `--opening-date string` — New opening date `YYYY-MM-DD`
@@ -206,11 +206,31 @@ effect (delta semantics); at least one editable flag is required.
 - `--notes string` — Free-form notes (pass an empty string to clear)
 - `--credit-limit string` — Credit limit, `credit_card` only (pass an empty string to clear)
 - `--interest-rate string` — Interest rate / APR (pass an empty string to clear)
+- `--confirm` — Apply a type change that moves rows between ledgers. Without it the plan is printed and nothing changes.
 
 ```bash
 tmoney account edit --name "Chase Checking" --new-name "Main Checking"
 tmoney account edit --name "Chase Checking" --institution "Acme Bank" --notes ""
+tmoney account edit --name "Cedar Bank HSA" --type hsa            # prints the plan
+tmoney account edit --name "Cedar Bank HSA" --type hsa --confirm  # moves the rows
 ```
+
+**Cross-ledger type change.** `transfer.Service.PlanAccountTypeChange` decides
+what a `--type` change does (`specs/design-hsa-split.md` §5). Every flag is
+parsed and the edited account is validated first, so a bad value exits 1
+with nothing written. Same ledger: ordinary update. Investment → regular:
+allowed when every row is cash-kind (`deposit`, `withdrawal`, `interest`,
+`fee`, `transfer_cash`) and the account has no positions or lots. The plan
+lists the row counts by kind and today's net worth before and after. With
+`--confirm` a manual backup is written and its path printed; then the rows
+are rewritten into `transactions` with the same id, date, amount, memo,
+status (`pending` → `uncleared`) and transfer link, and the type and every
+other edited field are written, all in one transaction. Any security row
+refuses the change (exit 1, nothing written). Regular → investment: refused
+when the account has any transaction or scheduled transaction.
+`account.Service.Update` independently refuses a cross-ledger change while
+the departing ledger has rows, positions or lots, so no other path can
+strand them.
 
 Passing an empty string to `--institution`, `--account-number`, `--notes`,
 `--credit-limit`, or `--interest-rate` **clears** that field. Opening balance and

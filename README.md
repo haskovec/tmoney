@@ -97,18 +97,20 @@ tmoney -f personal.tdb account balance
 ## Features
 
 ### Accounts
-- Multiple account types: checking, savings, credit card, investment, HSA, cash, loan, asset
+- Multiple account types: checking, savings, credit card, investment, HSA, HSA investment, cash, loan, asset
 - Per-account currency setting (USD, EUR, GBP)
 - Credit limit for credit card accounts
-- Interest rate (APR) for checking, savings, credit card, investment, HSA, and loan accounts
-- Investment and HSA accounts are lot-tracked by default (override with
+- Interest rate (APR) for checking, savings, credit card, investment, HSA, HSA investment, and loan accounts
+- Investment and HSA investment accounts are lot-tracked by default (override with
   `account add --track-lots=false`, or a "Track lots" checkbox on the New
   Account dialog); existing accounts gain lot tracking via
   `investment enable-lots`, which backfills lots from history
-- HSA (Health Savings Account) behaves like an investment account — supports
-  cash flows plus securities buy/sell/dividend operations with lot tracking
-  on by default, since HSAs typically allow invested funds above a cash
-  threshold
+- A Health Savings Account is two account types. `hsa` is the cash side: a
+  register account like checking, with payroll contributions in, categorized
+  medical expenses out, and a debit card. `hsa_investment` is the invested
+  side: it behaves like an investment account with lot tracking on by
+  default. Excess cash moves from one to the other as an ordinary transfer.
+  Both sit under "Health Savings" in the sidebar.
 - Dynamic account dialog that shows only relevant fields for the selected account type
 - Open/close account lifecycle: closing records a (back-datable) close date and
   **freezes** the account — no new transactions, edits, or transfers, and it
@@ -609,11 +611,16 @@ tmoney account add --name "Savings" --type savings \
   --opening-balance 10000 --opening-date 2024-01-15 \
   --institution "First Bank" --currency USD
 
-# Create a lot-tracked investment account (the default for investment/HSA)
+# Create a lot-tracked investment account (the default for investment/hsa_investment)
 tmoney account add --name "Brokerage" --type investment
 
-# Opt a new investment/HSA account out of lot tracking
+# Opt a new investment/hsa_investment account out of lot tracking
 tmoney account add --name "401k" --type investment --track-lots=false
+
+# A Health Savings Account: the cash side is a register account, the
+# invested side is an investment account
+tmoney account add --name "Cedar Bank HSA" --type hsa
+tmoney account add --name "Maple Invest HSA" --type hsa_investment
 
 # Close an account (default today; back-date with --date). Requires a zero
 # balance; the date must be within [max(opening, last txn), today].
@@ -627,6 +634,15 @@ tmoney account reopen "Old Savings"
 # nullable field). Opening balance/date are locked while the account is closed.
 tmoney account edit --name "Checking" --new-name "Main Checking"
 tmoney account edit --name "Checking" --institution "Acme Bank" --notes ""
+
+# Change an account's type across ledgers. Without --confirm this prints the
+# plan, with net worth before and after, and changes nothing. With it, a
+# manual backup is written first, then cash-only investment rows move into
+# the register together with any other flag in the same command. Refused if
+# the account holds any security row, or if a register account with rows is
+# moved the other way.
+tmoney account edit --name "Cedar Bank HSA" --type hsa
+tmoney account edit --name "Cedar Bank HSA" --type hsa --confirm
 
 # Delete an account (dry-run preview by default; --confirm to delete). Only
 # works with no transactions and no scheduled references — otherwise close it.
@@ -644,18 +660,33 @@ reference the account, `account close` prints a warning and proceeds (those
 schedules are skipped on auto-post and refused on manual post). `account reopen`
 clears the close date and unfreezes the account.
 
-New `investment` and `hsa` accounts are **lot-tracked by default** — each
+New `investment` and `hsa_investment` accounts are **lot-tracked by default** — each
 buy opens a lot and sells are allocated against open lots for exact
 cost-basis and realized-gain tracking. Pass `--track-lots=false` to
 `account add` to opt a new account out (it then uses the average-cost
 path); `--track-lots` (or `--track-lots=true`) is the explicit way to
 force it on. The flag is ignored for non-investment account types. To
-enable lot tracking on an **existing** investment/HSA account — which
+enable lot tracking on an **existing** investment/hsa_investment account — which
 backfills lots from its transaction history — use
 [`investment enable-lots`](#investment) rather than `account edit`; the
 edit command does not flip this flag.
 
-Account types: `checking`, `savings`, `credit_card`, `investment`, `hsa`, `cash`, `loan`, `asset`
+Account types: `checking`, `savings`, `credit_card`, `investment`, `hsa`, `hsa_investment`, `cash`, `loan`, `asset`
+
+The two ledgers: `investment` and `hsa_investment` accounts keep their rows in
+the investment ledger (buys, sells, dividends, cash deposits and withdrawals,
+no categories); every other type keeps its rows in the register. A type change
+that crosses that line is guarded: `account edit --type` (and the Edit Account
+dialog) plan the change, show how many rows would move, and apply only after
+confirmation. Investment → regular moves cash-only rows and keeps their
+transfer links; it is refused when any security row exists. Regular →
+investment is refused when the account has any rows or scheduled transactions.
+The move cannot be undone. Both the CLI and the TUI write a manual backup
+first, and the TUI clears the undo history after the move commits.
+
+An investment account's opening balance is cash it held when it was opened.
+It counts in the account's cash and in net worth, before and after any
+security is bought, the same way a bank account's opening balance does.
 
 ### Transactions
 

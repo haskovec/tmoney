@@ -267,6 +267,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case accountDialogSavedMsg:
 		return a, a.afterAccountDialogSave()
 
+	case ledgerMoveSavedMsg:
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Backup created before the move: %s", backupFilename(msg.backupPath)),
+			widget.NotificationInfo,
+		)
+		return a, a.afterAccountDialogSave()
+
 	case fileDialogSavedMsg:
 		return a.switchDatabase(msg.db)
 

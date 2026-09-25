@@ -34,16 +34,16 @@ func TestClassifyKind_AllFourCombinations(t *testing.T) {
 	}
 }
 
-// TestClassifyKind_HSATreatedAsInvestment pins that HSA routes through the
+// TestClassifyKind_HSAInvestmentTreatedAsInvestment pins that the invested HSA routes through the
 // investment arms, matching account.Type.IsInvestmentType.
-func TestClassifyKind_HSATreatedAsInvestment(t *testing.T) {
-	if got := ClassifyKind(account.TypeHSA, account.TypeChecking); got != KindInvToReg {
+func TestClassifyKind_HSAInvestmentTreatedAsInvestment(t *testing.T) {
+	if got := ClassifyKind(account.TypeHSAInvestment, account.TypeChecking); got != KindInvToReg {
 		t.Errorf("HSA→checking = %v, want KindInvToReg", got)
 	}
-	if got := ClassifyKind(account.TypeChecking, account.TypeHSA); got != KindRegToInv {
+	if got := ClassifyKind(account.TypeChecking, account.TypeHSAInvestment); got != KindRegToInv {
 		t.Errorf("checking→HSA = %v, want KindRegToInv", got)
 	}
-	if got := ClassifyKind(account.TypeHSA, account.TypeInvestment); got != KindInvToInv {
+	if got := ClassifyKind(account.TypeHSAInvestment, account.TypeInvestment); got != KindInvToInv {
 		t.Errorf("HSA→brokerage = %v, want KindInvToInv", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestLedgerFor(t *testing.T) {
 			t.Errorf("LedgerFor(%q) = %v, want LedgerRegular", at, got)
 		}
 	}
-	for _, at := range []account.Type{account.TypeInvestment, account.TypeHSA} {
+	for _, at := range []account.Type{account.TypeInvestment, account.TypeHSAInvestment} {
 		if got := LedgerFor(at); got != LedgerInvestment {
 			t.Errorf("LedgerFor(%q) = %v, want LedgerInvestment", at, got)
 		}

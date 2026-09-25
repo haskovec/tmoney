@@ -19,13 +19,17 @@ const (
 	TypeCash       Type = "cash"
 	TypeLoan       Type = "loan"
 	TypeAsset      Type = "asset"
-	// TypeHSA is a Health Savings Account. Cash flows in (payroll
-	// deductions, employer match) and out (medical expenses); above a
-	// custodian-specific threshold the balance can also be invested in
-	// securities, so HSAs share the investment account's lot-tracking
-	// and buy/sell/dividend semantics. Use IsInvestmentType() to gate
-	// behavior that applies to both investment and HSA accounts.
+	// TypeHSA is the cash side of a Health Savings Account: payroll
+	// contributions in, medical expenses out, a debit card. It lives in the
+	// regular ledger and behaves like checking. Excess cash above the
+	// custodian's threshold is transferred to a TypeHSAInvestment account.
 	TypeHSA Type = "hsa"
+	// TypeHSAInvestment is the invested side of a Health Savings Account.
+	// It shares the investment account's lot-tracking and
+	// buy/sell/dividend semantics and lives in investment_transactions.
+	// Use IsInvestmentType() to gate behavior that applies to both
+	// investment and HSA-investment accounts.
+	TypeHSAInvestment Type = "hsa_investment"
 )
 
 // AllTypes returns all valid account types.
@@ -36,6 +40,7 @@ func AllTypes() []Type {
 		TypeCreditCard,
 		TypeInvestment,
 		TypeHSA,
+		TypeHSAInvestment,
 		TypeCash,
 		TypeLoan,
 		TypeAsset,
@@ -51,7 +56,7 @@ func (at Type) String() string {
 func (at Type) IsValid() bool {
 	switch at {
 	case TypeChecking, TypeSavings, TypeCreditCard,
-		TypeInvestment, TypeHSA, TypeCash, TypeLoan, TypeAsset:
+		TypeInvestment, TypeHSA, TypeHSAInvestment, TypeCash, TypeLoan, TypeAsset:
 		return true
 	}
 	return false
@@ -70,6 +75,8 @@ func (at Type) DisplayName() string {
 		return "Investment"
 	case TypeHSA:
 		return "HSA"
+	case TypeHSAInvestment:
+		return "HSA Investment"
 	case TypeCash:
 		return "Cash"
 	case TypeLoan:
@@ -85,19 +92,20 @@ func (at Type) DisplayName() string {
 func (at Type) IsAssetType() bool {
 	switch at {
 	case TypeChecking, TypeSavings, TypeInvestment, TypeHSA,
-		TypeCash, TypeAsset:
+		TypeHSAInvestment, TypeCash, TypeAsset:
 		return true
 	}
 	return false
 }
 
 // IsInvestmentType returns true if the account type supports investment
-// operations (buy/sell/dividend/lot tracking). Both pure investment
-// accounts and HSAs qualify — HSAs allow securities purchases above a
-// cash-balance threshold. All other account types return false.
+// operations (buy/sell/dividend/lot tracking) and therefore keeps its rows
+// in investment_transactions. Pure investment accounts and the invested side
+// of an HSA qualify. The cash side of an HSA (TypeHSA) does not: it is a
+// register account like checking. All other account types return false.
 func (at Type) IsInvestmentType() bool {
 	switch at {
-	case TypeInvestment, TypeHSA:
+	case TypeInvestment, TypeHSAInvestment:
 		return true
 	}
 	return false
@@ -240,7 +248,7 @@ func (a *Account) Validate() types.ValidationErrors {
 	}
 
 	if a.TrackLots && !a.Type.IsInvestmentType() {
-		v.AddError("track_lots", "can only be enabled for investment or HSA accounts")
+		v.AddError("track_lots", "can only be enabled for investment or HSA investment accounts")
 	}
 
 	// Optional field length limits

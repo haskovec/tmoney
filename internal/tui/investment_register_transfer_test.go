@@ -156,7 +156,7 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 func TestInvestmentRegister_DeleteKey_CashTransfer(t *testing.T) {
 	for name, otherType := range map[string]account.Type{
 		"inv-to-bank": account.TypeChecking,
-		"inv-to-inv":  account.TypeHSA,
+		"inv-to-inv":  account.TypeHSAInvestment,
 	} {
 		t.Run(name, func(t *testing.T) {
 			env := newInvRegTransferEnv(t, otherType)

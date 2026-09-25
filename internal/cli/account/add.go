@@ -45,7 +45,7 @@ func newAccountAddCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.name, "name", "", "Account name (required)")
-	cmd.Flags().StringVar(&opts.accountType, "type", "", "Account type: checking, savings, credit_card, investment, cash, loan, asset (required)")
+	cmd.Flags().StringVar(&opts.accountType, "type", "", "Account type: checking, savings, credit_card, investment, hsa, hsa_investment, cash, loan, asset (required)")
 	cmd.Flags().StringVar(&opts.currency, "currency", "", "Currency code (default USD)")
 	cmd.Flags().StringVar(&opts.openingBal, "opening-balance", "", "Opening balance (default 0)")
 	cmd.Flags().StringVar(&opts.openingDate, "opening-date", "", "Opening date YYYY-MM-DD (default today)")
@@ -54,7 +54,7 @@ func newAccountAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.notes, "notes", "", "Free-form notes")
 	cmd.Flags().StringVar(&opts.creditLimit, "credit-limit", "", "Credit limit (credit_card accounts only)")
 	cmd.Flags().StringVar(&opts.interestRate, "interest-rate", "", "Interest rate / APR (loan accounts only)")
-	cmd.Flags().BoolVar(&opts.trackLots, "track-lots", true, "Track individual tax lots (investment/hsa only; default on for those types; pass --track-lots=false to opt out)")
+	cmd.Flags().BoolVar(&opts.trackLots, "track-lots", true, "Track individual tax lots (investment/hsa_investment only; default on for those types; pass --track-lots=false to opt out)")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("type")
 	return cmd
@@ -148,7 +148,7 @@ func runAccountAdd(opts *accountAddOptions, w io.Writer) error {
 		acct.SetInterestRate(interestRate)
 	}
 
-	// Lot tracking: default on for investment/HSA accounts, opt out with
+	// Lot tracking: default on for investment-ledger accounts, opt out with
 	// --track-lots=false. Ignored (always off) for non-investment types.
 	acct.TrackLots = acctType.IsInvestmentType() && opts.trackLots
 

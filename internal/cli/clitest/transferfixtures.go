@@ -40,7 +40,7 @@ func SetupTransferAccounts(t *testing.T) (string, *account.Account, *account.Acc
 
 // SetupTransferDispatchAccounts seeds a temp DB with one account of every type
 // that the four transfer-dispatch paths exercise: a Checking (reg), two
-// investment accounts (Brokerage, Rollover IRA), and an HSA. It closes the DB
+// investment accounts (Brokerage, Rollover IRA), and an invested HSA. It closes the DB
 // and returns the path plus the four account references.
 func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *account.Account, *account.Account, *account.Account) {
 	t.Helper()
@@ -58,7 +58,7 @@ func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *acc
 	if err := repo.Create(ira); err != nil {
 		t.Fatalf("setup: create ira: %v", err)
 	}
-	hsa := account.NewAccount("HSA", account.TypeHSA, "USD", types.ZeroMoney, types.Today())
+	hsa := account.NewAccount("HSA", account.TypeHSAInvestment, "USD", types.ZeroMoney, types.Today())
 	if err := repo.Create(hsa); err != nil {
 		t.Fatalf("setup: create hsa: %v", err)
 	}

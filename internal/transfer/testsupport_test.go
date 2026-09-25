@@ -83,7 +83,7 @@ func newHarness(t *testing.T) *harness {
 	h.savings = h.newAccount("Savings", account.TypeSavings, "5000.00", open)
 	h.brokerage = h.newAccount("Brokerage", account.TypeInvestment, "0.00", open)
 	h.ira = h.newAccount("Rollover IRA", account.TypeInvestment, "0.00", open)
-	h.hsa = h.newAccount("HSA", account.TypeHSA, "0.00", open)
+	h.hsa = h.newAccount("HSA", account.TypeHSAInvestment, "0.00", open)
 
 	return h
 }

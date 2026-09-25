@@ -202,7 +202,7 @@ func TestCreateWithSplits_InvestmentTargetSplit_DispatchesToAdapter(t *testing.T
 func TestCreateWithSplits_HSATargetSplit_DispatchesToAdapter(t *testing.T) {
 	svc, accountRepo, adapter, categoryRepo := createTestServiceWithAdapter(t)
 	checking := createTestAccount(t, accountRepo, "Checking")
-	hsa := createTestAccountOfType(t, accountRepo, "HSA", account.TypeHSA)
+	hsa := createTestAccountOfType(t, accountRepo, "HSA", account.TypeHSAInvestment)
 
 	salary := category.NewCategory("Salary", category.TypeIncome)
 	if err := categoryRepo.Create(salary); err != nil {

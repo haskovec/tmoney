@@ -6,9 +6,12 @@ import (
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -297,5 +300,230 @@ func TestAccountEdit_TypeChangeClearsCreditLimit(t *testing.T) {
 	}
 	if acct.CreditLimit.Valid {
 		t.Errorf("expected credit limit cleared after type change away from credit_card")
+	}
+}
+
+// seedInvestedHSA creates an hsa_investment account with the given
+// investment rows and returns the db path plus the account.
+func seedInvestedHSA(t *testing.T, rows ...*investment.Transaction) (string, *accountdom.Account) {
+	t.Helper()
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	acct := accountdom.NewAccount("Cedar Bank HSA", accountdom.TypeHSAInvestment, "USD",
+		types.MustNewMoney("0"), types.MustParseDate("2020-01-01"))
+	if err := accountdom.NewRepository(database).Create(acct); err != nil {
+		t.Fatalf("setup account: %v", err)
+	}
+	invRepo := investment.NewRepository(database)
+	for _, r := range rows {
+		r.AccountID = acct.ID
+		if err := invRepo.Create(r); err != nil {
+			t.Fatalf("setup row: %v", err)
+		}
+	}
+	database.Close()
+	return dbPath, acct
+}
+
+func cashRow(kind investment.TransactionType, amount string) *investment.Transaction {
+	return investment.NewTransaction(types.NilID, types.MustParseDate("2024-03-01"), kind, types.MustNewMoney(amount))
+}
+
+func countRows(t *testing.T, dbPath string, acctID types.ID) (reg, inv int) {
+	t.Helper()
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer database.Close()
+	reg, err = transaction.NewRepository(database).CountByAccount(acctID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := investment.NewRepository(database).ListByAccount(acctID, investment.TransactionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg, len(rows)
+}
+
+func TestAccountEdit_LedgerMove_PrintsPlanWithoutConfirm(t *testing.T) {
+	dbPath, acct := seedInvestedHSA(t,
+		cashRow(investment.TransactionTypeDeposit, "250.00"),
+		cashRow(investment.TransactionTypeDeposit, "250.00"),
+		cashRow(investment.TransactionTypeWithdrawal, "-180.25"),
+	)
+	out, err := runEdit(t, "--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa")
+	if err != nil {
+		t.Fatalf("plan run: %v", err)
+	}
+	for _, want := range []string{
+		"Cedar Bank HSA: HSA Investment -> HSA",
+		"This moves 3 row(s)",
+		"deposit        2",
+		"withdrawal     1",
+		"Net worth today: $319.75 before, $319.75 after.",
+		"Re-run with --confirm",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("plan output missing %q:\n%s", want, out)
+		}
+	}
+	if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+		t.Errorf("type changed without --confirm: %q", got)
+	}
+	if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 3 {
+		t.Errorf("rows moved without --confirm: reg %d inv %d", reg, inv)
+	}
+}
+
+func TestAccountEdit_LedgerMove_ConfirmMovesRowsAndAppliesEdits(t *testing.T) {
+	dbPath, acct := seedInvestedHSA(t,
+		cashRow(investment.TransactionTypeDeposit, "250.00"),
+		cashRow(investment.TransactionTypeInterest, "0.12"),
+	)
+	out, err := runEdit(t, "--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa",
+		"--institution", "Cedar Bank", "--confirm")
+	if err != nil {
+		t.Fatalf("confirm run: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Moved 2 row(s) to the register.") || !strings.Contains(out, "Account updated.") {
+		t.Errorf("output:\n%s", out)
+	}
+	got := reloadAccount(t, dbPath, "Cedar Bank HSA")
+	if got.Type != accountdom.TypeHSA || got.Institution.String != "Cedar Bank" || got.TrackLots {
+		t.Errorf("account after move = type %s institution %q trackLots %v", got.Type, got.Institution.String, got.TrackLots)
+	}
+	if reg, inv := countRows(t, dbPath, acct.ID); reg != 2 || inv != 0 {
+		t.Errorf("rows after move: reg %d inv %d", reg, inv)
+	}
+	// The pre-move backup is a manual backup that still holds the state
+	// before the move; the auto backup written after the edit cannot
+	// replace it.
+	backups, err := backup.ListBackups(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manual []backup.BackupInfo
+	for _, b := range backups {
+		if b.Type == backup.BackupTypeManual {
+			manual = append(manual, b)
+		}
+	}
+	if len(manual) != 1 {
+		t.Fatalf("manual backups = %d, want 1 (all backups: %+v)", len(manual), backups)
+	}
+	if !strings.Contains(out, "Backup written: "+manual[0].Path) {
+		t.Errorf("output does not name the backup %s:\n%s", manual[0].Path, out)
+	}
+	bk, err := db.Open(manual[0].Path)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer bk.Close()
+	pre, err := accountdom.NewRepository(bk).GetByID(acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preRows, err := investment.NewRepository(bk).ListByAccount(acct.ID, investment.TransactionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pre.Type != accountdom.TypeHSAInvestment || len(preRows) != 2 {
+		t.Errorf("backup holds type %s with %d investment rows, want the pre-move state", pre.Type, len(preRows))
+	}
+}
+
+// TestAccountEdit_LedgerMove_BadFlagMovesNothing pins that every flag is
+// checked before the backup and the move.
+func TestAccountEdit_LedgerMove_BadFlagMovesNothing(t *testing.T) {
+	cases := map[string][]string{
+		"unparsable opening balance": {"--opening-balance", "not-a-number"},
+		"credit limit on a non-card": {"--credit-limit", "500"},
+		"notes over the limit":       {"--notes", strings.Repeat("x", 2001)},
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			dbPath, acct := seedInvestedHSA(t, cashRow(investment.TransactionTypeDeposit, "250.00"))
+			args := append([]string{"--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa", "--confirm"}, extra...)
+			out, err := runEdit(t, args...)
+			if err == nil {
+				t.Fatalf("expected an error\n%s", out)
+			}
+			if strings.Contains(out, "Moved 1 row(s) to the register.") {
+				t.Errorf("output claims a move:\n%s", out)
+			}
+			if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+				t.Errorf("type changed: %q", got)
+			}
+			if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 1 {
+				t.Errorf("rows moved: reg %d inv %d", reg, inv)
+			}
+		})
+	}
+}
+
+// TestAccountEdit_LedgerMove_DuplicateNameMovesNothing pins that a name
+// clash found inside the move's transaction rolls the move back.
+func TestAccountEdit_LedgerMove_DuplicateNameMovesNothing(t *testing.T) {
+	dbPath, acct := seedInvestedHSA(t, cashRow(investment.TransactionTypeDeposit, "250.00"))
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accountdom.NewRepository(database).Create(newChecking("Checking")); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+
+	_, err = runEdit(t, "--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa",
+		"--new-name", "Checking", "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected a duplicate-name error, got %v", err)
+	}
+	if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+		t.Errorf("type changed: %q", got)
+	}
+	if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 1 {
+		t.Errorf("rows moved: reg %d inv %d", reg, inv)
+	}
+}
+
+func TestAccountEdit_LedgerMove_RefusesSecurityRows(t *testing.T) {
+	buy := cashRow(investment.TransactionTypeBuy, "-250.00")
+	buy.SecurityID = types.NullableID{ID: types.NewID(), Valid: true}
+	buy.Shares = types.NullableQuantity{Quantity: types.MustNewQuantity("10"), Valid: true}
+	buy.PricePerShare = types.NullableMoney{Money: types.MustNewMoney("25.00"), Valid: true}
+	dbPath, acct := seedInvestedHSA(t, cashRow(investment.TransactionTypeDeposit, "250.00"), buy)
+
+	_, err := runEdit(t, "--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa", "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "security rows") {
+		t.Fatalf("expected refusal naming security rows, got %v", err)
+	}
+	if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+		t.Errorf("type changed on refusal: %q", got)
+	}
+	if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 2 {
+		t.Errorf("rows changed on refusal: reg %d inv %d", reg, inv)
+	}
+}
+
+func TestAccountEdit_LedgerMove_RefusesRegularWithRows(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	acct := newChecking("Checking")
+	if err := accountdom.NewRepository(database).Create(acct); err != nil {
+		t.Fatal(err)
+	}
+	txn := transaction.NewTransaction(acct.ID, types.MustParseDate("2024-01-05"), types.MustNewMoney("-20.00"))
+	if err := transaction.NewRepository(database).Create(txn); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+
+	_, err := runEdit(t, "--file", dbPath, "--name", "Checking", "--type", "investment", "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "register rows") {
+		t.Fatalf("expected refusal, got %v", err)
+	}
+	if got := reloadAccount(t, dbPath, "Checking").Type; got != accountdom.TypeChecking {
+		t.Errorf("type changed on refusal: %q", got)
 	}
 }

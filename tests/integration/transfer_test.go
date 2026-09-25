@@ -56,7 +56,7 @@ func TestTransferWiring_AllFourShapesThroughTheCompositionRoot(t *testing.T) {
 		{"reg-to-reg", account.TypeChecking, account.TypeSavings, transfer.KindRegToReg},
 		{"inv-to-reg", account.TypeInvestment, account.TypeChecking, transfer.KindInvToReg},
 		{"reg-to-inv", account.TypeChecking, account.TypeInvestment, transfer.KindRegToInv},
-		{"inv-to-inv", account.TypeInvestment, account.TypeHSA, transfer.KindInvToInv},
+		{"inv-to-inv", account.TypeInvestment, account.TypeHSAInvestment, transfer.KindInvToInv},
 	}
 
 	for _, sh := range shapes {
@@ -159,12 +159,14 @@ func TestTransferWiring_InvestmentLegLandsInTheInvestmentLedger(t *testing.T) {
 		t.Errorf("investment row %s is not the reported To leg %s", invRows[0].ID, res.To.RowID)
 	}
 
+	// Cash is the opening balance plus the cash-affecting leg.
 	cash, err := svc.Investment.GetCashBalance(brokerage.ID)
 	if err != nil {
 		t.Fatalf("GetCashBalance: %v", err)
 	}
-	if !cash.Equal(types.MustNewMoney("400.00")) {
-		t.Errorf("brokerage cash = %s, want 400.00", cash)
+	want := brokerage.OpeningBalance.Add(types.MustNewMoney("400.00"))
+	if !cash.Equal(want) {
+		t.Errorf("brokerage cash = %s, want %s (opening balance + 400.00)", cash, want)
 	}
 }
 

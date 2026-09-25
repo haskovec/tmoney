@@ -41,9 +41,10 @@ func TestAccountTypeFromIndex(t *testing.T) {
 		{2, account.TypeCreditCard},
 		{3, account.TypeInvestment},
 		{4, account.TypeHSA},
-		{5, account.TypeCash},
-		{6, account.TypeLoan},
-		{7, account.TypeAsset},
+		{5, account.TypeHSAInvestment},
+		{6, account.TypeCash},
+		{7, account.TypeLoan},
+		{8, account.TypeAsset},
 		{-1, account.TypeChecking},  // out of range defaults to checking
 		{100, account.TypeChecking}, // out of range defaults to checking
 	}
@@ -66,9 +67,10 @@ func TestAccountTypeToIndex(t *testing.T) {
 		{account.TypeCreditCard, 2},
 		{account.TypeInvestment, 3},
 		{account.TypeHSA, 4},
-		{account.TypeCash, 5},
-		{account.TypeLoan, 6},
-		{account.TypeAsset, 7},
+		{account.TypeHSAInvestment, 5},
+		{account.TypeCash, 6},
+		{account.TypeLoan, 7},
+		{account.TypeAsset, 8},
 		{account.Type("unknown"), 0}, // unknown defaults to 0
 	}
 
@@ -319,8 +321,8 @@ func TestBuildEditAccountDialog_Loan(t *testing.T) {
 	fields := d.Fields()
 
 	// Type should be Loan (index 6)
-	if fields[acctFieldType].SelectedIndex != 6 {
-		t.Errorf("type selectedIndex = %d, want 6", fields[acctFieldType].SelectedIndex)
+	if fields[acctFieldType].SelectedIndex != 7 {
+		t.Errorf("type selectedIndex = %d, want 7", fields[acctFieldType].SelectedIndex)
 	}
 
 	// Interest rate should be populated and visible
@@ -1357,10 +1359,16 @@ func TestUpdateAccountFieldVisibility_TrackLots(t *testing.T) {
 		t.Error("Track Lots should be visible for investment accounts")
 	}
 
-	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeHSA)
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeHSAInvestment)
 	updateAccountFieldVisibility(d)
 	if fields[acctFieldTrackLots].Hidden {
-		t.Error("Track Lots should be visible for HSA accounts")
+		t.Error("Track Lots should be visible for HSA investment accounts")
+	}
+
+	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeHSA)
+	updateAccountFieldVisibility(d)
+	if !fields[acctFieldTrackLots].Hidden {
+		t.Error("Track Lots should be hidden for the cash HSA")
 	}
 
 	fields[acctFieldType].SelectedIndex = accountTypeToIndex(account.TypeChecking)

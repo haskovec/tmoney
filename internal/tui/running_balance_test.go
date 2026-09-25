@@ -111,7 +111,7 @@ func TestRunningCash_OnlyCashAffectingTypes(t *testing.T) {
 		invTxn(investment.TransactionTypeBuy, "-300"),             //
 		invTxn(investment.TransactionTypeDeposit, "1000"),         // oldest
 	}
-	got := runningCash(txns)
+	got := runningCash(txns, types.ZeroMoney)
 	want := []string{"742", "700", "700", "1000"}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
@@ -129,7 +129,7 @@ func TestRunningCash_TransferSharesCarriesForward(t *testing.T) {
 		invTxn(investment.TransactionTypeTransferShares, "500"), // newest, no cash
 		invTxn(investment.TransactionTypeDeposit, "200"),        // oldest
 	}
-	got := runningCash(txns)
+	got := runningCash(txns, types.ZeroMoney)
 	want := []string{"200", "200"}
 	for i, w := range want {
 		if got[i].String() != types.MustNewMoney(w).String() {
@@ -166,5 +166,21 @@ func TestColumnsFitWidth_InvestmentRegister(t *testing.T) {
 func TestColumnsFitWidth_Empty(t *testing.T) {
 	if columnsFitWidth(nil, 1000, registerFlexMargin) {
 		t.Error("empty column set should not fit")
+	}
+}
+
+func TestRunningCash_StartsAtOpeningBalance(t *testing.T) {
+	// An account opened with 1000 cash that then buys 300 of a fund holds
+	// 700 cash, not -300.
+	txns := []*investment.Transaction{
+		invTxn(investment.TransactionTypeBuy, "-300"), // newest
+		invTxn(investment.TransactionTypeInterest, "5"),
+	}
+	got := runningCash(txns, types.MustNewMoney("1000"))
+	want := []string{"705", "1005"}
+	for i, w := range want {
+		if !got[i].Equal(types.MustNewMoney(w)) {
+			t.Errorf("cash[%d] = %s, want %s", i, got[i].String(), w)
+		}
 	}
 }

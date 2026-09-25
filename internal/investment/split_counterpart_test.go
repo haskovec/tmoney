@@ -275,7 +275,7 @@ func TestSplitCounterpart_FutureDatedPaycheckPosting_LandsInvestmentRows(t *test
 	_ = accountRepo.Create(checking)
 	retirement := account.NewAccount("401k", account.TypeInvestment, "USD", types.ZeroMoney, types.Today())
 	_ = accountRepo.Create(retirement)
-	hsa := account.NewAccount("HSA", account.TypeHSA, "USD", types.ZeroMoney, types.Today())
+	hsa := account.NewAccount("HSA", account.TypeHSAInvestment, "USD", types.ZeroMoney, types.Today())
 	_ = accountRepo.Create(hsa)
 
 	salary := category.NewCategory("Salary", category.TypeIncome)

@@ -6,6 +6,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -32,6 +35,12 @@ type accountDialogDataMsg struct {
 
 // accountDialogSavedMsg is sent when an account has been saved.
 type accountDialogSavedMsg struct{}
+
+// ledgerMoveSavedMsg is sent when a confirmed ledger move has committed. It
+// carries the pre-move backup so the status bar can name it.
+type ledgerMoveSavedMsg struct {
+	backupPath string
+}
 
 // accountDeletedMsg is sent when an account has been deleted.
 type accountDeletedMsg struct{}
@@ -93,7 +102,7 @@ func accountTypeShowsCreditLimit(at account.Type) bool {
 func accountTypeShowsInterestRate(at account.Type) bool {
 	switch at {
 	case account.TypeChecking, account.TypeSavings, account.TypeCreditCard,
-		account.TypeInvestment, account.TypeHSA, account.TypeLoan:
+		account.TypeInvestment, account.TypeHSA, account.TypeHSAInvestment, account.TypeLoan:
 		return true
 	default:
 		return false
@@ -127,7 +136,7 @@ func updateAccountFieldVisibility(d *dialog.Dialog) {
 	}
 
 	// Track Lots checkbox exists only on the new-account dialog (index 10);
-	// show it only for investment/HSA account types.
+	// show it only for investment-ledger account types.
 	if len(fields) > acctFieldTrackLots {
 		fields[acctFieldTrackLots].Hidden = !accountType.IsInvestmentType()
 	}
@@ -427,6 +436,85 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	mode := a.acct.data.mode
 	existingAccount := a.acct.data.account
 
+	// applyFields writes the parsed dialog values onto acct. It is shared by
+	// the plain save and the confirmed ledger move so both write the same
+	// thing.
+	applyFields := func(acct *account.Account) {
+		acct.Name = name
+		acct.Type = accountType
+		acct.Currency = currency
+		if mode == accountDialogModeEdit && existingAccount != nil {
+			// Opening balance/date are locked while an account is closed —
+			// editing them would silently move a frozen account's balance off
+			// zero. Metadata stays editable. Reopen to change these.
+			if !existingAccount.IsClosed() {
+				acct.OpeningBalance = openingBalance
+				acct.OpeningDate = openingDate
+			}
+		}
+		acct.SetInstitution(institution)
+		acct.SetAccountNumber(accountNumber)
+		acct.SetNotes(notes)
+		acct.CreditLimit = creditLimit
+		acct.InterestRate = interestRate
+		// The edit dialog has no Track Lots control, so a change to a
+		// non-investment type must clear it here or validation refuses the
+		// save (the CLI does the same in applyAccountEdits).
+		if !accountType.IsInvestmentType() {
+			acct.TrackLots = false
+		}
+	}
+
+	// A type change that crosses ledgers is planned first. A refusal lands on
+	// the Type field; a move needs the user's confirmation because it cannot
+	// be undone (specs/design-hsa-split.md §5.5).
+	if mode == accountDialogModeEdit && existingAccount != nil &&
+		accountType != existingAccount.Type && a.services.Transfer != nil {
+		plan, err := a.services.Transfer.PlanAccountTypeChange(existingAccount.ID, accountType)
+		if err != nil {
+			fields[acctFieldType].Error = err.Error()
+			return a, nil
+		}
+		if plan.MovesRows() {
+			// Build and check the whole edit before the confirm dialog, on a
+			// copy so the sidebar's account is untouched until it commits.
+			edited := *existingAccount
+			applyFields(&edited)
+			if errs := edited.Validate(); errs.HasErrors() {
+				a.acct.dlg.SetErrorMsg(errs.Error())
+				return a, nil
+			}
+			if a.services.Account != nil {
+				if other, err := a.services.Account.GetByName(edited.Name); err == nil && other.ID != edited.ID {
+					fields[acctFieldName].Error = "An account with this name already exists"
+					return a, nil
+				}
+			}
+
+			database := a.db
+			a.closeAccountDialog()
+			a.showConfirmDialog("Move "+existingAccount.Name+" to the register?",
+				ledgerMoveMessage(plan), func() tea.Msg {
+					backupPath, err := backupBeforeLedgerMove(database)
+					if err != nil {
+						return errMsg{err: err}
+					}
+					// The move and every other field edit commit in one
+					// transaction, so a failure here changes nothing.
+					if err := a.services.Transfer.ChangeAccountType(plan, &edited); err != nil {
+						return errMsg{err: fmt.Errorf("failed to change the account; nothing was moved: %w", err)}
+					}
+					// The move is one-way, so the undo stack is cleared as
+					// after a restore or a file switch.
+					if a.undoManager != nil {
+						a.undoManager.Clear()
+					}
+					return ledgerMoveSavedMsg{backupPath: backupPath}
+				})
+			return a, nil
+		}
+	}
+
 	// Close dialog before async save for responsive UI
 	a.closeAccountDialog()
 
@@ -438,29 +526,12 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		var acct *account.Account
 		if mode == accountDialogModeEdit && existingAccount != nil {
 			acct = existingAccount
-			acct.Name = name
-			acct.Type = accountType
-			acct.Currency = currency
-			// Opening balance/date are locked while an account is closed —
-			// editing them would silently move a frozen account's balance off
-			// zero. Metadata stays editable. Reopen to change these.
-			if !existingAccount.IsClosed() {
-				acct.OpeningBalance = openingBalance
-				acct.OpeningDate = openingDate
-			}
+			applyFields(acct)
 		} else {
 			acct = account.NewAccount(name, accountType, currency, openingBalance, openingDate)
 			acct.TrackLots = accountType.IsInvestmentType() && trackLots
+			applyFields(acct)
 		}
-
-		// Set optional fields
-		acct.SetInstitution(institution)
-		acct.SetAccountNumber(accountNumber)
-		acct.SetNotes(notes)
-
-		// Type-specific fields
-		acct.CreditLimit = creditLimit
-		acct.InterestRate = interestRate
 
 		if mode == accountDialogModeEdit {
 			cmd := undo.NewEditAccountCommand(a.services.Account, acct)
@@ -476,6 +547,44 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 
 		return accountDialogSavedMsg{}
 	}
+}
+
+// ledgerMoveMessage renders a LedgerMovePlan for the confirm dialog.
+func ledgerMoveMessage(plan *transfer.LedgerMovePlan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s -> %s\n", plan.From.DisplayName(), plan.To.DisplayName())
+	fmt.Fprintf(&b, "This moves %d row(s) from the investment ledger to the register:\n", plan.Total)
+	for _, t := range plan.SortedTypes() {
+		fmt.Fprintf(&b, "  %s: %d\n", t, plan.RowsByType[t])
+	}
+	fmt.Fprintf(&b, "Net worth today: %s before, %s after.\n",
+		formatDashboardMoney(plan.NetWorthBefore), formatDashboardMoney(plan.NetWorthAfter))
+	if plan.FutureRows > 0 {
+		fmt.Fprintf(&b, "%d row(s) are dated after today. The register counts each one from its date.\n", plan.FutureRows)
+	}
+	b.WriteString("Moved rows keep their transfer links. They get no payee and no category.\n")
+	b.WriteString("This cannot be undone. A backup is written first.")
+	return b.String()
+}
+
+// backupBeforeLedgerMove writes a manual backup through db.WithFileClosed, so
+// the same handle, services and undo stack stay valid afterward. A manual
+// backup has its own file name and retention never deletes it, so the backup
+// written on exit cannot replace it.
+func backupBeforeLedgerMove(database *db.DB) (string, error) {
+	if database == nil {
+		return "", fmt.Errorf("no database is open; nothing was moved")
+	}
+	var backupPath string
+	err := database.WithFileClosed(func(path string) error {
+		p, err := backup.CreateManualBackup(path)
+		backupPath = p
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to write the backup; nothing was moved: %w", err)
+	}
+	return backupPath, nil
 }
 
 // deleteSelectedAccount deletes the currently selected account.

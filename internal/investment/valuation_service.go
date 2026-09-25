@@ -98,7 +98,7 @@ func (s *ValuationService) GetAccountValuation(accountID types.ID, asOf types.Da
 		return nil, err
 	}
 
-	cashBalance, err := cashBalanceOf(s.repo, accountID)
+	cashBalance, err := cashBalanceOf(s.repo, acct)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cash balance: %w", err)
 	}

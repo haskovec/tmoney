@@ -4,26 +4,37 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
 // Read-only share and cash queries. No writes, no transactions.
 
-// GetCashBalance computes the cash balance for an investment account by summing
-// all cash-affecting transactions.
+// GetCashBalance computes the cash balance for an investment account: its
+// opening balance plus every cash-affecting transaction.
 func (s *Service) GetCashBalance(accountID types.ID) (types.Money, error) {
-	return cashBalanceOf(s.repo, accountID)
+	acct, err := s.accountRepo.GetByID(accountID)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to get account: %w", err)
+	}
+	return cashBalanceOf(s.repo, acct)
 }
 
 // cashBalanceOf is the shared body: ValuationService needs the same figure to
 // value an account, and neither type should own the other.
-func cashBalanceOf(repo *Repository, accountID types.ID) (types.Money, error) {
-	txns, err := repo.ListByAccount(accountID, TransactionFilter{})
+//
+// The opening balance is cash the account held on its opening date, before
+// any security was bought, so it is part of the cash balance and of net
+// worth — the same rule a register account follows. Money- and time-weighted
+// return (performance.go) replay only the ledger and leave it out on both
+// sides, so they measure the ledger's own flows.
+func cashBalanceOf(repo *Repository, acct *account.Account) (types.Money, error) {
+	txns, err := repo.ListByAccount(acct.ID, TransactionFilter{})
 	if err != nil {
 		return types.ZeroMoney, fmt.Errorf("failed to list transactions: %w", err)
 	}
 
-	balance := types.ZeroMoney
+	balance := acct.OpeningBalance
 	for _, txn := range txns {
 		if txn.Type.AffectsCash() {
 			balance = balance.Add(txn.TotalAmount)

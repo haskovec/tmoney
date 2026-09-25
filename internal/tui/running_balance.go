@@ -45,14 +45,14 @@ func runningBalances(txns []*transaction.Transaction, opening types.Money) []typ
 }
 
 // runningCash mirrors runningBalances for an investment account's cash
-// position. Investment accounts carry no opening cash, so accumulation starts
-// at zero; only cash-affecting transaction types (Type.AffectsCash()) move the
-// balance — share-only rows such as Reinvest Dividend, Transfer Shares, and
-// Fee Liquidation carry the prior cash forward. The first element equals
+// position. Accumulation starts at the account's opening balance; only
+// cash-affecting transaction types (Type.AffectsCash()) move the balance —
+// share-only rows such as Reinvest Dividend, Transfer Shares, and Fee
+// Liquidation carry the prior cash forward. The first element equals
 // Service.GetCashBalance, the figure shown in the register title bar.
-func runningCash(txns []*investment.Transaction) []types.Money {
+func runningCash(txns []*investment.Transaction, opening types.Money) []types.Money {
 	out := make([]types.Money, len(txns))
-	bal := types.ZeroMoney
+	bal := opening
 	for i := len(txns) - 1; i >= 0; i-- {
 		if txns[i].Type.AffectsCash() {
 			bal = bal.Add(txns[i].TotalAmount)
