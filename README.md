@@ -636,9 +636,11 @@ tmoney account edit --name "Checking" --new-name "Main Checking"
 tmoney account edit --name "Checking" --institution "Acme Bank" --notes ""
 
 # Change an account's type across ledgers. Without --confirm this prints the
-# plan and changes nothing; with it, cash-only investment rows move into the
-# register (a backup is written first). Refused if the account holds any
-# security row, or if a register account with rows is moved the other way.
+# plan, with net worth before and after, and changes nothing. With it, a
+# manual backup is written first, then cash-only investment rows move into
+# the register together with any other flag in the same command. Refused if
+# the account holds any security row, or if a register account with rows is
+# moved the other way.
 tmoney account edit --name "Cedar Bank HSA" --type hsa
 tmoney account edit --name "Cedar Bank HSA" --type hsa --confirm
 
@@ -679,8 +681,12 @@ dialog) plan the change, show how many rows would move, and apply only after
 confirmation. Investment → regular moves cash-only rows and keeps their
 transfer links; it is refused when any security row exists. Regular →
 investment is refused when the account has any rows or scheduled transactions.
-The move cannot be undone; the CLI writes a backup first and the TUI clears
-the undo history.
+The move cannot be undone. Both the CLI and the TUI write a manual backup
+first, and the TUI clears the undo history after the move commits.
+
+An investment account's opening balance is cash it held when it was opened.
+It counts in the account's cash and in net worth, before and after any
+security is bought, the same way a bank account's opening balance does.
 
 ### Transactions
 

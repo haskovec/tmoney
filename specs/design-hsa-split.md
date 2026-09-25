@@ -1,18 +1,20 @@
 # Design: split the HSA account type into `hsa` and `hsa_investment`
 
 **Date:** 2026-09-21
-**Status:** IMPLEMENTED. Two deviations from the proposal, both stronger than
-what was specified:
+**Status:** IMPLEMENTED. The sections below describe what shipped. Three
+points differ from the first proposal:
 
 1. §5.1 proposed an `arch_test` as the guard against a stray cross-ledger
-   type change. The implementation puts the guard in the domain instead:
-   `account.Service.Update` refuses a cross-ledger change while the departing
-   ledger has rows (`account.LedgerChangeError`). Every caller is covered, not
-   only the two the test would have listed.
-2. §5.5/§5.6 said a backup is written before the move. The CLI does that
-   (close, auto backup, reopen, move). The TUI cannot copy an open DuckDB
-   file mid-session, so it relies on the auto backup written on exit and
-   says so in the confirm dialog.
+   type change. The guard is in the domain instead: `account.Service.Update`
+   refuses a cross-ledger change while the departing ledger still has rows,
+   positions or lots (`account.LedgerChangeError`). Every caller is covered.
+2. `ChangeAccountType` takes the fully edited account, not only the plan.
+   The row move and every other field edit commit in one transaction, so a
+   bad field or a duplicate name rolls back the move too (§5.1).
+3. An investment account's opening balance is now part of its cash and of
+   net worth, as it is for a register account. Before, investment cash
+   ignored it, so a move changed net worth by the opening balance. The plan
+   shows net worth before and after the move (§5.6).
 
 The runbook in §7 is unchanged.
 
@@ -209,34 +211,37 @@ package transfer
 // by PlanAccountTypeChange and printed by the CLI / shown by the TUI before
 // anything is written.
 type LedgerMovePlan struct {
-    AccountID   types.ID
-    From, To    account.Type
-    FromLedger  Ledger
-    ToLedger    Ledger
-    RowsByType  map[investment.TransactionType]int // empty when no move
-    Total       int
+    AccountID      types.ID
+    From, To       account.Type
+    FromLedger     Ledger
+    ToLedger       Ledger
+    RowsByType     map[investment.TransactionType]int // empty when no move
+    Total          int
+    NetWorthBefore types.Money // today's net worth under the old type
+    NetWorthAfter  types.Money // and under the new type
+    FutureRows     int         // moved rows dated after today
 }
 
 // PlanAccountTypeChange validates the type change and returns the plan.
-// Errors: *LedgerMoveRefusedError (security rows present, or reg→inv with
-// rows), account not found.
+// Errors: *LedgerMoveRefusedError (security rows, positions or lots present,
+// or reg→inv with rows), account not found.
 func (s *Service) PlanAccountTypeChange(acctID types.ID, to account.Type) (*LedgerMovePlan, error)
 
-// ChangeAccountType applies the plan in one db transaction: writes the new
-// type, moves the rows, and deletes the source rows. Positions and lots are
-// not touched because a movable account has none (see 5.2).
-func (s *Service) ChangeAccountType(plan *LedgerMovePlan) error
+// ChangeAccountType applies the plan and the rest of the edit in one db
+// transaction: it plans again and refuses a stale plan, validates edited,
+// moves the rows, deletes the source rows, and writes edited. A validation
+// failure or a duplicate name rolls back the whole edit.
+func (s *Service) ChangeAccountType(plan *LedgerMovePlan, edited *account.Account) error
 ```
 
-`PlanAccountTypeChange` is called by both `account edit` and the TUI dialog
-**before** they touch any other field, and only when the type actually
-changes ledger. A type change inside one ledger (`checking` → `savings`,
-`investment` → `hsa_investment`) has an empty plan and goes through
-`account.Service.Update` as today. The account service gains nothing; the
-guard is that the two presentation paths route every type change through
-`PlanAccountTypeChange` first. An `arch_test` in `internal/transfer`
-confirms no other production code writes `accounts.type` across a ledger
-boundary.
+`account edit` and the TUI dialog parse every field onto a copy of the
+account first, then call `PlanAccountTypeChange` when the type changes. A
+type change inside one ledger (`checking` → `savings`, `investment` →
+`hsa_investment`), or across ledgers on an account with no rows, has an
+empty plan and goes through `account.Service.Update` as before. A plan that
+moves rows is shown, confirmed, and applied with `ChangeAccountType`.
+`account.Service.Update` refuses a cross-ledger change while the departing
+ledger has rows, positions or lots, so no other path can strand them.
 
 ### 5.2 Rules
 
@@ -311,14 +316,21 @@ restores account fields only. It cannot restore moved rows, and the reverse
 move is refused by D5, so an undo after a ledger move would leave the type
 and the ledger disagreeing. The TUI therefore:
 
-1. Calls `PlanAccountTypeChange`. If the plan is empty, proceeds as today.
-2. Otherwise closes the edit dialog and opens `showConfirmDialog` with the
-   plan: account, `HSA Investment → HSA`, row counts by kind, and the line
-   "This cannot be undone. A backup is written first."
-3. On confirm, calls `ChangeAccountType` directly (not through the undo
-   manager), then `undoManager.Clear()`, as `backup_dialog.go:164` and
-   `file_dialog.go:276` do after an irreversible file operation. Other field
-   edits from the same dialog are applied in the same call after the move.
+1. Calls `PlanAccountTypeChange`. If the plan moves no rows, proceeds as
+   before.
+2. Otherwise applies the dialog fields to a copy of the account and checks
+   it: field validation and name uniqueness. A failure stays in the dialog,
+   before any backup or write.
+3. Closes the edit dialog and opens `showConfirmDialog` with the plan:
+   `HSA Investment → HSA`, row counts by kind, net worth before and after,
+   and "This cannot be undone. A backup is written first."
+4. On confirm, writes a manual backup through `db.WithFileClosed` (the same
+   helper the Backup menu uses, so the handle, services and undo stack stay
+   valid), then calls `ChangeAccountType` with the edited copy, not through
+   the undo manager. Only after it commits does it call
+   `undoManager.Clear()`, as `backup_dialog.go` and `file_dialog.go` do after
+   an irreversible file operation. A failed commit changes nothing and keeps
+   the undo history. The status bar names the backup.
 
 ### 5.6 CLI
 
@@ -326,20 +338,31 @@ and the ledger disagreeing. The TUI therefore:
 
 ```
 Cedar Bank HSA: HSA Investment -> HSA
-This moves 13 rows from the investment ledger to the register:
+This moves 13 row(s) from the investment ledger to the register:
+  interest       1
   transfer_cash  11
-  withdrawal      1
-  interest        1
+  withdrawal     1
+Net worth today: $1269.87 before, $1269.87 after.
 Moved rows keep their transfer links. They get no payee and no category.
-This cannot be undone. Re-run with --confirm to apply (a backup is written first).
+This cannot be undone.
+Re-run with --confirm to apply (a backup is written first).
 ```
 
-and exits 0 with no change. With `--confirm` it runs `db backup`-equivalent
-auto backup **before** the write (today `AutoBackupAfterModification` runs
-after; the ledger move calls the backup helper first, then again after as
-usual), applies, and prints `Moved 13 rows. Account updated.` A refused plan
-prints the reason and exits 1. `--confirm` on an empty plan is accepted and
-ignored, so scripts need not special-case it.
+and exits 0 with no change. When a moved row is dated after today, the plan
+adds a line that says so: the investment ledger counts that row in today's
+cash, while the register counts it from its date, so the two net worth
+figures differ by those rows.
+
+Every other flag is parsed and the edited account is validated before
+anything is written, so a bad value exits 1 with no backup and no change.
+With `--confirm` the command then writes a manual backup through
+`db.WithFileClosed` and prints its path. A manual backup has its own file
+name, so the auto backup written after the edit cannot replace it, and
+retention never deletes it. It then runs `ChangeAccountType` with the edited
+account and prints `Moved 13 row(s) to the register.` and the usual
+`Account updated.` block. A refused plan or a failed commit exits 1 and
+changes nothing. `--confirm` on an empty plan is accepted and ignored, so
+scripts need not special-case it.
 
 ## 6. Reads and reports
 
@@ -350,8 +373,9 @@ No change is needed; listed to be verified by test in the implementation PR.
   as for checking. Nothing in the tree gates on `TypeChecking` except the
   sidebar grouping and the interest-rate list.
 - **Portfolio**: `hsa_investment` opens here, as `hsa` does today.
-- **Net worth** (`report_service.go:138`): `hsa` sums its regular rows;
-  `hsa_investment` uses `investmentValue`. The `account_balances` view
+- **Net worth** (`report_service.go:138`): `hsa` sums its opening balance
+  and regular rows; `hsa_investment` uses `investmentValue`, whose cash is
+  also the opening balance plus the cash rows. The `account_balances` view
   reports the cash HSA correctly for the first time.
 - **Spending**: medical bills paid from the cash HSA appear once they carry a
   category.
@@ -384,6 +408,15 @@ example continues §1.1.
 - Reverse move with representable rows (D5 alternative).
 - An `hsa_investment` threshold or contribution-limit report.
 - Automatic category assignment during the move (D4 alternative).
+- The as-of date for investment cash. `cashBalanceOf` counts every cash row
+  whatever its date, while net worth for a register account counts a row
+  from its date. A past-dated net worth report therefore shows today's cash
+  for an investment account. The plan's `FutureRows` line makes the gap
+  visible for a move; closing it is a separate change to the valuation.
+- The opening balance in money- and time-weighted return. The ledger replay
+  in `performance.go` leaves the opening balance out of both the flows and
+  the value, so the figures measure the ledger's own flows. Counting it as a
+  deposit on the opening date would be more exact for idle opening cash.
 
 ## 9. Test plan for the implementation PR
 

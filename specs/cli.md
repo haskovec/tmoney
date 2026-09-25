@@ -216,16 +216,21 @@ tmoney account edit --name "Cedar Bank HSA" --type hsa --confirm  # moves the ro
 ```
 
 **Cross-ledger type change.** `transfer.Service.PlanAccountTypeChange` decides
-what a `--type` change does (`specs/design-hsa-split.md` §5). Same ledger:
-ordinary update. Investment → regular: allowed when every row is cash-kind
-(`deposit`, `withdrawal`, `interest`, `fee`, `transfer_cash`); the plan lists
-the row counts by kind and, with `--confirm`, an auto backup is written, the
-rows are rewritten into `transactions` with the same id, date, amount, memo,
-status (`pending` → `uncleared`) and transfer link, and the type is set. Any
-security row refuses the change (exit 1, nothing written). Regular →
-investment: refused when the account has any transaction or scheduled
-transaction. `account.Service.Update` independently refuses a cross-ledger
-change while the departing ledger has rows, so no other path can strand them.
+what a `--type` change does (`specs/design-hsa-split.md` §5). Every flag is
+parsed and the edited account is validated first, so a bad value exits 1
+with nothing written. Same ledger: ordinary update. Investment → regular:
+allowed when every row is cash-kind (`deposit`, `withdrawal`, `interest`,
+`fee`, `transfer_cash`) and the account has no positions or lots. The plan
+lists the row counts by kind and today's net worth before and after. With
+`--confirm` a manual backup is written and its path printed; then the rows
+are rewritten into `transactions` with the same id, date, amount, memo,
+status (`pending` → `uncleared`) and transfer link, and the type and every
+other edited field are written, all in one transaction. Any security row
+refuses the change (exit 1, nothing written). Regular → investment: refused
+when the account has any transaction or scheduled transaction.
+`account.Service.Update` independently refuses a cross-ledger change while
+the departing ledger has rows, positions or lots, so no other path can
+strand them.
 
 Passing an empty string to `--institution`, `--account-number`, `--notes`,
 `--credit-limit`, or `--interest-rate` **clears** that field. Opening balance and

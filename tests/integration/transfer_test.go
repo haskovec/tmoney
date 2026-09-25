@@ -159,12 +159,14 @@ func TestTransferWiring_InvestmentLegLandsInTheInvestmentLedger(t *testing.T) {
 		t.Errorf("investment row %s is not the reported To leg %s", invRows[0].ID, res.To.RowID)
 	}
 
+	// Cash is the opening balance plus the cash-affecting leg.
 	cash, err := svc.Investment.GetCashBalance(brokerage.ID)
 	if err != nil {
 		t.Fatalf("GetCashBalance: %v", err)
 	}
-	if !cash.Equal(types.MustNewMoney("400.00")) {
-		t.Errorf("brokerage cash = %s, want 400.00", cash)
+	want := brokerage.OpeningBalance.Add(types.MustNewMoney("400.00"))
+	if !cash.Equal(want) {
+		t.Errorf("brokerage cash = %s, want %s (opening balance + 400.00)", cash, want)
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/backup"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
@@ -33,6 +35,12 @@ type accountDialogDataMsg struct {
 
 // accountDialogSavedMsg is sent when an account has been saved.
 type accountDialogSavedMsg struct{}
+
+// ledgerMoveSavedMsg is sent when a confirmed ledger move has committed. It
+// carries the pre-move backup so the status bar can name it.
+type ledgerMoveSavedMsg struct {
+	backupPath string
+}
 
 // accountDeletedMsg is sent when an account has been deleted.
 type accountDeletedMsg struct{}
@@ -449,6 +457,12 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		acct.SetNotes(notes)
 		acct.CreditLimit = creditLimit
 		acct.InterestRate = interestRate
+		// The edit dialog has no Track Lots control, so a change to a
+		// non-investment type must clear it here or validation refuses the
+		// save (the CLI does the same in applyAccountEdits).
+		if !accountType.IsInvestmentType() {
+			acct.TrackLots = false
+		}
 	}
 
 	// A type change that crosses ledgers is planned first. A refusal lands on
@@ -462,29 +476,40 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if plan.MovesRows() {
+			// Build and check the whole edit before the confirm dialog, on a
+			// copy so the sidebar's account is untouched until it commits.
+			edited := *existingAccount
+			applyFields(&edited)
+			if errs := edited.Validate(); errs.HasErrors() {
+				a.acct.dlg.SetErrorMsg(errs.Error())
+				return a, nil
+			}
+			if a.services.Account != nil {
+				if other, err := a.services.Account.GetByName(edited.Name); err == nil && other.ID != edited.ID {
+					fields[acctFieldName].Error = "An account with this name already exists"
+					return a, nil
+				}
+			}
+
+			database := a.db
 			a.closeAccountDialog()
 			a.showConfirmDialog("Move "+existingAccount.Name+" to the register?",
 				ledgerMoveMessage(plan), func() tea.Msg {
-					if a.services.Account == nil {
-						return errMsg{err: fmt.Errorf("account service not available")}
-					}
-					if err := a.services.Transfer.ChangeAccountType(plan); err != nil {
-						return errMsg{err: fmt.Errorf("failed to change account type: %w", err)}
-					}
-					acct, err := a.services.Account.GetByID(existingAccount.ID)
+					backupPath, err := backupBeforeLedgerMove(database)
 					if err != nil {
-						return errMsg{err: fmt.Errorf("failed to reload account: %w", err)}
+						return errMsg{err: err}
 					}
-					applyFields(acct)
-					if err := a.services.Account.Update(acct); err != nil {
-						return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
+					// The move and every other field edit commit in one
+					// transaction, so a failure here changes nothing.
+					if err := a.services.Transfer.ChangeAccountType(plan, &edited); err != nil {
+						return errMsg{err: fmt.Errorf("failed to change the account; nothing was moved: %w", err)}
 					}
 					// The move is one-way, so the undo stack is cleared as
 					// after a restore or a file switch.
 					if a.undoManager != nil {
 						a.undoManager.Clear()
 					}
-					return accountDialogSavedMsg{}
+					return ledgerMoveSavedMsg{backupPath: backupPath}
 				})
 			return a, nil
 		}
@@ -532,9 +557,34 @@ func ledgerMoveMessage(plan *transfer.LedgerMovePlan) string {
 	for _, t := range plan.SortedTypes() {
 		fmt.Fprintf(&b, "  %s: %d\n", t, plan.RowsByType[t])
 	}
+	fmt.Fprintf(&b, "Net worth today: %s before, %s after.\n",
+		formatDashboardMoney(plan.NetWorthBefore), formatDashboardMoney(plan.NetWorthAfter))
+	if plan.FutureRows > 0 {
+		fmt.Fprintf(&b, "%d row(s) are dated after today. The register counts each one from its date.\n", plan.FutureRows)
+	}
 	b.WriteString("Moved rows keep their transfer links. They get no payee and no category.\n")
-	b.WriteString("This cannot be undone. A backup is written when you exit.")
+	b.WriteString("This cannot be undone. A backup is written first.")
 	return b.String()
+}
+
+// backupBeforeLedgerMove writes a manual backup through db.WithFileClosed, so
+// the same handle, services and undo stack stay valid afterward. A manual
+// backup has its own file name and retention never deletes it, so the backup
+// written on exit cannot replace it.
+func backupBeforeLedgerMove(database *db.DB) (string, error) {
+	if database == nil {
+		return "", fmt.Errorf("no database is open; nothing was moved")
+	}
+	var backupPath string
+	err := database.WithFileClosed(func(path string) error {
+		p, err := backup.CreateManualBackup(path)
+		backupPath = p
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to write the backup; nothing was moved: %w", err)
+	}
+	return backupPath, nil
 }
 
 // deleteSelectedAccount deletes the currently selected account.

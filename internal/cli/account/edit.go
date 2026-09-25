@@ -9,6 +9,7 @@ import (
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/types"
@@ -128,63 +129,82 @@ func runAccountEdit(opts *accountEditOptions, w io.Writer) error {
 		return fmt.Errorf("account %q not found", opts.name)
 	}
 
-	// A type change that crosses ledgers is planned, shown, and only applied
-	// with --confirm. The move runs before the other edits so the ordinary
-	// Update below sees a same-ledger account.
-	if opts.typeChanged {
-		to, err := accountdom.ParseType(opts.accountType)
-		if err != nil {
-			return invalidTypeError(opts.accountType)
-		}
-		plan, err := svc.Transfer.PlanAccountTypeChange(acct.ID, to)
+	// Parse every flag onto a copy first, so a bad value fails before
+	// anything is written.
+	edited := *acct
+	if err := applyAccountEdits(&edited, opts); err != nil {
+		return err
+	}
+
+	// A type change that crosses ledgers and moves rows is planned, shown,
+	// and applied only with --confirm. The move and every other field edit
+	// commit in one transaction (transfer.Service.ChangeAccountType).
+	if edited.Type != acct.Type {
+		plan, err := svc.Transfer.PlanAccountTypeChange(acct.ID, edited.Type)
 		if err != nil {
 			return err
 		}
 		if plan.MovesRows() {
-			printLedgerMovePlan(w, plan)
+			printLedgerMovePlan(w, plan, acct.Currency)
 			if !opts.confirm {
 				fmt.Fprintln(w, "Re-run with --confirm to apply (a backup is written first).")
 				return nil
 			}
-			// Back up before the one-way write, then reopen.
-			if err := database.Close(); err != nil {
-				return fmt.Errorf("failed to close database for backup: %w", err)
+			if errs := edited.Validate(); errs.HasErrors() {
+				return fmt.Errorf("failed to update account: %w", &types.ServiceValidationError{Errors: errs})
 			}
-			if _, err := backup.CreateAutoBackup(database.Path()); err != nil {
-				return fmt.Errorf("failed to write backup: %w", err)
-			}
-			database, svc, err = cmdutil.OpenServices(opts.file)
+			backupPath, err := backupBeforeLedgerMove(database)
 			if err != nil {
 				return err
 			}
-			if err := svc.Transfer.ChangeAccountType(plan); err != nil {
-				return err
+			fmt.Fprintf(w, "Backup written: %s\n", backupPath)
+			if err := svc.Transfer.ChangeAccountType(plan, &edited); err != nil {
+				return updateError(err, &edited)
 			}
 			fmt.Fprintf(w, "Moved %d row(s) to the register.\n", plan.Total)
-			if acct, err = svc.Account.GetByName(opts.name); err != nil {
-				return fmt.Errorf("account %q not found after move", opts.name)
-			}
+			printAccountUpdated(w, &edited)
+			cmdutil.AutoBackupAfterModification(database)
+			return nil
 		}
 	}
 
-	if err := applyAccountEdits(acct, opts); err != nil {
+	if err := svc.Account.Update(&edited); err != nil {
+		return updateError(err, &edited)
+	}
+	printAccountUpdated(w, &edited)
+	cmdutil.AutoBackupAfterModification(database)
+	return nil
+}
+
+// backupBeforeLedgerMove writes a manual backup through db.WithFileClosed, so
+// the same handle and services stay valid afterward. A manual backup has its
+// own file name, so the auto backup written after the edit cannot overwrite
+// it, and retention never deletes it.
+func backupBeforeLedgerMove(database *db.DB) (string, error) {
+	var backupPath string
+	err := database.WithFileClosed(func(path string) error {
+		p, err := backup.CreateManualBackup(path)
+		backupPath = p
 		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to write the backup; nothing was changed: %w", err)
 	}
+	return backupPath, nil
+}
 
-	if err := svc.Account.Update(acct); err != nil {
-		var dupErr *dberrors.DuplicateError
-		if errors.As(err, &dupErr) {
-			return fmt.Errorf("account %q already exists", acct.Name)
-		}
-		return fmt.Errorf("failed to update account: %w", err)
+func updateError(err error, acct *accountdom.Account) error {
+	var dupErr *dberrors.DuplicateError
+	if errors.As(err, &dupErr) {
+		return fmt.Errorf("account %q already exists", acct.Name)
 	}
+	return fmt.Errorf("failed to update account: %w", err)
+}
 
+func printAccountUpdated(w io.Writer, acct *accountdom.Account) {
 	fmt.Fprintln(w, "Account updated.")
 	fmt.Fprintf(w, "  Name: %s\n", acct.Name)
 	fmt.Fprintf(w, "  Type: %s\n", acct.Type.DisplayName())
-
-	cmdutil.AutoBackupAfterModification(database)
-	return nil
 }
 
 // anyFieldChanged reports whether at least one editable flag was supplied.
@@ -317,11 +337,16 @@ func invalidTypeError(got string) error {
 
 // printLedgerMovePlan writes what a cross-ledger type change will do, in the
 // shape specs/design-hsa-split.md §5.6 shows.
-func printLedgerMovePlan(w io.Writer, plan *transfer.LedgerMovePlan) {
+func printLedgerMovePlan(w io.Writer, plan *transfer.LedgerMovePlan, currency string) {
 	fmt.Fprintf(w, "%s: %s -> %s\n", plan.AccountName, plan.From.DisplayName(), plan.To.DisplayName())
 	fmt.Fprintf(w, "This moves %d row(s) from the investment ledger to the register:\n", plan.Total)
 	for _, t := range plan.SortedTypes() {
 		fmt.Fprintf(w, "  %-14s %d\n", t, plan.RowsByType[t])
+	}
+	fmt.Fprintf(w, "Net worth today: %s before, %s after.\n",
+		cmdutil.FormatMoney(plan.NetWorthBefore, currency), cmdutil.FormatMoney(plan.NetWorthAfter, currency))
+	if plan.FutureRows > 0 {
+		fmt.Fprintf(w, "%d row(s) are dated after today. The register counts each one from its date.\n", plan.FutureRows)
 	}
 	fmt.Fprintln(w, "Moved rows keep their transfer links. They get no payee and no category.")
 	fmt.Fprintln(w, "This cannot be undone.")

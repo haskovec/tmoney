@@ -267,7 +267,11 @@ func (a *App) buildInvestmentRegisterTable() {
 
 	var cash []types.Money
 	if showBalance {
-		cash = runningCash(txns)
+		opening := types.ZeroMoney
+		if a.investmentRegister.account != nil {
+			opening = a.investmentRegister.account.OpeningBalance
+		}
+		cash = runningCash(txns, opening)
 	}
 
 	if a.investmentTable == nil {

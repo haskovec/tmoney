@@ -76,6 +76,13 @@ These are computed, not stored:
 |-------|-------------|
 | `current_balance` | opening_balance + sum(transactions) |
 | `cleared_balance` | opening_balance + sum(cleared transactions) |
+| investment cash (`investment`, `hsa_investment`) | opening_balance + sum(cash-affecting investment transactions) |
+
+The opening balance is cash the account held on its opening date. For an
+investment-ledger account it is part of the cash balance, the portfolio's
+total value and net worth, before and after any security is bought. It is
+not a gain: total return is built from unrealized and realized gains,
+dividends, interest and fees, none of which read the cash balance.
 
 ## Account Balance Calculation
 
@@ -83,7 +90,7 @@ For different account types, positive/negative balances mean:
 
 | Type | Positive Balance | Negative Balance |
 |------|------------------|------------------|
-| checking, savings, cash, investment, asset | Money you have | Overdrawn |
+| checking, savings, cash, investment, hsa, hsa_investment, asset | Money you have | Overdrawn |
 | credit_card | Credit/overpayment | You owe money |
 | loan | Overpayment/credit | You owe money |
 

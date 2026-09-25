@@ -97,7 +97,7 @@ func (e *LedgerChangeError) Error() string {
 		ledger = "investment"
 	}
 	return fmt.Sprintf(
-		"cannot change account %s from %s to %s: it has %d row(s) in the %s ledger; move or delete them first",
+		"cannot change account %s from %s to %s: it has %d row(s) or holding(s) in the %s ledger; move or delete them first",
 		e.AccountID, e.From, e.To, e.Rows, ledger,
 	)
 }

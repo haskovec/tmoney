@@ -48,6 +48,17 @@ type LedgerMovePlan struct {
 	RowsByType map[investment.TransactionType]int
 	// Total is the sum of RowsByType.
 	Total int
+
+	// NetWorthBefore and NetWorthAfter are the account's contribution to
+	// today's net worth under the old and the new type. Both include the
+	// opening balance. They differ only when FutureRows > 0: the investment
+	// ledger counts every cash row in today's cash, while a register account
+	// counts a row on and after its date. Set only when the change crosses
+	// ledgers.
+	NetWorthBefore types.Money
+	NetWorthAfter  types.Money
+	// FutureRows counts moved rows dated after today.
+	FutureRows int
 }
 
 // CrossesLedger reports whether the change moves the account to the other
@@ -110,13 +121,15 @@ func (s *Service) PlanAccountTypeChange(acctID types.ID, to account.Type) (*Ledg
 		return nil, fmt.Errorf("failed to load account: %w", err)
 	}
 	plan := &LedgerMovePlan{
-		AccountID:   acct.ID,
-		AccountName: acct.Name,
-		From:        acct.Type,
-		To:          to,
-		FromLedger:  LedgerFor(acct.Type),
-		ToLedger:    LedgerFor(to),
-		RowsByType:  map[investment.TransactionType]int{},
+		AccountID:      acct.ID,
+		AccountName:    acct.Name,
+		From:           acct.Type,
+		To:             to,
+		FromLedger:     LedgerFor(acct.Type),
+		ToLedger:       LedgerFor(to),
+		RowsByType:     map[investment.TransactionType]int{},
+		NetWorthBefore: acct.OpeningBalance,
+		NetWorthAfter:  acct.OpeningBalance,
 	}
 	if !plan.CrossesLedger() {
 		return plan, nil
@@ -145,6 +158,7 @@ func (s *Service) PlanAccountTypeChange(acctID types.ID, to account.Type) (*Ledg
 		return nil, fmt.Errorf("failed to list investment rows: %w", err)
 	}
 	security := 0
+	today := types.Today()
 	for _, r := range rows {
 		if !cashKinds[r.Type] {
 			security++
@@ -152,6 +166,14 @@ func (s *Service) PlanAccountTypeChange(acctID types.ID, to account.Type) (*Ledg
 		}
 		plan.RowsByType[r.Type]++
 		plan.Total++
+		if r.Type.AffectsCash() {
+			plan.NetWorthBefore = plan.NetWorthBefore.Add(r.TotalAmount)
+			if r.Date.After(today) {
+				plan.FutureRows++
+			} else {
+				plan.NetWorthAfter = plan.NetWorthAfter.Add(r.TotalAmount)
+			}
+		}
 	}
 	if security > 0 {
 		return nil, refuse("the account holds security rows (buy, sell, dividend, shares); only a cash-only account can leave the investment ledger", security)
@@ -170,14 +192,42 @@ func (s *Service) PlanAccountTypeChange(acctID types.ID, to account.Type) (*Ledg
 	return plan, nil
 }
 
-// ChangeAccountType applies a plan in one database transaction: it re-plans
-// inside the transaction and refuses a stale plan, rewrites each investment
-// row as a register row, deletes the source rows, and writes the new type.
-// Transfer ids are preserved, so the partner legs need no change.
+// InvalidEditError is returned when the edited account handed to
+// ChangeAccountType does not match its plan.
+type InvalidEditError struct {
+	Reason string
+}
+
+func (e *InvalidEditError) Error() string { return "invalid account edit: " + e.Reason }
+
+// ChangeAccountType applies a plan and every other field edit in one
+// database transaction, so the whole edit commits or none of it does.
+//
+// edited is the account as the caller wants it saved: the plan's target type
+// plus any other field the user changed in the same edit. Inside the
+// transaction the plan is made again and a stale plan is refused, edited is
+// validated, each investment row is rewritten as a register row and its
+// source deleted, and edited is written. A validation failure or a duplicate
+// name therefore rolls back the row move too. Lot tracking is cleared when
+// the target type is not an investment type. Transfer ids are preserved, so
+// the partner legs need no change.
 //
 // Moved rows keep their id, date, amount, memo, status and transfer link.
 // They get no payee and no category; pending becomes uncleared.
-func (s *Service) ChangeAccountType(plan *LedgerMovePlan) error {
+func (s *Service) ChangeAccountType(plan *LedgerMovePlan, edited *account.Account) error {
+	if edited == nil || edited.ID != plan.AccountID {
+		return &InvalidEditError{Reason: "the edited account is not the planned account"}
+	}
+	if edited.Type != plan.To {
+		return &InvalidEditError{Reason: fmt.Sprintf("the edited type %s is not the planned type %s", edited.Type, plan.To)}
+	}
+	if !edited.Type.IsInvestmentType() {
+		edited.TrackLots = false
+	}
+	if errs := edited.Validate(); errs.HasErrors() {
+		return &types.ServiceValidationError{Errors: errs}
+	}
+
 	return s.runInTx(func(b *Service) error {
 		fresh, err := b.PlanAccountTypeChange(plan.AccountID, plan.To)
 		if err != nil {
@@ -202,18 +252,7 @@ func (s *Service) ChangeAccountType(plan *LedgerMovePlan) error {
 			}
 		}
 
-		acct, err := b.accountRepo.GetByID(plan.AccountID)
-		if err != nil {
-			return fmt.Errorf("failed to load account: %w", err)
-		}
-		acct.Type = plan.To
-		if !plan.To.IsInvestmentType() {
-			acct.TrackLots = false
-		}
-		if errs := acct.Validate(); errs.HasErrors() {
-			return &types.ServiceValidationError{Errors: errs}
-		}
-		return b.accountRepo.Update(acct)
+		return b.accountRepo.Update(edited)
 	})
 }
 

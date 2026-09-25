@@ -84,6 +84,18 @@ func (h *harness) regCount(acctID types.ID) int {
 	return n
 }
 
+// editedAs loads the account and sets its type, the way a caller builds the
+// edited account it hands to ChangeAccountType.
+func (h *harness) editedAs(acctID types.ID, to account.Type) *account.Account {
+	h.t.Helper()
+	a, err := h.accountRepo.GetByID(acctID)
+	if err != nil {
+		h.t.Fatalf("load account: %v", err)
+	}
+	a.Type = to
+	return a
+}
+
 func (h *harness) accountType(acctID types.ID) account.Type {
 	h.t.Helper()
 	a, err := h.accountRepo.GetByID(acctID)
@@ -153,7 +165,7 @@ func TestChangeAccountType_MovesCashRowsAndKeepsLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if err := h.svc.ChangeAccountType(plan); err != nil {
+	if err := h.svc.ChangeAccountType(plan, h.editedAs(h.hsa.ID, account.TypeHSA)); err != nil {
 		t.Fatalf("change: %v", err)
 	}
 
@@ -251,7 +263,7 @@ func TestChangeAccountType_RefusesSecurityRows(t *testing.T) {
 	// A plan forged by hand is re-checked inside the transaction.
 	forged := &LedgerMovePlan{AccountID: h.hsa.ID, From: account.TypeHSAInvestment, To: account.TypeHSA,
 		FromLedger: LedgerInvestment, ToLedger: LedgerRegular, RowsByType: map[investment.TransactionType]int{}}
-	if err := h.svc.ChangeAccountType(forged); !errors.As(err, &refused) {
+	if err := h.svc.ChangeAccountType(forged, h.editedAs(h.hsa.ID, account.TypeHSA)); !errors.As(err, &refused) {
 		t.Fatalf("forged plan error = %v, want LedgerMoveRefusedError", err)
 	}
 	if h.invCount(h.hsa.ID) != invBefore || h.regCount(h.hsa.ID) != 0 || h.accountType(h.hsa.ID) != account.TypeHSAInvestment {
@@ -281,7 +293,7 @@ func TestChangeAccountType_RefusesRegularWithRows(t *testing.T) {
 	if !plan.CrossesLedger() || plan.MovesRows() {
 		t.Errorf("empty plan = %+v", plan)
 	}
-	if err := h.svc.ChangeAccountType(plan); err != nil {
+	if err := h.svc.ChangeAccountType(plan, h.editedAs(empty.ID, account.TypeHSAInvestment)); err != nil {
 		t.Fatalf("change empty: %v", err)
 	}
 	if h.accountType(empty.ID) != account.TypeHSAInvestment {
@@ -301,7 +313,7 @@ func TestChangeAccountType_StalePlanIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = h.svc.ChangeAccountType(plan)
+	err = h.svc.ChangeAccountType(plan, h.editedAs(h.hsa.ID, account.TypeHSA))
 	var stale *StalePlanError
 	if !errors.As(err, &stale) {
 		t.Fatalf("error = %v, want StalePlanError", err)
@@ -333,5 +345,160 @@ func TestAccountServiceUpdate_GuardsLedgerChange(t *testing.T) {
 	a.Type = account.TypeInvestment
 	if err := acctSvc.Update(a); err != nil {
 		t.Errorf("same-ledger Update: %v", err)
+	}
+}
+
+// TestChangeAccountType_FieldEditsCommitWithTheMove pins that the other
+// fields of the edit are written in the same transaction as the row move.
+func TestChangeAccountType_FieldEditsCommitWithTheMove(t *testing.T) {
+	h := newHarness(t)
+	h.seedCashOnlyHSA()
+	plan, err := h.svc.PlanAccountTypeChange(h.hsa.ID, account.TypeHSA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := h.editedAs(h.hsa.ID, account.TypeHSA)
+	edited.Name = "Cedar Bank HSA"
+	edited.SetInstitution("Cedar Bank")
+	edited.TrackLots = true // cleared, because hsa is not an investment type
+
+	if err := h.svc.ChangeAccountType(plan, edited); err != nil {
+		t.Fatalf("change: %v", err)
+	}
+	got, err := h.accountRepo.GetByID(h.hsa.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != account.TypeHSA || got.Name != "Cedar Bank HSA" || got.Institution.String != "Cedar Bank" || got.TrackLots {
+		t.Errorf("account after move = %+v", got)
+	}
+}
+
+// TestChangeAccountType_BadEditMovesNothing pins that a validation failure
+// or a duplicate name rolls back the row move with it.
+func TestChangeAccountType_BadEditMovesNothing(t *testing.T) {
+	cases := map[string]func(a *account.Account){
+		"validation failure": func(a *account.Account) { a.Name = "" },
+		"duplicate name":     func(a *account.Account) { a.Name = "Checking" },
+	}
+	for name, spoil := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seedCashOnlyHSA()
+			plan, err := h.svc.PlanAccountTypeChange(h.hsa.ID, account.TypeHSA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			edited := h.editedAs(h.hsa.ID, account.TypeHSA)
+			spoil(edited)
+
+			if err := h.svc.ChangeAccountType(plan, edited); err == nil {
+				t.Fatal("expected an error")
+			}
+			if h.accountType(h.hsa.ID) != account.TypeHSAInvestment {
+				t.Error("type changed on a failed edit")
+			}
+			if h.invCount(h.hsa.ID) != 7 || h.regCount(h.hsa.ID) != 0 {
+				t.Errorf("rows moved on a failed edit: inv %d reg %d", h.invCount(h.hsa.ID), h.regCount(h.hsa.ID))
+			}
+		})
+	}
+}
+
+func TestChangeAccountType_RejectsMismatchedEdit(t *testing.T) {
+	h := newHarness(t)
+	h.seedCashOnlyHSA()
+	plan, err := h.svc.PlanAccountTypeChange(h.hsa.ID, account.TypeHSA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bad *InvalidEditError
+	if err := h.svc.ChangeAccountType(plan, h.editedAs(h.hsa.ID, account.TypeChecking)); !errors.As(err, &bad) {
+		t.Errorf("wrong type: error = %v, want InvalidEditError", err)
+	}
+	if err := h.svc.ChangeAccountType(plan, h.editedAs(h.checking.ID, account.TypeHSA)); !errors.As(err, &bad) {
+		t.Errorf("wrong account: error = %v, want InvalidEditError", err)
+	}
+	if h.invCount(h.hsa.ID) != 7 {
+		t.Error("a rejected edit moved rows")
+	}
+}
+
+// TestChangeAccountType_KeepsNetWorthWithOpeningBalance pins that a
+// non-zero opening balance counts the same way in both ledgers, so the move
+// does not change net worth.
+func TestChangeAccountType_KeepsNetWorthWithOpeningBalance(t *testing.T) {
+	h := newHarness(t)
+	acct := h.newAccount("Cedar Bank HSA", account.TypeHSAInvestment, "1000.00", testDate())
+	if _, err := h.invSvc.Deposit(acct.ID, testDate(), types.MustNewMoney("250.00"), ""); err != nil {
+		t.Fatal(err)
+	}
+	before, err := h.invSvc.GetCashBalance(acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.Equal(types.MustNewMoney("1250.00")) {
+		t.Fatalf("investment cash = %s, want 1250 (opening 1000 + deposit 250)", before)
+	}
+
+	plan, err := h.svc.PlanAccountTypeChange(acct.ID, account.TypeHSA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NetWorthBefore.Equal(before) || !plan.NetWorthAfter.Equal(before) || plan.FutureRows != 0 {
+		t.Errorf("plan net worth = %s before, %s after, %d future; want %s both, 0 future",
+			plan.NetWorthBefore, plan.NetWorthAfter, plan.FutureRows, before)
+	}
+	if err := h.svc.ChangeAccountType(plan, h.editedAs(acct.ID, account.TypeHSA)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := h.accountRepo.BalanceAsOf(acct.ID, types.Today())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Equal(before) {
+		t.Errorf("register balance after the move = %s, want %s", after, before)
+	}
+}
+
+// TestPlanAccountTypeChange_ReportsFutureRows pins that a cash row dated
+// after today shows as a net worth difference in the plan, because the
+// register counts it only from its date.
+func TestPlanAccountTypeChange_ReportsFutureRows(t *testing.T) {
+	h := newHarness(t)
+	acct := h.newAccount("Cedar Bank HSA", account.TypeHSAInvestment, "0.00", testDate())
+	future := types.Today().AddDays(10)
+	for _, d := range []types.Date{testDate(), future} {
+		if _, err := h.invSvc.Deposit(acct.ID, d, types.MustNewMoney("100.00"), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan, err := h.svc.PlanAccountTypeChange(acct.ID, account.TypeHSA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NetWorthBefore.Equal(types.MustNewMoney("200.00")) ||
+		!plan.NetWorthAfter.Equal(types.MustNewMoney("100.00")) || plan.FutureRows != 1 {
+		t.Errorf("plan = %s before, %s after, %d future; want 200, 100, 1",
+			plan.NetWorthBefore, plan.NetWorthAfter, plan.FutureRows)
+	}
+}
+
+// TestAccountServiceUpdate_GuardsLeftoverHoldings pins that the domain guard
+// counts positions and lots, not only transaction rows.
+func TestAccountServiceUpdate_GuardsLeftoverHoldings(t *testing.T) {
+	h := newHarness(t)
+	acct := h.newAccount("Maple Invest HSA", account.TypeHSAInvestment, "0.00", testDate())
+	if _, err := h.db.Conn().Exec(`
+		INSERT INTO investment_positions (id, account_id, security_id, shares, average_cost_per_share)
+		VALUES (uuidv7(), CAST(? AS UUID), uuidv7(), 10, 25.00)`, acct.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+	acctSvc := account.NewService(h.accountRepo, h.db)
+	a := h.editedAs(acct.ID, account.TypeHSA)
+	a.TrackLots = false
+	var guard *account.LedgerChangeError
+	if err := acctSvc.Update(a); !errors.As(err, &guard) {
+		t.Fatalf("Update error = %v, want LedgerChangeError", err)
 	}
 }

@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -39,6 +41,7 @@ func newLedgerMoveApp(t *testing.T, rows ...*investment.Transaction) (*App, *acc
 	transferSvc := transfer.NewService(txnRepo, invRepo, transaction.NewSplitRepository(database),
 		accountRepo, category.NewRepository(database), database)
 	a := &App{
+		db: database,
 		services: app.Services{
 			Account:  account.NewService(accountRepo, database),
 			Transfer: transferSvc,
@@ -85,9 +88,13 @@ func TestSubmitAccountDialog_LedgerMove_OpensConfirmAndMovesOnYes(t *testing.T) 
 	if cmd == nil {
 		t.Fatal("confirm should return the save command")
 	}
-	if _, ok := cmd().(accountDialogSavedMsg); !ok {
-		t.Fatalf("expected accountDialogSavedMsg")
+	saved, ok := cmd().(ledgerMoveSavedMsg)
+	if !ok {
+		t.Fatalf("expected ledgerMoveSavedMsg")
 	}
+
+	// The pre-move backup holds the state before the move.
+	assertPreMoveBackup(t, saved.backupPath, acct.ID, 2)
 
 	got, err := a.services.Account.GetByID(acct.ID)
 	if err != nil {
@@ -145,5 +152,126 @@ func TestSubmitAccountDialog_LedgerMove_RefusalLandsOnTypeField(t *testing.T) {
 	}
 	if a.confirm.IsVisible() {
 		t.Error("no confirm dialog on refusal")
+	}
+}
+
+// assertPreMoveBackup opens the backup file and checks that the account is
+// still an investment account with its rows in the investment ledger.
+func assertPreMoveBackup(t *testing.T, path string, acctID types.ID, invRows int) {
+	t.Helper()
+	if path == "" || !strings.Contains(path, ".manual-backup.") {
+		t.Fatalf("backup path = %q, want a manual backup", path)
+	}
+	bk, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer func() { _ = bk.Close() }()
+	got, err := account.NewRepository(bk).GetByID(acctID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := investment.NewRepository(bk).ListByAccount(acctID, investment.TransactionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != account.TypeHSAInvestment || len(rows) != invRows {
+		t.Errorf("backup holds type %s with %d investment rows, want hsa_investment with %d", got.Type, len(rows), invRows)
+	}
+}
+
+// TestSubmitAccountDialog_EmptyLotTrackedAccountChangesType pins that an
+// empty lot-tracked investment account can change to a register type from
+// the dialog, which has no Track Lots control.
+func TestSubmitAccountDialog_EmptyLotTrackedAccountChangesType(t *testing.T) {
+	a, acct, _, _ := newLedgerMoveApp(t)
+	acct.TrackLots = true
+	if err := a.services.Account.Update(acct); err != nil {
+		t.Fatal(err)
+	}
+
+	_, cmd := a.submitAccountDialog()
+	if cmd == nil {
+		t.Fatal("an empty account needs no confirmation; expected the save command")
+	}
+	if msg, ok := cmd().(errMsg); ok {
+		t.Fatalf("save failed: %v", msg.err)
+	}
+	got, err := a.services.Account.GetByID(acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != account.TypeHSA || got.TrackLots {
+		t.Errorf("after save: type %s trackLots %v, want hsa and false", got.Type, got.TrackLots)
+	}
+}
+
+// TestSubmitAccountDialog_LedgerMove_DuplicateNameStopsBeforeConfirm pins
+// that a name clash is reported in the dialog, before any backup or move.
+func TestSubmitAccountDialog_LedgerMove_DuplicateNameStopsBeforeConfirm(t *testing.T) {
+	a, acct, invRepo, _ := newLedgerMoveApp(t, invRow(investment.TransactionTypeDeposit, "250.00"))
+	other := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.MustParseDate("2020-01-01"))
+	if err := a.services.Account.Create(other); err != nil {
+		t.Fatal(err)
+	}
+	a.acct.dlg.Fields()[acctFieldName].Value = "Checking"
+
+	model, cmd := a.submitAccountDialog()
+	a = model.(*App)
+	if cmd != nil || a.confirm.IsVisible() {
+		t.Fatal("a duplicate name must stop before the confirm dialog")
+	}
+	if a.acct.dlg == nil || a.acct.dlg.Fields()[acctFieldName].Error == "" {
+		t.Error("the name field should carry the error")
+	}
+	rows, _ := invRepo.ListByAccount(acct.ID, investment.TransactionFilter{})
+	if len(rows) != 1 {
+		t.Errorf("rows moved: %d left", len(rows))
+	}
+}
+
+// TestSubmitAccountDialog_LedgerMove_InvalidFieldStopsBeforeConfirm pins
+// that a field the account cannot store is reported before the confirm.
+func TestSubmitAccountDialog_LedgerMove_InvalidFieldStopsBeforeConfirm(t *testing.T) {
+	a, _, _, _ := newLedgerMoveApp(t, invRow(investment.TransactionTypeDeposit, "250.00"))
+	a.acct.dlg.Fields()[acctFieldNotes].Value = strings.Repeat("x", 2001)
+
+	model, cmd := a.submitAccountDialog()
+	a = model.(*App)
+	if cmd != nil || a.confirm.IsVisible() {
+		t.Fatal("an invalid field must stop before the confirm dialog")
+	}
+	if a.acct.dlg == nil || a.acct.dlg.ErrorMsg() == "" {
+		t.Error("the dialog should show the validation error")
+	}
+}
+
+// TestSubmitAccountDialog_LedgerMove_FailedCommitChangesNothing pins that a
+// move refused at commit time leaves the rows, the type and the undo history
+// as they were.
+func TestSubmitAccountDialog_LedgerMove_FailedCommitChangesNothing(t *testing.T) {
+	a, acct, invRepo, txnRepo := newLedgerMoveApp(t, invRow(investment.TransactionTypeDeposit, "250.00"))
+	a.undoManager.Push(undo.NewEditAccountCommand(a.services.Account, acct))
+
+	model, _ := a.submitAccountDialog()
+	a = model.(*App)
+	// A row added between the plan and the confirm makes the plan stale.
+	late := invRow(investment.TransactionTypeDeposit, "5.00")
+	late.AccountID = acct.ID
+	if err := invRepo.Create(late); err != nil {
+		t.Fatal(err)
+	}
+	_, cmd := a.confirmDialogAction(dialog.DialogActionSubmit)
+	if _, ok := cmd().(errMsg); !ok {
+		t.Fatal("expected an error for the stale plan")
+	}
+	got, _ := a.services.Account.GetByID(acct.ID)
+	rows, _ := invRepo.ListByAccount(acct.ID, investment.TransactionFilter{})
+	reg, _ := txnRepo.CountByAccount(acct.ID)
+	if got.Type != account.TypeHSAInvestment || len(rows) != 2 || reg != 0 {
+		t.Errorf("a failed commit changed data: type %s inv %d reg %d", got.Type, len(rows), reg)
+	}
+	if !a.undoManager.CanUndo() {
+		t.Error("undo history should stay when nothing moved")
 	}
 }

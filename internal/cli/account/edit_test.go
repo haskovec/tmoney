@@ -361,6 +361,7 @@ func TestAccountEdit_LedgerMove_PrintsPlanWithoutConfirm(t *testing.T) {
 		"This moves 3 row(s)",
 		"deposit        2",
 		"withdrawal     1",
+		"Net worth today: $319.75 before, $319.75 after.",
 		"Re-run with --confirm",
 	} {
 		if !strings.Contains(out, want) {
@@ -395,13 +396,95 @@ func TestAccountEdit_LedgerMove_ConfirmMovesRowsAndAppliesEdits(t *testing.T) {
 	if reg, inv := countRows(t, dbPath, acct.ID); reg != 2 || inv != 0 {
 		t.Errorf("rows after move: reg %d inv %d", reg, inv)
 	}
-	// The pre-write backup exists next to the file.
+	// The pre-move backup is a manual backup that still holds the state
+	// before the move; the auto backup written after the edit cannot
+	// replace it.
 	backups, err := backup.ListBackups(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backups) == 0 {
-		t.Error("no backup written before the move")
+	var manual []backup.BackupInfo
+	for _, b := range backups {
+		if b.Type == backup.BackupTypeManual {
+			manual = append(manual, b)
+		}
+	}
+	if len(manual) != 1 {
+		t.Fatalf("manual backups = %d, want 1 (all backups: %+v)", len(manual), backups)
+	}
+	if !strings.Contains(out, "Backup written: "+manual[0].Path) {
+		t.Errorf("output does not name the backup %s:\n%s", manual[0].Path, out)
+	}
+	bk, err := db.Open(manual[0].Path)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer bk.Close()
+	pre, err := accountdom.NewRepository(bk).GetByID(acct.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preRows, err := investment.NewRepository(bk).ListByAccount(acct.ID, investment.TransactionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pre.Type != accountdom.TypeHSAInvestment || len(preRows) != 2 {
+		t.Errorf("backup holds type %s with %d investment rows, want the pre-move state", pre.Type, len(preRows))
+	}
+}
+
+// TestAccountEdit_LedgerMove_BadFlagMovesNothing pins that every flag is
+// checked before the backup and the move.
+func TestAccountEdit_LedgerMove_BadFlagMovesNothing(t *testing.T) {
+	cases := map[string][]string{
+		"unparsable opening balance": {"--opening-balance", "not-a-number"},
+		"credit limit on a non-card": {"--credit-limit", "500"},
+		"notes over the limit":       {"--notes", strings.Repeat("x", 2001)},
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			dbPath, acct := seedInvestedHSA(t, cashRow(investment.TransactionTypeDeposit, "250.00"))
+			args := append([]string{"--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa", "--confirm"}, extra...)
+			out, err := runEdit(t, args...)
+			if err == nil {
+				t.Fatalf("expected an error\n%s", out)
+			}
+			if strings.Contains(out, "Moved 1 row(s) to the register.") {
+				t.Errorf("output claims a move:\n%s", out)
+			}
+			if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+				t.Errorf("type changed: %q", got)
+			}
+			if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 1 {
+				t.Errorf("rows moved: reg %d inv %d", reg, inv)
+			}
+		})
+	}
+}
+
+// TestAccountEdit_LedgerMove_DuplicateNameMovesNothing pins that a name
+// clash found inside the move's transaction rolls the move back.
+func TestAccountEdit_LedgerMove_DuplicateNameMovesNothing(t *testing.T) {
+	dbPath, acct := seedInvestedHSA(t, cashRow(investment.TransactionTypeDeposit, "250.00"))
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accountdom.NewRepository(database).Create(newChecking("Checking")); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+
+	_, err = runEdit(t, "--file", dbPath, "--name", "Cedar Bank HSA", "--type", "hsa",
+		"--new-name", "Checking", "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected a duplicate-name error, got %v", err)
+	}
+	if got := reloadAccount(t, dbPath, "Cedar Bank HSA").Type; got != accountdom.TypeHSAInvestment {
+		t.Errorf("type changed: %q", got)
+	}
+	if reg, inv := countRows(t, dbPath, acct.ID); reg != 0 || inv != 1 {
+		t.Errorf("rows moved: reg %d inv %d", reg, inv)
 	}
 }
 
