@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
@@ -18,4 +19,25 @@ func restoreDefaultTheme(t *testing.T) {
 	}
 	s := widget.NewStyles()
 	s.ApplyTheme(def)
+}
+
+// runCmd runs cmd and feeds each message it yields back into the app, a few
+// levels deep, the way the Bubble Tea loop would. An errMsg fails the test.
+func runCmd(t *testing.T, a *App, cmd tea.Cmd, depth int) {
+	t.Helper()
+	if cmd == nil || depth == 0 {
+		return
+	}
+	switch msg := cmd().(type) {
+	case nil:
+	case tea.BatchMsg:
+		for _, c := range msg {
+			runCmd(t, a, c, depth)
+		}
+	case errMsg:
+		t.Fatalf("command failed: %v", msg.err)
+	default:
+		_, next := a.Update(msg)
+		runCmd(t, a, next, depth-1)
+	}
 }

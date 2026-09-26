@@ -28,3 +28,15 @@ golangci-lint = "2.14"
 # exports the same value for `make` recipes; this covers bare `go build` and
 # `go test` runs in this directory.
 CGO_ENABLED = "1"
+
+# `mise run build` and `mise run test` do the same as `make build` and
+# `make test`, with the pinned Go from [tools] and CGO_ENABLED from [env].
+[tasks.build]
+description = "Build the tmoney binary"
+run = "go build -o tmoney ."
+run_windows = "go build -o tmoney.exe ."
+
+[tasks.test]
+description = "Run all tests"
+# -p 8: packages run in parallel; each test isolates its own DB/config.
+run = "go test -p 8 ./..."

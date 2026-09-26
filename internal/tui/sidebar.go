@@ -232,8 +232,15 @@ func buildGroups(accounts []*account.Account) []accountGroup {
 }
 
 // rebuildItems reconstructs the flat item list from accounts.
-// All groups are always expanded — no collapse support.
+// All groups are always expanded — no collapse support. A cursor on an
+// account stays on that account, because a close or a reopen moves it to
+// another group and the old index then names a different row.
 func (s *Sidebar) rebuildItems() {
+	cursorAccountID := types.NilID
+	if item := s.CursorItem(); item != nil && item.kind == sidebarItemAccount {
+		cursorAccountID = item.accountID
+	}
+
 	groups := buildGroups(s.accounts)
 
 	var items []sidebarItem
@@ -256,6 +263,9 @@ func (s *Sidebar) rebuildItems() {
 	}
 	s.items = items
 	s.clampCursor()
+	if !cursorAccountID.IsNil() {
+		s.SetCursorToAccount(cursorAccountID)
+	}
 }
 
 // clampCursor ensures the cursor is within valid bounds.
