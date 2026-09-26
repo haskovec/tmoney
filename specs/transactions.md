@@ -109,7 +109,7 @@ The parent amount (+$3,067.50) is the signed sum of all lines, which is what the
 
 Legacy whole-transaction transfers (one pair of single-line transactions linked by `transfer_id` at the transactions level, with no split children) remain valid alongside new transfer-lines.
 
-The split dialog renders a live `Imbalance: $X.XX` indicator below the line list that recomputes the signed-sum delta on every keystroke; Save is disabled until the delta is zero. The dialog also accepts the `Transfer →` sentinel in the category combo of any line, which swaps that line's category cell for an account picker (the parent's own account is excluded from the picker to prevent self-transfers).
+The split dialog renders a live `Imbalance: $X.XX` indicator below the line list that recomputes the signed-sum delta on every keystroke; Save is disabled until the delta is zero. The category combo of any line also lists a `Transfer → <account>` entry for each account, which makes that line a transfer-line (the parent's own account is not listed, to prevent self-transfers).
 
 ## Transfers
 

@@ -206,7 +206,7 @@ A transfer-line's `transfer_account_id` must not equal the parent transaction's 
 
 ### Display
 
-In a category combo box on a split line, a `Transfer →` sentinel appears as a special option (alongside `[+ Add new category…]`). Selecting it swaps the field for an account picker. On save, a newly created transfer line is stored with `transfer_account_id` set and `category_id` NULL — there is no synthetic "Transfer:<account>" category row in the database for new transfer-lines. The split dialog offers no in-dialog category picker for transfer lines in v1, but it **carries through** an existing transfer-line category (e.g. a loan payment's `Loan:Principal` line) unchanged on save rather than stripping it; see [`specs/transfer-categories.md`](transfer-categories.md).
+In a category combo box on a split line, the categories are followed by one `Transfer → <account>` entry for each account (the parent's account excluded), then `[+ Add new category…]`. Picking a transfer entry makes the line a transfer-line to that account. On save, a newly created transfer line is stored with `transfer_account_id` set and `category_id` NULL — there is no synthetic "Transfer:<account>" category row in the database for new transfer-lines. The split dialog offers no in-dialog category picker for transfer lines in v1, but it **carries through** an existing transfer-line category (e.g. a loan payment's `Loan:Principal` line) unchanged on save rather than stripping it; see [`specs/transfer-categories.md`](transfer-categories.md).
 
 Legacy (pre-feature) transfers continue to use the existing `Transfer:<account>` category convention and paired-row `transfer_id` on the transactions table. Both shapes are valid; new transfer-lines just live on the split-item.
 
