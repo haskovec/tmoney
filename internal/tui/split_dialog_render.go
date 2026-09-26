@@ -145,26 +145,8 @@ func (sd *SplitDialog) renderTextField(styles widget.Styles, f *dialog.Field, fo
 	runes := []rune(f.Value)
 
 	if focused {
-		cursorStyle := lipgloss.NewStyle().Reverse(true)
-		var before, cursorChar, after string
-
-		if f.CursorPos() < len(runes) {
-			before = string(runes[:f.CursorPos()])
-			cursorChar = cursorStyle.Render(string(runes[f.CursorPos()]))
-			if f.CursorPos()+1 < len(runes) {
-				after = string(runes[f.CursorPos()+1:])
-			}
-		} else {
-			before = string(runes)
-			cursorChar = cursorStyle.Render(" ")
-		}
-
-		displayLen := len(runes)
-		if f.CursorPos() >= len(runes) {
-			displayLen++
-		}
-		pad := max(width-displayLen, 0)
-
+		before, under, after, pad := f.FocusedWindow(width)
+		cursorChar := lipgloss.NewStyle().Reverse(true).Render(under)
 		return "[ " + before + cursorChar + after + strings.Repeat(" ", pad) + " ]"
 	}
 
