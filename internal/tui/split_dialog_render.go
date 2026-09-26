@@ -73,13 +73,14 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 		}
 		catText = widget.PadRight(catText, catColW)
 
-		// Amount
+		// Amount and Memo. Pass the row's own fields, not the fields of the
+		// loop copy: a focused field saves its scroll window on itself, and a
+		// write to the copy is lost after the frame.
 		amtFocused := rowFocused && sd.fieldFocus == splitFieldAmount
-		amtText := sd.renderTextField(styles, &row.amountField, amtFocused, amtColW-4)
+		amtText := sd.renderTextField(styles, &sd.rows[i].amountField, amtFocused, amtColW-4)
 
-		// Memo
 		memoFocused := rowFocused && sd.fieldFocus == splitFieldMemo
-		memoText := sd.renderTextField(styles, &row.memoField, memoFocused, memoColW-4)
+		memoText := sd.renderTextField(styles, &sd.rows[i].memoField, memoFocused, memoColW-4)
 
 		lines = append(lines, catText+" "+amtText+" "+memoText)
 	}
