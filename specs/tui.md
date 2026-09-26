@@ -600,6 +600,12 @@ and the Transfer dialog rejects a selected category on submit), since
 there is nowhere to store it — see
 [`specs/transfer-categories.md`](transfer-categories.md).
 
+The account pickers are the same typeahead combo, without an add-new
+row: From / To on the Transfer and Scheduled Transfer dialogs, Account
+on the Scheduled Transaction dialogs, From Account on the Loan wizard,
+Account and Source account on the Import dialogs, and To Account on
+Transfer Shares.
+
 The Split Transaction dialog and the Paycheck Schedule Wizard use a
 simpler index-navigated picker (no typeahead) — Up/Down cycles through
 the full option list rather than a typed-filter subset — but they
@@ -696,11 +702,11 @@ transaction type than the keyboard would.
 
 ### Combo box mouse behavior
 
-The [Category Combo Box](#category-combo-box) and the investment Security
-pickers (Buy / Sell / Dividend / Reinvest / Fee via Liquidation / Transfer
-Shares, and the Merger / Spin-Off security fields) render a dropdown panel
-below the input line while the field is focused. Mouse interaction mirrors
-the keyboard:
+The [Category Combo Box](#category-combo-box), the account pickers, and
+the investment Security pickers (Buy / Sell / Dividend / Reinvest / Fee via
+Liquidation / Transfer Shares, and the Merger / Spin-Off security fields)
+render a dropdown panel below the input line while the field is focused.
+Mouse interaction mirrors the keyboard:
 
 - **Click a match row** — commits that option (like `Enter` / `Tab`),
   clears the typed filter query, and advances focus to the next field.
@@ -712,6 +718,8 @@ the keyboard:
 - **Click the input (header) line** — focuses the combo and opens its
   dropdown. A combo shows only its header line while unfocused, so a first
   click opens the list and a second click on a now-visible row commits it.
+- **Click another field or a button** — commits the highlighted row first
+  (like `Tab`), so a click on Save saves the row the panel showed.
 
 ## Status Bar
 

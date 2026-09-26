@@ -135,7 +135,7 @@ func TestBuildNewScheduledDialog_FieldTypes(t *testing.T) {
 		label     string
 		fieldType dialog.FieldType
 	}{
-		{"Account", dialog.FieldSelect},
+		{"Account", dialog.FieldCombo},
 		{"Payee", dialog.FieldText},
 		{"Category", dialog.FieldCombo},
 		{"Amount", dialog.FieldText},

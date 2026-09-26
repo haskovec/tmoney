@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/dbtest"
@@ -120,6 +122,28 @@ func TestEditDeposit_ToTransferCash_PutsAccountOnToSide(t *testing.T) {
 	}
 	if got := fields[1].SelectedOption(); got != brokerage.Name {
 		t.Errorf("To = %q, want %q", got, brokerage.Name)
+	}
+}
+
+// From and To are combos, and Tab commits the highlighted row. A withdrawal
+// puts the accounts in the reverse of the default order, so tabbing through
+// them must keep the pre-filled accounts, not the defaults.
+func TestEditWithdrawal_ToTransferCash_TabKeepsAccounts(t *testing.T) {
+	a, _, brokerage, checking, _ := newReplaceEnv(t, withdrawalRow(t))
+
+	dispatchType(t, a, investment.TransactionTypeTransferCash)
+
+	d := a.transfer.dlg
+	d.SetFocusIndex(0)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	fields := d.Fields()
+	if got := fields[0].SelectedOption(); got != brokerage.Name {
+		t.Errorf("From = %q, want %q", got, brokerage.Name)
+	}
+	if got := fields[1].SelectedOption(); got != checking.Name {
+		t.Errorf("To = %q, want %q", got, checking.Name)
 	}
 }
 

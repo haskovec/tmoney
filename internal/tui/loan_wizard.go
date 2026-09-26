@@ -243,7 +243,7 @@ func buildLoanWizardFields(title string, accounts []*account.Account, categories
 	f = d.AddTextField("Payment (P&I)", "", "principal + interest, no escrow", 14)
 	f.Required = true
 	d.AddDateField("Next Payment Date", "")
-	d.AddSelectField("From Account", fromOptions, 0)
+	d.AddComboField("From Account", fromOptions, 0)
 	d.AddTextField("Payee", "", "Servicer (optional)", 0)
 	interestField := d.AddComboField("Interest Category", interestOptions, interestDefault)
 	interestField.AddNewLabel = loanAddNewCategoryLabel

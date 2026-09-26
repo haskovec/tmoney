@@ -106,12 +106,12 @@ func buildNewScheduledTransferDialog(accountOptions, categoryOptions []string) *
 	d := dialog.NewDialog("New Scheduled Transfer")
 	d.SetWidth(62)
 
-	d.AddSelectField("From", accountOptions, 0)
+	d.AddComboField("From", accountOptions, 0)
 	toIndex := 0
 	if len(accountOptions) > 1 {
 		toIndex = 1
 	}
-	d.AddSelectField("To", accountOptions, toIndex)
+	d.AddComboField("To", accountOptions, toIndex)
 
 	f := d.AddTextField("Amount", "", "100.00", 12)
 	f.Required = true
@@ -144,8 +144,8 @@ func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions,
 	if st.TransferAccountID.Valid {
 		toIdx = indexOfID(accountIDs, st.TransferAccountID.ID)
 	}
-	d.AddSelectField("From", accountOptions, fromIdx)
-	d.AddSelectField("To", accountOptions, toIdx)
+	d.AddComboField("From", accountOptions, fromIdx)
+	d.AddComboField("To", accountOptions, toIdx)
 
 	amountStr := ""
 	if st.HasAmount() {
