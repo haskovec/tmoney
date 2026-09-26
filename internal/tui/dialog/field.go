@@ -163,6 +163,10 @@ type Field struct {
 	DateMask string
 	// cursorPos is the cursor position within the text value.
 	cursorPos int
+	// viewOffset is the first rune a focused FieldText shows when its value
+	// is longer than the field. Render moves it only when the cursor leaves
+	// the window, so the text does not shift on every key press.
+	viewOffset int
 	// ComboHighlight is the highlighted row index within the current
 	// filtered list (for FieldCombo). When Query is empty the filtered list
 	// equals the full Options in order, so this also identifies the
@@ -274,6 +278,41 @@ func (f *Field) MoveCursorEnd() {
 // CursorPos returns the current cursor position.
 func (f *Field) CursorPos() int {
 	return f.cursorPos
+}
+
+// FocusedWindow returns what a focused FieldText draws in a width-wide input:
+// the text before the cursor, the rune under the cursor (" " past the end),
+// the text after it, and the pad that fills the input. A value longer than the
+// input shows a window that holds the cursor, so the line never grows wider
+// than the input. Every renderer of a focused text input uses this.
+func (f *Field) FocusedWindow(width int) (before, under, after string, pad int) {
+	width = max(width, 1)
+	runes := []rune(f.Value)
+	cursor := min(f.cursorPos, len(runes))
+	// The cell after the last rune counts, because the cursor can sit there.
+	f.viewOffset = textViewOffset(f.viewOffset, cursor, len(runes)+1, width)
+	visible := runes[f.viewOffset:min(len(runes), f.viewOffset+width)]
+	cur := cursor - f.viewOffset
+
+	if cur < len(visible) {
+		before, under, after = string(visible[:cur]), string(visible[cur]), string(visible[cur+1:])
+		return before, under, after, width - len(visible)
+	}
+	return string(visible), " ", "", max(width-len(visible)-1, 0)
+}
+
+// textViewOffset returns the first cell of a width-wide window over cells
+// cells that keeps the cursor in view. The window moves only when the cursor
+// leaves it, and it never starts later than it must, so no empty cells open on
+// the right while text is hidden on the left.
+func textViewOffset(offset, cursor, cells, width int) int {
+	if cursor < offset {
+		offset = cursor
+	}
+	if cursor >= offset+width {
+		offset = cursor - width + 1
+	}
+	return max(min(offset, cells-width), 0)
 }
 
 // DateSeparators returns the separator-position set for this field's mask.
