@@ -102,3 +102,18 @@ func (e *IsCashTransferLegError) Error() string {
 		e.ID, e.TransferID,
 	)
 }
+
+// IsShareTransferLegError is returned when a share-transfer LEG is handed to
+// a single-row edit. The edit would delete this leg and leave the other one
+// without its pair; UpdateTransferShares edits both legs together.
+type IsShareTransferLegError struct {
+	ID         string
+	TransferID string
+}
+
+func (e *IsShareTransferLegError) Error() string {
+	return fmt.Sprintf(
+		"investment transaction %s is a leg of share transfer %s; edit the share transfer itself",
+		e.ID, e.TransferID,
+	)
+}

@@ -242,3 +242,29 @@ func TestInvestmentRegister_ClearKey_CashTransfer(t *testing.T) {
 		}
 	}
 }
+
+// dispatchType picks typ in the Edit Transaction picker and runs the command
+// that follows, so the next dialog is built.
+func dispatchType(t *testing.T, a *App, typ investment.TransactionType) {
+	t.Helper()
+	_, cmd := a.dispatchInvestmentTypeSelection(investmentTransactionTypeIndex(typ))
+	runCmd(t, a, cmd, 1)
+}
+
+// A transfer leg cannot change to another type: the edit would delete one leg
+// and leave the other without its pair.
+func TestEditCashTransferLeg_ToWithdrawal_Refused(t *testing.T) {
+	env := newInvRegTransferEnv(t, account.TypeChecking)
+	a := env.app
+	a.services.InvestmentRepo = env.svc.InvestmentRepo
+	a.investmentEditTxnID = env.invLegID
+
+	dispatchType(t, a, investment.TransactionTypeWithdrawal)
+
+	if a.cashOperation.dlg != nil {
+		t.Error("no cash dialog should open for a transfer leg")
+	}
+	if len(a.statusbar.Notifications()) == 0 {
+		t.Error("expected a notification")
+	}
+}

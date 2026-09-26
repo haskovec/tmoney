@@ -215,6 +215,9 @@ func (s *Service) loadAndReverseForEdit(oldID types.ID) (*Transaction, error) {
 	if err := s.ensureAccountOpen(old.AccountID); err != nil {
 		return nil, err
 	}
+	if err := refuseTransferLeg(old); err != nil {
+		return nil, err
+	}
 	if err := s.reverseTxnEffects(old); err != nil {
 		return nil, err
 	}
@@ -225,13 +228,30 @@ func (s *Service) loadAndReverseForEdit(oldID types.ID) (*Transaction, error) {
 }
 
 // guardEditByOldID blocks an edit when the transaction being replaced lives on
-// a closed account, before any destructive delete runs. Used by the cash-type
-// edit methods that delete-then-recreate without going through
-// loadAndReverseForEdit.
+// a closed account or is a transfer leg, before any destructive delete runs.
+// Used by the cash-type edit methods that delete-then-recreate without going
+// through loadAndReverseForEdit.
 func (s *Service) guardEditByOldID(oldID types.ID) error {
 	old, err := s.repo.GetByID(oldID)
 	if err != nil {
 		return fmt.Errorf("failed to load transaction for closed check: %w", err)
 	}
-	return s.ensureAccountOpen(old.AccountID)
+	if err := s.ensureAccountOpen(old.AccountID); err != nil {
+		return err
+	}
+	return refuseTransferLeg(old)
+}
+
+// refuseTransferLeg blocks a single-row edit of a transfer leg. The edit
+// deletes one row and creates one row, so on a leg it would leave the other
+// leg without its pair. transfer.Service edits a cash pair and
+// UpdateTransferShares edits a share pair.
+func refuseTransferLeg(old *Transaction) error {
+	if !old.TransferID.Valid {
+		return nil
+	}
+	if old.Type == TransactionTypeTransferCash {
+		return &IsCashTransferLegError{ID: old.ID.String(), TransferID: old.TransferID.ID.String()}
+	}
+	return &IsShareTransferLegError{ID: old.ID.String(), TransferID: old.TransferID.ID.String()}
 }
