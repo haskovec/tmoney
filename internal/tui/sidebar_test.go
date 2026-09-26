@@ -735,3 +735,26 @@ func TestBuildGroups_AllTypes(t *testing.T) {
 		}
 	}
 }
+
+// A reload that moves an account to another group (close or reopen) must keep
+// the cursor on that account, not on whatever row now sits at the old index.
+func TestSidebar_SetAccountsKeepsCursorOnAccount(t *testing.T) {
+	s := NewSidebar()
+	checking := testAccount("Checking", account.TypeChecking)
+	brokerage := testAccount("Northwind Brokerage", account.TypeInvestment)
+	brokerage.Close(types.Today())
+	oldSavings := testAccount("Old Savings", account.TypeSavings)
+	oldSavings.Close(types.Today())
+	accts := []*account.Account{checking, oldSavings, brokerage}
+	s.SetAccounts(accts, nil)
+
+	if !s.SetCursorToAccount(brokerage.ID) {
+		t.Fatal("setup: brokerage not in the sidebar")
+	}
+	brokerage.Reopen()
+	s.SetAccounts(accts, nil)
+
+	if item := s.CursorItem(); item == nil || item.accountID != brokerage.ID {
+		t.Errorf("cursor item = %+v, want the reopened brokerage", item)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -75,6 +76,10 @@ type transferDialogData struct {
 	// service there is one payload, and it is the read model itself.
 	mode     transferDialogMode
 	existing *transfer.Transfer
+
+	// replaces is set in new mode when the transfer replaces a plain Deposit
+	// or Withdrawal row of the investment register (see openToReplace).
+	replaces *investment.Transaction
 }
 
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
@@ -327,7 +332,46 @@ func (s *transferSurface) applyData(data *transferDialogData, selectedAccountID 
 		}
 	}
 	s.dlg = buildTransferDialog(accountOptions, categoryOptions, defaultFromIndex)
+	if data.replaces != nil {
+		s.prefillFromReplacedRow(data.replaces)
+		return
+	}
 	s.dlg.SeedDateField(stickyDate)
+}
+
+// prefillFromReplacedRow fills the new-transfer form from the row the transfer
+// replaces. A withdrawal sends money from the row's account and a deposit
+// receives it, so the row's account goes on that side. The other side defaults
+// to the first other account.
+func (s *transferSurface) prefillFromReplacedRow(row *investment.Transaction) {
+	s.dlg.SetTitle("Change to Transfer")
+	fields := s.dlg.Fields()
+
+	rowIdx, otherIdx := -1, -1
+	for i, id := range s.accountIDs {
+		switch {
+		case id == row.AccountID:
+			rowIdx = i
+		case otherIdx < 0:
+			otherIdx = i
+		}
+	}
+	if rowIdx >= 0 && otherIdx >= 0 {
+		fromIdx, toIdx := rowIdx, otherIdx
+		if row.Type == investment.TransactionTypeDeposit {
+			fromIdx, toIdx = otherIdx, rowIdx
+		}
+		fields[0].SelectedIndex = fromIdx
+		fields[1].SelectedIndex = toIdx
+	}
+
+	fields[2].Value = fmt.Sprintf("%.2f", row.TotalAmount.Abs().Float64())
+	fields[2].MoveCursorEnd()
+	s.dlg.SeedDateField(row.Date)
+	if row.Memo.Valid {
+		fields[4].Value = row.Memo.String
+		fields[4].MoveCursorEnd()
+	}
 }
 
 // categoryFieldIndex returns the dialog-field index of the Category combo for
@@ -354,6 +398,20 @@ func (s *transferSurface) categoryFieldIndex() int {
 func (s *transferSurface) open(deps transferDeps) tea.Cmd {
 	return func() tea.Msg {
 		data := &transferDialogData{}
+		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
+			return errMsg{err: err}
+		}
+		return transferDialogDataMsg{data: data}
+	}
+}
+
+// openToReplace returns the command that opens a new-transfer dialog to
+// replace row, a plain Deposit or Withdrawal of the investment register. The
+// form is pre-filled from the row, and submit replaces the row with the
+// transfer in one step.
+func (s *transferSurface) openToReplace(deps transferDeps, row *investment.Transaction) tea.Cmd {
+	return func() tea.Msg {
+		data := &transferDialogData{replaces: row}
 		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
 			return errMsg{err: err}
 		}
@@ -567,6 +625,7 @@ func (s *transferSurface) submit(deps transferDeps, currentAcct types.ID) tea.Cm
 	// Close dialog before async save for responsive UI. Everything the save
 	// needs is already a local, so the closure never reads the surface it has
 	// just dropped.
+	replaces := s.data.replaces
 	s.close()
 
 	// No dispatch. One service call handles every (From, To) combination: the
@@ -589,21 +648,33 @@ func (s *transferSurface) submit(deps transferDeps, currentAcct types.ID) tea.Cm
 			return errMsg{err: fmt.Errorf("transfer service not available")}
 		}
 
-		cmd := undo.NewCreateTransferCommand(svc, transfer.Spec{
+		spec := transfer.Spec{
 			FromAccountID: fromAccountID,
 			ToAccountID:   toAccountID,
 			Date:          date,
 			Amount:        amount,
 			Memo:          memo,
 			CategoryID:    categoryID,
-		})
-		if err := undoMgr.Execute(cmd); err != nil {
-			return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+		}
+		var res *transfer.Result
+		if replaces != nil {
+			// Not undoable, like every other investment-row edit: undoing a
+			// create deletes the transfer and would not bring the row back.
+			var err error
+			if res, err = svc.ReplaceWithTransfer(replaces.ID, spec); err != nil {
+				return errMsg{err: fmt.Errorf("failed to change the row to a transfer: %w", err)}
+			}
+		} else {
+			cmd := undo.NewCreateTransferCommand(svc, spec)
+			if err := undoMgr.Execute(cmd); err != nil {
+				return errMsg{err: fmt.Errorf("failed to create transfer: %w", err)}
+			}
+			res = cmd.Result()
 		}
 
 		var savedID types.ID
 		var savedIsInvestment bool
-		if res := cmd.Result(); res != nil {
+		if res != nil {
 			if leg, ok := res.LegForAccount(currentAcct); ok {
 				savedID = leg.RowID
 				savedIsInvestment = leg.Ledger == transfer.LedgerInvestment

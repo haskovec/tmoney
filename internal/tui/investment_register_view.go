@@ -1002,6 +1002,17 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 
 	selectedType := investmentTransactionTypeFromIndex(idx)
 
+	// A transfer leg keeps its type. Every other type's edit deletes one row
+	// and writes one row, which would leave the other leg without its pair.
+	editTxn, ok := a.loadInvestmentEditTxn()
+	if !ok {
+		return a, nil
+	}
+	if editTxn != nil && editTxn.TransferID.Valid && editTxn.Type != selectedType {
+		a.statusbar.AddNotification("A transfer row cannot change type. Delete the transfer and enter a new row.", widget.NotificationAlert)
+		return a, nil
+	}
+
 	switch selectedType {
 	case investment.TransactionTypeBuy:
 		return a, a.loadBuyDialogData()
@@ -1020,20 +1031,23 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 		investment.TransactionTypeFee,
 		investment.TransactionTypeInterest:
 		a.cashOperation.opType = selectedType
-		editTxn, ok := a.loadInvestmentEditTxn()
-		if !ok {
-			return a, nil
-		}
 		a.cashOperation.dlg = buildCashOperationDialog(selectedType.DisplayName(), editTxn)
 		if editTxn == nil {
 			a.cashOperation.dlg.SeedDateField(a.txnDialogLastSavedDate)
 		}
 		return a, nil
 	case investment.TransactionTypeTransferCash:
-		if a.investmentEditTxnID != types.NilID {
-			return a, a.transfer.openForEdit(a.transferDeps(), a.investmentEditTxnID)
+		switch {
+		case editTxn == nil:
+			return a, a.transfer.open(a.transferDeps())
+		case isCashTransferLeg(editTxn):
+			return a, a.transfer.openForEdit(a.transferDeps(), editTxn.ID)
+		case editTxn.Type == investment.TransactionTypeDeposit || editTxn.Type == investment.TransactionTypeWithdrawal:
+			return a, a.transfer.openToReplace(a.transferDeps(), editTxn)
+		default:
+			a.statusbar.AddNotification("Only a Deposit or a Withdrawal can change to a transfer.", widget.NotificationAlert)
+			return a, nil
 		}
-		return a, a.transfer.open(a.transferDeps())
 	case investment.TransactionTypeTransferShares:
 		return a, a.loadTransferSharesDialogData()
 	}

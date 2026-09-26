@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -251,6 +252,53 @@ func TestBuildEditAccountDialog(t *testing.T) {
 	// Notes
 	if fields[acctFieldNotes].Value != "Main account" {
 		t.Errorf("notes = %q, want %q", fields[acctFieldNotes].Value, "Main account")
+	}
+}
+
+// A closed account's lock hint must not widen the label column. A wide column
+// squeezes every input and makes the focused Name and the Opening Date wrap
+// onto a second line.
+func TestBuildEditAccountDialog_ClosedAccountFitsWidth(t *testing.T) {
+	acct := account.NewAccount(
+		"Northwind Brokerage",
+		account.TypeInvestment,
+		"USD",
+		types.ZeroMoney,
+		types.Today(),
+	)
+	acct.SetInstitution("Northwind")
+	acct.Active = false
+
+	d := buildEditAccountDialog(acct)
+	fields := d.Fields()
+
+	if got := fields[acctFieldOpeningBalance].Label; got != "Opening Balance" {
+		t.Errorf("opening balance label = %q, want %q", got, "Opening Balance")
+	}
+	if got := fields[acctFieldOpeningDate].Label; got != "Opening Date" {
+		t.Errorf("opening date label = %q, want %q", got, "Opening Date")
+	}
+	if !strings.Contains(d.Message(), "locked") {
+		t.Errorf("message = %q, want the lock hint", d.Message())
+	}
+
+	out := d.Render(widget.NewStyles())
+	if got, want := lipgloss.Height(out), d.RenderedHeight(); got != want {
+		t.Errorf("rendered height = %d, want %d (a line wrapped):\n%s", got, want, out)
+	}
+	if !strings.Contains(out, "Northwind Brokerage") {
+		t.Errorf("focused name is split across lines:\n%s", out)
+	}
+}
+
+// An open account has no lock hint.
+func TestBuildEditAccountDialog_OpenAccountNoLockHint(t *testing.T) {
+	acct := account.NewAccount("My Checking", account.TypeChecking, "USD", types.ZeroMoney, types.Today())
+
+	d := buildEditAccountDialog(acct)
+
+	if d.Message() != "" {
+		t.Errorf("message = %q, want empty", d.Message())
 	}
 }
 

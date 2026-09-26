@@ -159,3 +159,14 @@ func (e *VoidNotSupportedError) Error() string {
 		e.Kind.String(),
 	)
 }
+
+// NotReplaceableError is returned when ReplaceWithTransfer is handed a row it
+// cannot turn into a transfer. Reason says why in words a user can act on.
+type NotReplaceableError struct {
+	RowID  types.ID
+	Reason string
+}
+
+func (e *NotReplaceableError) Error() string {
+	return fmt.Sprintf("investment transaction %s cannot become a transfer: %s", e.RowID.String(), e.Reason)
+}
