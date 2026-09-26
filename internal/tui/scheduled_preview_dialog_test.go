@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -734,6 +735,45 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 		netAmount:    netAmount,
 		grossAmount:  grossAmount,
 		taxAmount:    taxAmount,
+	}
+}
+
+// TestSchedulePreview_SplitPickerFollowsPreviewFocus pins that the embedded
+// split editor opens its Category picker only while it has the preview's
+// focus, and that Shift+Tab back to the header commits a picker change, the
+// same as Tab does inside the editor.
+func TestSchedulePreview_SplitPickerFollowsPreviewFocus(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	if sd.focusedPicker() != nil {
+		t.Error("the split picker should be closed while the header has focus")
+	}
+	if strings.Contains(p.Render(app.styles), "[+ Add new category…]") {
+		t.Error("the split picker's panel should not render while the header has focus")
+	}
+
+	// Tab from the header's last field into the split editor.
+	header := p.HeaderDialog()
+	header.SetFocusIndex(header.FocusableCount() - 1)
+	app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if sd.focusedPicker() == nil {
+		t.Fatal("the split picker should open when the editor takes focus")
+	}
+
+	// Row 0 is the Salary line. Filter to Federal Tax, then leave the editor.
+	for _, r := range "federal" {
+		app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+
+	if p.FocusOnSplits() {
+		t.Fatal("Shift+Tab from the first split cell should move focus to the header")
+	}
+	if got := sd.rowLabel(sd.rows[0]); got != env.taxCat.Name {
+		t.Errorf("row 0 = %q, want %q (committed on leaving the editor)", got, env.taxCat.Name)
 	}
 }
 

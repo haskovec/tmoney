@@ -125,6 +125,7 @@ func NewSchedulePreviewDialog(
 
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
 		p.splitDialog.SetTransferTargets(accountOptions, accountIDs, template.AccountID)
+		p.setSplitFocus(false) // the header has focus at open
 
 		if p.loanShaped {
 			p.loanSeededRows = p.currentLineSignatures()

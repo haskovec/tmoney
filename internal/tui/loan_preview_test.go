@@ -352,7 +352,7 @@ func TestSchedulePreview_LoanFreezeViaKey(t *testing.T) {
 	p := env.app.schedPreviewDialog
 
 	// Route focus into the split editor's first amount field and type a digit.
-	p.splitFocus = true
+	p.setSplitFocus(true)
 	sd := p.SplitDialog()
 	sd.focus = splitFocusRows
 	sd.rowIndex = 0
