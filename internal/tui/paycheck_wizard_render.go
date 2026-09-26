@@ -330,23 +330,8 @@ func (w *PaycheckWizard) renderFieldValue(styles widget.Styles, fill lipgloss.St
 			return fill.Render("[ ") + styles.Placeholder.Render(ph) + fill.Render(strings.Repeat(" ", padN)) + fill.Render(" ]")
 		}
 		if focused {
-			cursorStyle := lipgloss.NewStyle().Reverse(true)
-			var before, cursorChar, after string
-			if f.CursorPos() < len(runes) {
-				before = string(runes[:f.CursorPos()])
-				cursorChar = cursorStyle.Render(string(runes[f.CursorPos()]))
-				if f.CursorPos()+1 < len(runes) {
-					after = string(runes[f.CursorPos()+1:])
-				}
-			} else {
-				before = string(runes)
-				cursorChar = cursorStyle.Render(" ")
-			}
-			displayLen := len(runes)
-			if f.CursorPos() >= len(runes) {
-				displayLen++
-			}
-			padN := max(inner-displayLen, 0)
+			before, under, after, padN := f.FocusedWindow(inner)
+			cursorChar := lipgloss.NewStyle().Reverse(true).Render(under)
 			return fill.Render("[ ") + fill.Render(before) + cursorChar + fill.Render(after+strings.Repeat(" ", padN)) + fill.Render(" ]")
 		}
 		// Unfocused with a value.

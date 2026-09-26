@@ -338,6 +338,7 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 		if hit.FieldIndex >= 0 && hit.FieldIndex < len(d.fields) {
 			field := d.fields[hit.FieldIndex]
 			if !field.Hidden {
+				wasFocused := d.focusIndex == hit.FieldIndex
 				d.focusIndex = hit.FieldIndex
 
 				switch field.Type {
@@ -356,10 +357,16 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 						return d.handleComboClick(field, hit.ListItemIndex)
 					}
 				case FieldText:
-					// Position cursor based on click position within text field
+					// Position cursor based on click position within text field.
+					// A focused field shows its value from viewOffset; an
+					// unfocused one from the start, so a click that focuses it
+					// maps from the start and resets the window.
+					if !wasFocused {
+						field.viewOffset = 0
+					}
 					labelWidth := d.maxLabelWidth()
 					textStart := labelWidth + 1 + 2 + 2 // label + colon + gap + "[ "
-					cursorPos := max(hit.ContentX-textStart, 0)
+					cursorPos := field.viewOffset + max(hit.ContentX-textStart, 0)
 					field.cursorPos = min(cursorPos, len([]rune(field.Value)))
 				}
 			}

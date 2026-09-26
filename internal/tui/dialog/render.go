@@ -420,26 +420,8 @@ func (d *Dialog) renderTextFieldContent(styles widget.Styles, field *Field, focu
 	runes := []rune(field.Value)
 
 	if focused {
-		cursorStyle := lipgloss.NewStyle().Reverse(true)
-		var before, cursorChar, after string
-
-		if field.cursorPos < len(runes) {
-			before = string(runes[:field.cursorPos])
-			cursorChar = cursorStyle.Render(string(runes[field.cursorPos]))
-			if field.cursorPos+1 < len(runes) {
-				after = string(runes[field.cursorPos+1:])
-			}
-		} else {
-			before = string(runes)
-			cursorChar = cursorStyle.Render(" ")
-		}
-
-		displayLen := len(runes)
-		if field.cursorPos >= len(runes) {
-			displayLen++
-		}
-		pad := max(fw-displayLen, 0)
-
+		before, under, after, pad := field.FocusedWindow(fw)
+		cursorChar := lipgloss.NewStyle().Reverse(true).Render(under)
 		return "[ " + before + cursorChar + after + strings.Repeat(" ", pad) + " ]"
 	}
 

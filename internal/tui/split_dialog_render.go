@@ -73,13 +73,14 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 		}
 		catText = widget.PadRight(catText, catColW)
 
-		// Amount
+		// Amount and Memo. Pass the row's own fields, not the fields of the
+		// loop copy: a focused field saves its scroll window on itself, and a
+		// write to the copy is lost after the frame.
 		amtFocused := rowFocused && sd.fieldFocus == splitFieldAmount
-		amtText := sd.renderTextField(styles, &row.amountField, amtFocused, amtColW-4)
+		amtText := sd.renderTextField(styles, &sd.rows[i].amountField, amtFocused, amtColW-4)
 
-		// Memo
 		memoFocused := rowFocused && sd.fieldFocus == splitFieldMemo
-		memoText := sd.renderTextField(styles, &row.memoField, memoFocused, memoColW-4)
+		memoText := sd.renderTextField(styles, &sd.rows[i].memoField, memoFocused, memoColW-4)
 
 		lines = append(lines, catText+" "+amtText+" "+memoText)
 	}
@@ -145,26 +146,8 @@ func (sd *SplitDialog) renderTextField(styles widget.Styles, f *dialog.Field, fo
 	runes := []rune(f.Value)
 
 	if focused {
-		cursorStyle := lipgloss.NewStyle().Reverse(true)
-		var before, cursorChar, after string
-
-		if f.CursorPos() < len(runes) {
-			before = string(runes[:f.CursorPos()])
-			cursorChar = cursorStyle.Render(string(runes[f.CursorPos()]))
-			if f.CursorPos()+1 < len(runes) {
-				after = string(runes[f.CursorPos()+1:])
-			}
-		} else {
-			before = string(runes)
-			cursorChar = cursorStyle.Render(" ")
-		}
-
-		displayLen := len(runes)
-		if f.CursorPos() >= len(runes) {
-			displayLen++
-		}
-		pad := max(width-displayLen, 0)
-
+		before, under, after, pad := f.FocusedWindow(width)
+		cursorChar := lipgloss.NewStyle().Reverse(true).Render(under)
 		return "[ " + before + cursorChar + after + strings.Repeat(" ", pad) + " ]"
 	}
 
