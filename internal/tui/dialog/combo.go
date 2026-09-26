@@ -3,6 +3,8 @@ package dialog
 import (
 	"sort"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // handleComboNavigationKey processes the combo-specific navigation keys that
@@ -15,12 +17,12 @@ import (
 // Returns handled=true when the key was consumed and the caller should
 // return action; handled=false when the key should fall through to the
 // dialog's default dispatch (e.g. Esc on an empty query falls through to
-// Cancel; any other key falls through to handleComboFieldKey).
+// Cancel; any other key falls through to Field.HandleComboKey).
 func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled bool, action DialogAction) {
 	switch keyStr {
 	case "esc":
 		if field.Query != "" {
-			field.clearComboQuery()
+			field.ClearComboQuery()
 			return true, DialogActionNone
 		}
 	case "enter":
@@ -28,15 +30,15 @@ func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled 
 			field.AddNewTriggered = true
 			return true, DialogActionAddNew
 		}
-		field.commitComboHighlight()
+		field.CommitComboHighlight()
 		d.FocusNext()
 		return true, DialogActionNone
 	case "tab":
-		field.commitComboHighlight()
+		field.CommitComboHighlight()
 		d.FocusNext()
 		return true, DialogActionNone
 	case "shift+tab":
-		field.commitComboHighlight()
+		field.CommitComboHighlight()
 		d.FocusPrev()
 		return true, DialogActionNone
 	}
@@ -44,7 +46,7 @@ func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled 
 }
 
 // handleComboClick commits a left-click on the combo's dropdown panel at the
-// given panel line index (as produced by comboPanelLineAt). A click on a real
+// given panel line index (as produced by ComboPanelLineAt). A click on a real
 // match commits it and advances focus, mirroring Enter on a highlighted match
 // in handleComboNavigationKey; a click on the AddNew action row sets
 // AddNewTriggered and returns DialogActionAddNew, mirroring Enter on that row
@@ -52,26 +54,94 @@ func (d *Dialog) handleComboNavigationKey(field *Field, keyStr string) (handled 
 // out-of-range index (e.g. the header line or a "(no matches)" row) is a
 // no-op that leaves the combo focused with its dropdown open.
 func (d *Dialog) handleComboClick(field *Field, line int) DialogAction {
-	if field.Type != FieldCombo || line < 0 {
-		return DialogActionNone
-	}
-	indices := field.FilteredIndices()
-	if field.AddNewLabel != "" && line == len(indices) {
-		field.ComboHighlight = line
-		field.AddNewTriggered = true
+	picked, addNew := field.ClickComboLine(line)
+	switch {
+	case addNew:
 		return DialogActionAddNew
-	}
-	if line < len(indices) {
-		field.ComboHighlight = line
-		field.commitComboHighlight()
+	case picked:
 		d.FocusNext()
 	}
 	return DialogActionNone
 }
 
+// ClickComboLine applies a click on the given panel line (as produced by
+// ComboPanelLineAt). A click on a real match commits it and reports
+// picked; a click on the AddNew action row highlights it, sets
+// AddNewTriggered, and reports addNew. Any other line is a no-op. The caller
+// moves focus: after a pick it advances, after AddNew it stays.
+func (f *Field) ClickComboLine(line int) (picked, addNew bool) {
+	if f.Type != FieldCombo || line < 0 {
+		return false, false
+	}
+	indices := f.FilteredIndices()
+	if f.AddNewLabel != "" && line == len(indices) {
+		f.ComboHighlight = line
+		f.AddNewTriggered = true
+		return false, true
+	}
+	if line < len(indices) {
+		f.ComboHighlight = line
+		f.CommitComboHighlight()
+		return true, false
+	}
+	return false, false
+}
+
+// ComboPanelRows returns how many lines the combo's dropdown panel takes
+// below its header while the combo is focused: the visible window of
+// matches (plus the AddNew row), or 1 for the "(no matches)" line.
+func (f *Field) ComboPanelRows() int {
+	_, visible, totalRows := f.comboPanelWindow()
+	if totalRows == 0 {
+		return 1
+	}
+	return visible
+}
+
+// ComboHeaderText returns the text a combo shows on its header line: the
+// typed query while focused with a non-empty query, otherwise the selected
+// option, or "(none)" when nothing is selected.
+func (f *Field) ComboHeaderText(focused bool) string {
+	if focused && f.Query != "" {
+		return f.Query
+	}
+	if opt := f.SelectedOption(); opt != "" {
+		return opt
+	}
+	return "(none)"
+}
+
+// HandleComboKey applies an editing key to a focused combo: Up/Down move the
+// highlight, Backspace trims the query, and typed text extends it. Esc,
+// Enter, and Tab are the caller's, because they close the combo or move
+// focus. Surfaces that draw their own combos (the split editor and the
+// paycheck wizard) call this so their pickers act the same as a Dialog's.
+func (f *Field) HandleComboKey(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "up":
+		f.comboHighlightUp()
+		f.Error = ""
+		return
+	case "down":
+		f.comboHighlightDown()
+		f.Error = ""
+		return
+	case "backspace":
+		f.comboQueryBackspace()
+		f.Error = ""
+		return
+	}
+	if msg.Text != "" {
+		for _, r := range msg.Text {
+			f.comboQueryAppend(r)
+		}
+		f.Error = ""
+	}
+}
+
 // comboPanelWindow returns the scroll offset, visible-row count, and total
 // row count (filtered matches plus the optional AddNew action row) for the
-// combo's dropdown panel. renderComboPanel draws the panel from these values
+// combo's dropdown panel. RenderComboPanel draws the panel from these values
 // and the mouse hit-test maps clicks back through them, so keeping the math
 // in one place ensures the rendered rows and the clickable rows never
 // diverge. Returns zeros when there is nothing to show.
@@ -105,13 +175,13 @@ func (f *Field) comboPanelWindow() (scrollOffset, visible, totalRows int) {
 	return scrollOffset, visible, totalRows
 }
 
-// comboPanelLineAt maps a 0-based visible-row offset within the rendered
+// ComboPanelLineAt maps a 0-based visible-row offset within the rendered
 // dropdown panel to a panel line index: an index into FilteredIndices for a
 // real option, or len(FilteredIndices) for the AddNew action row. Returns -1
 // when the offset falls outside the rendered window or when there are no rows
 // (the "(no matches)" placeholder is inert). Uses comboPanelWindow so the
-// mapping tracks renderComboPanel exactly.
-func (f *Field) comboPanelLineAt(visibleRow int) int {
+// mapping tracks RenderComboPanel exactly.
+func (f *Field) ComboPanelLineAt(visibleRow int) int {
 	scrollOffset, visible, totalRows := f.comboPanelWindow()
 	if totalRows == 0 || visibleRow < 0 || visibleRow >= visible {
 		return -1
@@ -235,10 +305,10 @@ func (f *Field) IsAddNewHighlighted() bool {
 	return f.ComboHighlight == len(indices)
 }
 
-// commitComboHighlight sets SelectedIndex to the highlighted row in the
+// CommitComboHighlight sets SelectedIndex to the highlighted row in the
 // filtered list (if any) and clears the query. No-op when no rows match
 // (preserves the previous selection).
-func (f *Field) commitComboHighlight() {
+func (f *Field) CommitComboHighlight() {
 	if f.Type != FieldCombo {
 		return
 	}
@@ -249,9 +319,9 @@ func (f *Field) commitComboHighlight() {
 	f.ComboHighlight = f.SelectedIndex
 }
 
-// clearComboQuery resets Query and snaps the highlight back to SelectedIndex.
+// ClearComboQuery resets Query and snaps the highlight back to SelectedIndex.
 // Used by Esc when the query is non-empty.
-func (f *Field) clearComboQuery() {
+func (f *Field) ClearComboQuery() {
 	if f.Type != FieldCombo {
 		return
 	}

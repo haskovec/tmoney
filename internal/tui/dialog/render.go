@@ -387,7 +387,7 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 		// between the header and the panel) matches fieldContentRows + the
 		// trailing error row ContentHeight and hitTestContentFull expect, so
 		// a click maps to the option actually drawn under the cursor.
-		panel := d.renderComboPanel(field, available)
+		panel := field.RenderComboPanel(available)
 		line := paddedLabel + "  " + header + "\n" + panel
 		if field.Error != "" {
 			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
@@ -560,31 +560,23 @@ func (d *Dialog) renderComboHeader(field *Field, focused bool, available int) st
 	if maxOptWidth < 3 {
 		maxOptWidth = 3
 	}
-	var display string
-	if focused && field.Query != "" {
-		display = field.Query
-	} else {
-		display = field.SelectedOption()
-		if display == "" {
-			display = "(none)"
-		}
-	}
-	display = widget.TruncateRunes(display, maxOptWidth)
+	display := widget.TruncateRunes(field.ComboHeaderText(focused), maxOptWidth)
 	if focused {
 		return lipgloss.NewStyle().Reverse(true).Render(" "+display+" ") + " ▼"
 	}
 	return display + " ▼"
 }
 
-// renderComboPanel renders the dropdown filtered-list panel shown below the
+// RenderComboPanel renders the dropdown filtered-list panel shown below the
 // combo header while the field is focused. Reuses FieldList scroll-window
 // math. When AddNewLabel is set, an action row is appended to the bottom of
-// the panel and is rendered with a dimmed style when not highlighted.
-func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
-	indices := field.FilteredIndices()
-	hasAction := field.AddNewLabel != ""
+// the panel and is rendered with a dimmed style when not highlighted. The
+// panel is ComboPanelRows lines tall.
+func (f *Field) RenderComboPanel(contentWidth int) string {
+	indices := f.FilteredIndices()
+	hasAction := f.AddNewLabel != ""
 
-	scrollOffset, visible, totalRows := field.comboPanelWindow()
+	scrollOffset, visible, totalRows := f.comboPanelWindow()
 	if totalRows == 0 {
 		return "      (no matches)"
 	}
@@ -598,12 +590,12 @@ func (d *Dialog) renderComboPanel(field *Field, contentWidth int) string {
 		isAction := hasAction && i == len(indices)
 		var item string
 		if isAction {
-			item = widget.TruncateRunes(field.AddNewLabel, maxItemWidth)
+			item = widget.TruncateRunes(f.AddNewLabel, maxItemWidth)
 		} else {
-			item = widget.TruncateRunes(field.Options[indices[i]], maxItemWidth)
+			item = widget.TruncateRunes(f.Options[indices[i]], maxItemWidth)
 		}
 		switch {
-		case i == field.ComboHighlight:
+		case i == f.ComboHighlight:
 			lines = append(lines, "    "+lipgloss.NewStyle().Reverse(true).Render("> "+item))
 		case isAction:
 			lines = append(lines, "      "+actionStyle.Render(item))
@@ -841,21 +833,7 @@ func (d *Dialog) fieldContentRows(field *Field) int {
 		return 1 + visible // label line + visible item lines
 	}
 	if field.Type == FieldCombo && d.isFieldFocused(field) {
-		visible := field.VisibleCount
-		if visible <= 0 {
-			visible = 8
-		}
-		matches := len(rankComboMatches(field.Options, field.Query))
-		if field.AddNewLabel != "" {
-			matches++ // the action row counts as a row
-		}
-		if matches == 0 {
-			return 2 // header line + "(no matches)" line
-		}
-		if visible > matches {
-			visible = matches
-		}
-		return 1 + visible
+		return 1 + field.ComboPanelRows() // header line + panel
 	}
 	return 1
 }
