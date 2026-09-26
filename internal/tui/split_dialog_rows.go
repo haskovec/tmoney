@@ -51,6 +51,8 @@ func (sd *SplitDialog) removeRow(index int) {
 		return
 	}
 	sd.rows = append(sd.rows[:index], sd.rows[index+1:]...)
+	// An open picker belongs to a row that moved or went away.
+	sd.pickerOpen = false
 	// Adjust focused row if needed
 	if sd.rowIndex >= len(sd.rows) {
 		sd.rowIndex = len(sd.rows) - 1
@@ -70,21 +72,8 @@ func (sd *SplitDialog) validate() error {
 			}
 		} else {
 			// Category must be selected (index > 0 means not "(None)")
-			if row.categoryIndex <= 0 {
+			if row.categoryIndex <= 0 || row.categoryIndex >= len(sd.categoryIDs) {
 				return fmt.Errorf("split %d: category is required", i+1)
-			}
-			// The AddNew sentinel is an action row, not a saveable
-			// selection — landing here without activating it (Enter on the
-			// Category field) is treated as "no category picked".
-			if sd.isAddNewSentinel(row.categoryIndex) {
-				return fmt.Errorf("split %d: category is required", i+1)
-			}
-			// The Transfer sentinel without a configured picker is not a
-			// savable selection on its own. Once SetTransferTargets has
-			// been called, hitting the sentinel transitions the row into
-			// transfer mode (handled above).
-			if sd.isTransferSentinel(row.categoryIndex) {
-				return fmt.Errorf("split %d: pick a destination account for the transfer", i+1)
 			}
 		}
 

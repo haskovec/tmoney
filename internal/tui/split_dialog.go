@@ -7,17 +7,16 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// transferSentinelLabel is the trailing option in a split row's
-// category combo that swaps the row from a categorized line into a
-// transfer-line targeting another account. See
+// transferSentinelLabel prefixes the transfer entries in a split row's
+// category picker ("Transfer → Savings"). Picking one makes the row a
+// transfer-line targeting that account. See
 // specs/multiline-splits-and-paycheck.md ("Display").
 const transferSentinelLabel = "Transfer →"
 
-// addNewSentinelLabel is the bottom-most option in a split row's category
-// picker, mirroring the [+ Add new category…] action row on typeahead
-// combos in other transaction-entry surfaces. Activating it (Enter on the
-// Category field while parked here) returns dialog.DialogActionAddNew so the
-// App-level router can divert into the inline create-category sub-dialog.
+// addNewSentinelLabel is the action row at the bottom of a split row's
+// category picker, the same as on the other typeahead combos. Enter on it
+// returns dialog.DialogActionAddNew so the App-level router can divert into
+// the inline create-category sub-dialog.
 const addNewSentinelLabel = "[+ Add new category…]"
 
 // splitDialogFocus indicates which top-level area of the split dialog has focus.
@@ -43,11 +42,13 @@ const (
 //
 // A row is in one of two modes:
 //   - Category mode (transferMode = false): categoryIndex picks an entry
-//     from SplitDialog.categoryOptions. Landing on the trailing Transfer
-//     sentinel (with the picker configured) auto-swaps to transfer mode.
+//     from SplitDialog.categoryOptions.
 //   - Transfer mode (transferMode = true): accountIndex picks an entry
 //     from the dialog's transfer-account options (parent account already
-//     filtered out). Up from accountIndex 0 reverts to category mode.
+//     filtered out).
+//
+// The category picker offers both in one list (see pickerOptions), so a
+// pick sets the mode.
 type splitRow struct {
 	categoryIndex int
 	transferMode  bool
@@ -118,6 +119,20 @@ type SplitDialog struct {
 	// and validate() rejects rows that land on it.
 	transferAccountOptions []string
 	transferAccountIDs     []types.ID
+
+	// picker is the type-ahead combo for the focused row's Category cell.
+	// The row's categoryIndex / transferMode / accountIndex stay the model:
+	// focusedPicker loads the picker from them when the cell takes focus,
+	// and commitPicker writes the pick back and closes it. pickerRow is the
+	// row it was loaded for; pickerOpen is false while no cell has it.
+	picker     dialog.Field
+	pickerRow  int
+	pickerOpen bool
+
+	// blurred is true while a host that embeds the editor (the scheduled
+	// preview) has focus on its own fields. A blurred editor draws no
+	// focused cell and no open picker. See SetBlurred.
+	blurred bool
 
 	errorMsg string
 }
@@ -243,37 +258,92 @@ func (sd *SplitDialog) FieldFocus() splitFieldFocus {
 	return sd.fieldFocus
 }
 
-// categoryOptionCount returns the total number of selectable items in a
-// row's category combo, including the trailing Transfer and AddNew
-// sentinels. Index layout: real categories at [0..N-1], Transfer at N,
-// AddNew at N+1.
-func (sd *SplitDialog) categoryOptionCount() int {
-	return len(sd.categoryOptions) + 2
-}
-
-// isTransferSentinel reports whether the given option index points
-// at the trailing Transfer → row appended past the real categories.
-func (sd *SplitDialog) isTransferSentinel(idx int) bool {
-	return idx == len(sd.categoryOptions)
-}
-
-// isAddNewSentinel reports whether the given option index points at the
-// [+ Add new category…] action row appended after the Transfer sentinel.
-func (sd *SplitDialog) isAddNewSentinel(idx int) bool {
-	return idx == len(sd.categoryOptions)+1
-}
-
-// categoryOptionLabel returns the display label for the given option
-// index, mapping the Transfer and AddNew sentinel positions to their
-// constant labels.
-func (sd *SplitDialog) categoryOptionLabel(idx int) string {
-	if sd.isAddNewSentinel(idx) {
-		return addNewSentinelLabel
+// pickerOptions returns the list the Category picker filters: every
+// category, then one "Transfer → <account>" entry for each transfer target.
+// An index below len(categoryOptions) is a category; the rest map to
+// transferAccountOptions in order.
+func (sd *SplitDialog) pickerOptions() []string {
+	opts := make([]string, 0, len(sd.categoryOptions)+len(sd.transferAccountOptions))
+	opts = append(opts, sd.categoryOptions...)
+	for _, name := range sd.transferAccountOptions {
+		opts = append(opts, transferSentinelLabel+" "+name)
 	}
-	if sd.isTransferSentinel(idx) {
-		return transferSentinelLabel
+	return opts
+}
+
+// pickerIndex returns row's selection as an index into pickerOptions.
+func (sd *SplitDialog) pickerIndex(row splitRow) int {
+	if row.transferMode {
+		return len(sd.categoryOptions) + row.accountIndex
 	}
-	return sd.categoryOptions[idx]
+	return row.categoryIndex
+}
+
+// rowLabel returns the text row's Category cell shows while unfocused.
+func (sd *SplitDialog) rowLabel(row splitRow) string {
+	if row.transferMode {
+		return transferSentinelLabel + " " + sd.transferAccountLabel(row.accountIndex)
+	}
+	if row.categoryIndex >= 0 && row.categoryIndex < len(sd.categoryOptions) {
+		return sd.categoryOptions[row.categoryIndex]
+	}
+	return ""
+}
+
+// SetBlurred tells the editor whether its host has moved focus away from it.
+// Blurring commits an open picker first, the same as Tab, so the entry the
+// panel showed is the one kept.
+func (sd *SplitDialog) SetBlurred(b bool) {
+	if b {
+		sd.commitPicker()
+	}
+	sd.blurred = b
+}
+
+// focusedPicker returns the Category picker when a row's Category cell has
+// focus, loading it from that row on first use; otherwise nil.
+func (sd *SplitDialog) focusedPicker() *dialog.Field {
+	if sd.blurred || sd.focus != splitFocusRows || sd.fieldFocus != splitFieldCategory ||
+		sd.rowIndex < 0 || sd.rowIndex >= len(sd.rows) {
+		return nil
+	}
+	if !sd.pickerOpen || sd.pickerRow != sd.rowIndex {
+		idx := sd.pickerIndex(sd.rows[sd.rowIndex])
+		sd.picker = dialog.Field{
+			Type:           dialog.FieldCombo,
+			Options:        sd.pickerOptions(),
+			SelectedIndex:  idx,
+			ComboHighlight: idx,
+			AddNewLabel:    addNewSentinelLabel,
+		}
+		sd.pickerRow, sd.pickerOpen = sd.rowIndex, true
+	}
+	return &sd.picker
+}
+
+// commitPicker commits the picker's highlighted entry, writes it back to the
+// row it was loaded for, and closes the picker. No-op while it is closed.
+// Every path that moves focus off a Category cell calls it first, the same
+// as Tab on a Dialog combo.
+func (sd *SplitDialog) commitPicker() {
+	if !sd.pickerOpen {
+		return
+	}
+	sd.pickerOpen = false
+	if sd.pickerRow < 0 || sd.pickerRow >= len(sd.rows) {
+		return
+	}
+	sd.picker.CommitComboHighlight()
+	row := &sd.rows[sd.pickerRow]
+	idx := sd.picker.SelectedIndex
+	if n := len(sd.categoryOptions); idx < n {
+		row.transferMode = false
+		row.categoryIndex = idx
+		row.accountIndex = 0
+	} else {
+		row.transferMode = true
+		row.accountIndex = idx - n
+	}
 }
 
 // SetTransferTargets configures the account picker used when a split
@@ -295,6 +365,7 @@ func (sd *SplitDialog) SetTransferTargets(options []string, ids []types.ID, excl
 		sd.transferAccountOptions = append(sd.transferAccountOptions, options[i])
 		sd.transferAccountIDs = append(sd.transferAccountIDs, id)
 	}
+	sd.pickerOpen = false // its options changed; reload on next use
 
 	// Resolve rows seeded from existing transfer-splits to their index in
 	// the now-known transfer-target list.
@@ -330,12 +401,6 @@ func (sd *SplitDialog) transferAccountLabel(idx int) string {
 		return ""
 	}
 	return sd.transferAccountOptions[idx]
-}
-
-// hasTransferTargets reports whether the dialog has at least one
-// account configured to use as a transfer target.
-func (sd *SplitDialog) hasTransferTargets() bool {
-	return len(sd.transferAccountIDs) > 0
 }
 
 // ErrorMsg returns the current error message.
