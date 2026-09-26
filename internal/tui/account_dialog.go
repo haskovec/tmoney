@@ -206,17 +206,17 @@ func buildEditAccountDialog(acct *account.Account) *dialog.Dialog {
 	f.Required = true
 
 	// Opening balance / date. These are locked while the account is closed
-	// (a label hint signals it); submitAccountDialog skips writing them.
-	balLabel, dateLabel := "Opening Balance", "Opening Date"
+	// (a message line signals it); submitAccountDialog skips writing them.
+	// The hint is not put in the labels: the widest label sets the label
+	// column, and a long one squeezes every input until values wrap.
 	if acct.IsClosed() {
-		balLabel = "Opening Balance (locked while closed)"
-		dateLabel = "Opening Date (locked while closed)"
+		d.SetMessage("Opening balance and date are locked while closed.")
 	}
-	f = d.AddTextField(balLabel, fmt.Sprintf("%.2f", acct.OpeningBalance.Float64()), "0.00", 12)
+	f = d.AddTextField("Opening Balance", fmt.Sprintf("%.2f", acct.OpeningBalance.Float64()), "0.00", 12)
 	f.Required = true
 
 	dateStr := acct.OpeningDate.Time().Format("01/02/2006")
-	f = d.AddDateField(dateLabel, dateStr)
+	f = d.AddDateField("Opening Date", dateStr)
 	f.Required = true
 
 	// Institution
