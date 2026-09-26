@@ -51,6 +51,22 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 	addLine := func(s string) {
 		lines = append(lines, padToWidth(s))
 	}
+	// addComboPanel draws the focused combo's dropdown panel under its row,
+	// with a click target on each line, when f is that combo.
+	addComboPanel := func(f *dialog.Field) {
+		if f == nil || f != focused.field || f.Type != dialog.FieldCombo {
+			return
+		}
+		for i, panelLine := range strings.Split(f.RenderComboPanel(contentWidth), "\n") {
+			w.hitZones = append(w.hitZones, wizardHitZone{
+				row:    len(lines),
+				colMin: 0,
+				colMax: contentWidth,
+				target: wizardFocusTarget{kind: wizardFocusComboLine, field: f, comboLine: f.ComboPanelLineAt(i)},
+			})
+			addLine(panelLine)
+		}
+	}
 
 	// Title row with [x] close button on the right.
 	closeBtn := styles.Muted.Render("[x]")
@@ -78,6 +94,7 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 		row, zones := w.renderFieldRow(styles, fillStyle, f, focused.field == f, contentWidth, len(lines))
 		addLine(row)
 		w.hitZones = append(w.hitZones, zones...)
+		addComboPanel(f)
 	}
 	addLine("")
 
@@ -90,6 +107,7 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 			row, zones := w.renderLine(styles, fillStyle, line, focused, contentWidth, len(lines))
 			addLine(row)
 			w.hitZones = append(w.hitZones, zones...)
+			addComboPanel(line.selectField)
 		}
 
 		addLabel := s.addRowLabel()
@@ -303,8 +321,10 @@ func (w *PaycheckWizard) renderLine(styles widget.Styles, fill lipgloss.Style, l
 // renderFieldValue draws a field's value matching the generic
 // *dialog.Dialog field rendering conventions:
 //   - FieldText: `[ value ]` (bracketed with spaces inside).
-//   - FieldSelect: `value ▼` (no brackets; focused value gets a
-//     reverse-highlight inside the surrounding fill).
+//   - FieldSelect / FieldCombo: `value ▼` (no brackets; focused value
+//     gets a reverse-highlight inside the surrounding fill). A focused
+//     combo shows its typed query while it has one; Render draws its
+//     dropdown panel under the row.
 //
 // fill is the dialog-bg style used for padding so the cell fills
 // uniformly with the dialog's background.
@@ -370,12 +390,12 @@ func (w *PaycheckWizard) renderFieldValue(styles widget.Styles, fill lipgloss.St
 			after = value[pos+1:]
 		}
 		return fill.Render("[ ") + fill.Render(before) + cursorChar + fill.Render(after+strings.Repeat(" ", padN)) + fill.Render(" ]")
-	case dialog.FieldSelect:
+	case dialog.FieldSelect, dialog.FieldCombo:
 		// `value ▼` — no brackets; focused option gets a reverse
 		// highlight just over the value cell.
-		opt := ""
-		if f.SelectedIndex >= 0 && f.SelectedIndex < len(f.Options) {
-			opt = f.Options[f.SelectedIndex]
+		opt := f.SelectedOption()
+		if f.Type == dialog.FieldCombo {
+			opt = f.ComboHeaderText(focused)
 		}
 		// Reserve " ▼" suffix (always 2 cells: space + arrow).
 		suffix := " ▼"

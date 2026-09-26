@@ -286,26 +286,27 @@ func (s *paycheckSurface) submit(deps paycheckDeps) tea.Cmd {
 	}
 }
 
-// beginCreateCategory hides the wizard and reports the line whose select field
-// activated the [+ Add new category…] sentinel. The wizard is kept alive
-// (hidden) so its row state survives the divert; applyCreatedCategory re-shows
-// it with the new category selected, reshow does so after a cancel. It reports
-// false when no line's select field is focused, in which case nothing was
-// hidden and the caller must not open the sub-dialog.
-//
-// Unlike the typeahead-combo surfaces, the wizard has no typed query to
-// harvest — the sub-dialog opens with empty Name and Parent fields.
-func (s *paycheckSurface) beginCreateCategory() (line *PaycheckLine, ok bool) {
+// beginCreateCategory hides the wizard and reports the line whose combo
+// activated the [+ Add new category…] row, with the query typed into it. The
+// query is cleared, the same as on the other typeahead-combo surfaces. The
+// wizard is kept alive (hidden) so its row state survives the divert;
+// applyCreatedCategory re-shows it with the new category selected, reshow
+// does so after a cancel. It reports false when no line's combo is focused,
+// in which case nothing was hidden and the caller must not open the
+// sub-dialog.
+func (s *paycheckSurface) beginCreateCategory() (line *PaycheckLine, query string, ok bool) {
 	w := s.wizard
 	if w == nil {
-		return nil, false
+		return nil, "", false
 	}
 	line = w.lineForSelectField(w.focusedTarget().field)
 	if line == nil {
-		return nil, false
+		return nil, "", false
 	}
+	query = line.selectField.Query
+	line.selectField.ClearComboQuery()
 	w.SetVisible(false)
-	return line, true
+	return line, query, true
 }
 
 // applyCreatedCategory rebuilds the wizard's combined picker options to include
@@ -329,12 +330,7 @@ func (s *paycheckSurface) applyCreatedCategory(newCat *category.Category, cats [
 	w.categoryOptions = options
 	w.categoryIDs = ids
 
-	combined := make([]string, 0, len(options)+len(w.accountOptions)+1)
-	combined = append(combined, options...)
-	for _, name := range w.accountOptions {
-		combined = append(combined, "→ "+name)
-	}
-	combined = append(combined, paycheckAddNewSentinelLabel)
+	combined := buildPaycheckCombinedOptions(options, w.accountOptions)
 	w.combinedOptions = combined
 
 	newCatCount := len(options)
@@ -360,26 +356,28 @@ func (s *paycheckSurface) applyCreatedCategory(newCat *category.Category, cats [
 
 			if line == originating {
 				line.selectField.SelectedIndex = newCatIdx
-				continue
-			}
-
-			oldIdx := line.selectField.SelectedIndex
-			switch {
-			case oldIdx >= oldCatCount:
-				// Transfer-mode line (or — defensively — the AddNew sentinel,
-				// which shouldn't persist on a line). Shift by the
-				// category-count delta so the same account stays selected.
-				line.selectField.SelectedIndex = oldIdx + delta
-			case oldIdx >= 0 && oldIdx < len(oldCategoryIDs):
-				// Category-mode line. Preserve by ID — the new category may
-				// have been inserted alphabetically into the middle, shifting
-				// subsequent indices.
-				if newIdx, ok := idToNewIdx[oldCategoryIDs[oldIdx]]; ok {
-					line.selectField.SelectedIndex = newIdx
-				} else {
-					line.selectField.SelectedIndex = 0
+			} else {
+				oldIdx := line.selectField.SelectedIndex
+				switch {
+				case oldIdx >= oldCatCount:
+					// Transfer-mode line. Shift by the category-count delta
+					// so the same account stays selected.
+					line.selectField.SelectedIndex = oldIdx + delta
+				case oldIdx >= 0 && oldIdx < len(oldCategoryIDs):
+					// Category-mode line. Preserve by ID — the new category
+					// may have been inserted alphabetically into the middle,
+					// shifting subsequent indices.
+					if newIdx, ok := idToNewIdx[oldCategoryIDs[oldIdx]]; ok {
+						line.selectField.SelectedIndex = newIdx
+					} else {
+						line.selectField.SelectedIndex = 0
+					}
 				}
 			}
+			// The options moved under the combo: re-sync its highlight so a
+			// Tab does not commit a stale row.
+			line.selectField.ComboHighlight = line.selectField.SelectedIndex
+			line.selectField.Query = ""
 		}
 	}
 
@@ -441,13 +439,14 @@ func (a *App) paycheckWizardAction(action dialog.DialogAction) (tea.Model, tea.C
 // [+ Add new category…] sentinel. Restoration on cancel and post-create wiring
 // happen through the createCatDialog handlers.
 func (a *App) openCreateCategorySubDialogFromPaycheck() (tea.Model, tea.Cmd) {
-	line, ok := a.paycheck.beginCreateCategory()
+	line, query, ok := a.paycheck.beginCreateCategory()
 	if !ok {
 		return a, nil
 	}
 	origin := originFrom(createCatSourcePaycheckWizard)
 	origin.line = line
-	a.createCat.open(origin, "", "", a.createCatParentsFor(origin.surface), defaultTypeForPaycheckSection(line.Section))
+	parent, name := splitCategoryQuery(query)
+	a.createCat.open(origin, name, parent, a.createCatParentsFor(origin.surface), defaultTypeForPaycheckSection(line.Section))
 	return a, nil
 }
 

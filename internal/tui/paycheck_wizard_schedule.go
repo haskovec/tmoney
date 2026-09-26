@@ -234,7 +234,9 @@ func NewPaycheckWizardFromSchedule(
 			break
 		}
 		if w.accountIDs[i] == st.AccountID {
+			// A combo: Tab commits the highlight, so it follows the selection.
 			w.accountField.SelectedIndex = i
+			w.accountField.ComboHighlight = i
 			break
 		}
 	}
@@ -274,6 +276,7 @@ func NewPaycheckWizardFromSchedule(
 
 		line := w.AddRow(section)
 		line.selectField.SelectedIndex = selectIdx
+		line.selectField.ComboHighlight = selectIdx
 		prefillField(line.amountField, sp.Amount.String())
 		if sp.Memo.Valid {
 			prefillField(line.notesField, sp.Memo.String)

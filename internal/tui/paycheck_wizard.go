@@ -48,7 +48,7 @@ type PaycheckWizard struct {
 	employerField   *dialog.Field // text — employer payee name
 	frequencyField  *dialog.Field // select — paycheck frequency picker
 	nextPaydayField *dialog.Field // text — schedule start date (MM/DD/YYYY)
-	accountField    *dialog.Field // select — primary deposit account
+	accountField    *dialog.Field // combo — primary deposit account
 	memoField       *dialog.Field // text — optional memo
 
 	// Five sections of rows, indexed by PaycheckSection. Earnings and
@@ -56,9 +56,8 @@ type PaycheckWizard struct {
 	// start empty. Additional rows are appended via AddRow.
 	sections [5][]*PaycheckLine
 
-	// combinedOptions is the category-or-transfer picker's option list.
-	// It is `categoryOptions` followed by `→ <Account>` entries — one
-	// for each account in accountOptions. Indices ≥ len(categoryOptions)
+	// combinedOptions is the category-or-transfer picker's option list
+	// (see buildPaycheckCombinedOptions). Indices ≥ len(categoryOptions)
 	// indicate the row is a transfer-line.
 	combinedOptions []string
 
@@ -99,11 +98,9 @@ type wizardHitZone struct {
 	target wizardFocusTarget
 }
 
-// paycheckAddNewSentinelLabel is the action-row label appended to every
-// paycheck-line select field's option list. Enter on this entry diverts into
-// the inline create-category sub-dialog (mirrors the [+ Add new category…]
-// row that appears in the typeahead-combo surfaces, but here the user
-// navigates to it with Up/Down rather than typing to filter).
+// paycheckAddNewSentinelLabel is the AddNew action row of every paycheck
+// line's category-or-transfer combo, the same as on the other typeahead
+// combos. Enter on it diverts into the inline create-category sub-dialog.
 const paycheckAddNewSentinelLabel = "[+ Add new category…]"
 
 // PaycheckSection identifies which of the wizard's five visual
@@ -270,13 +267,7 @@ func findCategoryOptionIndex(options []string, displayName string) int {
 // active accounts for the picker.
 func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, accounts []*account.Account) *PaycheckWizard {
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(accounts)
-
-	combined := make([]string, 0, len(categoryOptions)+len(accountOptions)+1)
-	combined = append(combined, categoryOptions...)
-	for _, name := range accountOptions {
-		combined = append(combined, "→ "+name)
-	}
-	combined = append(combined, paycheckAddNewSentinelLabel)
+	combined := buildPaycheckCombinedOptions(categoryOptions, accountOptions)
 
 	w := &PaycheckWizard{
 		visible:         true,
@@ -307,10 +298,9 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 		DateMask: dialog.DateMaskUS,
 	}
 	w.accountField = &dialog.Field{
-		Label:         "Deposit account",
-		Type:          dialog.FieldSelect,
-		Options:       accountOptions,
-		SelectedIndex: 0,
+		Label:   "Deposit account",
+		Type:    dialog.FieldCombo,
+		Options: accountOptions,
 	}
 	w.memoField = &dialog.Field{
 		Label:       "Memo",
@@ -326,6 +316,17 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 	w.seedSection(PaycheckTax, "Tax > Federal", "Tax > Social Security", "Tax > Medicare")
 
 	return w
+}
+
+// buildPaycheckCombinedOptions returns a paycheck line's category-or-transfer
+// options: every category, then one `→ <Account>` entry for each account.
+func buildPaycheckCombinedOptions(categoryOptions, accountOptions []string) []string {
+	combined := make([]string, 0, len(categoryOptions)+len(accountOptions))
+	combined = append(combined, categoryOptions...)
+	for _, name := range accountOptions {
+		combined = append(combined, "→ "+name)
+	}
+	return combined
 }
 
 // seedSection appends a row to the given section for each provided

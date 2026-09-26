@@ -664,11 +664,11 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromTaxSection(t *testing.T) {
 func TestApp_PaycheckWizard_AddNew_DefaultTypeFromEarningsSection(t *testing.T) {
 	app, _ := newAppForPaycheckAddNew(t, nil, nil)
 	w := app.paycheck.wizard
-	// Replace the parked Pre-Tax line with an Earnings line parked on AddNew.
+	// Replace the parked Pre-Tax line with an Earnings line on AddNew.
 	earnings := w.AddRow(PaycheckEarnings)
-	earnings.SelectField().SelectedIndex = len(earnings.SelectField().Options) - 1
+	highlightPaycheckAddNew(earnings)
 	if !earnings.IsAddNew() {
-		t.Fatal("earnings line should be parked on AddNew sentinel")
+		t.Fatal("earnings line should highlight the AddNew row")
 	}
 	for i, target := range w.collectFocusables() {
 		if target.kind == wizardFocusField && target.field == earnings.SelectField() {
@@ -695,9 +695,9 @@ func TestApp_PaycheckWizard_AddNew_DefaultTypeFromNetPaySection(t *testing.T) {
 	app, _ := newAppForPaycheckAddNew(t, nil, nil)
 	w := app.paycheck.wizard
 	netPay := w.AddRow(PaycheckNetPayDestination)
-	netPay.SelectField().SelectedIndex = len(netPay.SelectField().Options) - 1
+	highlightPaycheckAddNew(netPay)
 	if !netPay.IsAddNew() {
-		t.Fatal("net pay line should be parked on AddNew sentinel")
+		t.Fatal("net pay line should highlight the AddNew row")
 	}
 	for i, target := range w.collectFocusables() {
 		if target.kind == wizardFocusField && target.field == netPay.SelectField() {

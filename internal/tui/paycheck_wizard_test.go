@@ -126,8 +126,8 @@ func TestPaycheckWizard_V2Layout_OpensWithSpecPrePopulation(t *testing.T) {
 	if w.NextPayday().Value == "" {
 		t.Error("next payday should be seeded with today's date")
 	}
-	if w.DepositAccount().Type != dialog.FieldSelect {
-		t.Errorf("deposit account should be dialog.FieldSelect, got %v", w.DepositAccount().Type)
+	if w.DepositAccount().Type != dialog.FieldCombo {
+		t.Errorf("deposit account should be dialog.FieldCombo, got %v", w.DepositAccount().Type)
 	}
 	if got := w.DepositAccount().Options[w.DepositAccount().SelectedIndex]; got != "Checking" {
 		t.Errorf("deposit default = %q, want Checking", got)
@@ -1183,44 +1183,185 @@ func TestNewPaycheckWizardFromSchedule_V2_MultipleEarningsLines(t *testing.T) {
 
 // CC-005 — Inline category creation from the paycheck wizard.
 
-// TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel pins the layout
-// invariant the AddNew flow depends on: combinedOptions ends with the
-// [+ Add new category…] sentinel, sitting one past the last transfer entry.
-func TestPaycheckWizard_CombinedOptionsIncludesAddNewSentinel(t *testing.T) {
+// focusPaycheckField moves the wizard's focus onto f without a Tab, so no
+// combo on the way is committed.
+func focusPaycheckField(t *testing.T, w *PaycheckWizard, f *dialog.Field) {
+	t.Helper()
+	for i, target := range w.collectFocusables() {
+		if target.kind == wizardFocusField && target.field == f {
+			w.focusIndex = i
+			return
+		}
+	}
+	t.Fatal("field is not focusable")
+}
+
+// typePaycheck sends text to the wizard one key at a time.
+func typePaycheck(w *PaycheckWizard, text string) {
+	for _, r := range text {
+		w.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+// TestPaycheckWizard_LineTypeAhead pins that typing in a line's combo
+// filters it and Enter picks the top match, a category or an account.
+func TestPaycheckWizard_LineTypeAhead(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+	line := w.AddPreTaxLine()
+
+	focusPaycheckField(t, w, line.SelectField())
+	typePaycheck(w, "401")
+	w.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !line.IsTransfer() || w.accountOptions[line.AccountIndex()] != "401k" {
+		t.Errorf("line = %q, want → 401k", selectedLineOption(line))
+	}
+	if w.focusedTarget().field != line.AmountField() {
+		t.Error("Enter should move focus to the line's Amount")
+	}
+
+	focusPaycheckField(t, w, line.SelectField())
+	typePaycheck(w, "health")
+	w.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := selectedLineOption(line); got != "Insurance > Health" {
+		t.Errorf("line = %q, want %q", got, "Insurance > Health")
+	}
+}
+
+// TestPaycheckWizard_DepositAccountTypeAhead pins that the deposit account
+// is a type-ahead combo too.
+func TestPaycheckWizard_DepositAccountTypeAhead(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+
+	focusPaycheckField(t, w, w.DepositAccount())
+	typePaycheck(w, "sav")
+	w.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := w.DepositAccount().SelectedOption(); got != "Savings" {
+		t.Errorf("deposit = %q, want %q", got, "Savings")
+	}
+}
+
+// TestPaycheckWizard_ClickPanelLine_Picks pins that a click on a line of the
+// focused combo's panel picks it and moves focus on, the same as Enter.
+func TestPaycheckWizard_ClickPanelLine_Picks(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+	focusPaycheckField(t, w, w.DepositAccount())
+	w.Render(widget.NewStyles()) // records the panel's hit zones
+
+	var savings *wizardFocusTarget
+	for _, zone := range w.hitZones {
+		if zone.target.kind == wizardFocusComboLine && zone.target.comboLine == 1 {
+			savings = &zone.target
+			break
+		}
+	}
+	if savings == nil {
+		t.Fatal("no hit zone for the panel's Savings line")
+	}
+	w.click(*savings)
+
+	if got := w.DepositAccount().SelectedOption(); got != "Savings" {
+		t.Errorf("deposit = %q, want %q", got, "Savings")
+	}
+	if w.focusedTarget().field != w.Memo() {
+		t.Error("a panel pick should move focus to the next field (Memo)")
+	}
+}
+
+// TestPaycheckWizard_ClickSave_CommitsFocusedCombo pins that a click on Save
+// saves the row the focused combo highlights, the same as Tab. Before, Down
+// then a click on Save would have saved the old deposit account.
+func TestPaycheckWizard_ClickSave_CommitsFocusedCombo(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
+	focusPaycheckField(t, w, w.DepositAccount())
+	w.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // highlight Savings
+
+	if got := w.click(wizardFocusTarget{kind: wizardFocusSave}); got != dialog.DialogActionSubmit {
+		t.Fatalf("click on Save = %v, want DialogActionSubmit", got)
+	}
+	if got := w.DepositAccount().SelectedOption(); got != "Savings" {
+		t.Errorf("deposit = %q, want %q", got, "Savings")
+	}
+}
+
+// TestNewPaycheckWizardFromSchedule_TabKeepsSelections pins that tabbing
+// through an Edit-as-paycheck wizard keeps every pre-filled combo. A combo
+// commits its highlight on Tab, so a pre-fill that left the highlight behind
+// would reset the deposit account or a line.
+func TestNewPaycheckWizardFromSchedule_TabKeepsSelections(t *testing.T) {
+	fx := newPaycheckWizardFixture()
+	st := scheduled.NewTransaction(fx.savingsID, scheduled.FrequencyFortnightly, types.MustParseDate("2026-03-15"))
+	st.SetAmount(types.MustNewMoney("4500"))
+	st.ClearCategory()
+	st.Splits = scheduled.SplitCollection{
+		taggedSplit(fx.salaryID, "5000", "earnings"),
+		{
+			BaseModel:         types.NewBaseModel(),
+			Amount:            types.MustNewMoney("-500"),
+			TransferAccountID: types.NullableID{ID: fx.retire401kID, Valid: true},
+			PaycheckSection:   types.NullableString{String: "pre_tax", Valid: true},
+		},
+	}
+	w := NewPaycheckWizardFromSchedule(st, fx.accounts, nil, fx.categoryOptions, fx.categoryIDs)
+
+	for range w.collectFocusables() {
+		w.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	}
+
+	if got := w.DepositAccount().SelectedOption(); got != "Savings" {
+		t.Errorf("deposit = %q, want %q", got, "Savings")
+	}
+	if got := selectedLineOption(w.EarningsLines()[0]); got != "Income > Salary" {
+		t.Errorf("earnings = %q, want %q", got, "Income > Salary")
+	}
+	if got := selectedLineOption(w.PreTaxLines()[0]); got != "→ 401k" {
+		t.Errorf("pre-tax = %q, want %q", got, "→ 401k")
+	}
+}
+
+// highlightPaycheckAddNew moves line's combo highlight onto its
+// [+ Add new category…] row, where Down past the last entry lands.
+func highlightPaycheckAddNew(line *PaycheckLine) {
+	f := line.SelectField()
+	f.ComboHighlight = len(f.FilteredIndices())
+}
+
+// TestPaycheckWizard_LineCombosHaveAddNewRow pins the layout the AddNew flow
+// depends on: combinedOptions holds the categories then the `→ <Account>`
+// entries, and every line's combo carries the [+ Add new category…] action
+// row after them.
+func TestPaycheckWizard_LineCombosHaveAddNewRow(t *testing.T) {
 	fx := newPaycheckWizardFixture()
 	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
 	if w == nil {
 		t.Fatal("NewPaycheckWizard returned nil")
 	}
 
-	if got := w.combinedOptions[len(w.combinedOptions)-1]; got != paycheckAddNewSentinelLabel {
-		t.Errorf("last combinedOptions entry = %q, want %q", got, paycheckAddNewSentinelLabel)
-	}
-
-	wantLen := len(w.categoryOptions) + len(w.accountOptions) + 1
+	wantLen := len(w.categoryOptions) + len(w.accountOptions)
 	if len(w.combinedOptions) != wantLen {
-		t.Errorf("len(combinedOptions) = %d, want %d (cats + accts + 1 AddNew)",
+		t.Errorf("len(combinedOptions) = %d, want %d (cats + accts)",
 			len(w.combinedOptions), wantLen)
 	}
 
-	// Each pre-populated line (Earnings + 3 Taxes) inherits combinedOptions.
-	for _, line := range w.EarningsLines() {
-		if got := line.SelectField().Options[len(line.SelectField().Options)-1]; got != paycheckAddNewSentinelLabel {
-			t.Errorf("earnings line Options last entry = %q, want sentinel", got)
+	// Each pre-populated line (Earnings + 3 Taxes) is a combo with the row.
+	for _, line := range append(w.EarningsLines(), w.TaxLines()...) {
+		f := line.SelectField()
+		if f.Type != dialog.FieldCombo {
+			t.Errorf("line select type = %v, want dialog.FieldCombo", f.Type)
 		}
-	}
-	for _, line := range w.TaxLines() {
-		if got := line.SelectField().Options[len(line.SelectField().Options)-1]; got != paycheckAddNewSentinelLabel {
-			t.Errorf("tax line Options last entry = %q, want sentinel", got)
+		if f.AddNewLabel != paycheckAddNewSentinelLabel {
+			t.Errorf("line AddNewLabel = %q, want %q", f.AddNewLabel, paycheckAddNewSentinelLabel)
 		}
 	}
 }
 
-// TestPaycheckWizard_IsAddNew_TrueForLastIndex pins the accessor's contract:
-// IsAddNew reports true when SelectedIndex points at the last entry of Options
-// (the AddNew sentinel), and IsTransfer reports false there (the AddNew row
-// sits past the transfer block, but it is not a transfer).
-func TestPaycheckWizard_IsAddNew_TrueForLastIndex(t *testing.T) {
+// TestPaycheckWizard_IsAddNew_TracksHighlight pins the accessor's contract:
+// IsAddNew reports true while the combo highlights the AddNew row, and a
+// transfer selection is IsTransfer but not IsAddNew.
+func TestPaycheckWizard_IsAddNew_TracksHighlight(t *testing.T) {
 	fx := newPaycheckWizardFixture()
 	w := NewPaycheckWizard(fx.categoryOptions, fx.categoryIDs, fx.accounts)
 
@@ -1237,29 +1378,25 @@ func TestPaycheckWizard_IsAddNew_TrueForLastIndex(t *testing.T) {
 		t.Error("IsTransfer should be false at index 0 (None)")
 	}
 
-	// Park on a transfer entry — IsTransfer true, IsAddNew false.
-	transferIdx := len(w.categoryOptions) // first transfer entry
-	line.SelectField().SelectedIndex = transferIdx
+	// Select the last transfer entry — IsTransfer true, IsAddNew false.
+	line.SetAccountIndex(len(w.accountOptions) - 1)
 	if !line.IsTransfer() {
-		t.Error("IsTransfer should be true on a transfer index")
+		t.Error("IsTransfer should be true on the last transfer entry")
 	}
 	if line.IsAddNew() {
-		t.Error("IsAddNew should be false on a transfer index")
+		t.Error("IsAddNew should be false on a transfer entry")
 	}
 
-	// Park on the AddNew sentinel — IsAddNew true, IsTransfer false.
-	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+	// Highlight the AddNew row.
+	highlightPaycheckAddNew(line)
 	if !line.IsAddNew() {
-		t.Error("IsAddNew should be true at len(Options)-1")
-	}
-	if line.IsTransfer() {
-		t.Error("IsTransfer should be false on the AddNew sentinel")
+		t.Error("IsAddNew should be true while the AddNew row is highlighted")
 	}
 }
 
 // TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew exercises
-// HandleKey end-to-end: with focus on a line's select field parked on the
-// AddNew sentinel, Enter returns dialog.DialogActionAddNew so the parent App can
+// HandleKey end-to-end: with focus on a line's combo highlighting the
+// AddNew row, Enter returns dialog.DialogActionAddNew so the parent App can
 // divert into the create-category sub-dialog.
 func TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
 	fx := newPaycheckWizardFixture()
@@ -1269,7 +1406,7 @@ func TestPaycheckWizard_EnterOnAddNew_ReturnsDialogActionAddNew(t *testing.T) {
 	if line == nil {
 		t.Fatal("AddPreTaxLine returned nil")
 	}
-	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+	highlightPaycheckAddNew(line)
 
 	// Walk focusables to land focus on this line's select field.
 	focused := false
@@ -1324,8 +1461,28 @@ func TestPaycheckWizard_EnterOnRealCategory_AdvancesFocus(t *testing.T) {
 	}
 }
 
+// TestApp_PaycheckWizard_AddNew_SeedsNameFromQuery pins that the query typed
+// into a line's combo seeds the new category's Name, the same as on the
+// other typeahead-combo surfaces.
+func TestApp_PaycheckWizard_AddNew_SeedsNameFromQuery(t *testing.T) {
+	app, _ := newAppForPaycheckAddNew(t, nil, nil)
+	for _, r := range "Dental" {
+		app.handlePaycheckWizardKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+
+	model, _ := app.handlePaycheckWizardKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app = model.(*App)
+
+	if app.createCat.dlg == nil {
+		t.Fatal("createCatDialog should be open")
+	}
+	if got := app.createCat.dlg.Fields()[0].Value; got != "Dental" {
+		t.Errorf("Name = %q, want %q", got, "Dental")
+	}
+}
+
 // newAppForPaycheckAddNew builds an *App whose paycheck wizard has a pre-tax
-// row parked on the AddNew sentinel and is otherwise pre-populated, so we
+// row highlighting the AddNew row and is otherwise pre-populated, so we
 // can assert that field values survive the open-cancel and open-submit
 // round-trips. categorySvc may be nil for tests that don't drive submit.
 func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats []*category.Category) (*App, *PaycheckLine) {
@@ -1346,11 +1503,11 @@ func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats [
 	transferLine := w.AddRow(PaycheckNetPayDestination)
 	transferLine.SetAccountIndex(0)
 
-	// Park a pre-tax line on the AddNew sentinel.
+	// Highlight the AddNew row on a pre-tax line.
 	line := w.AddPreTaxLine()
-	line.SelectField().SelectedIndex = len(line.SelectField().Options) - 1
+	highlightPaycheckAddNew(line)
 	if !line.IsAddNew() {
-		t.Fatalf("test setup: line should be parked on AddNew sentinel")
+		t.Fatalf("test setup: line should highlight the AddNew row")
 	}
 
 	// Move focus onto that line's select field.

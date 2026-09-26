@@ -23,6 +23,9 @@ const (
 	wizardFocusAddRow
 	wizardFocusSave
 	wizardFocusCancel
+	// wizardFocusComboLine is a line of the focused combo's dropdown panel.
+	// It is only a click target, never a Tab stop.
+	wizardFocusComboLine
 )
 
 type wizardFocusTarget struct {
@@ -30,6 +33,9 @@ type wizardFocusTarget struct {
 	field   *dialog.Field
 	section PaycheckSection
 	line    *PaycheckLine
+	// comboLine is the panel line (from ComboPanelLineAt) of a
+	// wizardFocusComboLine target.
+	comboLine int
 }
 
 // collectFocusables returns the ordered list of focusable elements
@@ -96,6 +102,11 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	w.clampFocus()
 
 	keyStr := msg.String()
+	if f := w.focusedCombo(); f != nil {
+		if handled, action := w.handleComboNavigationKey(f, keyStr); handled {
+			return action
+		}
+	}
 	switch keyStr {
 	case "esc":
 		return dialog.DialogActionCancel
@@ -119,16 +130,54 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	return dialog.DialogActionNone
 }
 
+// focusedCombo returns the focused field when it is a combo, otherwise nil.
+func (w *PaycheckWizard) focusedCombo() *dialog.Field {
+	target := w.focusedTarget()
+	if target.kind != wizardFocusField || target.field == nil || target.field.Type != dialog.FieldCombo {
+		return nil
+	}
+	return target.field
+}
+
+// handleComboNavigationKey handles the keys that close a focused combo, the
+// same as a Dialog does: Esc clears a typed query; Enter on the AddNew row
+// returns DialogActionAddNew; Enter, Tab, and Shift+Tab commit the
+// highlighted row and move focus. It reports handled=false for every other
+// key.
+func (w *PaycheckWizard) handleComboNavigationKey(f *dialog.Field, keyStr string) (handled bool, action dialog.DialogAction) {
+	switch keyStr {
+	case "esc":
+		if f.Query != "" {
+			f.ClearComboQuery()
+			return true, dialog.DialogActionNone
+		}
+	case "enter":
+		if f.IsAddNewHighlighted() {
+			return true, dialog.DialogActionAddNew
+		}
+		f.CommitComboHighlight()
+		w.focusIndex++
+		w.clampFocus()
+		return true, dialog.DialogActionNone
+	case "tab":
+		f.CommitComboHighlight()
+		w.focusIndex++
+		w.clampFocus()
+		return true, dialog.DialogActionNone
+	case "shift+tab":
+		f.CommitComboHighlight()
+		w.focusIndex--
+		w.clampFocus()
+		return true, dialog.DialogActionNone
+	}
+	return false, dialog.DialogActionNone
+}
+
 func (w *PaycheckWizard) handleEnter() dialog.DialogAction {
 	target := w.focusedTarget()
 	if target.kind == wizardFocusField {
-		// Enter on a section-line select field that is parked on the
-		// [+ Add new category…] sentinel diverts into the inline create-
-		// category sub-dialog instead of advancing focus.
-		if line := w.lineForSelectField(target.field); line != nil && line.IsAddNew() {
-			return dialog.DialogActionAddNew
-		}
-		// Otherwise: advance focus (don't activate).
+		// Advance focus (don't activate). Enter on a combo never gets here:
+		// handleComboNavigationKey handles it.
 		w.focusIndex++
 		w.clampFocus()
 		return dialog.DialogActionNone
@@ -137,8 +186,8 @@ func (w *PaycheckWizard) handleEnter() dialog.DialogAction {
 }
 
 // lineForSelectField returns the PaycheckLine that owns f when f is one
-// of a section-line's select fields, or nil when f is a header field (or
-// not a select field at all).
+// of a section-line's combos, or nil when f is a header field (or not a
+// line combo at all).
 func (w *PaycheckWizard) lineForSelectField(f *dialog.Field) *PaycheckLine {
 	if f == nil {
 		return nil
@@ -162,6 +211,8 @@ func (w *PaycheckWizard) dispatchFieldKey(f *dialog.Field, msg tea.KeyPressMsg) 
 		w.dispatchTextFieldKey(f, msg)
 	case dialog.FieldSelect:
 		w.dispatchSelectFieldKey(f, msg)
+	case dialog.FieldCombo:
+		f.HandleComboKey(msg)
 	case dialog.FieldDate:
 		w.dispatchDateFieldKey(f, msg)
 	}
@@ -287,9 +338,31 @@ func (w *PaycheckWizard) HandleMouse(msg tea.MouseMsg, styles widget.Styles, scr
 		if localX < zone.colMin || localX >= zone.colMax {
 			continue
 		}
-		return w.activate(zone.target)
+		return w.click(zone.target)
 	}
 	return dialog.DialogActionNone
+}
+
+// click applies a click on target. A click on a line of the focused combo's
+// panel picks it (or triggers AddNew), the same as Enter. Any other click
+// first commits the focused combo, the same as Tab, unless it lands on that
+// combo's own cell. A click on Save then saves the row the panel showed.
+func (w *PaycheckWizard) click(target wizardFocusTarget) dialog.DialogAction {
+	if target.kind == wizardFocusComboLine {
+		picked, addNew := target.field.ClickComboLine(target.comboLine)
+		switch {
+		case addNew:
+			return dialog.DialogActionAddNew
+		case picked:
+			w.focusIndex++
+			w.clampFocus()
+		}
+		return dialog.DialogActionNone
+	}
+	if f := w.focusedCombo(); f != nil && target.field != f {
+		f.CommitComboHighlight()
+	}
+	return w.activate(target)
 }
 
 // activate executes the action associated with a focus target. Used
