@@ -1,6 +1,8 @@
 package transfer
 
 import (
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -86,29 +88,78 @@ func (s *Service) Create(spec Spec) (*Result, error) {
 		return nil, err
 	}
 
+	var res *Result
+	if err := s.runInTx(func(b *Service) error {
+		res, err = b.writePair(from, to, spec)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// writePair inserts both legs of a new transfer on the bound service b. The
+// caller owns the transaction and has already run guardSpec.
+func (b *Service) writePair(from, to *account.Account, spec Spec) (*Result, error) {
 	transferID := types.NewID()
 	plans := planLegs(from, to, spec, transferID)
 
+	fromRef, err := b.insertLeg(transferID, plans[0])
+	if err != nil {
+		return nil, err
+	}
+	toRef, err := b.insertLeg(transferID, plans[1])
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePair(transferID, fromRef, toRef, plans); err != nil {
+		return nil, err
+	}
+	return &Result{
+		TransferID: transferID,
+		Kind:       ClassifyKind(from.Type, to.Type),
+		From:       fromRef,
+		To:         toRef,
+	}, nil
+}
+
+// ReplaceWithTransfer turns a plain investment cash row (a Deposit or a
+// Withdrawal) into a transfer. The row is deleted and both legs are written in
+// one transaction, so the row is either replaced or left as it was. The row's
+// account must be one side of the transfer.
+//
+// Only Deposit and Withdrawal qualify: they are the rows that move cash in or
+// out of the account with no other effect. A row that is already a leg is
+// edited through Update instead.
+func (s *Service) ReplaceWithTransfer(rowID types.ID, spec Spec) (*Result, error) {
+	spec = spec.withDefaults()
+
+	row, err := s.invRepo.GetByID(rowID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case row.TransferID.Valid:
+		return nil, &NotReplaceableError{RowID: rowID, Reason: "it is already part of a transfer"}
+	case row.Type != investment.TransactionTypeDeposit && row.Type != investment.TransactionTypeWithdrawal:
+		return nil, &NotReplaceableError{RowID: rowID, Reason: "only a deposit or a withdrawal can become a transfer"}
+	case row.AccountID != spec.FromAccountID && row.AccountID != spec.ToAccountID:
+		return nil, &NotReplaceableError{RowID: rowID, Reason: "the transfer must include the account the row is in"}
+	}
+
+	from, to, err := s.guardSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+
 	var res *Result
 	if err := s.runInTx(func(b *Service) error {
-		fromRef, err := b.insertLeg(transferID, plans[0])
-		if err != nil {
+		if err := b.invRepo.Delete(rowID); err != nil {
 			return err
 		}
-		toRef, err := b.insertLeg(transferID, plans[1])
-		if err != nil {
-			return err
-		}
-		if err := validatePair(transferID, fromRef, toRef, plans); err != nil {
-			return err
-		}
-		res = &Result{
-			TransferID: transferID,
-			Kind:       ClassifyKind(from.Type, to.Type),
-			From:       fromRef,
-			To:         toRef,
-		}
-		return nil
+		res, err = b.writePair(from, to, spec)
+		return err
 	}); err != nil {
 		return nil, err
 	}
