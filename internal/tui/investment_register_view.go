@@ -1037,10 +1037,17 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case investment.TransactionTypeTransferCash:
-		if a.investmentEditTxnID != types.NilID {
-			return a, a.transfer.openForEdit(a.transferDeps(), a.investmentEditTxnID)
+		switch {
+		case editTxn == nil:
+			return a, a.transfer.open(a.transferDeps())
+		case isCashTransferLeg(editTxn):
+			return a, a.transfer.openForEdit(a.transferDeps(), editTxn.ID)
+		case editTxn.Type == investment.TransactionTypeDeposit || editTxn.Type == investment.TransactionTypeWithdrawal:
+			return a, a.transfer.openToReplace(a.transferDeps(), editTxn)
+		default:
+			a.statusbar.AddNotification("Only a Deposit or a Withdrawal can change to a transfer.", widget.NotificationAlert)
+			return a, nil
 		}
-		return a, a.transfer.open(a.transferDeps())
 	case investment.TransactionTypeTransferShares:
 		return a, a.loadTransferSharesDialogData()
 	}
