@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
@@ -189,6 +190,14 @@ func (a *App) reloadCurrentView() tea.Cmd {
 		}
 	case ViewScheduled:
 		cmds = append(cmds, a.loadScheduledViewData(), a.loadScheduledDueCount())
+	case ViewReconciliation:
+		// No session on screen yet means its first load is still in flight;
+		// that load fills the table. Never start a session from here.
+		if r := a.reconciliation; r != nil && r.session != nil && r.account != nil {
+			cmds = append(cmds, a.loadReconciliationData(r.session, r.account, maps.Clone(r.checkedIDs)))
+		}
+	case ViewCorporateActions:
+		cmds = append(cmds, a.loadCorporateActionViewData())
 	case ViewReports:
 		if a.reports != nil {
 			cmds = append(cmds, a.loadReportsViewData(

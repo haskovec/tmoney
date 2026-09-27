@@ -153,13 +153,29 @@ func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, 
 }
 
 // loadReconciliationData loads reconciliation view data for an active session.
-func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account) tea.Cmd {
+//
+// keep holds the check marks to carry over, and is nil when a session starts.
+// The marks live only in memory until Finish, so a reload that dropped them
+// (an undo on this view) would erase the user's work. A kept id whose
+// transaction is no longer a candidate is dropped, and the cleared total is
+// computed from the marks that remain. Pass a copy: the command runs off the
+// update loop, which may still change the live set.
+func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account, keep map[types.ID]bool) tea.Cmd {
 	return func() tea.Msg {
 		candidates, err := a.services.Reconciliation.GetCandidateTransactions(
 			session.AccountID, session.StatementDate,
 		)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load candidate transactions: %w", err)}
+		}
+
+		checkedIDs := make(map[types.ID]bool)
+		var checkedList []types.ID
+		for _, txn := range candidates {
+			if keep[txn.ID] {
+				checkedIDs[txn.ID] = true
+				checkedList = append(checkedList, txn.ID)
+			}
 		}
 
 		// Load payee names
@@ -195,8 +211,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 			}
 		}
 
-		// Calculate initial cleared total (no checked transactions)
-		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, nil)
+		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, checkedList)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to calculate cleared total: %w", err)}
 		}
@@ -205,7 +220,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 			session:       session,
 			account:       account,
 			candidates:    candidates,
-			checkedIDs:    make(map[types.ID]bool),
+			checkedIDs:    checkedIDs,
 			payeeNames:    payeeNames,
 			categoryNames: categoryNames,
 			accountNames:  accountNames,
