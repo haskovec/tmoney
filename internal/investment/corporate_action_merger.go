@@ -9,9 +9,13 @@ import (
 
 // Mergers: the source security is exchanged for the target at a fixed ratio.
 //
-// Lots and positions move to the target security; cash-in-lieu of a fractional
-// share is settled where the ratio does not divide evenly. The source security is
-// hidden rather than deleted, so its history stays readable.
+// The ratio is target shares received per source share, the market convention
+// and what both the CLI flag and the TUI field promise: a ratio of 2 turns 100
+// source shares into 200 target shares. Cost basis carries over, so the cost
+// per share is divided by the ratio. Lots and positions move to the target
+// security. A fractional target share stays in the account; no cash-in-lieu is
+// paid. The source security is hidden rather than deleted, so its history
+// stays readable.
 
 // Merger applies a merger/acquisition that converts shares of a source security
 // into shares of a target security. Optionally includes cash consideration.
@@ -24,7 +28,6 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 	}
 
 	exchangeRatio := alpacadecimal.NewFromFloat(params.ExchangeRatio)
-	inverseRatio := alpacadecimal.NewFromFloat(1.0 / params.ExchangeRatio)
 
 	// Create audit record
 	paramsJSON, err := params.ToJSON()
@@ -40,12 +43,12 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 	// atomically.
 	if err := s.runInTx(func(b *CorporateActionService) error {
 		// Process lot-tracking accounts
-		if err := b.mergerProcessLots(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
+		if err := b.mergerProcessLots(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, params); err != nil {
 			return fmt.Errorf("failed to process lots for merger: %w", err)
 		}
 
 		// Process non-lot-tracking accounts (positions)
-		if err := b.mergerProcessPositions(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, inverseRatio, params); err != nil {
+		if err := b.mergerProcessPositions(sourceSecurityID, targetSecurityID, mergerDate, exchangeRatio, params); err != nil {
 			return fmt.Errorf("failed to process positions for merger: %w", err)
 		}
 
@@ -68,7 +71,7 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 // mergerProcessLots handles the merger for lot-tracking accounts.
 // For each open lot of the source security: close the lot, create a new lot for
 // the target security with adjusted shares and cost basis, and create an exchange transaction.
-func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecurityID types.ID, mergerDate types.Date, exchangeRatio, inverseRatio alpacadecimal.Decimal, params MergerParams) error {
+func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecurityID types.ID, mergerDate types.Date, exchangeRatio alpacadecimal.Decimal, params MergerParams) error {
 	lots, err := s.lotRepo.GetOpenLotsBySecurity(sourceSecurityID)
 	if err != nil {
 		return err
@@ -79,9 +82,9 @@ func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecur
 
 	for _, lot := range lots {
 		oldShares := lot.Shares
-		newShares := oldShares.Mul(inverseRatio)
-		// Cost basis preservation: new_cost_per_share = old × exchange_ratio
-		newCostPerShare := lot.CostPerShare.Mul(exchangeRatio)
+		newShares := oldShares.Mul(exchangeRatio)
+		// Cost basis preservation: new_cost_per_share = old ÷ exchange_ratio
+		newCostPerShare := mergerCostPerShare(lot.CostPerShare, exchangeRatio)
 
 		// Accumulate old shares per account for cash consideration
 		if params.HasCashConsideration() {
@@ -135,7 +138,7 @@ func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecur
 // mergerProcessPositions handles the merger for non-lot-tracking accounts.
 // For each position of the source security: remove the position, create/update
 // a position for the target security with adjusted shares and cost basis.
-func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, targetSecurityID types.ID, mergerDate types.Date, exchangeRatio, inverseRatio alpacadecimal.Decimal, params MergerParams) error {
+func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, targetSecurityID types.ID, mergerDate types.Date, exchangeRatio alpacadecimal.Decimal, params MergerParams) error {
 	positions, err := s.positionRepo.GetPositionsBySecurity(sourceSecurityID)
 	if err != nil {
 		return err
@@ -152,8 +155,8 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 		}
 
 		oldShares := pos.Shares
-		newShares := oldShares.Mul(inverseRatio)
-		newCostPerShare := pos.AverageCostPerShare.Mul(exchangeRatio)
+		newShares := oldShares.Mul(exchangeRatio)
+		newCostPerShare := mergerCostPerShare(pos.AverageCostPerShare, exchangeRatio)
 
 		// Create exchange transaction
 		totalAmount := newCostPerShare.Mul(newShares.Decimal())
@@ -196,6 +199,24 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 	}
 
 	return nil
+}
+
+// costPerSharePlaces is the scale of cost_per_share, average_cost_per_share,
+// price_per_share and total_amount (DECIMAL(19,4)).
+const costPerSharePlaces = 4
+
+// mergerCostPerShare carries a source cost per share onto the target: the
+// same basis spread over ratio-times as many shares.
+//
+// The quotient is rounded here, once, to the four places the columns store,
+// half up as DuckDB rounds on insert. Every caller then uses this one value
+// for the new lot or position, the exchange row's price, and its total
+// (cost × new shares), so the stored rows describe one cost. Left unrounded,
+// the total was computed from 16.6666… and stored as 5000.0000 while the lot
+// stored 16.6667 × 300 = 5000.01. When old cost ÷ ratio has more than four
+// places the basis moves by that rounding; it cannot stay exact.
+func mergerCostPerShare(sourceCost types.Money, exchangeRatio alpacadecimal.Decimal) types.Money {
+	return types.NewMoneyFromDecimal(sourceCost.Decimal().Div(exchangeRatio).Round(costPerSharePlaces))
 }
 
 // mergerHideSource marks the source security as hidden after all positions are exchanged.
