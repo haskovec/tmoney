@@ -42,7 +42,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 
 | ID | Status | Title | Needs | Size |
 | --- | --- | --- | --- | --- |
-| W1 | open | Corporate Actions help | — | small |
+| W1 | done (#46) | Corporate Actions help | — | small |
 | W2 | open | Reload Reconciliation and Corporate Actions | — | small |
 | W3a | open | Merger ratio must mean target shares per source share | — | small |
 | W3 | open | Merger cash and ratio must be decimal | W3a | small |
@@ -62,7 +62,7 @@ The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W
 
 ## W1 — Corporate Actions help
 
-**Status:** open
+**Status:** done in PR #46.
 **Also:** This is phase 0 of `specs/implementation-plan-tui-view-layer.md` (VL-001 and VL-002). Ship it here. Then mark VL-001 and VL-002 with this item's commit.
 
 ### Problem
