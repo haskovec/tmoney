@@ -46,7 +46,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W2 | done (#47) | Reload Reconciliation and Corporate Actions | — | small |
 | W3a | done (#48) | Merger ratio must mean target shares per source share | — | small |
 | W3 | done (#49) | Merger cash and ratio must be decimal | W3a | small |
-| W4 | open | Share-transfer edit must keep both legs | — | medium |
+| W4 | done (#50) | Share-transfer edit must keep both legs | — | medium |
 | W5a | open | Close refuses an investment account that is not empty | — | medium |
 | W5b | open | Delete counts the ledger of the account type | — | small |
 | W6 | open | Refuse reconcile on an investment account | — | small |
@@ -228,7 +228,7 @@ Stored corporate actions keep these fields as JSON numbers (`ToJSON` / the parse
 
 ## W4 — Share-transfer edit must keep both legs
 
-**Status:** open
+**Status:** done in PR #50. See "As built" at the end of this item.
 **Decision:** An edit that starts from the destination leg is refused. The error names the source account.
 
 ### Problem
@@ -286,6 +286,16 @@ The fault style in `internal/investment/investment_service_tx_test.go` is the pa
 - Do not change `transfer.Service.Update`. That path already rewrites cash legs in place and keeps `transfer_id`.
 - Do not add account-to-account moves to the cash editor. `transfer.Edit` omits accounts on purpose.
 - Do not add a "From" field to the share-transfer dialog. Editing from both legs is a separate feature.
+
+### As built (PR #50)
+
+Where the build departs from the fix list above:
+
+1. A zero-basis leg gets its own reason (`BrokenShareTransferError`: no cost basis, so the direction is unknown), not the destination-leg error of step 2. Both legs of such a transfer have no sign, so "edit it from the source account" would send the user in a circle.
+2. `DeleteTransaction` (`internal/investment/delete.go`) had the same scan: it listed the named account's rows to find the paired leg. It now uses `ListByTransferID`. A leg with no pair still deletes, so a broken transfer can be cleaned up. The "Done when" line (no production path scans an account for a leg) required this.
+3. A `transfer_cash` row is refused as "not a share transfer". The old check looked only at `TransferID`.
+4. The tests are in `internal/investment/update_transfer_shares_test.go`, not in `closed_account_guard_test.go`, which is about the freeze rule.
+5. The comment on `transfer.Edit` (`internal/transfer/write.go`) no longer says that this function gets the account check wrong.
 
 ## W5 — One balance for display, close, and delete
 
