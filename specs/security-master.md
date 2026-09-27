@@ -102,7 +102,7 @@ When one company acquires another or a ticker changes in a way that requires his
 
 1. Select source security and target security
 2. Record merge date
-3. Record exchange ratio (e.g., 2 shares of OLD = 1 share of NEW)
+3. Record exchange ratio: target shares received per source share (e.g., 0.5 when 2 shares of OLD = 1 share of NEW)
 4. Record any cash consideration per share (optional)
 5. System generates exchange transactions in all accounts holding the source security (see Corporate Actions)
 6. Source security is marked hidden after merge
@@ -564,12 +564,12 @@ Converts shares of an acquired company into shares of the acquiring company.
 - Source security (acquired company)
 - Target security (acquiring company)
 - Exchange date
-- Share exchange ratio (e.g., 2 shares OLD = 1 share NEW)
+- Share exchange ratio: target shares received per source share (e.g., 0.5 when 2 shares OLD = 1 share NEW)
 - Cash per share (optional, for cash+stock deals)
 
 **Effect (per account holding the source security):**
 1. For each lot of source security:
-   - Calculate new shares: `old_shares / exchange_ratio` (or `old_shares × target_per_source`)
+   - Calculate new shares: `old_shares × exchange_ratio`
    - Transfer cost basis: new lot cost_per_share = `(old_cost_per_share × old_shares) / new_shares`
    - Create exchange transaction removing source shares
    - Create exchange transaction adding target shares with new lots

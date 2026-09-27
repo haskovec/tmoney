@@ -722,8 +722,8 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		}
 		costBasisBefore := lots[0].CostBasis()
 
-		// Apply 2:1 merger (2 old shares = 1 new share)
-		params := MergerParams{ExchangeRatio: 2.0}
+		// Apply 2:1 merger (2 old shares = 1 new share): ratio 0.5 target shares per source share
+		params := MergerParams{ExchangeRatio: 0.5}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -741,7 +741,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 			t.Errorf("source lot shares = %s, want 0", sourceLots[0].Shares.String())
 		}
 
-		// Target lots should be created: 100/2 = 50 shares
+		// Target lots should be created: 100 × 0.5 = 50 shares
 		targetLots, _ := env.lotRepo.ListByAccountAndSecurity(acct.ID, targetSec.ID, false)
 		if len(targetLots) != 1 {
 			t.Fatalf("expected 1 target lot, got %d", len(targetLots))
@@ -749,7 +749,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		if !targetLots[0].Shares.Equal(types.MustNewQuantity("50")) {
 			t.Errorf("target lot shares = %s, want 50", targetLots[0].Shares.String())
 		}
-		// Cost per share should be 50*2=100 to preserve cost basis
+		// Cost per share should be 50 ÷ 0.5 = 100 to preserve cost basis
 		if !targetLots[0].CostPerShare.Equal(types.MustNewMoney("100")) {
 			t.Errorf("target lot cost_per_share = %s, want 100", targetLots[0].CostPerShare.String())
 		}
@@ -788,8 +788,8 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 			t.Fatalf("Buy() lot 2 error = %v", err)
 		}
 
-		// Apply 2:1 merger
-		params := MergerParams{ExchangeRatio: 2.0}
+		// Apply 2:1 merger (ratio 0.5)
+		params := MergerParams{ExchangeRatio: 0.5}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -870,7 +870,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		}
 
 		// Apply merger
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: 0.5}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -892,6 +892,72 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 // =============================================================================
 // SM-153: Merger — cash consideration
 // =============================================================================
+
+// TestCorporateActionService_Merger_RatioIsTargetPerSource pins the ratio's
+// meaning to what the CLI flag and the TUI field say: target shares received
+// per source share. A ratio of 2 doubles the share count and halves the cost
+// per share, on both the lot path and the position path. Before W3a the
+// service did the opposite, so this ratio would have left 50 shares at $20.
+func TestCorporateActionService_Merger_RatioIsTargetPerSource(t *testing.T) {
+	cases := []struct {
+		name    string
+		account func(*testing.T, *testCAServiceEnv) types.ID
+	}{
+		{"lot path", func(t *testing.T, env *testCAServiceEnv) types.ID {
+			return createLotTrackingAccount(t, env.accountRepo, "Brokerage").ID
+		}},
+		{"position path", func(t *testing.T, env *testCAServiceEnv) types.ID {
+			return createInvAccount(t, env.accountRepo, "Brokerage").ID
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := createCATestEnv(t)
+			acctID := tc.account(t, env)
+			sourceSec := createSec(t, env.secRepo, "OLD")
+			targetSec := createSec(t, env.secRepo, "NEW")
+			date := types.NewDate(2024, time.January, 15)
+
+			// 100 shares at $10, a $1,000 basis.
+			if _, err := env.invSvc.Deposit(acctID, date, types.MustNewMoney("2000.00"), ""); err != nil {
+				t.Fatal(err)
+			}
+			total := types.MustNewMoney("1000.00")
+			if _, err := env.invSvc.Buy(acctID, sourceSec.ID, date, types.MustNewQuantity("100"), &total, nil, types.ZeroMoney, ""); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, types.NewDate(2024, time.June, 1),
+				MergerParams{ExchangeRatio: 2}); err != nil {
+				t.Fatalf("Merger() error = %v", err)
+			}
+
+			var shares types.Quantity
+			var cost types.Money
+			if lots, _ := env.lotRepo.ListByAccountAndSecurity(acctID, targetSec.ID, false); len(lots) > 0 {
+				if len(lots) != 1 {
+					t.Fatalf("target lots = %d, want 1", len(lots))
+				}
+				shares, cost = lots[0].Shares, lots[0].CostPerShare
+			} else {
+				pos, err := env.positionRepo.GetByAccountAndSecurity(acctID, targetSec.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				shares, cost = pos.Shares, pos.AverageCostPerShare
+			}
+			if !shares.Equal(types.MustNewQuantity("200")) {
+				t.Errorf("target shares = %s, want 200", shares)
+			}
+			if !cost.Equal(types.MustNewMoney("5.00")) {
+				t.Errorf("target cost per share = %s, want 5.00", cost)
+			}
+			if basis := cost.Mul(shares.Decimal()); !basis.Equal(total) {
+				t.Errorf("target basis = %s, want %s", basis, total)
+			}
+		})
+	}
+}
 
 func TestCorporateActionService_Merger_CashConsideration(t *testing.T) {
 	t.Run("cash consideration adds to cash balance (lot-tracking)", func(t *testing.T) {
@@ -1071,8 +1137,8 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 		pos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, sourceSec.ID)
 		costBasisBefore := pos.CostBasis()
 
-		// Apply 2:1 merger
-		params := MergerParams{ExchangeRatio: 2.0}
+		// Apply 2:1 merger (ratio 0.5)
+		params := MergerParams{ExchangeRatio: 0.5}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1084,7 +1150,7 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 			t.Errorf("source position shares = %s, want 0", sourcePos.Shares.String())
 		}
 
-		// Target position: 100/2 = 50 shares at $100 avg cost
+		// Target position: 100 × 0.5 = 50 shares at $100 avg cost
 		targetPos, _ := env.positionRepo.GetByAccountAndSecurity(acct.ID, targetSec.ID)
 		if !targetPos.Shares.Equal(types.MustNewQuantity("50")) {
 			t.Errorf("target position shares = %s, want 50", targetPos.Shares.String())
@@ -1152,8 +1218,8 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 		sourceTotal := types.MustNewMoney("1000.00")
 		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("20"), &sourceTotal, nil, types.ZeroMoney, "")
 
-		// Apply 2:1 merger: 20 source → 10 target at $100 each
-		params := MergerParams{ExchangeRatio: 2.0}
+		// Apply 2:1 merger (ratio 0.5): 20 source → 10 target at $100 each
+		params := MergerParams{ExchangeRatio: 0.5}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
