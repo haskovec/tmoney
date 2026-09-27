@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,68 +84,73 @@ func TestShortcutSections(t *testing.T) {
 	})
 }
 
-func TestAllShortcutSections(t *testing.T) {
-	sections := allShortcutSections()
-	if len(sections) != 9 {
-		t.Errorf("expected 9 sections, got %d", len(sections))
-	}
-
-	// Verify ordering
-	expectedTitles := []string{
-		"Global", "Navigation", "Dashboard", "Register",
-		"Scheduled Transactions", "Reports", "Securities", "Reconciliation", "Dialogs",
-	}
-	for i, s := range sections {
-		if s.Title != expectedTitles[i] {
-			t.Errorf("section[%d].Title = %q, want %q", i, s.Title, expectedTitles[i])
-		}
-	}
+// sharedSectionTitles are the sections viewShortcutSections gives every view,
+// the unknown fallback included. A section with any other title is the view's
+// own.
+var sharedSectionTitles = map[string]bool{
+	"Global":     true,
+	"Navigation": true,
+	"Dialogs":    true,
+	"Mouse":      true,
 }
 
+// TestViewShortcutSections ranges over every View constant in app.go, so a
+// view added without a help arm fails here instead of shipping with a `?`
+// overlay that lists none of its keys (the Corporate Actions bug).
 func TestViewShortcutSections(t *testing.T) {
-	tests := []struct {
-		view         View
-		wantViewName string
-	}{
-		{ViewDashboard, "Dashboard"},
-		{ViewRegister, "Register"},
-		{ViewScheduled, "Scheduled Transactions"},
-		{ViewReports, "Reports"},
-		{ViewReconciliation, "Reconciliation"},
-		{ViewSecurities, "Securities"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.view.String(), func(t *testing.T) {
-			sections := viewShortcutSections(tt.view)
-			// Should always have Global, Navigation, view-specific, dialog.Dialog, and Mouse sections
+	for _, vc := range viewConstants(t) {
+		t.Run(vc.Name, func(t *testing.T) {
+			sections := viewShortcutSections(vc.Value)
+			var own []string
+			for _, s := range sections {
+				if !sharedSectionTitles[s.Title] {
+					own = append(own, s.Title)
+				}
+			}
+			if len(own) == 0 {
+				t.Fatalf("%s has no help section of its own; add an arm to viewShortcutSections", vc.Name)
+			}
 			if len(sections) != 5 {
-				t.Errorf("expected 5 sections for %v, got %d", tt.view, len(sections))
+				t.Fatalf("got %d sections, want Global, Navigation, %s, Dialogs, Mouse", len(sections), own[0])
 			}
-
-			// First two should be Global and Navigation
-			if sections[0].Title != "Global" {
-				t.Errorf("first section = %q, want Global", sections[0].Title)
+			if sections[0].Title != "Global" || sections[1].Title != "Navigation" {
+				t.Errorf("first sections = %q, %q; want Global, Navigation", sections[0].Title, sections[1].Title)
 			}
-			if sections[1].Title != "Navigation" {
-				t.Errorf("second section = %q, want Navigation", sections[1].Title)
-			}
-
-			// Third should be view-specific
-			if sections[2].Title != tt.wantViewName {
-				t.Errorf("view section = %q, want %q", sections[2].Title, tt.wantViewName)
-			}
-
-			// Fourth should be Dialogs
-			if sections[3].Title != "Dialogs" {
-				t.Errorf("fourth section = %q, want Dialogs", sections[3].Title)
-			}
-
-			// Last should be Mouse
-			if sections[4].Title != "Mouse" {
-				t.Errorf("last section = %q, want Mouse", sections[4].Title)
+			if sections[3].Title != "Dialogs" || sections[4].Title != "Mouse" {
+				t.Errorf("last sections = %q, %q; want Dialogs, Mouse", sections[3].Title, sections[4].Title)
 			}
 		})
+	}
+
+	t.Run("unknown view gets only the shared sections", func(t *testing.T) {
+		for _, s := range viewShortcutSections(View(999)) {
+			if !sharedSectionTitles[s.Title] {
+				t.Errorf("View(999) got section %q", s.Title)
+			}
+		}
+	})
+}
+
+// TestCorporateActionShortcuts pins every entry, key and description. The
+// status-bar hint lists navigate, filter, details, delete and back; the
+// section adds the g/G and page keys the handler also binds. Esc reads
+// "Back", the key's real behavior: the global Esc handler runs first.
+func TestCorporateActionShortcuts(t *testing.T) {
+	s := corporateActionShortcuts()
+	if s.Title != "Corporate Actions" {
+		t.Errorf("Title = %q, want Corporate Actions", s.Title)
+	}
+	want := []shortcutEntry{
+		{"↑↓ / j k", "Navigate actions"},
+		{"g / G", "First / last action"},
+		{"PgUp/PgDn", "Page through actions"},
+		{"/", "Filter actions"},
+		{"Enter", "Show details"},
+		{"d", "Reverse and delete action (asks first)"},
+		{"Esc", "Back"},
+	}
+	if !slices.Equal(s.Entries, want) {
+		t.Errorf("entries = %v\nwant      %v", s.Entries, want)
 	}
 }
 
@@ -191,6 +197,15 @@ func TestRenderHelpOverlay(t *testing.T) {
 		}
 	})
 
+	t.Run("renders for corporate actions view", func(t *testing.T) {
+		stripped := widget.StripAnsi(renderHelpOverlay(styles, ViewCorporateActions, 120, 50))
+		for _, want := range []string{"Corporate Actions", "Filter actions", "Show details", "Reverse and delete action"} {
+			if !strings.Contains(stripped, want) {
+				t.Errorf("overlay should contain %q for the corporate actions view", want)
+			}
+		}
+	})
+
 	t.Run("contains close hint", func(t *testing.T) {
 		result := renderHelpOverlay(styles, ViewDashboard, 120, 50)
 		// The close hint text goes through lipgloss styling, so check for key parts
@@ -217,14 +232,15 @@ func TestRenderHelpOverlay(t *testing.T) {
 }
 
 func TestShortcutEntries_HaveKeyAndDescription(t *testing.T) {
-	sections := allShortcutSections()
-	for _, section := range sections {
-		for _, entry := range section.Entries {
-			if entry.Key == "" {
-				t.Errorf("section %q has entry with empty Key", section.Title)
-			}
-			if entry.Description == "" {
-				t.Errorf("section %q has entry %q with empty Description", section.Title, entry.Key)
+	for _, vc := range viewConstants(t) {
+		for _, section := range viewShortcutSections(vc.Value) {
+			for _, entry := range section.Entries {
+				if entry.Key == "" {
+					t.Errorf("%s: section %q has entry with empty Key", vc.Name, section.Title)
+				}
+				if entry.Description == "" {
+					t.Errorf("%s: section %q has entry %q with empty Description", vc.Name, section.Title, entry.Key)
+				}
 			}
 		}
 	}

@@ -275,6 +275,26 @@ func (a *App) renderCorporateActionDetails() string {
 	return a.styles.OverlayBox.Width(overlayWidth).Render(strings.Join(lines, "\n"))
 }
 
+// corporateActionShortcuts returns the shortcut section for the Corporate
+// Actions help overlay. It lists the keys handleCorporateActionViewKeys binds;
+// keep it in step with the view's status-bar hint in getKeyHints. Esc is
+// "Back" because handleKeyPress claims Esc for every view before this
+// handler runs, so the handler's own Esc arms never see the key.
+func corporateActionShortcuts() shortcutSection {
+	return shortcutSection{
+		Title: "Corporate Actions",
+		Entries: []shortcutEntry{
+			{"↑↓ / j k", "Navigate actions"},
+			{"g / G", "First / last action"},
+			{"PgUp/PgDn", "Page through actions"},
+			{"/", "Filter actions"},
+			{"Enter", "Show details"},
+			{"d", "Reverse and delete action (asks first)"},
+			{"Esc", "Back"},
+		},
+	}
+}
+
 // handleCorporateActionViewKeys handles key presses in the global register.
 func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Details modal handling takes precedence
