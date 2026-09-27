@@ -31,8 +31,10 @@ Rules that hold for every item:
 
 ## Phase 0: Corporate Actions Help Section (bug fix, ships alone)
 
+This phase is item W1 in `specs/work-two-ledgers.md`. Ship it from there. When W1 ships, mark VL-001 and VL-002 with its commit.
+
 - [ ] **VL-001 — Generic help-overlay test**
-  - RED: in `help_overlay_test.go`, add a test that ranges over every `View` constant, renders the help overlay with `currentView` set to that view, and asserts that at least one section beyond the global and navigation sections is present. It must fail for `ViewCorporateActions` today.
+  - RED: in `help_overlay_test.go`, add a test that ranges over every `View` constant, renders the help overlay with `currentView` set to that view, and asserts that at least one section is present that is not Global, Navigation, Dialogs, or Mouse (Dialogs and Mouse are always appended, so they prove nothing). It must fail for `ViewCorporateActions` today.
   - Enumerate the constants with `go/ast` over the `View` const block in `app.go`. Fail if the set is empty. This enumerator is reused by VL-101, so put it in a shared test helper.
 
 - [ ] **VL-002 — `corporateActionShortcuts()` and the eleventh arm**
@@ -71,9 +73,10 @@ Only the seven switches collapse. No method moves. Every fallback stays.
   - Add `table func(*App) *widget.Table`. Replace the switch in `activeTable` (`app_helpers.go:66`). Prices picks by `priceView.mode`; Portfolio picks by `portfolioMode`. Views without a table return nil.
   - Test: both modes of Prices and both modes of Portfolio return the expected table.
 
-- [ ] **VL-108 — `reload`, nil for two views**
-  - Add `reload func(*App) []tea.Cmd`. Replace the switch in `reloadCurrentView` (`app_helpers.go:174`). Reconciliation and CorporateActions get `reload: nil`, as today.
-  - Test: exactly those two entries have a nil `reload`. This records the behaviour; it does not invent a reload. File the product question with the owner of those two views.
+- [ ] **VL-108 — `reload`, copied from the W2 arms**
+  - Add `reload func(*App) []tea.Cmd`. Replace the switch in `reloadCurrentView` (`app_helpers.go:174`).
+  - Correction (2026-09-27): the nil reload for Reconciliation and CorporateActions was the bug that W2 in `specs/work-two-ledgers.md` fixes. W2 ships first (W8 needs it). Copy its two arms verbatim: Reconciliation reloads through `loadReconciliationData` only when a session is on screen, and keeps the check marks that are still candidates; CorporateActions calls `loadCorporateActionViewData`.
+  - Test: no entry has a nil `reload`. The W2 reload tests stay green.
 
 - [ ] **VL-109 — `focus`, verbatim per arm; the tables-nil walk**
   - Add `focus func(*App)`. Copy each arm of the focus block in `switchView` (`app_menu.go:296`) into its entry verbatim, every `!= nil` guard included. Do **not** level Amortization (`app_menu.go:366`, sidebar off only) with Corporate Actions (`app_menu.go:353`, sidebar off and table focused when non-nil).
