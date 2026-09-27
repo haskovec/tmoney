@@ -224,26 +224,28 @@ func (s *splitSurface) takeScheduledSplits() (pending *pendingSplitScheduled, sp
 }
 
 // beginCreateCategory hides the editor and reports the focused row, whose
-// Category field activated the [+ Add new category…] sentinel, with the
-// category type its amount implies. The editor is kept alive (hidden) so its
-// row state survives the divert; applyCreatedCategory re-shows it with the new
-// category selected, reshow does so after a cancel. It reports false when no
-// editor is open, in which case nothing was hidden and the caller must not
-// open the sub-dialog.
-//
-// Unlike the typeahead-combo surfaces, the editor has no typed query to
-// harvest — the sub-dialog opens with empty Name and Parent fields.
-func (s *splitSurface) beginCreateCategory() (row int, defaultType category.Type, ok bool) {
+// Category picker activated the [+ Add new category…] row, with the query
+// typed into the picker and the category type the row's amount implies. The
+// query is cleared, the same as on the other typeahead-combo surfaces. The
+// editor is kept alive (hidden) so its row state survives the divert;
+// applyCreatedCategory re-shows it with the new category selected, reshow
+// does so after a cancel. It reports false when no editor is open, in which
+// case nothing was hidden and the caller must not open the sub-dialog.
+func (s *splitSurface) beginCreateCategory() (row int, query string, defaultType category.Type, ok bool) {
 	if s.editor == nil {
-		return -1, category.TypeExpense, false
+		return -1, "", category.TypeExpense, false
 	}
 	row = s.editor.rowIndex
 	defaultType = category.TypeExpense
 	if row >= 0 && row < len(s.editor.rows) {
 		defaultType = inferCategoryTypeFromAmount(s.editor.rows[row].amountField.Value)
 	}
+	if p := s.editor.focusedPicker(); p != nil {
+		query = p.Query
+		p.ClearComboQuery()
+	}
 	s.editor.SetVisible(false)
-	return row, defaultType, true
+	return row, query, defaultType, true
 }
 
 // applyCreatedCategory rebuilds the editor's category option slices to include
@@ -312,6 +314,8 @@ func (s *splitSurface) applyCreatedCategory(newCat *category.Category, cats []*c
 		sd.rows[originRow].categoryIndex = newIdx
 	}
 
+	// The picker holds the old options and selection; reload it on next use.
+	sd.pickerOpen = false
 	sd.SetVisible(true)
 }
 
@@ -372,13 +376,14 @@ func (a *App) handleSplitDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // field. Restoration on cancel and post-create wiring happen through the
 // createCatDialog handlers.
 func (a *App) openCreateCategorySubDialogFromSplit() (tea.Model, tea.Cmd) {
-	row, defaultType, ok := a.split.beginCreateCategory()
+	row, query, defaultType, ok := a.split.beginCreateCategory()
 	if !ok {
 		return a, nil
 	}
 	origin := originFrom(createCatSourceSplitDialog)
 	origin.splitRow = row
-	a.createCat.open(origin, "", "", a.createCatParentsFor(origin.surface), defaultType)
+	parent, name := splitCategoryQuery(query)
+	a.createCat.open(origin, name, parent, a.createCatParentsFor(origin.surface), defaultType)
 	return a, nil
 }
 

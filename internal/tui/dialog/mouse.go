@@ -168,11 +168,11 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 			}
 			if field.Type == FieldCombo && d.isFieldFocused(field) && y > row {
 				// y == row is the combo header (input) line; y > row is a
-				// dropdown-panel row. renderComboPanel only draws the panel
+				// dropdown-panel row. RenderComboPanel only draws the panel
 				// while the combo is focused, so the extra content rows only
 				// exist then. Map to the panel line index (into the filtered
 				// list, or len(filtered) for the AddNew action row).
-				result.ListItemIndex = field.comboPanelLineAt(y - row - 1)
+				result.ListItemIndex = field.ComboPanelLineAt(y - row - 1)
 			}
 			return result
 		}
@@ -404,6 +404,6 @@ func (d *Dialog) commitComboOnBlur(newFocus int) {
 		return
 	}
 	if f := d.FocusedField(); f != nil && f.Type == FieldCombo {
-		f.commitComboHighlight()
+		f.CommitComboHighlight()
 	}
 }

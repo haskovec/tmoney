@@ -2154,7 +2154,7 @@ func TestScheduledDialog_CategoryCombo_TabAwayPreservesPreviousSelection(t *test
 	cat := d.Fields()[schedFieldCategory]
 	cat.SelectedIndex = 2 // "Food"
 	cat.ComboHighlight = 2
-	// Type a non-matching query so commitComboHighlight has no row to commit.
+	// Type a non-matching query so CommitComboHighlight has no row to commit.
 	cat.Query = "zzzzz"
 	cat.ComboHighlight = 0 // highlight head of (empty) filtered list
 

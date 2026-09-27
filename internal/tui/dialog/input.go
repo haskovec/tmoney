@@ -60,7 +60,7 @@ func (d *Dialog) HandleKey(msg tea.KeyPressMsg) DialogAction {
 	case FieldDate:
 		d.handleDateFieldKey(field, msg)
 	case FieldCombo:
-		d.handleComboFieldKey(field, msg)
+		field.HandleComboKey(msg)
 	}
 	return DialogActionNone
 }
@@ -177,29 +177,6 @@ func (d *Dialog) handleListFieldKey(field *Field, msg tea.KeyPressMsg) {
 		field.Error = ""
 	case "down":
 		field.SelectNext()
-		field.Error = ""
-	}
-}
-
-func (d *Dialog) handleComboFieldKey(field *Field, msg tea.KeyPressMsg) {
-	switch msg.String() {
-	case "up":
-		field.comboHighlightUp()
-		field.Error = ""
-		return
-	case "down":
-		field.comboHighlightDown()
-		field.Error = ""
-		return
-	case "backspace":
-		field.comboQueryBackspace()
-		field.Error = ""
-		return
-	}
-	if msg.Text != "" {
-		for _, r := range msg.Text {
-			field.comboQueryAppend(r)
-		}
 		field.Error = ""
 	}
 }

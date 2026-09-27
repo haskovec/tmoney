@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -734,6 +735,90 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 		netAmount:    netAmount,
 		grossAmount:  grossAmount,
 		taxAmount:    taxAmount,
+	}
+}
+
+// TestSchedulePreview_SplitPickerFollowsPreviewFocus pins that the embedded
+// split editor opens its Category picker only while it has the preview's
+// focus, and that Shift+Tab back to the header commits a picker change, the
+// same as Tab does inside the editor.
+func TestSchedulePreview_SplitPickerFollowsPreviewFocus(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	if sd.focusedPicker() != nil {
+		t.Error("the split picker should be closed while the header has focus")
+	}
+	if strings.Contains(p.Render(app.styles), "[+ Add new category…]") {
+		t.Error("the split picker's panel should not render while the header has focus")
+	}
+
+	// Tab from the header's last field into the split editor.
+	header := p.HeaderDialog()
+	header.SetFocusIndex(header.FocusableCount() - 1)
+	app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if sd.focusedPicker() == nil {
+		t.Fatal("the split picker should open when the editor takes focus")
+	}
+
+	// Row 0 is the Salary line. Filter to Federal Tax, then leave the editor.
+	for _, r := range "federal" {
+		app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+
+	if p.FocusOnSplits() {
+		t.Fatal("Shift+Tab from the first split cell should move focus to the header")
+	}
+	if got := sd.rowLabel(sd.rows[0]); got != env.taxCat.Name {
+		t.Errorf("row 0 = %q, want %q (committed on leaving the editor)", got, env.taxCat.Name)
+	}
+}
+
+// TestSchedulePreview_ClickSplitRowWhileHeaderFocused pins that a click on
+// the split editor while the header has focus lands on what is on screen.
+// The blurred editor draws no picker panel, so the hit-test must not count
+// one: a click on row 1 must focus row 1, not pick a panel entry for row 0.
+func TestSchedulePreview_ClickSplitRowWhileHeaderFocused(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	overlay := p.Render(app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
+	x, y := findRenderedText(t, overlay, env.taxCat.Name, startCol, startRow)
+	app.handleSchedulePreviewMouse(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
+
+	if !p.FocusOnSplits() {
+		t.Error("a click on the split editor should give it focus")
+	}
+	if sd.rowIndex != 1 || sd.fieldFocus != splitFieldCategory {
+		t.Errorf("focus = row %d field %d, want row 1 Category", sd.rowIndex, sd.fieldFocus)
+	}
+	if got := sd.rowLabel(sd.rows[0]); got != env.incomeCat.Name {
+		t.Errorf("row 0 = %q, want %q (unchanged)", got, env.incomeCat.Name)
+	}
+}
+
+// TestSchedulePreview_ClickSplitSaveWhileHeaderFocused pins that a click on
+// the split editor's Save while the header has focus reaches Save.
+func TestSchedulePreview_ClickSplitSaveWhileHeaderFocused(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	overlay := p.Render(app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
+	x, y := findRenderedText(t, overlay, "[ Save ]", startCol, startRow)
+	app.handleSchedulePreviewMouse(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+
+	// hitTestButtonRow moves focus to Save before it returns Submit.
+	if sd.focus != splitFocusSaveBtn {
+		t.Errorf("focus = %v, want the Save button — the click missed it (errorMsg=%q)", sd.focus, sd.errorMsg)
 	}
 }
 

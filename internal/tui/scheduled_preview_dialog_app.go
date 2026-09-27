@@ -164,7 +164,7 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	// Content-local offsets within a panel: border (1) + h-pad (2) on X,
 	// border (1) + v-pad (1) on Y.
 	if relY < headerLines {
-		p.splitFocus = false
+		p.setSplitFocus(false)
 		action := header.HandleMouseLocal(m.X-startCol-3, relY-2)
 		// Same tail as the keyboard path: a Date change by click reseeds a
 		// loan-shaped preview exactly as a typed one does.
@@ -172,8 +172,13 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		return a.schedulePreviewAction(action)
 	}
 
-	p.splitFocus = true
-	return a.schedulePreviewSplitAction(p.SplitDialog().HandleMouseLocal(m.X-startCol-3, relY-headerLines-2))
+	// Hit-test before the editor takes focus. The overlay above was painted
+	// with the editor as it is now; taking focus first would open its picker
+	// inside the hit-test and push every row below the focused cell down by
+	// a panel that is not on screen.
+	action := p.SplitDialog().HandleMouseLocal(m.X-startCol-3, relY-headerLines-2)
+	p.setSplitFocus(true)
+	return a.schedulePreviewSplitAction(action)
 }
 
 // handleSchedulePreviewDialogKey routes keys to the preview dialog. Esc
@@ -349,7 +354,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 		// Tab past the header's last focusable element transitions
 		// into the split editor instead of wrapping back to field 0.
 		if keyStr == "tab" && header.FocusIndex() == header.FocusableCount()-1 {
-			p.splitFocus = true
+			p.setSplitFocus(true)
 			splits.focus = splitFocusRows
 			splits.rowIndex = 0
 			splits.fieldFocus = splitFieldCategory
@@ -365,7 +370,7 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 	// Shift+Tab from the split editor's first focus transitions back
 	// to the header at field 0.
 	if keyStr == "shift+tab" && splits.focus == splitFocusRows && splits.rowIndex == 0 && splits.fieldFocus == splitFieldCategory {
-		p.splitFocus = false
+		p.setSplitFocus(false)
 		header.SetFocusIndex(0)
 		return a, nil
 	}

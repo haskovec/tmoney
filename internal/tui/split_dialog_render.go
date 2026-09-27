@@ -50,21 +50,22 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 
 	// Rows
 	for i, row := range sd.rows {
-		rowFocused := sd.focus == splitFocusRows && sd.rowIndex == i
+		rowFocused := !sd.blurred && sd.focus == splitFocusRows && sd.rowIndex == i
 
-		// Category — or, in transfer mode, the account picker. Truncate the
-		// label so the cell (label + " ▼", plus reverse-pad when focused)
-		// never exceeds catColW; an overflowing row would wrap to a second
-		// terminal line and break both the layout and mouse hit-testing.
-		var catLabel string
-		switch {
-		case row.transferMode && row.accountIndex < len(sd.transferAccountOptions):
-			catLabel = transferSentinelLabel + " " + sd.transferAccountOptions[row.accountIndex]
-		default:
-			catLabel = sd.categoryOptionLabel(row.categoryIndex)
+		// Category — a category or "Transfer → <account>". The focused cell
+		// is the picker, which shows the typed query while there is one.
+		// Truncate the label so the cell (label + " ▼", plus reverse-pad when
+		// focused) never exceeds catColW; an overflowing row would wrap to a
+		// second terminal line and break both the layout and mouse
+		// hit-testing.
+		catLabel := sd.rowLabel(row)
+		var picker *dialog.Field
+		if rowFocused && sd.fieldFocus == splitFieldCategory {
+			picker = sd.focusedPicker()
+			catLabel = picker.ComboHeaderText(true)
 		}
 		var catText string
-		if rowFocused && sd.fieldFocus == splitFieldCategory {
+		if picker != nil {
 			catLabel = widget.TruncateRunes(catLabel, max(catColW-4, 1)) // " " + label + " " + " ▼"
 			catText = lipgloss.NewStyle().Reverse(true).Render(" "+catLabel+" ") + " ▼"
 		} else {
@@ -83,11 +84,14 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 		memoText := sd.renderTextField(styles, &sd.rows[i].memoField, memoFocused, memoColW-4)
 
 		lines = append(lines, catText+" "+amtText+" "+memoText)
+		if picker != nil {
+			lines = append(lines, strings.Split(picker.RenderComboPanel(contentWidth), "\n")...)
+		}
 	}
 
 	// Add split button
 	addLabel := "[+ Add split]"
-	if sd.focus == splitFocusAddBtn {
+	if !sd.blurred && sd.focus == splitFocusAddBtn {
 		addLabel = lipgloss.NewStyle().Reverse(true).Bold(true).Render("[+ Add split]")
 	}
 	lines = append(lines, addLabel)
@@ -123,8 +127,8 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	// muted while the dialog is imbalanced (MS-013); clicking/Enter on it
 	// in that state surfaces the validation error rather than submitting.
 	buttonRow := dialog.RenderButtonRow(styles, []dialog.ButtonSpec{
-		{Label: "Save", Focused: sd.focus == splitFocusSaveBtn, Disabled: !sd.IsSaveEnabled()},
-		{Label: "Cancel", Focused: sd.focus == splitFocusCancelBtn},
+		{Label: "Save", Focused: !sd.blurred && sd.focus == splitFocusSaveBtn, Disabled: !sd.IsSaveEnabled()},
+		{Label: "Cancel", Focused: !sd.blurred && sd.focus == splitFocusCancelBtn},
 	}, contentWidth)
 	lines = append(lines, buttonRow)
 

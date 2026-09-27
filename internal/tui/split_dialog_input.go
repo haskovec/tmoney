@@ -10,6 +10,12 @@ import (
 
 // HandleKey processes a key event and returns the resulting action.
 func (sd *SplitDialog) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
+	if p := sd.focusedPicker(); p != nil {
+		if handled, action := sd.handlePickerNavigationKey(p, msg.String()); handled {
+			return action
+		}
+	}
+
 	switch msg.String() {
 	case "esc":
 		return dialog.DialogActionCancel
@@ -37,6 +43,37 @@ func (sd *SplitDialog) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	return dialog.DialogActionNone
 }
 
+// handlePickerNavigationKey handles the keys that close the focused Category
+// picker, the same as handleComboNavigationKey does for a Dialog combo: Esc
+// clears a typed query; Enter on the AddNew row returns
+// DialogActionAddNew; Enter, Tab, and Shift+Tab commit the highlighted entry
+// and move focus. It reports handled=false for every other key.
+func (sd *SplitDialog) handlePickerNavigationKey(p *dialog.Field, keyStr string) (handled bool, action dialog.DialogAction) {
+	switch keyStr {
+	case "esc":
+		if p.Query != "" {
+			p.ClearComboQuery()
+			return true, dialog.DialogActionNone
+		}
+	case "enter":
+		if p.IsAddNewHighlighted() {
+			return true, dialog.DialogActionAddNew
+		}
+		sd.commitPicker()
+		sd.focusNext()
+		return true, dialog.DialogActionNone
+	case "tab":
+		sd.commitPicker()
+		sd.focusNext()
+		return true, dialog.DialogActionNone
+	case "shift+tab":
+		sd.commitPicker()
+		sd.focusPrev()
+		return true, dialog.DialogActionNone
+	}
+	return false, dialog.DialogActionNone
+}
+
 // handleEnter processes Enter key based on current focus.
 func (sd *SplitDialog) handleEnter() dialog.DialogAction {
 	switch sd.focus {
@@ -57,16 +94,8 @@ func (sd *SplitDialog) handleEnter() dialog.DialogAction {
 		sd.errorMsg = ""
 		return dialog.DialogActionNone
 	case splitFocusRows:
-		// Enter on the AddNew sentinel diverts into the create-category
-		// sub-dialog. Other selections (real categories, Transfer, or any
-		// non-Category field) fall through to the focus-advance path.
-		if sd.fieldFocus == splitFieldCategory && sd.rowIndex >= 0 && sd.rowIndex < len(sd.rows) {
-			row := &sd.rows[sd.rowIndex]
-			if !row.transferMode && sd.isAddNewSentinel(row.categoryIndex) {
-				return dialog.DialogActionAddNew
-			}
-		}
-		// Advance to next field within row, or next row, or add button
+		// Advance to next field within row, or next row, or add button.
+		// Enter on a Category cell never gets here: the picker handles it.
 		sd.focusNext()
 		return dialog.DialogActionNone
 	}
@@ -79,50 +108,8 @@ func (sd *SplitDialog) handleRowFieldKey(msg tea.KeyPressMsg) {
 
 	switch sd.fieldFocus {
 	case splitFieldCategory:
-		switch {
-		case row.transferMode:
-			switch msg.String() {
-			case "up":
-				if row.accountIndex > 0 {
-					row.accountIndex--
-				} else {
-					// Step out of transfer mode back to the last real
-					// category. categoryIndex was on the sentinel; drop
-					// to the previous selectable category.
-					row.transferMode = false
-					if len(sd.categoryOptions) > 0 {
-						row.categoryIndex = len(sd.categoryOptions) - 1
-					}
-					row.accountIndex = 0
-				}
-			case "down":
-				switch {
-				case row.accountIndex < len(sd.transferAccountIDs)-1:
-					row.accountIndex++
-				default:
-					// Past the last account: exit transfer mode and land
-					// on the AddNew sentinel so the user can keep walking
-					// the option list past the transfer block.
-					row.transferMode = false
-					row.categoryIndex = len(sd.categoryOptions) + 1
-					row.accountIndex = 0
-				}
-			}
-		default:
-			switch msg.String() {
-			case "up":
-				if row.categoryIndex > 0 {
-					row.categoryIndex--
-				}
-			case "down":
-				if row.categoryIndex < sd.categoryOptionCount()-1 {
-					row.categoryIndex++
-					if sd.isTransferSentinel(row.categoryIndex) && sd.hasTransferTargets() {
-						row.transferMode = true
-						row.accountIndex = 0
-					}
-				}
-			}
+		if p := sd.focusedPicker(); p != nil {
+			p.HandleComboKey(msg)
 		}
 	case splitFieldAmount:
 		handleFieldTextKey(&row.amountField, msg)
@@ -223,8 +210,9 @@ func (sd *SplitDialog) focusPrev() {
 // (relative to the first content line inside the split panel's
 // border+padding) and returns the resulting action. The row layout
 // mirrors Render: title(0), sep(1), summary(2), sep(3), blank(4),
-// headers(5), sep(6), then one line per split row, the [+ Add split]
-// line, blank, imbalance, blank, optional error+blank, sep, button row.
+// headers(5), sep(6), then one line per split row (with an open picker's
+// panel under the focused row), the [+ Add split] line, blank, imbalance,
+// blank, optional error+blank, sep, button row.
 func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction {
 	contentWidth := max(sd.width-dialog.DialogHorizontalOverhead, 10)
 	if localY < 0 || localX < 0 || localX >= contentWidth {
@@ -241,17 +229,44 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 
 	const rowsStart = 7
 
+	// An open Category picker draws its panel under the focused row, which
+	// pushes the rows below it and everything after them down.
+	picker := sd.focusedPicker()
+	panelRows := 0
+	if picker != nil {
+		panelRows = picker.ComboPanelRows()
+	}
+
 	// Split rows: clicking one focuses that row and the field under the
-	// cursor (category / amount / memo columns).
-	if localY >= rowsStart && localY < rowsStart+len(sd.rows) {
+	// cursor (category / amount / memo columns). A click on a panel line
+	// picks that entry, the same as Enter.
+	if localY >= rowsStart && localY < rowsStart+len(sd.rows)+panelRows {
+		rel := localY - rowsStart
+		if picker != nil {
+			panelStart := sd.rowIndex + 1
+			switch {
+			case rel >= panelStart && rel < panelStart+panelRows:
+				return sd.clickPickerLine(picker, picker.ComboPanelLineAt(rel-panelStart))
+			case rel >= panelStart+panelRows:
+				rel -= panelRows
+			}
+		}
+		field := sd.columnFieldAt(localX, contentWidth)
+		if picker != nil && rel == sd.rowIndex && field == splitFieldCategory {
+			return dialog.DialogActionNone // the open picker's own cell
+		}
+		sd.commitPicker()
 		sd.focus = splitFocusRows
-		sd.rowIndex = localY - rowsStart
-		sd.fieldFocus = sd.columnFieldAt(localX, contentWidth)
+		sd.rowIndex = rel
+		sd.fieldFocus = field
 		return dialog.DialogActionNone
 	}
 
-	addLine := rowsStart + len(sd.rows)
+	// The add line and the buttons below move focus off an open picker, so
+	// they commit it first, the same as Tab.
+	addLine := rowsStart + len(sd.rows) + panelRows
 	if localY == addLine {
+		sd.commitPicker()
 		sd.addRow()
 		sd.focus = splitFocusRows
 		sd.rowIndex = len(sd.rows) - 1
@@ -270,6 +285,21 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 		return sd.hitTestButtonRow(localX, contentWidth)
 	}
 
+	return dialog.DialogActionNone
+}
+
+// clickPickerLine applies a click on line of the open Category picker's
+// panel: a pick commits it and moves focus to Amount, and the AddNew row
+// returns DialogActionAddNew with focus kept on the cell.
+func (sd *SplitDialog) clickPickerLine(p *dialog.Field, line int) dialog.DialogAction {
+	picked, addNew := p.ClickComboLine(line)
+	switch {
+	case addNew:
+		return dialog.DialogActionAddNew
+	case picked:
+		sd.commitPicker()
+		sd.focusNext()
+	}
 	return dialog.DialogActionNone
 }
 
@@ -298,6 +328,8 @@ func (sd *SplitDialog) columnFieldAt(localX, contentWidth int) splitFieldFocus {
 func (sd *SplitDialog) hitTestButtonRow(localX, contentWidth int) dialog.DialogAction {
 	switch dialog.ButtonRowHitTest([]string{"Save", "Cancel"}, localX, contentWidth) {
 	case 0: // Save
+		// Save the entry an open picker shows, not the one it was opened on.
+		sd.commitPicker()
 		if err := sd.validate(); err != nil {
 			sd.errorMsg = err.Error()
 			return dialog.DialogActionNone

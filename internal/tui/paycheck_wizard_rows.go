@@ -8,11 +8,11 @@ import (
 // keep the five sections in shape.
 
 // PaycheckLine is one row in a section: a category-or-transfer
-// select plus an amount input. The line is rendered with a [−]
+// combo plus an amount input. The line is rendered with a [−]
 // remove button.
 type PaycheckLine struct {
 	Section     PaycheckSection
-	selectField *dialog.Field // category or transfer picker (combined list)
+	selectField *dialog.Field // category or transfer combo (combined list)
 	amountField *dialog.Field // signed amount as typed by the user
 	notesField  *dialog.Field // optional free-form description (stored as Split.Memo)
 
@@ -22,7 +22,7 @@ type PaycheckLine struct {
 	categoryCount int
 }
 
-// SelectField exposes the line's category-or-transfer select for
+// SelectField exposes the line's category-or-transfer combo for
 // tests and key handling.
 func (l *PaycheckLine) SelectField() *dialog.Field { return l.selectField }
 
@@ -33,27 +33,22 @@ func (l *PaycheckLine) AmountField() *dialog.Field { return l.amountField }
 // persisted as Split.Memo when the wizard saves.
 func (l *PaycheckLine) NotesField() *dialog.Field { return l.notesField }
 
-// IsTransfer reports whether the line's current select points at
+// IsTransfer reports whether the line's current selection points at
 // the transfer half of the combined picker (i.e. an account
-// destination rather than a category). The trailing
-// [+ Add new category…] sentinel sits past the transfer entries and is
-// excluded.
+// destination rather than a category).
 func (l *PaycheckLine) IsTransfer() bool {
 	if l.selectField == nil {
 		return false
 	}
 	idx := l.selectField.SelectedIndex
-	return idx >= l.categoryCount && idx < len(l.selectField.Options)-1
+	return idx >= l.categoryCount && idx < len(l.selectField.Options)
 }
 
-// IsAddNew reports whether the line's current select points at the
-// trailing [+ Add new category…] action-row sentinel. Enter on a line
-// in this state diverts into the inline create-category sub-dialog.
+// IsAddNew reports whether the line's combo highlights its
+// [+ Add new category…] action row. Enter on a line in this state
+// diverts into the inline create-category sub-dialog.
 func (l *PaycheckLine) IsAddNew() bool {
-	if l.selectField == nil || len(l.selectField.Options) == 0 {
-		return false
-	}
-	return l.selectField.SelectedIndex == len(l.selectField.Options)-1
+	return l.selectField != nil && l.selectField.IsAddNewHighlighted()
 }
 
 // CategoryIndex returns the index into categoryOptions for a
@@ -85,25 +80,25 @@ func (l *PaycheckLine) SetCategoryIndex(idx int) {
 		idx = 0
 	}
 	l.selectField.SelectedIndex = idx
+	l.selectField.ComboHighlight = idx
 }
 
 // SetAccountIndex converts the line into a transfer-line targeting
-// the given account index. The trailing [+ Add new category…] sentinel
-// occupies the last slot of Options, so the valid transfer range stops
-// one short of len(Options).
+// the given account index. Out-of-range indices are ignored.
 func (l *PaycheckLine) SetAccountIndex(idx int) {
 	if l.selectField == nil {
 		return
 	}
 	target := l.categoryCount + idx
-	if target < l.categoryCount || target >= len(l.selectField.Options)-1 {
+	if target < l.categoryCount || target >= len(l.selectField.Options) {
 		return
 	}
 	l.selectField.SelectedIndex = target
+	l.selectField.ComboHighlight = target
 }
 
 // AddRow appends an empty row to the given section and returns it.
-// The amount and category select default to empty/(None) and the
+// The amount and category combo default to empty/(None) and the
 // line is positioned as the last focusable target in its section.
 func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
 	if section < PaycheckEarnings || section > PaycheckNetPayDestination {
@@ -117,9 +112,9 @@ func (w *PaycheckWizard) AddRow(section PaycheckSection) *PaycheckLine {
 			Width:       14,
 		},
 		selectField: &dialog.Field{
-			Type:          dialog.FieldSelect,
-			Options:       w.combinedOptions,
-			SelectedIndex: 0,
+			Type:        dialog.FieldCombo,
+			Options:     w.combinedOptions,
+			AddNewLabel: paycheckAddNewSentinelLabel,
 		},
 		notesField: &dialog.Field{
 			Type:        dialog.FieldText,

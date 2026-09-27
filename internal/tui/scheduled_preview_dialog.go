@@ -209,6 +209,16 @@ func (p *SchedulePreviewDialog) Render(styles widget.Styles) string {
 	return out
 }
 
+// setSplitFocus moves key focus between the header dialog (false) and the
+// embedded split editor (true). The editor is blurred while the header has
+// focus, which commits an open picker and hides its panel.
+func (p *SchedulePreviewDialog) setSplitFocus(b bool) {
+	p.splitFocus = b
+	if p.splitDialog != nil {
+		p.splitDialog.SetBlurred(!b)
+	}
+}
+
 // FocusOnSplits reports whether key events are currently routed to the
 // embedded split editor (multi-line previews only). Always false on
 // single-line previews.
@@ -268,6 +278,7 @@ func (p *SchedulePreviewDialog) reseedLoanSplits(ls *scheduled.LoanSplits, date 
 	p.splitDialog.width = 62
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(p.accounts)
 	p.splitDialog.SetTransferTargets(accountOptions, accountIDs, p.template.AccountID)
+	p.setSplitFocus(p.splitFocus)
 	p.loanSeedDate = date
 	p.loanSeededRows = p.currentLineSignatures()
 }

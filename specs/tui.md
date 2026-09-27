@@ -211,12 +211,12 @@ When "Split transaction" is checked:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Lines may be **categorized** (pick a category from the combo box) or **transfers** (pick the `Transfer →` sentinel option in the combo, then pick a target account). Line amounts may be mixed-sign — the parent amount is the signed sum of all lines. The "Imbalance" indicator updates live as the user types; **Save is disabled until imbalance is zero** (no auto-balancing plug). See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full primitive.
+Lines may be **categorized** (pick a category from the combo box) or **transfers** (pick a `Transfer → <account>` entry in the same combo). Line amounts may be mixed-sign — the parent amount is the signed sum of all lines. The "Imbalance" indicator updates live as the user types; **Save is disabled until imbalance is zero** (no auto-balancing plug). See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md) for the full primitive.
 
-The Category / Target picker also exposes a `[+ Add new category…]`
-action row below the `Transfer →` sentinel — Down past `Transfer →`
-parks on it and Enter opens the create-category sub-dialog (see
-[Category Combo Box](#category-combo-box)) for the originating row.
+The Category / Target combo also has the `[+ Add new category…]`
+action row after the transfer entries; Enter on it opens the
+create-category sub-dialog (see [Category Combo Box](#category-combo-box))
+for the originating row.
 
 ### Scheduled Transaction Preview Dialog
 
@@ -301,9 +301,10 @@ The wizard is organized into five sections that mirror US pay-stub structure (ea
 
 Only universally-applicable rows are pre-populated: a single `Income:Salary` row in Earnings, and the three federal-statutory withholdings (`Tax:Federal`, `Tax:Social Security`, `Tax:Medicare`) in Taxes. Employer-specific items (HSA, 401(k), supplemental life, state income tax, health insurance) are added via `[+ Add line]`. Rows left at $0 are silently dropped on save.
 
-Each row's Category picker exposes a `[+ Add new category…]` action
-row at the bottom of the option list to create a new category inline
-(see [Category Combo Box](#category-combo-box)). The create-category
+Each row's Category combo lists the categories, then a `→ <Account>`
+entry for each account, then a `[+ Add new category…]` action row to
+create a new category inline (see [Category Combo Box](#category-combo-box)).
+The Deposit account is a typeahead combo too. The create-category
 sub-dialog opens with its Type radio defaulted per the originating
 section: Earnings and Net Pay Destination rows default to Income;
 Tax, Pre-tax, and Post-tax rows default to Expense.
@@ -606,12 +607,11 @@ on the Scheduled Transaction dialogs, From Account on the Loan wizard,
 Account and Source account on the Import dialogs, and To Account on
 Transfer Shares.
 
-The Split Transaction dialog and the Paycheck Schedule Wizard use a
-simpler index-navigated picker (no typeahead) — Up/Down cycles through
-the full option list rather than a typed-filter subset — but they
-expose the same `[+ Add new category…]` action at the bottom of the
-option list, so the create-category sub-dialog opens identically from
-every Category-input surface.
+The Split Transaction dialog's Category / Target cells and the Paycheck
+Schedule Wizard's line and Deposit account pickers are the same
+typeahead combo. Their dropdown panel opens under the focused row. The
+create-category sub-dialog opens identically from every Category-input
+surface.
 
 | Key | Action |
 |-----|--------|
@@ -625,10 +625,14 @@ Filter ranking: case-insensitive substring match. Prefix matches on
 the leaf segment (the part after the last ` > ` or `:`) rank ahead of
 plain-substring matches; alphabetical within each rank group.
 
-The last rows of the filtered list are always:
+On a **split line** (not the top-level Category field of a
+single-line transaction), the categories are followed by one
+`Transfer → <account>` entry for each account except the parent's
+(`→ <Account>` in the Paycheck wizard). Picking one makes the line a
+transfer-line, stored with `transfer_account_id` set and `category_id`
+NULL. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
 
-- `Transfer →` — present only when the combo box is used on a **split line** (not on the top-level Category field of a single-line transaction). Activating it swaps the field for an account picker (excluding the parent's account); the resulting line is stored as a transfer-line with `transfer_account_id` set and `category_id` NULL. See [`specs/multiline-splits-and-paycheck.md`](multiline-splits-and-paycheck.md).
-- `[+ Add new category…]`
+The last row of the filtered list is always `[+ Add new category…]`.
 
 Activating `[+ Add new category…]` opens a small create-category
 sub-dialog with three fields:
