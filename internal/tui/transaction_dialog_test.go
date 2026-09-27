@@ -1473,6 +1473,14 @@ func TestApp_TxnDialog_AddNew_SubmitPersistsAndAdvancesFocus(t *testing.T) {
 		t.Errorf("FocusIndex after submit = %d, want 3 (Amount)",
 			app.txn.dlg.FocusIndex())
 	}
+
+	// Back onto Category and Tab away: the new category must stay. The combo
+	// commits its highlight on Tab, so the apply must move the highlight too.
+	app.txn.dlg.SetFocusIndex(2)
+	app.txn.dlg.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if app.txn.categoryIDs[catField.SelectedIndex] != found.ID {
+		t.Errorf("Category after Tab = %q, want the new category", catField.SelectedOption())
+	}
 }
 
 func TestApp_TxnDialog_AddNew_SubmitNewParentCreatesBoth(t *testing.T) {

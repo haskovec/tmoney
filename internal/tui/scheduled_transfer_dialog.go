@@ -466,7 +466,7 @@ func (a *App) applyCreatedCategoryToSchedTransfer(newCat *category.Category, cat
 				break
 			}
 		}
-		catField.SelectedIndex = newIdx
+		catField.SelectIndex(newIdx)
 		// Focus advances to Memo so the user can keep typing.
 		a.sched.dlg.SetFocusIndex(schedXferFieldMemo)
 		a.sched.dlg.SetVisible(true)

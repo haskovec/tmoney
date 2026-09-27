@@ -567,7 +567,7 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 				break
 			}
 		}
-		catField.SelectedIndex = newIdx
+		catField.SelectIndex(newIdx)
 		// Focus advances to Amount (field index 3).
 		a.txn.dlg.SetFocusIndex(3)
 		a.txn.dlg.SetVisible(true)

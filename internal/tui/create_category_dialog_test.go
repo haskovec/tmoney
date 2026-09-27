@@ -279,6 +279,21 @@ func TestBuildCreateCategoryDialog_SeedsExistingParent(t *testing.T) {
 	}
 }
 
+// TestBuildCreateCategoryDialog_SeededParentSurvivesTab pins that a matched
+// Parent stays selected when the user goes back to the combo and tabs away.
+// The combo commits its highlight on Tab, so the seed must move it too.
+func TestBuildCreateCategoryDialog_SeededParentSurvivesTab(t *testing.T) {
+	d := buildCreateCategoryDialog("Sushi", "Food", []string{"Auto", "Food", "Bills"}, category.TypeExpense)
+	parentField := d.Fields()[1]
+
+	d.SetFocusIndex(1)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	if got := parentField.SelectedOption(); got != "Food" {
+		t.Errorf("Parent after Tab = %q, want %q", got, "Food")
+	}
+}
+
 func TestBuildCreateCategoryDialog_SeedsExistingParentCaseInsensitive(t *testing.T) {
 	// Parent match is case-insensitive — typing "food" still resolves to "Food".
 	d := buildCreateCategoryDialog("Sushi", "food", []string{"Food", "Bills"}, category.TypeExpense)

@@ -172,7 +172,7 @@ func buildCreateCategoryDialog(name, parent string, existingParents []string, de
 			}
 		}
 		if matchedIdx > 0 {
-			parentField.SelectedIndex = matchedIdx
+			parentField.SelectIndex(matchedIdx)
 		} else {
 			parentField.Query = parent
 		}

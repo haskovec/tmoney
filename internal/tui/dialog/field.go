@@ -457,6 +457,17 @@ func (f *Field) Toggle() {
 	f.Checked = !f.Checked
 }
 
+// SelectIndex selects option i. On a combo it also moves the highlight to i
+// and clears the query: Tab and a click away commit the highlight, so a
+// selection set without it would be replaced by a stale row.
+func (f *Field) SelectIndex(i int) {
+	f.SelectedIndex = i
+	if f.Type == FieldCombo {
+		f.ComboHighlight = i
+		f.Query = ""
+	}
+}
+
 // SelectedOption returns the currently selected option text.
 func (f *Field) SelectedOption() string {
 	if f.Type != FieldSelect && f.Type != FieldRadio && f.Type != FieldList && f.Type != FieldCombo {

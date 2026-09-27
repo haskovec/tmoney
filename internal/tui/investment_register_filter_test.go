@@ -445,6 +445,19 @@ func TestInvestmentFilter_PreselectSecurityCombo(t *testing.T) {
 	if f.SelectedIndex != 1 {
 		t.Errorf("nil preselect should be a no-op, SelectedIndex = %d", f.SelectedIndex)
 	}
+
+	// Tab onto Security and away again keeps the preselect. The combo
+	// commits its highlight on Tab (and on a click away), so the preselect
+	// must move the highlight too.
+	for i, field := range d.Fields() {
+		if field == f {
+			d.SetFocusIndex(i)
+		}
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := f.SelectedOption(); got != "MSFT" {
+		t.Errorf("Security after Tab = %q, want %q", got, "MSFT")
+	}
 }
 
 func TestInvestmentFilter_EarlyGuardCapturesGlobalKeys(t *testing.T) {

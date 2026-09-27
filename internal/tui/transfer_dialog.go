@@ -361,10 +361,8 @@ func (s *transferSurface) prefillFromReplacedRow(row *investment.Transaction) {
 		if row.Type == investment.TransactionTypeDeposit {
 			fromIdx, toIdx = otherIdx, rowIdx
 		}
-		// From and To are combos: a Tab commits the highlighted row, so the
-		// highlight must follow the selection or the first Tab resets it.
-		fields[0].SelectedIndex, fields[0].ComboHighlight = fromIdx, fromIdx
-		fields[1].SelectedIndex, fields[1].ComboHighlight = toIdx, toIdx
+		fields[0].SelectIndex(fromIdx)
+		fields[1].SelectIndex(toIdx)
 	}
 
 	fields[2].Value = fmt.Sprintf("%.2f", row.TotalAmount.Abs().Float64())
