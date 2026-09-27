@@ -31,6 +31,9 @@ type reconciliationViewData struct {
 // reconciliationLoadedMsg is sent when reconciliation data has been loaded.
 type reconciliationLoadedMsg struct {
 	data *reconciliationViewData
+	// reload is true for a refresh of the session already on screen, and
+	// false for the first load after a start.
+	reload bool
 }
 
 // reconciliationStartedMsg is sent when a reconciliation session has been started.
@@ -214,6 +217,43 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		return reconciliationLoadedMsg{data: data}
 	}
+}
+
+// reloadReconciliationData reloads the session on screen. Its message is
+// applied by applyReconciliationReload, which keeps the check marks.
+func (a *App) reloadReconciliationData(r *reconciliationViewData) tea.Cmd {
+	load := a.loadReconciliationData(r.session, r.account)
+	return func() tea.Msg {
+		msg := load()
+		if loaded, ok := msg.(reconciliationLoadedMsg); ok {
+			loaded.reload = true
+			return loaded
+		}
+		return msg
+	}
+}
+
+// applyReconciliationReload swaps fresh candidates into the session on
+// screen. It runs on the update loop and reads the live check marks, not a
+// copy taken when the load began, so a toggle made while the load was in
+// flight survives. A reload for a session no longer on screen is dropped.
+func (a *App) applyReconciliationReload(data *reconciliationViewData) tea.Cmd {
+	cur := a.reconciliation
+	if a.currentView != ViewReconciliation || cur == nil || cur.session == nil ||
+		data.session == nil || cur.session.ID != data.session.ID {
+		return nil
+	}
+	for _, txn := range data.candidates {
+		if cur.checkedIDs[txn.ID] {
+			data.checkedIDs[txn.ID] = true
+		}
+	}
+	// The loader's total counts no marks; show the last total until the
+	// recalculation for the kept marks lands.
+	data.clearedTotal = cur.clearedTotal
+	a.reconciliation = data
+	a.buildReconciliationTable()
+	return a.recalculateClearedTotal()
 }
 
 // recalculateClearedTotal recalculates the cleared total based on checked transactions.

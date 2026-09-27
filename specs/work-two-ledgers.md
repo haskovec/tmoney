@@ -43,7 +43,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | ID | Status | Title | Needs | Size |
 | --- | --- | --- | --- | --- |
 | W1 | done (#46) | Corporate Actions help | — | small |
-| W2 | open | Reload Reconciliation and Corporate Actions | — | small |
+| W2 | done (#47) | Reload Reconciliation and Corporate Actions | — | small |
 | W3a | open | Merger ratio must mean target shares per source share | — | small |
 | W3 | open | Merger cash and ratio must be decimal | W3a | small |
 | W4 | open | Share-transfer edit must keep both legs | — | medium |
@@ -100,7 +100,7 @@ The key handler is `handleCorporateActionViewKeys` (`internal/tui/corporate_acti
 
 ## W2 — Reload Reconciliation and Corporate Actions
 
-**Status:** open
+**Status:** done in PR #47.
 **Decision:** A reload keeps the check marks that are still candidates. It drops the others, and it recalculates the cleared total.
 
 ### Problem

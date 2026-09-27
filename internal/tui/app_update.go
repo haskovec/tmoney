@@ -293,6 +293,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.loadReconciliationData(msg.session, msg.account)
 
 	case reconciliationLoadedMsg:
+		if msg.reload {
+			return a, a.applyReconciliationReload(msg.data)
+		}
 		a.reconciliation = msg.data
 		a.buildReconciliationTable()
 		return a, nil
