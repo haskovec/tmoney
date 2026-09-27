@@ -201,11 +201,22 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 	return nil
 }
 
+// costPerSharePlaces is the scale of cost_per_share, average_cost_per_share,
+// price_per_share and total_amount (DECIMAL(19,4)).
+const costPerSharePlaces = 4
+
 // mergerCostPerShare carries a source cost per share onto the target: the
-// same basis spread over ratio-times as many shares. It divides in decimal;
-// the stored column keeps four places, as a split's adjusted cost does.
+// same basis spread over ratio-times as many shares.
+//
+// The quotient is rounded here, once, to the four places the columns store,
+// half up as DuckDB rounds on insert. Every caller then uses this one value
+// for the new lot or position, the exchange row's price, and its total
+// (cost × new shares), so the stored rows describe one cost. Left unrounded,
+// the total was computed from 16.6666… and stored as 5000.0000 while the lot
+// stored 16.6667 × 300 = 5000.01. When old cost ÷ ratio has more than four
+// places the basis moves by that rounding; it cannot stay exact.
 func mergerCostPerShare(sourceCost types.Money, exchangeRatio alpacadecimal.Decimal) types.Money {
-	return types.NewMoneyFromDecimal(sourceCost.Decimal().Div(exchangeRatio))
+	return types.NewMoneyFromDecimal(sourceCost.Decimal().Div(exchangeRatio).Round(costPerSharePlaces))
 }
 
 // mergerHideSource marks the source security as hidden after all positions are exchanged.
