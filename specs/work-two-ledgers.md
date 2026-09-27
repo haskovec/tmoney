@@ -1,9 +1,9 @@
 # Work list: two ledgers, and the defects around them
 
 **Date:** 2026-09-27
-**Status:** OPEN. Nothing in this list is built.
+**Status:** OPEN. The order table gives the status of each item.
 **Source:** Code review of the tree on 2026-09-27. Not a pull-request diff.
-**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line.
+**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46.
 
 Use this file as the queue. Do one work item at a time. Do not start an item whose **Needs** line is still open. When an item ships, change its status line to the commit, and do not delete the problem statement. The next reader needs to know why the code looks the way it does.
 
@@ -44,7 +44,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | --- | --- | --- | --- | --- |
 | W1 | done (#46) | Corporate Actions help | — | small |
 | W2 | done (#47) | Reload Reconciliation and Corporate Actions | — | small |
-| W3a | open | Merger ratio must mean target shares per source share | — | small |
+| W3a | done (#48) | Merger ratio must mean target shares per source share | — | small |
 | W3 | open | Merger cash and ratio must be decimal | W3a | small |
 | W4 | open | Share-transfer edit must keep both legs | — | medium |
 | W5a | open | Close refuses an investment account that is not empty | — | medium |
@@ -55,7 +55,8 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W11 | open | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | open | Constructor must not write | — | medium |
 | W10 | open | Correct `docs/ARCHITECTURE.md` | W5c | small |
-| W8 | open | One view table in the TUI | W1 and W2 | large |
+| W12 | open | Corporate Actions keys must reach the view | — | small |
+| W8 | open | One view table in the TUI | W1, W2, and W12 | large |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -133,7 +134,7 @@ The only reconciliation loader, `loadReconciliationData` (`internal/tui/reconcil
 
 ## W3a — Merger ratio must mean target shares per source share
 
-**Status:** open
+**Status:** done in PR #48.
 **Decision:** The ratio is target shares per source share. That is the market convention, and both user interfaces already say it. The service math is wrong. A migration inverts the ratio on stored rows.
 
 ### Problem
@@ -646,10 +647,46 @@ A change made from this document will put transfer code back on `transaction.Ser
 - A reader who has not seen the code can name `transfer.Service` as the cash-transfer owner.
 - The document does not mention `TransferRepository` or `CreateTransfer` as the current path.
 
+## W12 — Corporate Actions keys must reach the view
+
+**Status:** open
+**Source:** Review of PR #46 (W1), 2026-09-27.
+
+### Problem
+
+`handleKeyPress` (`internal/tui/app.go`) matches the global keys before it calls the view handler. The Corporate Actions view has no exception. Two things break:
+
+1. **Filter typing.** After `/`, `handleCorporateActionViewKeys` (`internal/tui/corporate_action_history.go`) adds each typed character to `corporateActionViewFilter`. But the global keys run first: `1` to `5` change the view, `?` opens help, and Esc leaves the view. A user cannot type a digit into the filter. The investment register has the guard that this view lacks: while `investmentFilterSearching` is true, every key goes to `handleInvestmentRegisterKeys`.
+2. **Esc.** The global Esc arm makes two exceptions: Prices detail mode, and an active investment-register filter. Corporate Actions is not one of them. Thus Esc always calls `switchView(previousView)`. It does not close the details panel, and it does not end filter entry. The three Esc arms in `handleCorporateActionViewKeys` never run.
+
+W1 made the help line say "Back", because that is what Esc does today (`corporateActionShortcuts`).
+
+### Fix
+
+1. Add an early guard in `handleKeyPress`, next to the investment-register guard: while `currentView == ViewCorporateActions` and `corporateActionViewFilterEditing` is true, send every key to `handleCorporateActionViewKeys`.
+2. In the global Esc arm, add an exception: on Corporate Actions with the details panel open (`corporateActionDetail != nil`), send Esc to the view handler. The handler closes the panel, and the view stays.
+3. The Esc arm in the view handler for the list (`closeCorporateActionView`, then `switchView(previousView)`) must give the same result as the global arm. The global arm also returns `reloadCurrentView()`. Keep one path. Do not have two different "back" behaviors.
+4. Change the help Esc line to match the new behavior (close details, end filter entry, or back), and update `TestCorporateActionShortcuts`.
+5. The view-layer plan says that three pre-switch branches in `handleKeyPress` do not move. The new guard is a fourth. Update that rule in `specs/implementation-plan-tui-view-layer.md`.
+
+### Tests
+
+| Case | Assert |
+| --- | --- |
+| Type `/`, then `1`, `2`, `?` | The filter text is `12?`. The view is still Corporate Actions. No help overlay. |
+| Esc while typing the filter | Filter entry ends. The view is still Corporate Actions. |
+| Esc with the details panel open | The panel closes. The view is still Corporate Actions. |
+| Esc on the list | The view goes back, as today. |
+
+### Do not
+
+- Do not change key routing for another view.
+- Do not change the keys themselves.
+
 ## W8 — One view table in the TUI
 
 **Status:** open
-**Needs:** W1 and W2.
+**Needs:** W1, W2, and W12. The table copies the fixed key routing and help text.
 **Decision:** The queue for this work is `specs/implementation-plan-tui-view-layer.md`. W8 is phases 1 and 3 of that plan (VL-101 to VL-111, and VL-201 to VL-209). Phases 2 and 4 stay only in the plan. Mark progress in the plan, not here. Change this status line when both phases are done.
 
 ### Problem
