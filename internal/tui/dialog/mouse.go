@@ -339,6 +339,7 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 			field := d.fields[hit.FieldIndex]
 			if !field.Hidden {
 				wasFocused := d.focusIndex == hit.FieldIndex
+				d.commitComboOnBlur(hit.FieldIndex)
 				d.focusIndex = hit.FieldIndex
 
 				switch field.Type {
@@ -375,6 +376,7 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 
 	case DialogHitButton:
 		if hit.ButtonIndex >= 0 && hit.ButtonIndex < len(d.buttons) {
+			d.commitComboOnBlur(len(d.fields) + hit.ButtonIndex)
 			d.focusIndex = len(d.fields) + hit.ButtonIndex
 			btn := d.buttons[hit.ButtonIndex]
 			// Mirror HandleKey's Enter mapping: primary submits, a button
@@ -391,4 +393,17 @@ func (d *Dialog) HandleMouseLocal(localX, localY int) DialogAction {
 	}
 
 	return DialogActionNone
+}
+
+// commitComboOnBlur commits the focused combo's highlighted row when a click
+// moves focus to newFocus, the same as Tab does. Without it, Down on an
+// account combo followed by a click on OK would submit the old account while
+// the panel showed the new one.
+func (d *Dialog) commitComboOnBlur(newFocus int) {
+	if newFocus == d.focusIndex {
+		return
+	}
+	if f := d.FocusedField(); f != nil && f.Type == FieldCombo {
+		f.commitComboHighlight()
+	}
 }

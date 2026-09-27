@@ -1143,3 +1143,25 @@ func TestField_DeleteBack_StaleCursorOverEmptyValue(t *testing.T) {
 		t.Errorf("CursorPos() = %d, want 0", got)
 	}
 }
+
+// TestField_SelectIndex_SyncsCombo pins that SelectIndex moves a combo's
+// highlight with its selection and clears its query, so a Tab keeps the
+// selection instead of committing a stale highlight.
+func TestField_SelectIndex_SyncsCombo(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Security", []string{"AAPL", "MSFT", "VTI"}, 0)
+	d.AddTextField("Shares", "", "", 10)
+	f.Query = "aa"
+
+	f.SelectIndex(2)
+	if f.SelectedIndex != 2 || f.ComboHighlight != 2 || f.Query != "" {
+		t.Errorf("after SelectIndex(2): selected=%d highlight=%d query=%q; want 2, 2, empty",
+			f.SelectedIndex, f.ComboHighlight, f.Query)
+	}
+
+	d.SetFocusIndex(0)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := f.SelectedOption(); got != "VTI" {
+		t.Errorf("after Tab = %q, want %q", got, "VTI")
+	}
+}

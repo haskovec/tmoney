@@ -768,7 +768,7 @@ func preselectSecurityCombo(d *dialog.Dialog, secIDs []types.ID, secID types.ID)
 	for i, id := range secIDs {
 		if id == secID {
 			if f := d.FieldByLabel("Security"); f != nil {
-				f.SelectedIndex = i
+				f.SelectIndex(i)
 			}
 			return
 		}

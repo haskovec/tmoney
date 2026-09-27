@@ -19,7 +19,7 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *dialog.D
 	d.SetWidth(62)
 
 	// Account
-	d.AddSelectField("Account", accountOptions, 0)
+	d.AddComboField("Account", accountOptions, 0)
 
 	// Payee
 	d.AddTextField("Payee", "", "Payee name", 0)
@@ -82,7 +82,7 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 			break
 		}
 	}
-	d.AddSelectField("Account", accountOptions, acctIdx)
+	d.AddComboField("Account", accountOptions, acctIdx)
 
 	// Payee
 	payeeName := ""

@@ -252,8 +252,8 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 		label     string
 		fieldType dialog.FieldType
 	}{
-		{"From", dialog.FieldSelect},
-		{"To", dialog.FieldSelect},
+		{"From", dialog.FieldCombo},
+		{"To", dialog.FieldCombo},
 		{"Amount", dialog.FieldText},
 		{"Date", dialog.FieldDate},
 		{"Memo", dialog.FieldText},
@@ -276,6 +276,26 @@ func TestBuildTransferDialog_FieldTypes(t *testing.T) {
 	// The Category combo exposes the inline create-category action row.
 	if fields[5].AddNewLabel == "" {
 		t.Error("Category combo should set AddNewLabel for inline creation")
+	}
+}
+
+// TestBuildTransferDialog_AccountTypeAhead pins that the From/To pickers
+// filter as the user types, so a long account list is quick to search.
+func TestBuildTransferDialog_AccountTypeAhead(t *testing.T) {
+	options := []string{"Checking", "Emergency Savings", "Visa", "Brokerage"}
+	d := buildTransferDialog(options, []string{"(None)"}, 0)
+	d.SetFocusIndex(1) // To
+
+	for _, r := range "sav" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	if got := d.Fields()[1].SelectedOption(); got != "Emergency Savings" {
+		t.Errorf("To = %q, want %q", got, "Emergency Savings")
+	}
+	if d.FocusIndex() != 2 {
+		t.Errorf("FocusIndex = %d, want 2 (Amount)", d.FocusIndex())
 	}
 }
 

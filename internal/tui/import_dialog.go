@@ -102,7 +102,7 @@ func buildImportOptionsDialog(accounts []*account.Account, defaultAccountID type
 	if len(options) == 0 {
 		options = []string{"(no accounts)"}
 	}
-	d.AddSelectField("Account", options, selected)
+	d.AddComboField("Account", options, selected)
 
 	d.AddSelectField("Format", importFormatOptions, 0)
 	d.AddSelectField("Duplicates", importDuplicateOptions, 0)
@@ -124,7 +124,7 @@ func buildImportSourcePickerDialog(sources []string, target string) *dialog.Dial
 
 	d.AddTextField("Importing into", target, "", 0)
 	d.AddTextField("File contains", fmt.Sprintf("%d accounts — pick one", len(sources)), "", 0)
-	d.AddSelectField("Source account", sources, 0)
+	d.AddComboField("Source account", sources, 0)
 
 	d.SetButtons([]dialog.DialogButton{
 		{Label: "Continue", Primary: true},

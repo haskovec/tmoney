@@ -320,7 +320,7 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 			break
 		}
 	}
-	catField.SelectedIndex = newIdx
+	catField.SelectIndex(newIdx)
 	// Focus advances to the field after Category so the user can keep typing.
 	header.SetFocusIndex(catIdx + 1)
 	header.SetVisible(true)

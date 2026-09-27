@@ -99,7 +99,7 @@ func buildTransferSharesDialog(
 			}
 		}
 	}
-	d.AddSelectField("To Account", accountOptions, selectedAcctIdx)
+	d.AddComboField("To Account", accountOptions, selectedAcctIdx)
 
 	// Shares (index 3)
 	sharesVal := ""

@@ -814,3 +814,71 @@ func TestDialog_HandleMouse_WheelOnCombo(t *testing.T) {
 		t.Errorf("ComboHighlight after wheel up = %d, want 0", f.ComboHighlight)
 	}
 }
+
+// TestDialog_ClickButton_CommitsFocusedComboHighlight pins that a click on OK
+// saves the row the combo highlights, the same as Tab. Before, Down then a
+// click on OK saved the old account while the panel showed the new one.
+func TestDialog_ClickButton_CommitsFocusedComboHighlight(t *testing.T) {
+	d := NewDialog("New Transfer")
+	f := d.AddComboField("To", []string{"Checking", "Savings", "Visa"}, 0)
+	d.SetFocusIndex(0)
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+
+	contentWidth := d.Width() - DialogHorizontalOverhead
+	buttonRow := d.ContentHeight() - 1
+	saveX := -1
+	for x := range contentWidth {
+		hit := d.HitTestContent(x, buttonRow, contentWidth)
+		if hit.Zone == DialogHitButton && hit.ButtonIndex == 0 {
+			saveX = x
+			break
+		}
+	}
+	if saveX < 0 {
+		t.Fatal("primary button not found")
+	}
+
+	if action := d.HandleMouseLocal(saveX, buttonRow); action != DialogActionSubmit {
+		t.Fatalf("action = %v, want DialogActionSubmit", action)
+	}
+	if got := f.SelectedOption(); got != "Savings" {
+		t.Errorf("To = %q, want %q (the highlighted row)", got, "Savings")
+	}
+}
+
+// TestDialog_ClickOtherField_CommitsFocusedComboQuery pins that a click away
+// from a combo with a typed query commits the top match and clears the query,
+// the same as Tab.
+func TestDialog_ClickOtherField_CommitsFocusedComboQuery(t *testing.T) {
+	d := NewDialog("New Transfer")
+	f := d.AddComboField("To", []string{"Checking", "Savings", "Visa"}, 0)
+	d.AddTextField("Memo", "", "", 0)
+	d.SetFocusIndex(0)
+	for _, r := range "sav" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+
+	contentWidth := d.Width() - DialogHorizontalOverhead
+	memoRow := -1
+	for y := range d.ContentHeight() {
+		hit := d.HitTestContent(5, y, contentWidth)
+		if hit.Zone == DialogHitField && hit.FieldIndex == 1 {
+			memoRow = y
+			break
+		}
+	}
+	if memoRow < 0 {
+		t.Fatal("Memo field not found")
+	}
+
+	d.HandleMouseLocal(5, memoRow)
+	if d.FocusIndex() != 1 {
+		t.Errorf("FocusIndex = %d, want 1 (Memo)", d.FocusIndex())
+	}
+	if got := f.SelectedOption(); got != "Savings" {
+		t.Errorf("To = %q, want %q (the top match)", got, "Savings")
+	}
+	if f.Query != "" {
+		t.Errorf("Query = %q, want cleared", f.Query)
+	}
+}
