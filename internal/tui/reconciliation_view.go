@@ -31,6 +31,9 @@ type reconciliationViewData struct {
 // reconciliationLoadedMsg is sent when reconciliation data has been loaded.
 type reconciliationLoadedMsg struct {
 	data *reconciliationViewData
+	// reload is true for a refresh of the session already on screen, and
+	// false for the first load after a start.
+	reload bool
 }
 
 // reconciliationStartedMsg is sent when a reconciliation session has been started.
@@ -153,29 +156,13 @@ func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, 
 }
 
 // loadReconciliationData loads reconciliation view data for an active session.
-//
-// keep holds the check marks to carry over, and is nil when a session starts.
-// The marks live only in memory until Finish, so a reload that dropped them
-// (an undo on this view) would erase the user's work. A kept id whose
-// transaction is no longer a candidate is dropped, and the cleared total is
-// computed from the marks that remain. Pass a copy: the command runs off the
-// update loop, which may still change the live set.
-func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account, keep map[types.ID]bool) tea.Cmd {
+func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account) tea.Cmd {
 	return func() tea.Msg {
 		candidates, err := a.services.Reconciliation.GetCandidateTransactions(
 			session.AccountID, session.StatementDate,
 		)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load candidate transactions: %w", err)}
-		}
-
-		checkedIDs := make(map[types.ID]bool)
-		var checkedList []types.ID
-		for _, txn := range candidates {
-			if keep[txn.ID] {
-				checkedIDs[txn.ID] = true
-				checkedList = append(checkedList, txn.ID)
-			}
 		}
 
 		// Load payee names
@@ -211,7 +198,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 			}
 		}
 
-		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, checkedList)
+		// Calculate initial cleared total (no checked transactions)
+		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, nil)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to calculate cleared total: %w", err)}
 		}
@@ -220,7 +208,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 			session:       session,
 			account:       account,
 			candidates:    candidates,
-			checkedIDs:    checkedIDs,
+			checkedIDs:    make(map[types.ID]bool),
 			payeeNames:    payeeNames,
 			categoryNames: categoryNames,
 			accountNames:  accountNames,
@@ -229,6 +217,43 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		return reconciliationLoadedMsg{data: data}
 	}
+}
+
+// reloadReconciliationData reloads the session on screen. Its message is
+// applied by applyReconciliationReload, which keeps the check marks.
+func (a *App) reloadReconciliationData(r *reconciliationViewData) tea.Cmd {
+	load := a.loadReconciliationData(r.session, r.account)
+	return func() tea.Msg {
+		msg := load()
+		if loaded, ok := msg.(reconciliationLoadedMsg); ok {
+			loaded.reload = true
+			return loaded
+		}
+		return msg
+	}
+}
+
+// applyReconciliationReload swaps fresh candidates into the session on
+// screen. It runs on the update loop and reads the live check marks, not a
+// copy taken when the load began, so a toggle made while the load was in
+// flight survives. A reload for a session no longer on screen is dropped.
+func (a *App) applyReconciliationReload(data *reconciliationViewData) tea.Cmd {
+	cur := a.reconciliation
+	if a.currentView != ViewReconciliation || cur == nil || cur.session == nil ||
+		data.session == nil || cur.session.ID != data.session.ID {
+		return nil
+	}
+	for _, txn := range data.candidates {
+		if cur.checkedIDs[txn.ID] {
+			data.checkedIDs[txn.ID] = true
+		}
+	}
+	// The loader's total counts no marks; show the last total until the
+	// recalculation for the kept marks lands.
+	data.clearedTotal = cur.clearedTotal
+	a.reconciliation = data
+	a.buildReconciliationTable()
+	return a.recalculateClearedTotal()
 }
 
 // recalculateClearedTotal recalculates the cleared total based on checked transactions.

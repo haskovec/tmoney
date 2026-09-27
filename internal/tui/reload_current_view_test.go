@@ -45,7 +45,7 @@ func newReconReloadEnv(t *testing.T) reconReloadEnv {
 		t.Fatal(err)
 	}
 	a.switchView(ViewReconciliation)
-	runCmd(t, a, a.loadReconciliationData(session, acct, nil), 1)
+	runCmd(t, a, a.loadReconciliationData(session, acct), 1)
 	if a.reconciliation == nil || len(a.reconciliation.candidates) != 2 {
 		t.Fatal("setup: expected two candidates on screen")
 	}
@@ -67,7 +67,7 @@ func TestReloadCurrentView_Reconciliation_KeepsSurvivingChecks(t *testing.T) {
 	if err := e.a.services.Transaction.Delete(e.rent.ID); err != nil {
 		t.Fatal(err)
 	}
-	runCmd(t, e.a, e.a.reloadCurrentView(), 1)
+	runCmd(t, e.a, e.a.reloadCurrentView(), 2)
 
 	r := e.a.reconciliation
 	if len(r.candidates) != 1 || r.candidates[0].ID != e.power.ID {
@@ -95,12 +95,12 @@ func TestReloadCurrentView_Reconciliation_UndoRefreshesCandidates(t *testing.T) 
 	if err := e.a.undoManager.Execute(undo.NewCreateTransactionCommand(e.a.services.Transaction, extra)); err != nil {
 		t.Fatal(err)
 	}
-	runCmd(t, e.a, e.a.reloadCurrentView(), 1)
+	runCmd(t, e.a, e.a.reloadCurrentView(), 2)
 	if len(e.a.reconciliation.candidates) != 3 {
 		t.Fatalf("setup: candidates = %d, want 3", len(e.a.reconciliation.candidates))
 	}
 
-	runCmd(t, e.a, e.a.performUndo(), 3)
+	runCmd(t, e.a, e.a.performUndo(), 4)
 
 	r := e.a.reconciliation
 	if len(r.candidates) != 2 {
@@ -108,6 +108,43 @@ func TestReloadCurrentView_Reconciliation_UndoRefreshesCandidates(t *testing.T) 
 	}
 	if !r.checkedIDs[e.rent.ID] || !r.checkedIDs[e.power.ID] {
 		t.Error("undo dropped check marks on rows it did not touch")
+	}
+}
+
+// The reload runs off the update loop. A mark toggled after it starts and
+// before its message lands must survive: the marks are filtered when the
+// message is applied, not copied when the load begins.
+func TestReloadCurrentView_Reconciliation_KeepsToggleMadeDuringLoad(t *testing.T) {
+	e := newReconReloadEnv(t)
+
+	cmd := e.a.reloadCurrentView()
+	e.a.reconciliation.checkedIDs[e.power.ID] = true
+	runCmd(t, e.a, cmd, 2)
+
+	r := e.a.reconciliation
+	if !r.checkedIDs[e.power.ID] {
+		t.Error("a mark made while the reload was in flight was lost")
+	}
+	if r.checkedIDs[e.rent.ID] {
+		t.Error("an unchecked row came back checked")
+	}
+	// Opening 100.00 plus the one checked row, -25.00.
+	if want := types.MustNewMoney("75.00"); !r.clearedTotal.Equal(want) {
+		t.Errorf("cleared total = %s, want %s", r.clearedTotal, want)
+	}
+}
+
+// A reload that lands after the session left the screen (cancelled while the
+// load was in flight) must not bring the session back.
+func TestReloadCurrentView_Reconciliation_DropsReloadForClosedSession(t *testing.T) {
+	e := newReconReloadEnv(t)
+
+	cmd := e.a.reloadCurrentView()
+	e.a.afterReconciliationCancelled()
+	runCmd(t, e.a, cmd, 2)
+
+	if e.a.reconciliation != nil {
+		t.Error("a late reload put a cancelled session back on screen")
 	}
 }
 

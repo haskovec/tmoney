@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"maps"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
@@ -194,7 +193,7 @@ func (a *App) reloadCurrentView() tea.Cmd {
 		// No session on screen yet means its first load is still in flight;
 		// that load fills the table. Never start a session from here.
 		if r := a.reconciliation; r != nil && r.session != nil && r.account != nil {
-			cmds = append(cmds, a.loadReconciliationData(r.session, r.account, maps.Clone(r.checkedIDs)))
+			cmds = append(cmds, a.reloadReconciliationData(r))
 		}
 	case ViewCorporateActions:
 		cmds = append(cmds, a.loadCorporateActionViewData())

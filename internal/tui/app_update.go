@@ -290,9 +290,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reconciliationStartedMsg:
 		// Session started, switch to reconciliation view and load data
 		a.switchView(ViewReconciliation)
-		return a, a.loadReconciliationData(msg.session, msg.account, nil)
+		return a, a.loadReconciliationData(msg.session, msg.account)
 
 	case reconciliationLoadedMsg:
+		if msg.reload {
+			return a, a.applyReconciliationReload(msg.data)
+		}
 		a.reconciliation = msg.data
 		a.buildReconciliationTable()
 		return a, nil
