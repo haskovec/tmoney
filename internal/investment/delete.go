@@ -80,13 +80,25 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 		if txn.TransferID.Valid {
 			switch txn.Type {
 			case TransactionTypeTransferShares:
-				// The counterpart lives in the other investment account; find by transfer_id.
-				others, lerr := b.repo.ListByAccount(txn.TransferAccountID.ID, TransactionFilter{})
+				// The counterpart lives in the other investment account. Find it
+				// by transfer_id rather than by listing the account the row
+				// names: a row whose transfer_account_id is missing or wrong
+				// would otherwise delete alone and strand the other leg's shares.
+				// A leg with no counterpart still deletes, so a broken pair can
+				// be cleaned up.
+				others, lerr := b.repo.ListByTransferID(txn.TransferID.ID)
 				if lerr != nil {
-					return fmt.Errorf("failed to list destination-account transfers: %w", lerr)
+					return fmt.Errorf("failed to list share-transfer legs: %w", lerr)
 				}
 				for _, o := range others {
-					if o.TransferID.Valid && o.TransferID.ID == txn.TransferID.ID && o.ID != txn.ID {
+					if o.ID != txn.ID {
+						// The freeze check above read the account this row
+						// names, which is the pointer this lookup no longer
+						// trusts. Check the leg's own account; an error rolls
+						// back the reversal of this leg with the rest.
+						if err := b.ensureAccountOpen(o.AccountID); err != nil {
+							return err
+						}
 						// Reverse the counterpart's share effect (restore source
 						// lots / remove the dest lot) before its row + junctions are
 						// cascaded away.

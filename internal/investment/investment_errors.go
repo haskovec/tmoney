@@ -117,3 +117,33 @@ func (e *IsShareTransferLegError) Error() string {
 		e.ID, e.TransferID,
 	)
 }
+
+// ShareTransferDestinationLegError is returned when a share-transfer edit is
+// started from the receiving leg. The edit rewrites the pair from its source
+// side; started from the destination it would move the shares back the other
+// way. SourceAccountID names the account the edit must start from.
+type ShareTransferDestinationLegError struct {
+	ID              string
+	TransferID      string
+	SourceAccountID types.ID
+}
+
+func (e *ShareTransferDestinationLegError) Error() string {
+	return fmt.Sprintf(
+		"investment transaction %s is the receiving leg of share transfer %s; edit the transfer from its source account %s",
+		e.ID, e.TransferID, e.SourceAccountID,
+	)
+}
+
+// BrokenShareTransferError is returned when a share transfer's rows do not
+// form one intact pair that an edit can rewrite. Nothing is written.
+type BrokenShareTransferError struct {
+	ID         string
+	TransferID string
+	Reason     string
+}
+
+func (e *BrokenShareTransferError) Error() string {
+	return fmt.Sprintf("share transfer %s (row %s) cannot be edited: %s; nothing was changed",
+		e.TransferID, e.ID, e.Reason)
+}

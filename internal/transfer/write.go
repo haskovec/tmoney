@@ -12,9 +12,10 @@ import (
 //
 // Delete + Create is the correct way to re-account a transfer — it is
 // observable and undoable as two steps. A silent re-account would have to reason
-// about opening dates and closed state across four accounts at once, which is
-// exactly the complexity UpdateTransferShares carries today and gets wrong (it
-// dereferences srcOld.TransferAccountID.ID having only checked TransferID.Valid).
+// about opening dates and closed state across four accounts at once. That is
+// the complexity UpdateTransferShares carries: before it may reverse anything it
+// must prove the pair intact, check four accounts, and heal four
+// account/security pairs.
 // investment.UpdateTransferCash's signature accepts new account IDs, so the
 // capability exists in the service layer today even though no front end can
 // reach it.

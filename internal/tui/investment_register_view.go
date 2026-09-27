@@ -633,6 +633,10 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	case key.Matches(msg, a.keys.Enter):
 		txn := a.selectedInvestmentTransaction()
 		if txn != nil {
+			if notice, refused := a.shareTransferEditRefusal(txn); refused {
+				a.statusbar.AddNotification(notice, widget.NotificationAlert)
+				return a, nil
+			}
 			a.openInvestmentTypeSelector(true)
 		}
 	case msg.String() == "c":
@@ -895,6 +899,27 @@ func investmentTransactionTypeFromIndex(idx int) investment.TransactionType {
 		return types[idx]
 	}
 	return investment.TransactionTypeBuy
+}
+
+// shareTransferEditRefusal returns the notice for a share-transfer row that
+// this register cannot edit. The edit dialog always sends from the register's
+// account, so only the sending leg can be edited here. The service refuses the
+// other rows too (UpdateTransferShares); checking first keeps the user from
+// filling in a dialog that would be rejected.
+func (a *App) shareTransferEditRefusal(txn *investment.Transaction) (string, bool) {
+	if txn.Type != investment.TransactionTypeTransferShares || txn.IsShareTransferSource() {
+		return "", false
+	}
+	if !txn.IsShareTransferDestination() {
+		return "This share transfer has no cost basis, so its direction is unknown. It cannot be edited.", true
+	}
+	source := "its source account"
+	if txn.TransferAccountID.Valid && a.services.Account != nil {
+		if acct, err := a.services.Account.GetByID(txn.TransferAccountID.ID); err == nil {
+			source = acct.Name
+		}
+	}
+	return fmt.Sprintf("Edit this share transfer from %s.", source), true
 }
 
 // investmentTransactionTypeIndex returns the selector index for the given transaction type.
