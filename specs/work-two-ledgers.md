@@ -45,7 +45,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W1 | done (#46) | Corporate Actions help | — | small |
 | W2 | done (#47) | Reload Reconciliation and Corporate Actions | — | small |
 | W3a | done (#48) | Merger ratio must mean target shares per source share | — | small |
-| W3 | open | Merger cash and ratio must be decimal | W3a | small |
+| W3 | done (#49) | Merger cash and ratio must be decimal | W3a | small |
 | W4 | open | Share-transfer edit must keep both legs | — | medium |
 | W5a | open | Close refuses an investment account that is not empty | — | medium |
 | W5b | open | Delete counts the ledger of the account type | — | small |
@@ -184,7 +184,7 @@ The file comment at the top of `corporate_action_merger.go` says the code pays c
 
 ## W3 — Merger cash and ratio must be decimal
 
-**Status:** open
+**Status:** done in PR #49, as a cleanup. See the correction below.
 **Needs:** W3a.
 **Decision:** New rows write bare JSON numbers with exact digits, for example `{"exchange_ratio":1.1,"cash_per_share":0.1}`. The on-disk shape does not change, so old rows, new rows, and older binaries can all read the file.
 
@@ -193,6 +193,8 @@ The file comment at the top of `corporate_action_merger.go` says the code pays c
 `MergerParams.CashPerShare` is a `float64` (`internal/investment/corporate_action.go`). `Merger` converts it with `types.NewMoneyFromFloat` (`internal/investment/corporate_action_merger.go`, both the lot path and the position path). Binary floating point cannot hold 0.10 exactly. The cash row on the investment ledger can be wrong by a fraction of a cent.
 
 `ExchangeRatio` is also a `float64`. `Merger` does `alpacadecimal.NewFromFloat(params.ExchangeRatio)` and `NewFromFloat(1.0 / params.ExchangeRatio)`. That ratio is not money, but it scales share counts. A ratio such as `2/3` is already inexact before the decimal library sees it.
+
+**Correction (2026-09-27, found while building W3).** The two paragraphs above overstate the damage. `NewFromFloat` and `NewMoneyFromFloat` write the shortest decimal that maps back to the same float. Thus a typed value with 15 or fewer significant digits, such as `0.10` or `1.1`, comes back exact. A longer value comes back different in memory, but storage rounds shares to 8 places and cost to 4, so the stored rows are the same. The W3 exact-decimal test passes on the old float path too. The real float damage was `NewFromFloat(1.0 / params.ExchangeRatio)`, and W3a removed it. W3 shipped as a cleanup: it keeps floats off the money path so that this stays true for any input.
 
 The float starts at the input, not only at storage. The CLI parses both flags with `strconv.ParseFloat` (`internal/cli/investment/merge.go`). The TUI dialog does the same (`internal/tui/corporate_action_merger_dialog.go`), and the confirm data carries `float64` (`corporate_action_merger_confirm.go`). The history text in the TUI and the CLI formats the fields with `%.2f`.
 
@@ -218,7 +220,7 @@ Stored corporate actions keep these fields as JSON numbers (`ToJSON` / the parse
 - No production call in the merger path uses `NewMoneyFromFloat`, `NewFromFloat`, or `strconv.ParseFloat`.
 - An old corporate-action row with `"cash_per_share": 1.5` still parses.
 - A new row writes bare numbers.
-- The new test locks 0.10 cash.
+- The new test locks 0.10 cash. (It is a regression lock. It also passes on the old float path; see the correction.)
 
 ### Do not
 
