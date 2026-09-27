@@ -169,9 +169,10 @@ func formatActionDetails(ca *investmentdom.CorporateAction, labels map[types.ID]
 		}
 		target := actionTargetLabel(ca.TargetSecurityID, labels)
 		if params.HasCashConsideration() {
-			return fmt.Sprintf("→ %s, ratio %.2f, cash $%.2f/sh", target, params.ExchangeRatio, params.CashPerShare)
+			return fmt.Sprintf("→ %s, ratio %s, cash $%s/sh", target,
+				params.ExchangeRatio.Decimal().StringFixed(2), params.CashPerShare.Decimal().StringFixed(2))
 		}
-		return fmt.Sprintf("→ %s, ratio %.2f", target, params.ExchangeRatio)
+		return fmt.Sprintf("→ %s, ratio %s", target, params.ExchangeRatio.Decimal().StringFixed(2))
 
 	case investmentdom.ActionTypeSpinOff:
 		params, err := investmentdom.ParseSpinOffParams(ca.Parameters)

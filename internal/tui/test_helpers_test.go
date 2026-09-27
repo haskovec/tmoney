@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
@@ -40,4 +41,14 @@ func runCmd(t *testing.T, a *App, cmd tea.Cmd, depth int) {
 		_, next := a.Update(msg)
 		runCmd(t, a, next, depth-1)
 	}
+}
+
+// paramDec parses a test constant into an investment.ParamDecimal. It panics
+// on a typo, the way types.MustNewMoney does.
+func paramDec(s string) investment.ParamDecimal {
+	d, err := investment.ParseParamDecimal(s)
+	if err != nil {
+		panic(err)
+	}
+	return d
 }

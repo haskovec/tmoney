@@ -37,7 +37,7 @@ func newTestCorporateActionViewData(t *testing.T) (*App, *investment.CorporateAc
 		splitJSON,
 	)
 
-	mergerParams := investment.MergerParams{ExchangeRatio: 0.5}
+	mergerParams := investment.MergerParams{ExchangeRatio: paramDec("0.5")}
 	mergerJSON, _ := mergerParams.ToJSON()
 	mergerAction := investment.NewCorporateAction(
 		investment.ActionTypeMerger,

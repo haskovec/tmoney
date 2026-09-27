@@ -267,7 +267,7 @@ func TestPerformance_MergerCashIsReturnNotContribution(t *testing.T) {
 	deposit(t, env, acct.ID, d0, "1000")
 	buy(t, env, acct.ID, src.ID, d0, "10", "1000")
 	// 1 NEW per OLD at the same cost, plus $20/share cash.
-	if _, err := newCASvc(env).Merger(src.ID, dst.ID, d1, MergerParams{ExchangeRatio: 1, CashPerShare: 20}); err != nil {
+	if _, err := newCASvc(env).Merger(src.ID, dst.ID, d1, MergerParams{ExchangeRatio: paramDec("1"), CashPerShare: paramDec("20")}); err != nil {
 		t.Fatalf("Merger() error = %v", err)
 	}
 	addPrice(t, env, dst.ID, d2, "120")

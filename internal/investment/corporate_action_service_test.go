@@ -725,7 +725,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		costBasisBefore := lots[0].CostBasis()
 
 		// Apply 2:1 merger (2 old shares = 1 new share): ratio 0.5 target shares per source share
-		params := MergerParams{ExchangeRatio: 0.5}
+		params := MergerParams{ExchangeRatio: paramDec("0.5")}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -791,7 +791,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		}
 
 		// Apply 2:1 merger (ratio 0.5)
-		params := MergerParams{ExchangeRatio: 0.5}
+		params := MergerParams{ExchangeRatio: paramDec("0.5")}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -839,7 +839,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		total := types.MustNewMoney("1000.00")
 		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, purchaseDate, types.MustNewQuantity("10"), &total, nil, types.ZeroMoney, "")
 
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -872,7 +872,7 @@ func TestCorporateActionService_Merger_ExchangeShares(t *testing.T) {
 		}
 
 		// Apply merger
-		params := MergerParams{ExchangeRatio: 0.5}
+		params := MergerParams{ExchangeRatio: paramDec("0.5")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -930,7 +930,7 @@ func TestCorporateActionService_Merger_RatioIsTargetPerSource(t *testing.T) {
 			}
 
 			if _, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, types.NewDate(2024, time.June, 1),
-				MergerParams{ExchangeRatio: 2}); err != nil {
+				MergerParams{ExchangeRatio: paramDec("2")}); err != nil {
 				t.Fatalf("Merger() error = %v", err)
 			}
 
@@ -970,15 +970,15 @@ func TestCorporateActionService_Merger_RatioIsTargetPerSource(t *testing.T) {
 // the rounding; it cannot stay exact when old cost ÷ ratio has more places.
 func TestCorporateActionService_Merger_OneRoundedCost(t *testing.T) {
 	cases := []struct {
-		ratio          float64
+		ratio          string
 		sourceCost     string // per share, on 100 source shares
 		wantShares     string
 		wantCost       string
 		wantTotalBasis string
 	}{
-		{3, "50.00", "300", "16.6667", "5000.01"},
-		{3, "10.00", "300", "3.3333", "999.99"},
-		{1.5, "10.00", "150", "6.6667", "1000.005"},
+		{"3", "50.00", "300", "16.6667", "5000.01"},
+		{"3", "10.00", "300", "3.3333", "999.99"},
+		{"1.5", "10.00", "150", "6.6667", "1000.005"},
 	}
 	paths := []struct {
 		name    string
@@ -993,7 +993,7 @@ func TestCorporateActionService_Merger_OneRoundedCost(t *testing.T) {
 	}
 	for _, path := range paths {
 		for _, tc := range cases {
-			t.Run(fmt.Sprintf("%s/ratio %v at %s", path.name, tc.ratio, tc.sourceCost), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/ratio %s at %s", path.name, tc.ratio, tc.sourceCost), func(t *testing.T) {
 				env := createCATestEnv(t)
 				acctID := path.account(t, env)
 				sourceSec := createSec(t, env.secRepo, "OLD")
@@ -1008,7 +1008,7 @@ func TestCorporateActionService_Merger_OneRoundedCost(t *testing.T) {
 					t.Fatal(err)
 				}
 				if _, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, types.NewDate(2024, time.June, 1),
-					MergerParams{ExchangeRatio: tc.ratio}); err != nil {
+					MergerParams{ExchangeRatio: paramDec(tc.ratio)}); err != nil {
 					t.Fatalf("Merger() error = %v", err)
 				}
 
@@ -1077,7 +1077,7 @@ func TestCorporateActionService_Merger_CashConsideration(t *testing.T) {
 		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
 
 		// Apply merger with $5/share cash consideration
-		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("5.0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1106,7 +1106,7 @@ func TestCorporateActionService_Merger_CashConsideration(t *testing.T) {
 
 		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
 
-		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("5.0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1134,7 +1134,7 @@ func TestCorporateActionService_Merger_CashConsideration(t *testing.T) {
 
 		cashBefore, _ := env.invSvc.GetCashBalance(acct.ID)
 
-		params := MergerParams{ExchangeRatio: 2.0} // No cash
+		params := MergerParams{ExchangeRatio: paramDec("2.0")} // No cash
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1171,7 +1171,7 @@ func TestCorporateActionService_Merger_AutoHide(t *testing.T) {
 			t.Fatal("source security should not be hidden before merger")
 		}
 
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1201,7 +1201,7 @@ func TestCorporateActionService_Merger_AutoHide(t *testing.T) {
 		_ = env.secRepo.Update(sourceSec)
 
 		mergerDate := types.NewDate(2024, time.June, 1)
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1238,7 +1238,7 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 		costBasisBefore := pos.CostBasis()
 
 		// Apply 2:1 merger (ratio 0.5)
-		params := MergerParams{ExchangeRatio: 0.5}
+		params := MergerParams{ExchangeRatio: paramDec("0.5")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1282,7 +1282,7 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 			_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, "")
 		}
 
-		params := MergerParams{ExchangeRatio: 1.0} // 1:1 exchange for simplicity
+		params := MergerParams{ExchangeRatio: paramDec("1.0")} // 1:1 exchange for simplicity
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1319,7 +1319,7 @@ func TestCorporateActionService_Merger_Positions(t *testing.T) {
 		_, _ = env.invSvc.Buy(acct.ID, sourceSec.ID, date, types.MustNewQuantity("20"), &sourceTotal, nil, types.ZeroMoney, "")
 
 		// Apply 2:1 merger (ratio 0.5): 20 source → 10 target at $100 each
-		params := MergerParams{ExchangeRatio: 0.5}
+		params := MergerParams{ExchangeRatio: paramDec("0.5")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1349,7 +1349,7 @@ func TestCorporateActionService_Merger_AuditLog(t *testing.T) {
 		targetSec := createSec(t, env.secRepo, "NEW")
 		mergerDate := types.NewDate(2024, time.June, 15)
 
-		params := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("5.0")}
 		ca, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
@@ -1376,11 +1376,11 @@ func TestCorporateActionService_Merger_AuditLog(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseMergerParams() error = %v", err)
 		}
-		if parsedParams.ExchangeRatio != 2.0 {
-			t.Errorf("exchange_ratio = %f, want 2.0", parsedParams.ExchangeRatio)
+		if parsedParams.ExchangeRatio.String() != "2" {
+			t.Errorf("exchange_ratio = %s, want 2.0", parsedParams.ExchangeRatio)
 		}
-		if parsedParams.CashPerShare != 5.0 {
-			t.Errorf("cash_per_share = %f, want 5.0", parsedParams.CashPerShare)
+		if parsedParams.CashPerShare.String() != "5" {
+			t.Errorf("cash_per_share = %s, want 5.0", parsedParams.CashPerShare)
 		}
 	})
 
@@ -1391,7 +1391,7 @@ func TestCorporateActionService_Merger_AuditLog(t *testing.T) {
 		targetSec := createSec(t, env.secRepo, "NEW")
 		mergerDate := types.NewDate(2024, time.June, 15)
 
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0")}
 		ca, _ := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 
 		// Verify persisted
@@ -1436,21 +1436,21 @@ func TestCorporateActionService_Merger_Validation(t *testing.T) {
 		mergerDate := types.NewDate(2024, time.June, 1)
 
 		// Zero exchange ratio
-		params := MergerParams{ExchangeRatio: 0}
+		params := MergerParams{ExchangeRatio: paramDec("0")}
 		_, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err == nil {
 			t.Error("Merger() with zero exchange ratio should error")
 		}
 
 		// Negative exchange ratio
-		params = MergerParams{ExchangeRatio: -1.0}
+		params = MergerParams{ExchangeRatio: paramDec("-1.0")}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err == nil {
 			t.Error("Merger() with negative exchange ratio should error")
 		}
 
 		// Negative cash per share
-		params = MergerParams{ExchangeRatio: 2.0, CashPerShare: -5.0}
+		params = MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("-5.0")}
 		_, err = env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err == nil {
 			t.Error("Merger() with negative cash per share should error")
@@ -1464,7 +1464,7 @@ func TestCorporateActionService_Merger_Validation(t *testing.T) {
 		targetSec := createSec(t, env.secRepo, "NEW")
 		mergerDate := types.NewDate(2024, time.June, 1)
 
-		params := MergerParams{ExchangeRatio: 2.0}
+		params := MergerParams{ExchangeRatio: paramDec("2.0")}
 		ca, err := env.caSvc.Merger(sourceSec.ID, targetSec.ID, mergerDate, params)
 		if err != nil {
 			t.Fatalf("Merger() with no holdings error = %v", err)
@@ -2188,7 +2188,7 @@ func TestCorporateActionService_DeleteAction_ReverseSplit(t *testing.T) {
 		target := createSec(t, env.secRepo, "NEW")
 		date := types.NewDate(2024, time.June, 1)
 
-		ca, err := env.caSvc.Merger(sec.ID, target.ID, date, MergerParams{ExchangeRatio: 1.0})
+		ca, err := env.caSvc.Merger(sec.ID, target.ID, date, MergerParams{ExchangeRatio: paramDec("1.0")})
 		if err != nil {
 			t.Fatalf("Merger() error = %v", err)
 		}

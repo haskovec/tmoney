@@ -31,8 +31,8 @@ func TestCorporateActionParamsSurviveJSONV2(t *testing.T) {
 		{"SplitParams forward 4:1", SplitParams{Numerator: 4, Denominator: 1}},
 		{"SplitParams reverse 1:10", SplitParams{Numerator: 1, Denominator: 10}},
 		{"MergerParams zero", MergerParams{}},
-		{"MergerParams no cash", MergerParams{ExchangeRatio: 2.5}},
-		{"MergerParams with cash", MergerParams{ExchangeRatio: 2.5, CashPerShare: 1.25}},
+		{"MergerParams no cash", MergerParams{ExchangeRatio: paramDec("2.5")}},
+		{"MergerParams with cash", MergerParams{ExchangeRatio: paramDec("2.5"), CashPerShare: paramDec("1.25")}},
 		{"SpinOffParams zero", SpinOffParams{}},
 		{"SpinOffParams typical", SpinOffParams{ShareRatio: 0.25, ParentAllocationPct: 80}},
 	}

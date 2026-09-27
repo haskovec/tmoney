@@ -3,7 +3,6 @@ package investment
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	investmentdom "github.com/haskovec/tmoney/internal/investment"
@@ -61,14 +60,14 @@ func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 		return err
 	}
 
-	ratio, err := strconv.ParseFloat(opts.exchangeRatio, 64)
+	ratio, err := investmentdom.ParseParamDecimal(opts.exchangeRatio)
 	if err != nil {
 		return fmt.Errorf("invalid --exchange-ratio: %w", err)
 	}
 
-	var cashPerShare float64
+	var cashPerShare investmentdom.ParamDecimal
 	if opts.cashPerShare != "" {
-		cashPerShare, err = strconv.ParseFloat(opts.cashPerShare, 64)
+		cashPerShare, err = investmentdom.ParseParamDecimal(opts.cashPerShare)
 		if err != nil {
 			return fmt.Errorf("invalid --cash-per-share: %w", err)
 		}
@@ -122,7 +121,7 @@ func runInvestmentMerge(opts *investmentMergeOptions, w io.Writer) error {
 	fmt.Fprintf(w, "  Date:     %s\n", date.String())
 	fmt.Fprintf(w, "  Exchange Ratio: %s\n", opts.exchangeRatio)
 	if params.HasCashConsideration() {
-		fmt.Fprintf(w, "  Cash/Share: $%.2f\n", cashPerShare)
+		fmt.Fprintf(w, "  Cash/Share: $%s\n", cashPerShare.Decimal().StringFixed(2))
 	}
 	fmt.Fprintf(w, "  Action ID: %s\n", action.ID.String())
 

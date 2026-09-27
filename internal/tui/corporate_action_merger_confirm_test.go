@@ -35,8 +35,8 @@ func TestMergerConfirmData_WithAccountsAndLots(t *testing.T) {
 	data := &mergerConfirmData{
 		sourceTicker:  "AAPL",
 		targetTicker:  "MSFT",
-		exchangeRatio: 2.0,
-		cashPerShare:  5.00,
+		exchangeRatio: paramDec("2.0"),
+		cashPerShare:  paramDec("5.00"),
 		accounts: []mergerAffectedAccount{
 			{
 				accountID:   acctID,
@@ -75,7 +75,7 @@ func TestMergerConfirmData_WithPositions(t *testing.T) {
 	data := &mergerConfirmData{
 		sourceTicker:  "AAPL",
 		targetTicker:  "MSFT",
-		exchangeRatio: 2.0,
+		exchangeRatio: paramDec("2.0"),
 		accounts: []mergerAffectedAccount{
 			{
 				accountID:   acctID,
@@ -124,8 +124,8 @@ func TestBuildMergerConfirmParams(t *testing.T) {
 		sourceSecurityID: sourceID,
 		targetSecurityID: targetID,
 		mergerDate:       d,
-		exchangeRatio:    2.5,
-		cashPerShare:     10.00,
+		exchangeRatio:    paramDec("2.5"),
+		cashPerShare:     paramDec("10.00"),
 	}
 
 	if params.sourceSecurityID != sourceID {
@@ -134,11 +134,11 @@ func TestBuildMergerConfirmParams(t *testing.T) {
 	if params.targetSecurityID != targetID {
 		t.Error("target security ID mismatch")
 	}
-	if params.exchangeRatio != 2.5 {
-		t.Errorf("exchange ratio = %f, want 2.5", params.exchangeRatio)
+	if params.exchangeRatio.String() != "2.5" {
+		t.Errorf("exchange ratio = %s, want 2.5", params.exchangeRatio)
 	}
-	if params.cashPerShare != 10.00 {
-		t.Errorf("cash per share = %f, want 10.00", params.cashPerShare)
+	if params.cashPerShare.String() != "10" {
+		t.Errorf("cash per share = %s, want 10.00", params.cashPerShare)
 	}
 }
 
@@ -184,11 +184,11 @@ func TestSubmitMergerDialog_TransitionsToConfirmation(t *testing.T) {
 	if updatedApp.mergerConfirm.params.targetSecurityID != targetID {
 		t.Error("target security ID mismatch")
 	}
-	if updatedApp.mergerConfirm.params.exchangeRatio != 2.5 {
-		t.Errorf("exchange ratio = %f, want 2.5", updatedApp.mergerConfirm.params.exchangeRatio)
+	if updatedApp.mergerConfirm.params.exchangeRatio.String() != "2.5" {
+		t.Errorf("exchange ratio = %s, want 2.5", updatedApp.mergerConfirm.params.exchangeRatio)
 	}
-	if updatedApp.mergerConfirm.params.cashPerShare != 10.00 {
-		t.Errorf("cash per share = %f, want 10.00", updatedApp.mergerConfirm.params.cashPerShare)
+	if updatedApp.mergerConfirm.params.cashPerShare.String() != "10" {
+		t.Errorf("cash per share = %s, want 10.00", updatedApp.mergerConfirm.params.cashPerShare)
 	}
 
 	// Should return a command to load confirmation data
@@ -230,8 +230,8 @@ func TestSubmitMergerDialog_TransitionsWithoutCash(t *testing.T) {
 	if updatedApp.mergerConfirm.params == nil {
 		t.Fatal("confirm params should be stored")
 	}
-	if updatedApp.mergerConfirm.params.cashPerShare != 0 {
-		t.Errorf("cash per share = %f, want 0", updatedApp.mergerConfirm.params.cashPerShare)
+	if !updatedApp.mergerConfirm.params.cashPerShare.IsZero() {
+		t.Errorf("cash per share = %s, want 0", updatedApp.mergerConfirm.params.cashPerShare)
 	}
 	if cmd == nil {
 		t.Error("should return command to load confirmation data")
@@ -317,8 +317,8 @@ func TestHandleMergerConfirmKey_Enter(t *testing.T) {
 				sourceSecurityID: sourceID,
 				targetSecurityID: targetID,
 				mergerDate:       d,
-				exchangeRatio:    2.0,
-				cashPerShare:     0,
+				exchangeRatio:    paramDec("2.0"),
+				cashPerShare:     paramDec("0"),
 			}},
 
 		keys: defaultKeyMap(),
@@ -346,8 +346,8 @@ func TestRenderMergerConfirmation_NotNil(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
-			cashPerShare:  5.00,
+			exchangeRatio: paramDec("2.0"),
+			cashPerShare:  paramDec("5.00"),
 			date:          "06/10/2024",
 			accounts: []mergerAffectedAccount{
 				{
@@ -388,7 +388,7 @@ func TestRenderMergerConfirmation_ContainsSourceAndTarget(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
+			exchangeRatio: paramDec("2.0"),
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		}},
@@ -412,8 +412,8 @@ func TestRenderMergerConfirmation_ContainsCashInfo(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
-			cashPerShare:  5.00,
+			exchangeRatio: paramDec("2.0"),
+			cashPerShare:  paramDec("5.00"),
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		}},
@@ -434,7 +434,7 @@ func TestRenderMergerConfirmation_NoAccounts(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
+			exchangeRatio: paramDec("2.0"),
 			date:          "06/10/2024",
 			accounts:      []mergerAffectedAccount{},
 		}},
@@ -455,7 +455,7 @@ func TestRenderMergerConfirmation_WithLotTrackingAccount(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
+			exchangeRatio: paramDec("2.0"),
 			date:          "06/10/2024",
 			accounts: []mergerAffectedAccount{
 				{
@@ -496,7 +496,7 @@ func TestRenderMergerConfirmation_WithNonLotAccount(t *testing.T) {
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
+			exchangeRatio: paramDec("2.0"),
 			date:          "06/10/2024",
 			accounts: []mergerAffectedAccount{
 				{
@@ -573,7 +573,7 @@ func mergerConfirmMouseEnv(t *testing.T, w, h, accounts int) (*App, string, int,
 		mergerConfirm: mergerConfirmSurface{data: &mergerConfirmData{
 			sourceTicker:  "AAPL",
 			targetTicker:  "MSFT",
-			exchangeRatio: 2.0,
+			exchangeRatio: paramDec("2.0"),
 			date:          "06/10/2024",
 			accounts:      affected,
 		},
@@ -581,7 +581,7 @@ func mergerConfirmMouseEnv(t *testing.T, w, h, accounts int) (*App, string, int,
 				sourceSecurityID: types.NewID(),
 				targetSecurityID: types.NewID(),
 				mergerDate:       types.NewDate(2024, time.June, 10),
-				exchangeRatio:    2.0,
+				exchangeRatio:    paramDec("2.0"),
 			}},
 	}
 	overlay := app.renderMergerConfirmation()
