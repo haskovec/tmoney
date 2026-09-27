@@ -205,21 +205,6 @@ func dialogShortcuts() shortcutSection {
 	}
 }
 
-// allShortcutSections returns all shortcut sections in display order.
-func allShortcutSections() []shortcutSection {
-	return []shortcutSection{
-		globalShortcuts(),
-		navigationShortcuts(),
-		dashboardShortcuts(),
-		registerShortcuts(),
-		scheduledShortcuts(),
-		reportsShortcuts(),
-		securitiesShortcuts(),
-		reconciliationShortcuts(),
-		dialogShortcuts(),
-	}
-}
-
 // viewShortcutSections returns the shortcut sections relevant to the given view,
 // including global and navigation sections plus the view-specific section.
 func viewShortcutSections(view View) []shortcutSection {
@@ -247,6 +232,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		sections = append(sections, investmentRegisterShortcuts())
 	case ViewPortfolio:
 		sections = append(sections, portfolioShortcuts())
+	case ViewCorporateActions:
+		sections = append(sections, corporateActionShortcuts())
 	case ViewAmortization:
 		sections = append(sections, amortizationShortcuts())
 	}
