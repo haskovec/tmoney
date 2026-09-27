@@ -315,6 +315,14 @@ func (s *EditService) UpdateInterest(oldID types.ID, accountID types.ID, date ty
 
 // UpdateTransferShares edits an existing share transfer between two
 // investment accounts. Both sides are reversed before creating the new pair.
+//
+// oldSourceTxnID must be the sending leg of an intact pair. The receiving leg
+// is refused with a ShareTransferDestinationLegError: callers pass the
+// account the edit starts from as the new source, so an edit begun on the
+// destination would reverse the transfer's direction. A pair that is not
+// intact — no other account on the row, no other leg, or a leg in another
+// account — is refused with a BrokenShareTransferError before anything is
+// reversed, so a missing leg can no longer leave its shares behind.
 func (s *EditService) UpdateTransferShares(
 	oldSourceTxnID types.ID,
 	sourceAccountID, destAccountID types.ID,
@@ -328,51 +336,46 @@ func (s *EditService) UpdateTransferShares(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load source transfer for edit: %w", err)
 	}
-	if !srcOld.TransferID.Valid {
+	if !srcOld.TransferID.Valid || srcOld.Type != TransactionTypeTransferShares {
 		return nil, fmt.Errorf("UpdateTransferShares: txn %s is not a share transfer", oldSourceTxnID)
 	}
-	// A closed account is frozen — refuse before any destructive reverse/delete.
-	// Guard BOTH legs of the EXISTING transfer (old source + old destination,
-	// which lives on srcOld.TransferAccountID) as well as both NEW target
-	// accounts, mirroring the transaction package's checkTransferEditable. A
-	// share-only account can be closed (the balance check is cash-only), so the
-	// old destination must be checked or its leg would be silently
-	// reversed/deleted below.
-	if err := s.core.ensureAccountOpen(srcOld.AccountID); err != nil {
+	dstOld, err := s.core.shareTransferCounterpart(srcOld)
+	if err != nil {
 		return nil, err
 	}
-	if srcOld.TransferAccountID.Valid {
-		if err := s.core.ensureAccountOpen(srcOld.TransferAccountID.ID); err != nil {
+
+	// A closed account is frozen — refuse before any destructive reverse/delete.
+	// Guard both legs of the existing transfer and both new target accounts,
+	// mirroring the transfer owner's checkTransferEditable. A share-only
+	// account can be closed (the balance check is cash-only), so the old
+	// destination must be checked or its leg would be silently reversed/deleted
+	// below.
+	for _, id := range []types.ID{srcOld.AccountID, dstOld.AccountID, sourceAccountID, destAccountID} {
+		if err := s.core.ensureAccountOpen(id); err != nil {
 			return nil, err
 		}
 	}
-	if err := s.core.ensureAccountOpen(sourceAccountID); err != nil {
-		return nil, err
-	}
-	if err := s.core.ensureAccountOpen(destAccountID); err != nil {
-		return nil, err
-	}
-	// Find the destination side by transfer_id.
-	var dstOld *Transaction
-	all, err := s.core.repo.ListByAccount(srcOld.TransferAccountID.ID, TransactionFilter{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list destination transfers: %w", err)
-	}
-	for _, t := range all {
-		if t.TransferID.Valid && t.TransferID.ID == srcOld.TransferID.ID && t.ID != srcOld.ID {
-			dstOld = t
-			break
-		}
-	}
 
-	// Heal both legs' stored state in their own committed txs before the edit tx,
-	// mirroring what TransferShares does when called standalone. The bound
-	// TransferShares inside the tx skips its own re-heal.
-	if err := s.core.healInOwnTx(sourceAccountID, securityID); err != nil {
-		return nil, err
-	}
-	if err := s.core.healInOwnTx(destAccountID, securityID); err != nil {
-		return nil, err
+	// Heal every account/security pair the edit touches, old and new, each in
+	// its own committed tx before the edit tx, mirroring what TransferShares
+	// does when called standalone. Reverse must run on repaired lots of the
+	// OLD accounts; the bound TransferShares inside the tx skips its re-heal,
+	// so the NEW accounts are repaired here too.
+	oldSecurityID := srcOld.SecurityID.ID
+	healed := make(map[[2]types.ID]bool)
+	for _, pair := range [][2]types.ID{
+		{srcOld.AccountID, oldSecurityID},
+		{dstOld.AccountID, oldSecurityID},
+		{sourceAccountID, securityID},
+		{destAccountID, securityID},
+	} {
+		if healed[pair] {
+			continue
+		}
+		healed[pair] = true
+		if err := s.core.healInOwnTx(pair[0], pair[1]); err != nil {
+			return nil, err
+		}
 	}
 
 	// Reverse both legs, delete both old rows, and create the new pair in one
@@ -382,13 +385,11 @@ func (s *EditService) UpdateTransferShares(
 		if err := b.reverseTxnEffects(srcOld); err != nil {
 			return err
 		}
-		if dstOld != nil {
-			if err := b.reverseTxnEffects(dstOld); err != nil {
-				return err
-			}
-			if err := b.repo.Delete(dstOld.ID); err != nil {
-				return fmt.Errorf("failed to delete destination transfer for edit: %w", err)
-			}
+		if err := b.reverseTxnEffects(dstOld); err != nil {
+			return err
+		}
+		if err := b.repo.Delete(dstOld.ID); err != nil {
+			return fmt.Errorf("failed to delete destination transfer for edit: %w", err)
 		}
 		if err := b.repo.Delete(oldSourceTxnID); err != nil {
 			return fmt.Errorf("failed to delete source transfer for edit: %w", err)
@@ -400,4 +401,48 @@ func (s *EditService) UpdateTransferShares(
 		return nil, err
 	}
 	return result, nil
+}
+
+// shareTransferCounterpart checks that src is the sending leg of an intact
+// share transfer and returns the receiving leg. The pair is found by
+// transfer_id, not by listing the other account's rows.
+func (s *Service) shareTransferCounterpart(src *Transaction) (*Transaction, error) {
+	broken := func(reason string) error {
+		return &BrokenShareTransferError{ID: src.ID.String(), TransferID: src.TransferID.ID.String(), Reason: reason}
+	}
+	if !src.TransferAccountID.Valid {
+		return nil, broken("the row names no other account")
+	}
+	if !src.SecurityID.Valid {
+		return nil, broken("the row names no security")
+	}
+	switch {
+	case src.IsShareTransferDestination():
+		return nil, &ShareTransferDestinationLegError{
+			ID:              src.ID.String(),
+			TransferID:      src.TransferID.ID.String(),
+			SourceAccountID: src.TransferAccountID.ID,
+		}
+	case !src.IsShareTransferSource():
+		return nil, broken("it has no cost basis, so its direction is unknown")
+	}
+
+	legs, err := s.repo.ListByTransferID(src.TransferID.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load share transfer legs: %w", err)
+	}
+	var others []*Transaction
+	for _, t := range legs {
+		if t.ID != src.ID {
+			others = append(others, t)
+		}
+	}
+	if len(others) != 1 {
+		return nil, broken(fmt.Sprintf("it has %d other legs, want 1", len(others)))
+	}
+	dst := others[0]
+	if dst.AccountID != src.TransferAccountID.ID || !dst.IsShareTransferDestination() {
+		return nil, broken("the other leg is not the receiving side in the named account")
+	}
+	return dst, nil
 }

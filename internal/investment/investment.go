@@ -386,6 +386,21 @@ func (t *Transaction) SetTransfer(transferID, transferAccountID types.ID) {
 	t.Touch()
 }
 
+// IsShareTransferSource reports whether the row is the sending leg of a share
+// transfer. TransferShares writes the source leg with the negated cost basis
+// and the destination leg with the positive one, and reverseTransferShares
+// reads the direction from that sign. A zero-basis leg is neither: its
+// direction cannot be read from the row.
+func (t *Transaction) IsShareTransferSource() bool {
+	return t.Type == TransactionTypeTransferShares && t.TotalAmount.IsNegative()
+}
+
+// IsShareTransferDestination reports whether the row is the receiving leg of
+// a share transfer. See IsShareTransferSource.
+func (t *Transaction) IsShareTransferDestination() bool {
+	return t.Type == TransactionTypeTransferShares && t.TotalAmount.IsPositive()
+}
+
 // ClearTransfer removes the transfer link from this transaction.
 func (t *Transaction) ClearTransfer() {
 	t.TransferID = types.NullableID{Valid: false}
