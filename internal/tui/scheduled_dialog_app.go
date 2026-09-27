@@ -126,6 +126,13 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 		if a.sched.data != nil && a.sched.data.isTransfer {
 			return a.submitScheduledTransferDialog()
 		}
+		// A click on Save commits a moved Account highlight inside that
+		// click, so the refresh below has not seen the new account yet. Run
+		// it now. If it drops the chosen category, stop so the user sees it.
+		if a.refreshSchedCategoryOptionsForAccount() {
+			a.sched.dlg.Fields()[schedFieldCategory].Error = "Value Adjustment is only for asset accounts"
+			return a, nil
+		}
 		return a.submitScheduledDialog()
 	case dialog.DialogActionCancel:
 		a.closeScheduledDialog()
@@ -175,20 +182,22 @@ func (a *App) schedDialogIncludeValueAdjustment() bool {
 // since the options were last built — surfacing or hiding the Value
 // Adjustment category accordingly. It preserves the current category
 // selection by ID and is a no-op when nothing changed (so it is cheap
-// to call on every keypress).
-func (a *App) refreshSchedCategoryOptionsForAccount() {
+// to call on every keypress). It reports dropped when the selected
+// category is not in the new list (Value Adjustment on a non-asset
+// account), in which case the selection falls back to "(None)".
+func (a *App) refreshSchedCategoryOptionsForAccount() (dropped bool) {
 	if a.sched.dlg == nil || a.services.Category == nil {
-		return
+		return false
 	}
 	fields := a.sched.dlg.Fields()
 	if len(fields) <= schedFieldCategory {
-		return
+		return false
 	}
 
 	includeVA := a.schedDialogIncludeValueAdjustment()
 	hasVA := slices.Contains(a.sched.categoryOptions, category.ValueAdjustmentCategoryName)
 	if hasVA == includeVA {
-		return
+		return false
 	}
 
 	catField := fields[schedFieldCategory]
@@ -199,21 +208,26 @@ func (a *App) refreshSchedCategoryOptionsForAccount() {
 
 	cats, err := a.services.Category.List()
 	if err != nil {
-		return
+		return false
 	}
 	options, ids := buildCategoryOptionsFor(cats, includeVA)
 	a.sched.categoryOptions = options
 	a.sched.categoryIDs = ids
 	catField.Options = options
 
-	newIdx := 0
+	newIdx := -1
 	for i, id := range ids {
 		if id == selectedID {
 			newIdx = i
 			break
 		}
 	}
-	catField.SelectedIndex = newIdx
+	if newIdx < 0 {
+		catField.SelectIndex(0)
+		return !selectedID.IsNil()
+	}
+	catField.SelectIndex(newIdx)
+	return false
 }
 
 // openCreateCategorySubDialogFromSched hides the scheduled dialog and opens
@@ -270,7 +284,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 				break
 			}
 		}
-		catField.SelectedIndex = newIdx
+		catField.SelectIndex(newIdx)
 		// Focus advances to Amount so the user can keep typing.
 		a.sched.dlg.SetFocusIndex(schedFieldAmount)
 		a.sched.dlg.SetVisible(true)

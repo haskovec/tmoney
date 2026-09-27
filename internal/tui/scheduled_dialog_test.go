@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -549,6 +550,74 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 	fields := updatedApp.sched.dlg.Fields()
 	if fields[schedFieldPayee].Value != "Test Payee" {
 		t.Errorf("payee = %q, want %q", fields[schedFieldPayee].Value, "Test Payee")
+	}
+}
+
+// TestScheduledDialog_ClickSave_DropsValueAdjustmentForNonAsset pins that a
+// click on Save refreshes the category list for an account that the click
+// itself committed. Value Adjustment chosen for an asset account must not be
+// saved on a non-asset account: the save stops with an error on Category.
+func TestScheduledDialog_ClickSave_DropsValueAdjustmentForNonAsset(t *testing.T) {
+	database := dbtest.New(t)
+	catSvc := category.NewService(category.NewRepository(database), database)
+	if _, err := catSvc.EnsureValueAdjustmentCategory(); err != nil {
+		t.Fatalf("EnsureValueAdjustmentCategory: %v", err)
+	}
+	house := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "House", Type: account.TypeAsset, Active: true}
+	checking := &account.Account{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking", Type: account.TypeChecking, Active: true}
+
+	app := &App{
+		currentView: ViewScheduled,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		services:    app.Services{Category: catSvc},
+	}
+	app.Update(scheduledDialogDataMsg{data: &scheduledDialogData{
+		mode:     scheduledDialogModeNew,
+		accounts: []*account.Account{house, checking},
+		payeeMap: map[string]*payee.Payee{},
+	}})
+	d := app.sched.dlg
+	if d == nil {
+		t.Fatal("scheduled dialog should be open")
+	}
+	fields := d.Fields()
+
+	// House (an asset) is selected, so Value Adjustment is offered. Pick it.
+	vaIdx := slices.Index(app.sched.categoryOptions, category.ValueAdjustmentCategoryName)
+	if vaIdx < 0 {
+		t.Fatalf("Value Adjustment should be offered for an asset account: %v", app.sched.categoryOptions)
+	}
+	fields[schedFieldCategory].SelectIndex(vaIdx)
+
+	// Highlight Checking on the Account combo, then click Save.
+	d.SetFocusIndex(schedFieldAccount)
+	app.handleScheduledDialogKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	contentWidth := d.Width() - dialog.DialogHorizontalOverhead
+	clicked := false
+	for y := 0; y < d.RenderedHeight() && !clicked; y++ {
+		for x := range contentWidth {
+			if hit := d.HitTestContent(x, y, contentWidth); hit.Zone == dialog.DialogHitButton && hit.ButtonIndex == 0 {
+				app.scheduledDialogAction(d.HandleMouseLocal(x, y))
+				clicked = true
+				break
+			}
+		}
+	}
+	if !clicked {
+		t.Fatal("Save button not found")
+	}
+
+	if got := fields[schedFieldAccount].SelectedOption(); got != "Checking" {
+		t.Fatalf("Account = %q, want %q (committed by the click)", got, "Checking")
+	}
+	if got := fields[schedFieldCategory].SelectedOption(); got == category.ValueAdjustmentCategoryName {
+		t.Error("Value Adjustment must not stay selected for a non-asset account")
+	}
+	if fields[schedFieldCategory].Error == "" {
+		t.Error("the save should stop with an error on Category")
 	}
 }
 
