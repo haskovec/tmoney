@@ -242,20 +242,23 @@ func ParseSplitRatio(ratio string) (*SplitParams, error) {
 	return &sp, nil
 }
 
-// MergerParams holds the parameters for a merger/acquisition.
+// MergerParams holds the parameters for a merger/acquisition. Both are exact
+// decimals: the ratio scales share counts, and the cash is money.
 type MergerParams struct {
-	ExchangeRatio float64 `json:"exchange_ratio"`
-	CashPerShare  float64 `json:"cash_per_share,omitzero"`
+	// ExchangeRatio is target shares received per source share.
+	ExchangeRatio ParamDecimal `json:"exchange_ratio"`
+	// CashPerShare is paid per source share.
+	CashPerShare ParamDecimal `json:"cash_per_share,omitzero"`
 }
 
 // Validate validates merger parameters.
 func (mp MergerParams) Validate() types.ValidationErrors {
 	v := types.NewValidator()
 
-	if mp.ExchangeRatio <= 0 {
+	if mp.ExchangeRatio.Decimal().Sign() <= 0 {
 		v.AddError("exchange_ratio", "must be positive")
 	}
-	if mp.CashPerShare < 0 {
+	if mp.CashPerShare.Decimal().Sign() < 0 {
 		v.AddError("cash_per_share", "must not be negative")
 	}
 
@@ -264,7 +267,7 @@ func (mp MergerParams) Validate() types.ValidationErrors {
 
 // HasCashConsideration returns true if there is a cash component.
 func (mp MergerParams) HasCashConsideration() bool {
-	return mp.CashPerShare > 0
+	return mp.CashPerShare.Decimal().Sign() > 0
 }
 
 // ToJSON serializes MergerParams to a JSON string.

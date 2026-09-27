@@ -27,7 +27,7 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 		return nil, fmt.Errorf("invalid merger parameters: %s", errs.Error())
 	}
 
-	exchangeRatio := alpacadecimal.NewFromFloat(params.ExchangeRatio)
+	exchangeRatio := params.ExchangeRatio.Decimal()
 
 	// Create audit record
 	paramsJSON, err := params.ToJSON()
@@ -121,7 +121,7 @@ func (s *CorporateActionService) mergerProcessLots(sourceSecurityID, targetSecur
 
 	// Add cash consideration for lot-tracking accounts
 	if params.HasCashConsideration() {
-		cashPerShareMoney := types.NewMoneyFromFloat(params.CashPerShare)
+		cashPerShareMoney := types.NewMoneyFromDecimal(params.CashPerShare.Decimal())
 		for accountID, totalShares := range accountOldShares {
 			cashAmount := cashPerShareMoney.Mul(totalShares.Decimal())
 			cashTxn := NewTransaction(accountID, mergerDate, TransactionTypeDeposit, cashAmount)
@@ -188,7 +188,7 @@ func (s *CorporateActionService) mergerProcessPositions(sourceSecurityID, target
 
 		// Cash consideration
 		if params.HasCashConsideration() {
-			cashPerShareMoney := types.NewMoneyFromFloat(params.CashPerShare)
+			cashPerShareMoney := types.NewMoneyFromDecimal(params.CashPerShare.Decimal())
 			cashAmount := cashPerShareMoney.Mul(oldShares.Decimal())
 			cashTxn := NewTransaction(pos.AccountID, mergerDate, TransactionTypeDeposit, cashAmount)
 			cashTxn.SetMemo(MemoMergerCashConsideration)

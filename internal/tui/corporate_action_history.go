@@ -162,9 +162,10 @@ func formatCorporateActionDetails(ca *investment.CorporateAction, secMap map[typ
 		}
 		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, secMap)
 		if params.HasCashConsideration() {
-			return fmt.Sprintf("→ %s, ratio %.2f, cash $%.2f/sh", targetTicker, params.ExchangeRatio, params.CashPerShare)
+			return fmt.Sprintf("→ %s, ratio %s, cash $%s/sh", targetTicker,
+				params.ExchangeRatio.Decimal().StringFixed(2), params.CashPerShare.Decimal().StringFixed(2))
 		}
-		return fmt.Sprintf("→ %s, ratio %.2f", targetTicker, params.ExchangeRatio)
+		return fmt.Sprintf("→ %s, ratio %s", targetTicker, params.ExchangeRatio.Decimal().StringFixed(2))
 
 	case investment.ActionTypeSpinOff:
 		params, err := investment.ParseSpinOffParams(ca.Parameters)

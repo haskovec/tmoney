@@ -75,7 +75,7 @@ func TestCorporateActionRepository_Create(t *testing.T) {
 		source := createInvestmentSecurityForTest(t, secRepo, "ATVI", "Activision Blizzard")
 		target := createInvestmentSecurityForTest(t, secRepo, "MSFT", "Microsoft Corp.")
 
-		params := MergerParams{ExchangeRatio: 0.9851, CashPerShare: 1.50}
+		params := MergerParams{ExchangeRatio: paramDec("0.9851"), CashPerShare: paramDec("1.50")}
 		paramsJSON, err := params.ToJSON()
 		if err != nil {
 			t.Fatalf("ToJSON() error = %v", err)
@@ -108,10 +108,10 @@ func TestCorporateActionRepository_Create(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseMergerParams() error = %v", err)
 		}
-		if parsedParams.ExchangeRatio != 0.9851 {
+		if parsedParams.ExchangeRatio.String() != "0.9851" {
 			t.Errorf("Expected exchange_ratio 0.9851, got %v", parsedParams.ExchangeRatio)
 		}
-		if parsedParams.CashPerShare != 1.50 {
+		if parsedParams.CashPerShare.String() != "1.5" {
 			t.Errorf("Expected cash_per_share 1.50, got %v", parsedParams.CashPerShare)
 		}
 	})
@@ -272,7 +272,7 @@ func TestCorporateActionRepository_ListBySecurity(t *testing.T) {
 		source := createInvestmentSecurityForTest(t, secRepo, "ATVI", "Activision Blizzard")
 		target := createInvestmentSecurityForTest(t, secRepo, "MSFT", "Microsoft Corp.")
 
-		mergerParams, _ := MergerParams{ExchangeRatio: 0.9851}.ToJSON()
+		mergerParams, _ := MergerParams{ExchangeRatio: paramDec("0.9851")}.ToJSON()
 		ca := NewCorporateAction(ActionTypeMerger, source.ID, types.NewDate(2023, 10, 13), mergerParams)
 		ca.SetTargetSecurity(target.ID)
 

@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/types"
@@ -189,27 +189,27 @@ func (a *App) submitMergerDialog() (tea.Model, tea.Cmd) {
 		fields[3].Error = "Exchange ratio is required"
 		hasErrors = true
 	}
-	var exchangeRatio float64
+	var exchangeRatio investment.ParamDecimal
 	if ratioStr != "" {
-		exchangeRatio, err = strconv.ParseFloat(ratioStr, 64)
+		exchangeRatio, err = investment.ParseParamDecimal(ratioStr)
 		if err != nil {
 			fields[3].Error = "Invalid number"
 			hasErrors = true
-		} else if exchangeRatio <= 0 {
+		} else if exchangeRatio.Decimal().Sign() <= 0 {
 			fields[3].Error = "Must be positive"
 			hasErrors = true
 		}
 	}
 
 	// Cash Per Share (index 4, optional)
-	var cashPerShare float64
+	var cashPerShare investment.ParamDecimal
 	cashStr := strings.TrimSpace(fields[4].Value)
 	if cashStr != "" {
-		cashPerShare, err = strconv.ParseFloat(cashStr, 64)
+		cashPerShare, err = investment.ParseParamDecimal(cashStr)
 		if err != nil {
 			fields[4].Error = "Invalid number"
 			hasErrors = true
-		} else if cashPerShare < 0 {
+		} else if cashPerShare.Decimal().Sign() < 0 {
 			fields[4].Error = "Must not be negative"
 			hasErrors = true
 		}

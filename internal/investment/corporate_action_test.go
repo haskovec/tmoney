@@ -460,7 +460,7 @@ func TestParseSplitRatio(t *testing.T) {
 
 func TestMergerParams_Validate(t *testing.T) {
 	t.Run("valid with cash", func(t *testing.T) {
-		mp := MergerParams{ExchangeRatio: 2.5, CashPerShare: 5.00}
+		mp := MergerParams{ExchangeRatio: paramDec("2.5"), CashPerShare: paramDec("5.00")}
 		errs := mp.Validate()
 		if errs.HasErrors() {
 			t.Errorf("expected no errors, got: %v", errs)
@@ -468,7 +468,7 @@ func TestMergerParams_Validate(t *testing.T) {
 	})
 
 	t.Run("valid without cash", func(t *testing.T) {
-		mp := MergerParams{ExchangeRatio: 1.0}
+		mp := MergerParams{ExchangeRatio: paramDec("1.0")}
 		errs := mp.Validate()
 		if errs.HasErrors() {
 			t.Errorf("expected no errors, got: %v", errs)
@@ -476,7 +476,7 @@ func TestMergerParams_Validate(t *testing.T) {
 	})
 
 	t.Run("zero exchange_ratio", func(t *testing.T) {
-		mp := MergerParams{ExchangeRatio: 0}
+		mp := MergerParams{ExchangeRatio: paramDec("0")}
 		errs := mp.Validate()
 		if !errs.HasErrors() {
 			t.Error("expected error for zero exchange_ratio")
@@ -484,7 +484,7 @@ func TestMergerParams_Validate(t *testing.T) {
 	})
 
 	t.Run("negative exchange_ratio", func(t *testing.T) {
-		mp := MergerParams{ExchangeRatio: -1.0}
+		mp := MergerParams{ExchangeRatio: paramDec("-1.0")}
 		errs := mp.Validate()
 		if !errs.HasErrors() {
 			t.Error("expected error for negative exchange_ratio")
@@ -492,7 +492,7 @@ func TestMergerParams_Validate(t *testing.T) {
 	})
 
 	t.Run("negative cash_per_share", func(t *testing.T) {
-		mp := MergerParams{ExchangeRatio: 2.0, CashPerShare: -1.0}
+		mp := MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("-1.0")}
 		errs := mp.Validate()
 		if !errs.HasErrors() {
 			t.Error("expected error for negative cash_per_share")
@@ -501,19 +501,19 @@ func TestMergerParams_Validate(t *testing.T) {
 }
 
 func TestMergerParams_HasCashConsideration(t *testing.T) {
-	mp := MergerParams{ExchangeRatio: 2.0, CashPerShare: 5.00}
+	mp := MergerParams{ExchangeRatio: paramDec("2.0"), CashPerShare: paramDec("5.00")}
 	if !mp.HasCashConsideration() {
 		t.Error("expected HasCashConsideration() = true")
 	}
 
-	mp2 := MergerParams{ExchangeRatio: 2.0}
+	mp2 := MergerParams{ExchangeRatio: paramDec("2.0")}
 	if mp2.HasCashConsideration() {
 		t.Error("expected HasCashConsideration() = false for zero cash")
 	}
 }
 
 func TestMergerParams_JSON(t *testing.T) {
-	mp := MergerParams{ExchangeRatio: 2.5, CashPerShare: 5.00}
+	mp := MergerParams{ExchangeRatio: paramDec("2.5"), CashPerShare: paramDec("5.00")}
 
 	jsonStr, err := mp.ToJSON()
 	if err != nil {
@@ -531,7 +531,7 @@ func TestMergerParams_JSON(t *testing.T) {
 }
 
 func TestMergerParams_JSON_OmitEmptyCash(t *testing.T) {
-	mp := MergerParams{ExchangeRatio: 2.0}
+	mp := MergerParams{ExchangeRatio: paramDec("2.0")}
 	jsonStr, _ := mp.ToJSON()
 
 	var raw map[string]any
@@ -654,4 +654,14 @@ func TestParseSpinOffParams_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
+}
+
+// paramDec parses a test constant into a ParamDecimal. It panics on a typo,
+// the way types.MustNewMoney does.
+func paramDec(s string) ParamDecimal {
+	d, err := ParseParamDecimal(s)
+	if err != nil {
+		panic(err)
+	}
+	return d
 }

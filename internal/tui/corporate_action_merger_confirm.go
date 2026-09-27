@@ -18,8 +18,8 @@ type mergerConfirmParams struct {
 	sourceSecurityID types.ID
 	targetSecurityID types.ID
 	mergerDate       types.Date
-	exchangeRatio    float64
-	cashPerShare     float64
+	exchangeRatio    investment.ParamDecimal
+	cashPerShare     investment.ParamDecimal
 }
 
 // mergerAffectedAccount holds information about an account affected by the merger.
@@ -35,8 +35,8 @@ type mergerAffectedAccount struct {
 type mergerConfirmData struct {
 	sourceTicker  string
 	targetTicker  string
-	exchangeRatio float64
-	cashPerShare  float64
+	exchangeRatio investment.ParamDecimal
+	cashPerShare  investment.ParamDecimal
 	date          string
 	accounts      []mergerAffectedAccount
 }
@@ -328,9 +328,9 @@ func (a *App) renderMergerConfirmation() string {
 	sections = append(sections, fmt.Sprintf("  Source:  %s", data.sourceTicker))
 	sections = append(sections, fmt.Sprintf("  Target:  %s", data.targetTicker))
 	sections = append(sections, fmt.Sprintf("  Date:    %s", data.date))
-	sections = append(sections, fmt.Sprintf("  Ratio:   %.4f", data.exchangeRatio))
-	if data.cashPerShare > 0 {
-		sections = append(sections, fmt.Sprintf("  Cash:    $%.2f/share", data.cashPerShare))
+	sections = append(sections, fmt.Sprintf("  Ratio:   %s", data.exchangeRatio.Decimal().StringFixed(4)))
+	if data.cashPerShare.Decimal().Sign() > 0 {
+		sections = append(sections, fmt.Sprintf("  Cash:    $%s/share", data.cashPerShare.Decimal().StringFixed(2)))
 	}
 
 	// Separator
