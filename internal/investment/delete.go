@@ -92,6 +92,13 @@ func (s *Service) DeleteTransaction(id types.ID) error {
 				}
 				for _, o := range others {
 					if o.ID != txn.ID {
+						// The freeze check above read the account this row
+						// names, which is the pointer this lookup no longer
+						// trusts. Check the leg's own account; an error rolls
+						// back the reversal of this leg with the rest.
+						if err := b.ensureAccountOpen(o.AccountID); err != nil {
+							return err
+						}
 						// Reverse the counterpart's share effect (restore source
 						// lots / remove the dest lot) before its row + junctions are
 						// cascaded away.

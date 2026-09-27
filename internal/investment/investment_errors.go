@@ -130,8 +130,8 @@ type ShareTransferDestinationLegError struct {
 
 func (e *ShareTransferDestinationLegError) Error() string {
 	return fmt.Sprintf(
-		"investment transaction %s is the receiving leg of share transfer %s; edit the transfer from its source account",
-		e.ID, e.TransferID,
+		"investment transaction %s is the receiving leg of share transfer %s; edit the transfer from its source account %s",
+		e.ID, e.TransferID, e.SourceAccountID,
 	)
 }
 

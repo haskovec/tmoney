@@ -15,7 +15,7 @@ import (
 // about opening dates and closed state across four accounts at once. That is
 // the complexity UpdateTransferShares carries: before it may reverse anything it
 // must prove the pair intact, check four accounts, and heal four
-// account/security pairs, and an earlier version got the first step wrong.
+// account/security pairs.
 // investment.UpdateTransferCash's signature accepts new account IDs, so the
 // capability exists in the service layer today even though no front end can
 // reach it.

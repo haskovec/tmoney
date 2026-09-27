@@ -2,6 +2,7 @@ package investment
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,6 +176,9 @@ func TestUpdateTransferShares_RefusesDestinationLeg(t *testing.T) {
 	if dest.SourceAccountID != e.src.ID {
 		t.Errorf("error names source %s, want %s", dest.SourceAccountID, e.src.ID)
 	}
+	if !strings.Contains(err.Error(), e.src.ID.String()) {
+		t.Errorf("error text %q does not name the source account", err)
+	}
 	e.assertUnchanged(t)
 	if got := e.shares(t, e.dst.ID); !got.Equal(types.MustNewQuantity("5")) {
 		t.Errorf("destination position = %s, want 5 (unchanged)", got)
@@ -223,5 +227,28 @@ func TestDeleteShareTransfer_FindsLegByTransferID(t *testing.T) {
 	}
 	if got := e.shares(t, e.src.ID); !got.Equal(types.MustNewQuantity("10")) {
 		t.Errorf("source position = %s, want 10 (restored)", got)
+	}
+}
+
+// Delete finds the other leg by transfer_id, so a row that names no account
+// no longer hides that leg from the freeze check. A closed account on the
+// other leg refuses the delete, and the reversal of this leg rolls back.
+func TestDeleteShareTransfer_RefusesClosedOtherLeg(t *testing.T) {
+	e := newShareEditEnv(t)
+	src := e.res.SourceTransaction
+	src.TransferAccountID = types.NullableID{}
+	if err := e.env.invRepo.Update(src); err != nil {
+		t.Fatal(err)
+	}
+	closeInvAccount(t, e.env.accountRepo, e.dst)
+
+	assertInvClosed(t, e.env.svc.DeleteTransaction(src.ID))
+
+	e.assertUnchanged(t)
+	if _, err := e.env.invRepo.GetByID(e.res.DestinationTransaction.ID); err != nil {
+		t.Errorf("the closed account's leg is gone: %v", err)
+	}
+	if got := e.shares(t, e.dst.ID); !got.Equal(types.MustNewQuantity("5")) {
+		t.Errorf("closed destination position = %s, want 5 (unchanged)", got)
 	}
 }
