@@ -172,8 +172,13 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		return a.schedulePreviewAction(action)
 	}
 
+	// Hit-test before the editor takes focus. The overlay above was painted
+	// with the editor as it is now; taking focus first would open its picker
+	// inside the hit-test and push every row below the focused cell down by
+	// a panel that is not on screen.
+	action := p.SplitDialog().HandleMouseLocal(m.X-startCol-3, relY-headerLines-2)
 	p.setSplitFocus(true)
-	return a.schedulePreviewSplitAction(p.SplitDialog().HandleMouseLocal(m.X-startCol-3, relY-headerLines-2))
+	return a.schedulePreviewSplitAction(action)
 }
 
 // handleSchedulePreviewDialogKey routes keys to the preview dialog. Esc

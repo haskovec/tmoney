@@ -777,6 +777,51 @@ func TestSchedulePreview_SplitPickerFollowsPreviewFocus(t *testing.T) {
 	}
 }
 
+// TestSchedulePreview_ClickSplitRowWhileHeaderFocused pins that a click on
+// the split editor while the header has focus lands on what is on screen.
+// The blurred editor draws no picker panel, so the hit-test must not count
+// one: a click on row 1 must focus row 1, not pick a panel entry for row 0.
+func TestSchedulePreview_ClickSplitRowWhileHeaderFocused(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	overlay := p.Render(app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
+	x, y := findRenderedText(t, overlay, env.taxCat.Name, startCol, startRow)
+	app.handleSchedulePreviewMouse(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
+
+	if !p.FocusOnSplits() {
+		t.Error("a click on the split editor should give it focus")
+	}
+	if sd.rowIndex != 1 || sd.fieldFocus != splitFieldCategory {
+		t.Errorf("focus = row %d field %d, want row 1 Category", sd.rowIndex, sd.fieldFocus)
+	}
+	if got := sd.rowLabel(sd.rows[0]); got != env.incomeCat.Name {
+		t.Errorf("row 0 = %q, want %q (unchanged)", got, env.incomeCat.Name)
+	}
+}
+
+// TestSchedulePreview_ClickSplitSaveWhileHeaderFocused pins that a click on
+// the split editor's Save while the header has focus reaches Save.
+func TestSchedulePreview_ClickSplitSaveWhileHeaderFocused(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	overlay := p.Render(app.styles)
+	startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
+	x, y := findRenderedText(t, overlay, "[ Save ]", startCol, startRow)
+	app.handleSchedulePreviewMouse(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+
+	// hitTestButtonRow moves focus to Save before it returns Submit.
+	if sd.focus != splitFocusSaveBtn {
+		t.Errorf("focus = %v, want the Save button — the click missed it (errorMsg=%q)", sd.focus, sd.errorMsg)
+	}
+}
+
 // TestSchedulePreview_EditLineAmount_OneOff covers MS-021: editing a
 // line amount in the multi-line preview must flow into the posted
 // transaction's splits, but the template's stored children must NOT
