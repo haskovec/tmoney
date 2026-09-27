@@ -292,7 +292,7 @@ The fault style in `internal/investment/investment_service_tx_test.go` is the pa
 Where the build departs from the fix list above:
 
 1. A zero-basis leg gets its own reason (`BrokenShareTransferError`: no cost basis, so the direction is unknown), not the destination-leg error of step 2. Both legs of such a transfer have no sign, so "edit it from the source account" would send the user in a circle.
-2. `DeleteTransaction` (`internal/investment/delete.go`) had the same scan: it listed the named account's rows to find the paired leg. It now uses `ListByTransferID`. A leg with no pair still deletes, so a broken transfer can be cleaned up. The "Done when" line (no production path scans an account for a leg) required this.
+2. `DeleteTransaction` (`internal/investment/delete.go`) had the same scan: it listed the named account's rows to find the paired leg. It now uses `ListByTransferID`, and it checks each other leg's own account for the freeze rule, because the pointer on the row can be missing or wrong. A leg with no pair still deletes, so a broken transfer can be cleaned up. The "Done when" line (no production path scans an account for a leg) required this.
 3. A `transfer_cash` row is refused as "not a share transfer". The old check looked only at `TransferID`.
 4. The tests are in `internal/investment/update_transfer_shares_test.go`, not in `closed_account_guard_test.go`, which is about the freeze rule.
 5. The comment on `transfer.Edit` (`internal/transfer/write.go`) no longer says that this function gets the account check wrong.
