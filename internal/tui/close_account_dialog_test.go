@@ -40,3 +40,21 @@ func TestReopenAccount_UnfreezesInvestmentRegister(t *testing.T) {
 		t.Error("register still holds the account as closed after reopen")
 	}
 }
+
+// The dialog names what keeps the account open. For a brokerage that still
+// holds shares, "the balance must be zero" is wrong: its cash can be zero.
+func TestCloseAccountErrorMessage_NamesTheCause(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{&account.HasBalanceError{Balance: types.MustNewMoney("5")}, "Cannot close: the account balance must be zero."},
+		{&account.HasBalanceError{HoldsShares: true}, "Cannot close: the account still holds shares."},
+		{&account.HasBalanceError{Balance: types.MustNewMoney("5"), HoldsShares: true}, "Cannot close: the account still holds shares and cash."},
+	}
+	for _, tc := range cases {
+		if got := closeAccountErrorMessage(tc.err); got != tc.want {
+			t.Errorf("closeAccountErrorMessage(%v) = %q, want %q", tc.err, got, tc.want)
+		}
+	}
+}

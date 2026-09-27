@@ -93,7 +93,6 @@ func NewServices(database *db.DB) *Services {
 	corporateActionRepo := investment.NewCorporateActionRepository(database)
 
 	// Create services (inject cross-slice repo dependencies)
-	accountSvc := account.NewService(accountRepo, database)
 	categorySvc := category.NewService(categoryRepo, database)
 	// Seed paycheck-wizard categories on every open so existing
 	// databases gain them automatically; best-effort, matches the
@@ -124,6 +123,11 @@ func NewServices(database *db.DB) *Services {
 	// database handle, so it can only read committed state. Views, reports and CLI
 	// commands take this rather than the full service.
 	investmentValuationSvc := investment.NewValuationService(investmentRepo, accountRepo, positionRepo, lotRepo, transactionLotRepo, priceRepo, corporateActionRepo, database)
+	// Close judges an investment account by its investment ledger: its
+	// register balance is always zero. The read model supplies that ledger
+	// state through account's own port, since account cannot import
+	// investment. Built here, after the read model, so no setter is needed.
+	accountSvc := account.NewService(accountRepo, database, account.WithInvestmentLedger(investmentValuationSvc))
 	investmentEditSvc := investment.NewEditService(investmentSvc)
 	// Silently heal any desynced positions/lots so the user doesn't have to
 	// run rebuild-positions manually after upgrading. This is a no-op on

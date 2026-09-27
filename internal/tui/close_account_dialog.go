@@ -126,6 +126,10 @@ func closeAccountErrorMessage(err error) string {
 	var balErr *account.HasBalanceError
 	var dateErr *account.InvalidCloseDateError
 	switch {
+	case errors.As(err, &balErr) && balErr.HoldsShares && !balErr.Balance.IsZero():
+		return "Cannot close: the account still holds shares and cash."
+	case errors.As(err, &balErr) && balErr.HoldsShares:
+		return "Cannot close: the account still holds shares."
 	case errors.As(err, &balErr):
 		return "Cannot close: the account balance must be zero."
 	case errors.As(err, &dateErr):
