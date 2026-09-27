@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -130,21 +131,26 @@ func TestViewShortcutSections(t *testing.T) {
 	})
 }
 
-// TestCorporateActionShortcuts pins the section to the view's status-bar hint
-// and to the keys handleCorporateActionViewKeys binds.
+// TestCorporateActionShortcuts pins every entry, key and description. The
+// status-bar hint lists navigate, filter, details, delete and back; the
+// section adds the g/G and page keys the handler also binds. Esc reads
+// "Back", the key's real behavior: the global Esc handler runs first.
 func TestCorporateActionShortcuts(t *testing.T) {
 	s := corporateActionShortcuts()
 	if s.Title != "Corporate Actions" {
 		t.Errorf("Title = %q, want Corporate Actions", s.Title)
 	}
-	keys := make(map[string]bool)
-	for _, e := range s.Entries {
-		keys[e.Key] = true
+	want := []shortcutEntry{
+		{"↑↓ / j k", "Navigate actions"},
+		{"g / G", "First / last action"},
+		{"PgUp/PgDn", "Page through actions"},
+		{"/", "Filter actions"},
+		{"Enter", "Show details"},
+		{"d", "Reverse and delete action (asks first)"},
+		{"Esc", "Back"},
 	}
-	for _, want := range []string{"/", "Enter", "d", "Esc", "g / G", "PgUp/PgDn"} {
-		if !keys[want] {
-			t.Errorf("section has no %q entry", want)
-		}
+	if !slices.Equal(s.Entries, want) {
+		t.Errorf("entries = %v\nwant      %v", s.Entries, want)
 	}
 }
 

@@ -277,7 +277,9 @@ func (a *App) renderCorporateActionDetails() string {
 
 // corporateActionShortcuts returns the shortcut section for the Corporate
 // Actions help overlay. It lists the keys handleCorporateActionViewKeys binds;
-// keep it in step with the view's status-bar hint in getKeyHints.
+// keep it in step with the view's status-bar hint in getKeyHints. Esc is
+// "Back" because handleKeyPress claims Esc for every view before this
+// handler runs, so the handler's own Esc arms never see the key.
 func corporateActionShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Corporate Actions",
@@ -288,7 +290,7 @@ func corporateActionShortcuts() shortcutSection {
 			{"/", "Filter actions"},
 			{"Enter", "Show details"},
 			{"d", "Reverse and delete action (asks first)"},
-			{"Esc", "Close details / Back"},
+			{"Esc", "Back"},
 		},
 	}
 }

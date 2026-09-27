@@ -18,7 +18,7 @@ type viewConstant struct {
 // viewConstants returns every View constant declared in app.go, in
 // declaration order. A test that must cover every view ranges over this
 // instead of a hand-written list, so a new constant is covered the moment it
-// is declared. The view-table guards (VL-101) reuse it.
+// is declared.
 func viewConstants(t *testing.T) []viewConstant {
 	t.Helper()
 	src, err := os.ReadFile("app.go")

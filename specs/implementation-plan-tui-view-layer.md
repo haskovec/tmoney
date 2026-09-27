@@ -38,7 +38,7 @@ This phase is item W1 in `specs/work-two-ledgers.md`. Ship it from there. When W
   - Enumerate the constants with `go/ast` over the `View` const block in `app.go`. Fail if the set is empty. This enumerator is reused by VL-101, so put it in a shared test helper.
 
 - [x] **VL-002 — `corporateActionShortcuts()` and the eleventh arm** (W1, PR #46)
-  - GREEN: add `corporateActionShortcuts()` in `help_overlay.go` and the `case ViewCorporateActions` arm in `viewShortcutSections`. Keys: `/` filter, Enter details, `d` delete (reverse the action, after a confirm), Esc back or clear, `g`/`G`/PgUp/PgDn move.
+  - GREEN: add `corporateActionShortcuts()` in `help_overlay.go` and the `case ViewCorporateActions` arm in `viewShortcutSections`. Keys: `/` filter, Enter details, `d` delete (reverse the action, after a confirm), Esc back, `g`/`G`/PgUp/PgDn move. (Esc cannot clear the filter or close details: `handleKeyPress` claims Esc before the view handler runs.)
   - The section must match the status-bar hint at `app_view.go:174`.
   - Open the PR. This is the only item in the PR.
 
