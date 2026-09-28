@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -192,5 +194,56 @@ func TestAccountCmd_HelpListsClose(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("expected `account --help` to list %q; got:\n%s", want, stdout.String())
 		}
+	}
+}
+
+// A brokerage that holds shares stays open, and the error says why.
+func TestAccountClose_BrokerageWithSharesRejected(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	svc := app.NewServices(database)
+	date := types.MustParseDate("2020-01-01")
+	acct := accountdom.NewAccount("Northwind Brokerage", accountdom.TypeInvestment, "USD", types.ZeroMoney, date)
+	if err := svc.Account.Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	sec := security.NewSecurity("FABR", "Fabrikam Inc.", security.TypeStock)
+	if err := svc.Security.Create(sec); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := svc.Investment.Deposit(acct.ID, date, types.MustNewMoney("500.00"), ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	total := types.MustNewMoney("500.00")
+	if _, err := svc.Investment.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("5"), &total, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{"account", "close", "Northwind Brokerage", "--file", dbPath}, stdout, stderr)
+	if err == nil || !strings.Contains(err.Error(), `cannot close "Northwind Brokerage": it holds shares`) {
+		t.Fatalf("expected the holds-shares refusal, got %v", err)
+	}
+}
+
+// Cash with no shares is investment cash, not a register balance: `account
+// balance` can show 0 for this brokerage, so the error must say "cash".
+func TestAccountClose_BrokerageWithCashRejected(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	svc := app.NewServices(database)
+	date := types.MustParseDate("2020-01-01")
+	acct := accountdom.NewAccount("Northwind Brokerage", accountdom.TypeInvestment, "USD", types.ZeroMoney, date)
+	if err := svc.Account.Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := svc.Investment.Deposit(acct.ID, date, types.MustNewMoney("125.00"), ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{"account", "close", "Northwind Brokerage", "--file", dbPath}, stdout, stderr)
+	if err == nil || !strings.Contains(err.Error(), `cannot close "Northwind Brokerage": it has cash of $125.00 (move the cash out first)`) {
+		t.Fatalf("expected the cash refusal, got %v", err)
 	}
 }

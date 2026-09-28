@@ -1,6 +1,7 @@
 package account
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/types"
@@ -24,15 +25,47 @@ func (e *NotClosedError) Error() string {
 	return fmt.Sprintf("account %s is not closed", e.ID)
 }
 
-// HasBalanceError is returned when trying to close an account with a non-zero balance.
+// HasBalanceError is returned when trying to close an account that is not
+// empty. Balance is the amount that keeps it open, and the flags say which
+// figure that is:
+//
+//   - neither flag: a register account's balance;
+//   - InvestmentCash: an investment account's cash on the investment ledger;
+//   - RegisterRows: the total of register rows on an investment account, which
+//     keeps its history on the investment ledger.
+//
+// HoldsShares is set when an investment account still holds shares; it can be
+// set with a zero Balance.
 type HasBalanceError struct {
-	ID      string
-	Balance types.Money
+	ID             string
+	Balance        types.Money
+	HoldsShares    bool
+	InvestmentCash bool
+	RegisterRows   bool
 }
 
 func (e *HasBalanceError) Error() string {
-	return fmt.Sprintf("cannot close account %s: has balance of %s", e.ID, e.Balance.String())
+	switch {
+	case e.RegisterRows:
+		return fmt.Sprintf("cannot close account %s: it has register transactions that total %s", e.ID, e.Balance.String())
+	case e.HoldsShares && !e.Balance.IsZero():
+		return fmt.Sprintf("cannot close account %s: it holds shares and has cash of %s", e.ID, e.Balance.String())
+	case e.HoldsShares:
+		return fmt.Sprintf("cannot close account %s: it holds shares", e.ID)
+	case e.InvestmentCash:
+		return fmt.Sprintf("cannot close account %s: it has cash of %s", e.ID, e.Balance.String())
+	default:
+		return fmt.Sprintf("cannot close account %s: has balance of %s", e.ID, e.Balance.String())
+	}
 }
+
+// ErrNoInvestmentLedger is returned by Close for an investment account when
+// the service was built without WithInvestmentLedger. Such an account's cash
+// and shares are on the investment ledger, so without that ledger Close cannot
+// tell an empty account from a full one, and it refuses rather than guess.
+// (Its register balance tells nothing: it holds the opening balance, which
+// the investment cash already counts.)
+var ErrNoInvestmentLedger = errors.New("no investment ledger is wired to the account service")
 
 // InvalidCloseDateError is returned when a close date falls outside the allowed
 // window [max(opening_date, latest transaction date), today].

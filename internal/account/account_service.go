@@ -16,16 +16,46 @@ type Balance struct {
 
 // Service provides business logic for account operations.
 type Service struct {
-	repo *Repository
-	db   *db.DB
+	repo      *Repository
+	db        *db.DB
+	invLedger InvestmentLedger
+}
+
+// InvestmentLedger reports what an investment account still holds on the
+// investment ledger. Close needs it because an investment account's cash and
+// shares are rows this package cannot read without importing investment, which
+// imports account. The register balance (account_balances) does not stand in
+// for them: it is the opening balance plus register rows, and the investment
+// cash already counts the opening balance.
+//
+// cash is the investment ledger's cash balance, the figure valuation reports
+// as CashBalance. hasHoldings is true while any open lot or position still has
+// shares, priced or not.
+type InvestmentLedger interface {
+	LedgerState(accountID types.ID) (cash types.Money, hasHoldings bool, err error)
+}
+
+// ServiceOption configures optional dependencies for the Service.
+type ServiceOption func(*Service)
+
+// WithInvestmentLedger lets Close judge an investment account by its
+// investment ledger. Without it, Close refuses every investment account.
+func WithInvestmentLedger(l InvestmentLedger) ServiceOption {
+	return func(s *Service) {
+		s.invLedger = l
+	}
 }
 
 // NewService creates a new Service.
-func NewService(repo *Repository, database *db.DB) *Service {
-	return &Service{
+func NewService(repo *Repository, database *db.DB, opts ...ServiceOption) *Service {
+	s := &Service{
 		repo: repo,
 		db:   database,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Create validates and creates a new account.
@@ -165,8 +195,10 @@ func (s *Service) GetAllBalances() (map[types.ID]*Balance, error) {
 }
 
 // Close closes an account after validating it can be closed.
-// An account can only be closed if it has a zero balance, and closedDate must
-// fall within [max(opening_date, latest transaction date), today].
+// An account can only be closed if it is empty — a zero register balance, or
+// for an investment account zero cash and no shares on the investment ledger —
+// and closedDate must fall within [max(opening_date, latest transaction date on
+// either ledger), today].
 func (s *Service) Close(id types.ID, closedDate types.Date) error {
 	account, err := s.repo.GetByID(id)
 	if err != nil {
@@ -177,16 +209,8 @@ func (s *Service) Close(id types.ID, closedDate types.Date) error {
 		return &AlreadyClosedError{ID: id.String()}
 	}
 
-	balance, err := s.GetBalance(id)
-	if err != nil {
+	if err := s.requireEmpty(account); err != nil {
 		return err
-	}
-
-	if !balance.CurrentBalance.IsZero() {
-		return &HasBalanceError{
-			ID:      id.String(),
-			Balance: balance.CurrentBalance,
-		}
 	}
 
 	if err := s.validateCloseDate(account, closedDate); err != nil {
@@ -195,6 +219,60 @@ func (s *Service) Close(id types.ID, closedDate types.Date) error {
 
 	account.Close(closedDate)
 	return s.repo.Update(account)
+}
+
+// requireEmpty returns a HasBalanceError unless the account holds nothing.
+// A closed account is frozen, so closing one that still holds cash or shares
+// strands them until it is reopened.
+func (s *Service) requireEmpty(account *Account) error {
+	if !account.Type.IsInvestmentType() {
+		balance, err := s.GetBalance(account.ID)
+		if err != nil {
+			return err
+		}
+		if !balance.CurrentBalance.IsZero() {
+			return &HasBalanceError{ID: account.ID.String(), Balance: balance.CurrentBalance}
+		}
+		return nil
+	}
+
+	// Register rows can still land on an investment account (a manual add, an
+	// import, a posted schedule), and a close would freeze them. Their total
+	// excludes the opening balance, which the investment cash below counts.
+	registerRows, err := s.registerRowsTotal(account.ID)
+	if err != nil {
+		return err
+	}
+	if !registerRows.IsZero() {
+		return &HasBalanceError{ID: account.ID.String(), Balance: registerRows, RegisterRows: true}
+	}
+
+	if s.invLedger == nil {
+		return fmt.Errorf("cannot close investment account %s: %w", account.ID, ErrNoInvestmentLedger)
+	}
+	cash, held, err := s.invLedger.LedgerState(account.ID)
+	if err != nil {
+		return fmt.Errorf("failed to read investment ledger for close: %w", err)
+	}
+	if !cash.IsZero() || held {
+		return &HasBalanceError{ID: account.ID.String(), Balance: cash, HoldsShares: held, InvestmentCash: true}
+	}
+	return nil
+}
+
+// registerRowsTotal sums the account's non-void register rows, the same rows
+// account_balances adds, without the opening balance.
+func (s *Service) registerRowsTotal(id types.ID) (types.Money, error) {
+	var total types.Money
+	err := s.db.Conn().QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM transactions
+		 WHERE CAST(account_id AS VARCHAR) = ? AND status != 'void'`,
+		id.String(),
+	).Scan(&total)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to total register rows: %w", err)
+	}
+	return total, nil
 }
 
 // validateCloseDate enforces max(opening_date, latest_txn_date) <= closedDate <= today.
@@ -221,13 +299,19 @@ func (s *Service) validateCloseDate(account *Account, closedDate types.Date) err
 	return nil
 }
 
-// latestTransactionDate returns the most recent transaction date for an account,
-// or an invalid NullableDate when the account has no transactions.
+// latestTransactionDate returns the most recent transaction date for an
+// account on either ledger, or an invalid NullableDate when it has none. An
+// account keeps rows on one ledger at a time, but reading both means a close
+// can never be dated before the account's last row.
 func (s *Service) latestTransactionDate(id types.ID) (types.NullableDate, error) {
 	var d types.NullableDate
 	err := s.db.Conn().QueryRow(
-		`SELECT MAX(date) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?`,
-		id.String(),
+		`SELECT MAX(date) FROM (
+			SELECT date FROM transactions WHERE CAST(account_id AS VARCHAR) = ?
+			UNION ALL
+			SELECT date FROM investment_transactions WHERE CAST(account_id AS VARCHAR) = ?
+		)`,
+		id.String(), id.String(),
 	).Scan(&d)
 	if err != nil {
 		return types.NullableDate{}, fmt.Errorf("failed to get latest transaction date: %w", err)

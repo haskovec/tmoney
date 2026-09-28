@@ -76,6 +76,18 @@ func runAccountClose(opts *accountCloseOptions, w io.Writer) error {
 		var dateErr *accountdom.InvalidCloseDateError
 		var alreadyErr *accountdom.AlreadyClosedError
 		switch {
+		case errors.As(err, &balErr) && balErr.HoldsShares && !balErr.Balance.IsZero():
+			return fmt.Errorf("cannot close %q: it holds shares and has cash of %s (sell or transfer the shares and move the cash out first)",
+				acct.Name, cmdutil.FormatMoney(balErr.Balance, acct.Currency))
+		case errors.As(err, &balErr) && balErr.HoldsShares:
+			return fmt.Errorf("cannot close %q: it holds shares (sell or transfer them first)", acct.Name)
+		case errors.As(err, &balErr) && balErr.RegisterRows:
+			return fmt.Errorf("cannot close %q: it has register transactions that total %s "+
+				"(an investment account keeps its history on the investment ledger; delete or move them first)",
+				acct.Name, cmdutil.FormatMoney(balErr.Balance, acct.Currency))
+		case errors.As(err, &balErr) && balErr.InvestmentCash:
+			return fmt.Errorf("cannot close %q: it has cash of %s (move the cash out first)",
+				acct.Name, cmdutil.FormatMoney(balErr.Balance, acct.Currency))
 		case errors.As(err, &balErr):
 			return fmt.Errorf("cannot close %q: balance is %s (must be zero to close)",
 				acct.Name, cmdutil.FormatMoney(balErr.Balance, acct.Currency))

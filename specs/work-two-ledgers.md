@@ -47,7 +47,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W3a | done (#48) | Merger ratio must mean target shares per source share | — | small |
 | W3 | done (#49) | Merger cash and ratio must be decimal | W3a | small |
 | W4 | done (#50) | Share-transfer edit must keep both legs | — | medium |
-| W5a | open | Close refuses an investment account that is not empty | — | medium |
+| W5a | done (#51) | Close refuses an investment account that is not empty | — | medium |
 | W5b | open | Delete counts the ledger of the account type | — | small |
 | W6 | open | Refuse reconcile on an investment account | — | small |
 | W5c | open | One display figure for account list, show, and balance | — | medium |
@@ -365,7 +365,7 @@ Do not add investment rows to the `account_balances` view. A buy is not a bank d
 
 ## W5a — Close refuses an investment account that is not empty
 
-**Status:** open
+**Status:** done in PR #51. `ValuationService.LedgerState` implements the port. With no port wired, `Close` returns `ErrNoInvestmentLedger`. Added in review: register rows can still land on an investment account (`transaction add`, import, a posted schedule), so `Close` also refuses while their non-void total, without the opening balance, is not zero (`HasBalanceError.RegisterRows`).
 **Decision:** The close rule stays on `account.Service.Close`, with a narrow port. The CLI, the TUI, and undo all go through that one door. The port returns cash and "has holdings" only. It does not return a price.
 
 ### Fix
