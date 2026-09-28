@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -66,7 +67,7 @@ func TestInvestmentBuy_CatchUpSplits_LotTracked(t *testing.T) {
 			t.Errorf("lot %s shares (%s) != original_shares (%s)", l.ID, l.Shares.String(), l.OriginalShares.String())
 		}
 	}
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("GetByAccountAndSecurity: %v", err)
 	}

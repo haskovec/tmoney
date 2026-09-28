@@ -59,7 +59,6 @@ type Services struct {
 	PayeeRepo       *payee.Repository
 	InvestmentRepo  *investment.Repository
 	LotRepo         *investment.LotRepository
-	PositionRepo    *investment.PositionRepository
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
 	// category named "Value Adjustment" already exists, so the system
@@ -169,7 +168,6 @@ func NewServices(database *db.DB) *Services {
 		PayeeRepo:       payeeRepo,
 		InvestmentRepo:  investmentRepo,
 		LotRepo:         lotRepo,
-		PositionRepo:    positionRepo,
 	}
 }
 

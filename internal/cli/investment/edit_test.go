@@ -131,9 +131,9 @@ func TestInvestmentEdit_BuyShares_KeepsAmount(t *testing.T) {
 	}
 
 	// Position reflects the new share count.
-	svc := clitest.OpenSvc(t, dbPath)
+	svc, database := clitest.OpenSvcDB(t, dbPath)
 	acct, _ := svc.Account.GetByName("Brokerage")
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
 	if err != nil {
 		t.Fatalf("get position: %v", err)
 	}
@@ -571,9 +571,9 @@ func TestInvestmentEdit_LotTrackedSellRepointsLots(t *testing.T) {
 		t.Errorf("expected sell shares 5, got %s", after.Shares.Quantity)
 	}
 
-	svc := clitest.OpenSvc(t, dbPath)
+	svc, database := clitest.OpenSvcDB(t, dbPath)
 	acct, _ := svc.Account.GetByName("Brokerage")
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
 	if err != nil {
 		t.Fatalf("get position: %v", err)
 	}
