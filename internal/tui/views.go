@@ -27,6 +27,11 @@ type viewEntry struct {
 	// func, not a field, because Prices and Portfolio pick between two tables
 	// by mode. It is nil for a view with no table.
 	table func(*App) *widget.Table
+
+	// reload returns the commands that refresh this view in place, after
+	// reloadCurrentView's sidebar reload. It returns none while the view has
+	// nothing on screen to refresh yet. Every view has one.
+	reload func(*App) []tea.Cmd
 }
 
 // allViews is the one list of views. It holds only constants and method
@@ -47,6 +52,9 @@ func init() {
 			onKey:     (*App).handleDashboardKeys,
 			hints:     func(*App) string { return "↑↓ navigate  ←→ collapse/expand  enter select  " + commonKeyHints },
 			shortcuts: dashboardShortcuts,
+			reload: func(a *App) []tea.Cmd {
+				return []tea.Cmd{a.loadDashboardData(), a.loadScheduledDueCount()}
+			},
 		},
 		{
 			id:     ViewRegister,
@@ -58,6 +66,10 @@ func init() {
 			},
 			shortcuts: registerShortcuts,
 			table:     func(a *App) *widget.Table { return a.table },
+			reload: func(a *App) []tea.Cmd {
+				accountID := a.sidebar.SelectedAccountID()
+				return []tea.Cmd{a.loadRegisterData(accountID)}
+			},
 		},
 		{
 			id:     ViewScheduled,
@@ -69,6 +81,9 @@ func init() {
 			},
 			shortcuts: scheduledShortcuts,
 			table:     func(a *App) *widget.Table { return a.scheduledTable },
+			reload: func(a *App) []tea.Cmd {
+				return []tea.Cmd{a.loadScheduledViewData(), a.loadScheduledDueCount()}
+			},
 		},
 		{
 			id:     ViewReports,
@@ -79,6 +94,14 @@ func init() {
 				return "←→ period  n net worth  s spending  y year  m month  esc back  " + commonKeyHints
 			},
 			shortcuts: reportsShortcuts,
+			reload: func(a *App) []tea.Cmd {
+				if a.reports != nil {
+					return []tea.Cmd{a.loadReportsViewData(
+						a.reports.rtype, a.reports.year, a.reports.month, a.reports.includeTransfers,
+					)}
+				}
+				return nil
+			},
 		},
 		{
 			id:         ViewReconciliation,
@@ -89,6 +112,14 @@ func init() {
 			hints:      func(*App) string { return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help" },
 			shortcuts:  reconciliationShortcuts,
 			table:      func(a *App) *widget.Table { return a.reconciliationTable },
+			reload: func(a *App) []tea.Cmd {
+				// No session on screen yet means its first load is still in flight;
+				// that load fills the table. Never start a session from here.
+				if r := a.reconciliation; r != nil && r.session != nil && r.account != nil {
+					return []tea.Cmd{a.reloadReconciliationData(r)}
+				}
+				return nil
+			},
 		},
 		{
 			id:         ViewSecurities,
@@ -101,6 +132,7 @@ func init() {
 			},
 			shortcuts: securitiesShortcuts,
 			table:     func(a *App) *widget.Table { return a.securityTable },
+			reload:    func(a *App) []tea.Cmd { return []tea.Cmd{a.loadSecurityViewData()} },
 		},
 		{
 			id:         ViewPrices,
@@ -121,6 +153,7 @@ func init() {
 				}
 				return a.priceTable
 			},
+			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.loadPriceViewData()} },
 		},
 		{
 			id:     ViewInvestmentRegister,
@@ -132,6 +165,12 @@ func init() {
 			},
 			shortcuts: investmentRegisterShortcuts,
 			table:     func(a *App) *widget.Table { return a.investmentTable },
+			reload: func(a *App) []tea.Cmd {
+				if a.investmentRegister != nil && a.investmentRegister.account != nil {
+					return []tea.Cmd{a.loadInvestmentRegisterData(a.investmentRegister.account.ID)}
+				}
+				return nil
+			},
 		},
 		{
 			id:        ViewPortfolio,
@@ -143,6 +182,12 @@ func init() {
 			table: func(a *App) *widget.Table {
 				if a.portfolioData != nil {
 					return a.activePortfolioTable()
+				}
+				return nil
+			},
+			reload: func(a *App) []tea.Cmd {
+				if a.portfolioData != nil && a.portfolioData.account != nil {
+					return []tea.Cmd{a.loadPortfolioData(a.portfolioData.account.ID)}
 				}
 				return nil
 			},
@@ -158,6 +203,9 @@ func init() {
 			},
 			shortcuts: corporateActionShortcuts,
 			table:     func(a *App) *widget.Table { return a.corporateActionViewTable },
+			reload: func(a *App) []tea.Cmd {
+				return []tea.Cmd{a.loadCorporateActionViewData()}
+			},
 		},
 		{
 			id:         ViewAmortization,
@@ -168,6 +216,12 @@ func init() {
 			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
 			shortcuts:  amortizationShortcuts,
 			table:      func(a *App) *widget.Table { return a.amortizationTable },
+			reload: func(a *App) []tea.Cmd {
+				if a.amortizationData != nil && a.amortizationData.account != nil {
+					return []tea.Cmd{a.loadAmortizationData(a.amortizationData.account.ID)}
+				}
+				return nil
+			},
 		},
 	}
 }

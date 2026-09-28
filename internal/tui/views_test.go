@@ -48,3 +48,23 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 		})
 	}
 }
+
+// Each view's lookup calls these funcs without a nil check, so a missing one
+// is a panic on first use. reload matters most: W2 gave Reconciliation and
+// Corporate Actions the reload they lacked, and a nil one would undo that.
+// table is not here, because a view with no table leaves it nil.
+func TestViews_EveryEntryHasItsFuncs(t *testing.T) {
+	for _, e := range views() {
+		for field, missing := range map[string]bool{
+			"render":    e.render == nil,
+			"onKey":     e.onKey == nil,
+			"hints":     e.hints == nil,
+			"shortcuts": e.shortcuts == nil,
+			"reload":    e.reload == nil,
+		} {
+			if missing {
+				t.Errorf("%s has no %s", e.name, field)
+			}
+		}
+	}
+}
