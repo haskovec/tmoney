@@ -328,50 +328,19 @@ func (r *Repository) Update(account *Account) error {
 }
 
 // Delete removes an account from the database.
-// This will fail if the account has any transactions, or if any scheduled
-// transaction references it (as its source account, its single-line transfer
-// destination, or a transfer-line split target) — deleting would orphan those
-// schedules.
+//
+// It refuses with a HasDependentsError while any row still holds a foreign key
+// to the account (see DeleteBlocker), so the caller gets an error it can act on
+// instead of a driver error from inside the delete. Completed reconciliation
+// sessions must already be gone: DeleteCompletedSessions removes them, in a
+// transaction of its own (Service.Delete explains why).
 func (r *Repository) Delete(id types.ID) error {
-	// Check for transactions first
-	var count int
-	err := r.q().QueryRow(`
-		SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?
-	`, id.String()).Scan(&count)
+	blocker, err := r.DeleteBlocker(id)
 	if err != nil {
-		return fmt.Errorf("failed to check transactions: %w", err)
+		return err
 	}
-	if count > 0 {
-		return &dberrors.HasDependentsError{
-			Entity:     "account",
-			ID:         id.String(),
-			Dependents: "transactions",
-			Count:      count,
-		}
-	}
-
-	// Then for scheduled transactions referencing the account in any role
-	// (mirrors scheduled.Service.ListReferencing).
-	err = r.q().QueryRow(`
-		SELECT COUNT(*) FROM scheduled_transactions st
-		WHERE CAST(st.account_id AS VARCHAR) = ?
-		   OR CAST(st.transfer_account_id AS VARCHAR) = ?
-		   OR EXISTS (
-				SELECT 1 FROM scheduled_split_items si
-				WHERE si.scheduled_transaction_id = st.id
-				  AND CAST(si.transfer_account_id AS VARCHAR) = ?
-		   )
-	`, id.String(), id.String(), id.String()).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to check scheduled transactions: %w", err)
-	}
-	if count > 0 {
-		return &dberrors.HasDependentsError{
-			Entity:     "account",
-			ID:         id.String(),
-			Dependents: "scheduled transactions",
-			Count:      count,
-		}
+	if blocker != nil {
+		return blocker
 	}
 
 	result, err := r.q().Exec(`DELETE FROM accounts WHERE CAST(id AS VARCHAR) = ?`, id.String())
@@ -388,6 +357,95 @@ func (r *Repository) Delete(id types.ID) error {
 	}
 
 	return nil
+}
+
+// DeleteCompletedSessions removes the account's completed reconciliation
+// sessions, the first step of deleting the account. It refuses first, and
+// writes nothing, when DeleteBlocker names a reason the account cannot go:
+// sessions of an account that stays would lose their history for nothing.
+func (r *Repository) DeleteCompletedSessions(id types.ID) error {
+	blocker, err := r.DeleteBlocker(id)
+	if err != nil {
+		return err
+	}
+	if blocker != nil {
+		return blocker
+	}
+	if _, err := r.q().Exec(
+		`DELETE FROM reconciliation_sessions
+		 WHERE CAST(account_id AS VARCHAR) = ? AND status = 'completed'`, id.String(),
+	); err != nil {
+		return fmt.Errorf("failed to delete completed reconciliation sessions: %w", err)
+	}
+	return nil
+}
+
+// DeleteBlocker returns the first reason the account cannot be deleted, or nil
+// when it can. It checks, in order, every row that holds a foreign key to the
+// account, on both ledgers whatever the account's type:
+//
+//   - "transactions": its own register rows;
+//   - "investment transactions": its own investment rows (lots and positions
+//     are not counted here, so one buy reads as one transaction);
+//   - "investment holdings": lots or positions left with no rows;
+//   - "transfer references": rows in other accounts that name it as their
+//     transfer partner, such as the surviving leg of a half-deleted transfer;
+//   - "scheduled transactions": schedules that reference it in any role
+//     (mirrors scheduled.Service.ListReferencing), which would be orphaned;
+//   - "active reconciliation": an in-progress reconciliation session.
+func (r *Repository) DeleteBlocker(id types.ID) (*dberrors.HasDependentsError, error) {
+	sid := id.String()
+	checks := []struct {
+		dependents string
+		query      string
+		args       []any
+	}{
+		{"transactions",
+			`SELECT COUNT(*) FROM transactions WHERE CAST(account_id AS VARCHAR) = ?`,
+			[]any{sid}},
+		{"investment transactions",
+			`SELECT COUNT(*) FROM investment_transactions WHERE CAST(account_id AS VARCHAR) = ?`,
+			[]any{sid}},
+		{"investment holdings",
+			`SELECT (SELECT COUNT(*) FROM investment_lots WHERE CAST(account_id AS VARCHAR) = ?)
+			      + (SELECT COUNT(*) FROM investment_positions WHERE CAST(account_id AS VARCHAR) = ?)`,
+			[]any{sid, sid}},
+		{"transfer references",
+			`SELECT (SELECT COUNT(*) FROM transactions
+			         WHERE CAST(transfer_account_id AS VARCHAR) = ? AND CAST(account_id AS VARCHAR) <> ?)
+			      + (SELECT COUNT(*) FROM investment_transactions
+			         WHERE CAST(transfer_account_id AS VARCHAR) = ? AND CAST(account_id AS VARCHAR) <> ?)`,
+			[]any{sid, sid, sid, sid}},
+		{"scheduled transactions",
+			`SELECT COUNT(*) FROM scheduled_transactions st
+			 WHERE CAST(st.account_id AS VARCHAR) = ?
+			    OR CAST(st.transfer_account_id AS VARCHAR) = ?
+			    OR EXISTS (
+					SELECT 1 FROM scheduled_split_items si
+					WHERE si.scheduled_transaction_id = st.id
+					  AND CAST(si.transfer_account_id AS VARCHAR) = ?
+			    )`,
+			[]any{sid, sid, sid}},
+		{"active reconciliation",
+			`SELECT COUNT(*) FROM reconciliation_sessions
+			 WHERE CAST(account_id AS VARCHAR) = ? AND status = 'in_progress'`,
+			[]any{sid}},
+	}
+	for _, c := range checks {
+		var count int
+		if err := r.q().QueryRow(c.query, c.args...).Scan(&count); err != nil {
+			return nil, fmt.Errorf("failed to check %s: %w", c.dependents, err)
+		}
+		if count > 0 {
+			return &dberrors.HasDependentsError{
+				Entity:     "account",
+				ID:         sid,
+				Dependents: c.dependents,
+				Count:      count,
+			}, nil
+		}
+	}
+	return nil, nil
 }
 
 // CountLedgerRows returns how many rows the account owns in one ledger. With

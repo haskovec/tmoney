@@ -310,21 +310,3 @@ func (r *Repository) Delete(id types.ID) error {
 
 	return nil
 }
-
-// DeleteByAccountID removes all reconciliation sessions for an account.
-func (r *Repository) DeleteByAccountID(accountID types.ID) (int64, error) {
-	result, err := r.q().Exec(
-		`DELETE FROM reconciliation_sessions WHERE CAST(account_id AS VARCHAR) = ?`,
-		accountID.String(),
-	)
-	if err != nil {
-		return 0, fmt.Errorf("failed to delete reconciliation sessions by account: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to check rows affected: %w", err)
-	}
-
-	return rowsAffected, nil
-}

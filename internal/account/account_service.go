@@ -118,10 +118,39 @@ func (s *Service) guardLedgerChange(account *Account) error {
 	return nil
 }
 
-// Delete removes an account. The account must have no transactions and no
-// scheduled transactions referencing it.
+// Delete removes an account. It refuses with a HasDependentsError while any
+// row still refers to the account (Repository.DeleteBlocker lists them), and
+// it deletes the account's completed reconciliation sessions with it.
+//
+// The two deletes commit separately. DuckDB checks a foreign key against rows
+// deleted earlier in the same transaction, so deleting the sessions and then
+// the account in one transaction always fails on the sessions just removed.
+// Each step checks the blockers first, so a refused delete writes nothing. If
+// the second step fails anyway, the account stays and its completed sessions
+// are gone; they described a ledger that was already empty.
 func (s *Service) Delete(id types.ID) error {
-	return s.repo.Delete(id)
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		return s.repo.WithTx(tx).DeleteCompletedSessions(id)
+	}); err != nil {
+		return err
+	}
+	return s.db.WithTx(func(tx db.Queryer) error {
+		return s.repo.WithTx(tx).Delete(id)
+	})
+}
+
+// DeleteBlocker returns the HasDependentsError that Delete would return, or
+// nil when the account can be deleted. It writes nothing, so a preview can
+// warn before the user confirms.
+func (s *Service) DeleteBlocker(id types.ID) error {
+	blocker, err := s.repo.DeleteBlocker(id)
+	if err != nil {
+		return err
+	}
+	if blocker != nil {
+		return blocker
+	}
+	return nil
 }
 
 // List returns all accounts, optionally filtered to active accounts only.

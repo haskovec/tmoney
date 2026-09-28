@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
@@ -140,5 +141,63 @@ func TestAccountCmd_HelpListsEditAndDelete(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("expected `account --help` to list %q; got:\n%s", want, stdout.String())
 		}
+	}
+}
+
+// A brokerage keeps its history on the investment ledger. Before W5b the
+// delete counted only register rows, passed, and failed inside DuckDB with a
+// foreign-key driver error.
+func TestAccountDelete_BrokerageWithHistory(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	svc := app.NewServices(database)
+	acct := accountdom.NewAccount("Northwind Brokerage", accountdom.TypeInvestment, "USD",
+		types.ZeroMoney, types.MustParseDate("2020-01-01"))
+	if err := svc.Account.Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := svc.Investment.Deposit(acct.ID, types.MustParseDate("2020-02-01"), types.MustNewMoney("100.00"), ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	out, err := runAcctDelete(t, "Northwind Brokerage", "--file", dbPath)
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if !strings.Contains(out, "Warning: cannot delete account \"Northwind Brokerage\": it has 1 investment transactions") {
+		t.Errorf("preview should warn that delete is blocked, got: %s", out)
+	}
+
+	_, err = runAcctDelete(t, "Northwind Brokerage", "--file", dbPath, "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "1 investment transactions — close it instead") {
+		t.Fatalf("expected the investment-history refusal, got %v", err)
+	}
+	if strings.Contains(err.Error(), "Constraint Error") {
+		t.Errorf("the refusal leaked a driver error: %v", err)
+	}
+	if !accountExists(t, dbPath, "Northwind Brokerage") {
+		t.Error("the brokerage was deleted")
+	}
+}
+
+func TestAccountDelete_RefusedWithActiveReconciliation(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	svc := app.NewServices(database)
+	acct := accountdom.NewAccount("Checking", accountdom.TypeChecking, "USD",
+		types.ZeroMoney, types.MustParseDate("2020-01-01"))
+	if err := svc.Account.Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := svc.Reconciliation.StartReconciliation(acct.ID, types.MustParseDate("2020-02-01"), types.ZeroMoney); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	_, err := runAcctDelete(t, "Checking", "--file", dbPath, "--confirm")
+	if err == nil || !strings.Contains(err.Error(), "finish it (tmoney reconcile finish) or cancel it in the TUI") {
+		t.Fatalf("expected the active-reconciliation refusal, got %v", err)
+	}
+	if !accountExists(t, dbPath, "Checking") {
+		t.Error("the account was deleted")
 	}
 }
