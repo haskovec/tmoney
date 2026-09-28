@@ -132,8 +132,14 @@ Exported helper functions for converting nullable types to SQL parameter values 
 
 The `Services` struct and `NewServices(db)` factory function wire all repositories and services with proper dependency injection. This is the single initialization point used by both CLI and TUI entry points.
 
+`NewServices` only wires and writes nothing. Every opener then calls
+`svc.Prepare()`, which runs the open-time repairs (category seeds and heals)
+and returns every failure; the CLI prints it as a warning and the TUI shows a
+sticky alert, and both keep running.
+
 ```go
 svc := app.NewServices(database)
+err := svc.Prepare()               // open-time repairs; show err, do not stop
 svc.Account.Create(acct)           // account.Service
 svc.Transaction.Create(txn)        // transaction.Service
 svc.AccountRepo.GetByID(id)       // account.Repository
