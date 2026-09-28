@@ -51,9 +51,6 @@ func TestNewServices(t *testing.T) {
 	})
 
 	t.Run("all repositories are initialized", func(t *testing.T) {
-		if svc.AccountRepo == nil {
-			t.Error("AccountRepo should not be nil")
-		}
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
 		}

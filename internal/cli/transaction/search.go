@@ -160,7 +160,7 @@ func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 		categoryNames[c.ID] = c.Name
 	}
 
-	accounts, _ := svc.AccountRepo.List(false)
+	accounts, _ := svc.Account.List(false)
 	for _, a := range accounts {
 		accountNames[a.ID] = a.Name
 		accountCurrencies[a.ID] = a.Currency

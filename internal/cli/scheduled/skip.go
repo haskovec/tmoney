@@ -67,7 +67,7 @@ func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 
 	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
-	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
+	acct, _ := svc.Account.GetByID(st.AccountID)
 	accountName := "Unknown"
 	if acct != nil {
 		accountName = acct.Name

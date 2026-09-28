@@ -80,7 +80,7 @@ func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
 
 	difference := session.StatementBalance.Sub(clearedTotal)
 
-	account, _ := svc.AccountRepo.GetByID(firstTxn.AccountID)
+	account, _ := svc.Account.GetByID(firstTxn.AccountID)
 	currency := "USD"
 	if account != nil {
 		currency = account.Currency

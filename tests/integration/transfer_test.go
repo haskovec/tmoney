@@ -37,7 +37,7 @@ func openTransferServices(t *testing.T) (*app.Services, *db.DB) {
 func makeTransferAccount(t *testing.T, svc *app.Services, name string, at account.Type) *account.Account {
 	t.Helper()
 	acct := account.NewAccount(name, at, "USD", types.MustNewMoney("1000.00"), types.NewDate(2024, 1, 1))
-	if err := svc.AccountRepo.Create(acct); err != nil {
+	if err := svc.Account.Create(acct); err != nil {
 		t.Fatalf("create %s: %v", name, err)
 	}
 	return acct

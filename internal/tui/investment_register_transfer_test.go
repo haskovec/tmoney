@@ -98,7 +98,7 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 
 	mk := func(name string, at account.Type) *account.Account {
 		a := account.NewAccount(name, at, "USD", types.MustNewMoney("1000.00"), types.NewDate(2020, time.January, 1))
-		if err := svc.AccountRepo.Create(a); err != nil {
+		if err := svc.Account.Create(a); err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
 		return a

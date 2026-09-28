@@ -101,7 +101,7 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 
 	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
-	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
+	acct, _ := svc.Account.GetByID(st.AccountID)
 	currency := "USD"
 	accountName := "Unknown"
 	if acct != nil {
@@ -162,7 +162,7 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 	// State the direction rather than leaving it to be inferred from a sign.
 	if st.IsTransfer() {
 		destName := "Unknown"
-		if dest, derr := svc.AccountRepo.GetByID(st.TransferAccountID.ID); derr == nil && dest != nil {
+		if dest, derr := svc.Account.GetByID(st.TransferAccountID.ID); derr == nil && dest != nil {
 			destName = dest.Name
 		}
 		fmt.Fprintf(w, "  Transfer to: %s\n", destName)

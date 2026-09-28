@@ -45,11 +45,11 @@ func refuseUnsupportedTransferCategory(svc *app.Services, st *scheduleddom.Trans
 	if !st.IsTransfer() {
 		return nil
 	}
-	from, err := svc.AccountRepo.GetByID(st.AccountID)
+	from, err := svc.Account.GetByID(st.AccountID)
 	if err != nil {
 		return fmt.Errorf("failed to load the source account: %w", err)
 	}
-	to, err := svc.AccountRepo.GetByID(st.TransferAccountID.ID)
+	to, err := svc.Account.GetByID(st.TransferAccountID.ID)
 	if err != nil {
 		return fmt.Errorf("failed to load the transfer destination account: %w", err)
 	}
