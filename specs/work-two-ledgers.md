@@ -55,7 +55,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W11 | done (#56) | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | done (#57) | Constructor must not write | — | medium |
 | W10 | done (#58) | Correct `docs/ARCHITECTURE.md` | W5c | small |
-| W12 | open | Corporate Actions keys must reach the view | — | small |
+| W12 | done (#60) | Corporate Actions keys must reach the view | — | small |
 | W8 | phase 3 done (#59) | One view table in the TUI | W1, W2, and W12 | large |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
 
@@ -667,7 +667,7 @@ A change made from this document will put transfer code back on `transaction.Ser
 
 ## W12 — Corporate Actions keys must reach the view
 
-**Status:** open
+**Status:** done in PR #60. As built: the list arm of the view handler and `closeCorporateActionView`, which nothing else called, are removed, so the global Esc arm is the one back path; `switchView` ends a filter entry when it leaves the view, so the view never comes back still capturing keys; the help Esc line reads "Close details or filter entry, else back".
 **Source:** Review of PR #46 (W1), 2026-09-27.
 
 ### Problem
