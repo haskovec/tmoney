@@ -63,7 +63,7 @@ func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	app.sidebar.SetAccounts(accounts, nil)
+	app.sidebar.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking]
 
 	// Click on the account row (y=2 = content row 1 = Checking item)
@@ -102,7 +102,7 @@ func TestApp_MouseClick_Sidebar_DoubleClick_OpensAccount(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	app.sidebar.SetAccounts(accounts, nil)
+	app.sidebar.SetAccounts(accounts)
 
 	click := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
 
@@ -145,7 +145,7 @@ func TestApp_MouseOpenAccountMsg_SwitchesView(t *testing.T) {
 		height:      24,
 	}
 	app.styles.Resize(100, 24)
-	app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+	app.sidebar.SetAccounts([]*account.Account{checking})
 	app.sidebar.MoveDown()
 	app.sidebar.Select()
 
@@ -178,7 +178,7 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
 	}
-	app.sidebar.SetAccounts(accounts, nil)
+	app.sidebar.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Savings] = 3 items
 
 	// Click on group header (y=1 = content row 0 = Bank Accounts)

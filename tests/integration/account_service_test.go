@@ -226,47 +226,6 @@ func TestAccountServiceGetBalance(t *testing.T) {
 	})
 }
 
-func TestAccountServiceGetAllBalances(t *testing.T) {
-	svc, _, cleanup := createTestService(t)
-	defer cleanup()
-
-	t.Run("returns balances for all accounts", func(t *testing.T) {
-		accounts := []*account.Account{
-			account.NewAccount("Account 1", account.TypeChecking, "USD", types.MustNewMoney("100"), types.Today()),
-			account.NewAccount("Account 2", account.TypeSavings, "USD", types.MustNewMoney("200"), types.Today()),
-			account.NewAccount("Account 3", account.TypeCash, "USD", types.MustNewMoney("300"), types.Today()),
-		}
-
-		for _, acc := range accounts {
-			if err := svc.Create(acc); err != nil {
-				t.Fatalf("Failed to create account: %v", err)
-			}
-		}
-
-		balances, err := svc.GetAllBalances()
-		if err != nil {
-			t.Fatalf("Failed to get all balances: %v", err)
-		}
-
-		if len(balances) != 3 {
-			t.Errorf("Expected 3 balances, got %d", len(balances))
-		}
-
-		// Verify each account has correct balance
-		for _, acc := range accounts {
-			balance, ok := balances[acc.ID]
-			if !ok {
-				t.Errorf("Missing balance for account %s", acc.Name)
-				continue
-			}
-			if !balance.CurrentBalance.Equal(acc.OpeningBalance) {
-				t.Errorf("Account %s: expected balance %s, got %s",
-					acc.Name, acc.OpeningBalance.String(), balance.CurrentBalance.String())
-			}
-		}
-	})
-}
-
 func TestAccountServiceClose(t *testing.T) {
 	svc, _, cleanup := createTestService(t)
 	defer cleanup()

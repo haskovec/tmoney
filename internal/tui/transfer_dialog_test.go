@@ -446,7 +446,7 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
-	}, nil)
+	})
 
 	data := &transferDialogData{
 		accounts: []*account.Account{
@@ -492,7 +492,7 @@ func TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
-	}, nil)
+	})
 
 	data := &transferDialogData{
 		accounts: []*account.Account{
@@ -648,7 +648,7 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 	// Set up sidebar with a selected account
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	msg := transferDialogSavedMsg{}
 	_, cmd := app.Update(msg)
@@ -1040,7 +1040,8 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: checkingID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 		{BaseModel: types.BaseModel{ID: savingsID}, Name: "Savings", Active: true, Type: account.TypeSavings},
-	}, nil)
+	})
+
 	// Select Savings account (second item - navigate down past the group header)
 	app.sidebar.MoveDown() // to Checking
 	app.sidebar.MoveDown() // to Savings

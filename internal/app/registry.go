@@ -228,6 +228,7 @@ func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf t
 
 	return &report.ValuationResult{
 		TotalValue:       val.TotalValue,
+		CashBalance:      val.CashBalance,
 		HasMissingPrices: hasMissingPrices,
 	}, nil
 }

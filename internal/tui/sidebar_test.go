@@ -44,7 +44,7 @@ func TestNewSidebar(t *testing.T) {
 
 func TestSidebar_SetAccounts_EmptyList(t *testing.T) {
 	s := NewSidebar()
-	s.SetAccounts(nil, nil)
+	s.SetAccounts(nil)
 
 	if len(s.items) != 0 {
 		t.Errorf("expected 0 items, got %d", len(s.items))
@@ -58,7 +58,7 @@ func TestSidebar_SetAccounts_SingleGroup(t *testing.T) {
 		testAccount("Savings", account.TypeSavings),
 	}
 
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// Checking and Savings share the "Bank Accounts" group
 	// Expect: 1 group header + 2 accounts = 3 items
@@ -88,7 +88,7 @@ func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 		testAccount("Brokerage", account.TypeInvestment),
 	}
 
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// 3 groups, each with 1 account = 6 items
 	if len(s.items) != 6 {
@@ -121,7 +121,7 @@ func TestSidebar_ClosedAccountsGroupedLast(t *testing.T) {
 	closedBrokerage := testAccount("Old Brokerage", account.TypeInvestment)
 	closedBrokerage.Close(types.Today())
 
-	s.SetAccounts([]*account.Account{checking, closedSavings, closedBrokerage}, nil)
+	s.SetAccounts([]*account.Account{checking, closedSavings, closedBrokerage})
 
 	var groupOrder []string
 	closedNames := map[string]bool{}
@@ -152,7 +152,7 @@ func TestSidebar_ClosedAccountsGroupedLast(t *testing.T) {
 
 func TestSidebar_NoClosedGroupWhenAllActive(t *testing.T) {
 	s := NewSidebar()
-	s.SetAccounts([]*account.Account{testAccount("Checking", account.TypeChecking)}, nil)
+	s.SetAccounts([]*account.Account{testAccount("Checking", account.TypeChecking)})
 	for _, item := range s.items {
 		if item.kind == sidebarItemGroup && item.groupKey == closedAccountsGroupLabel {
 			t.Error("Closed Accounts group should be absent when no account is closed")
@@ -167,7 +167,7 @@ func TestSidebar_AllGroupsAlwaysExpanded(t *testing.T) {
 		testAccount("Savings", account.TypeSavings),
 		testAccount("Visa", account.TypeCreditCard),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// All groups always expanded: Bank Accounts + 2 accounts + Credit Cards + 1 account = 5
 	if len(s.items) != 5 {
@@ -192,7 +192,7 @@ func TestSidebar_MoveUpDown(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Savings]
 
 	if s.cursor != 0 {
@@ -236,7 +236,7 @@ func TestSidebar_Select_Account(t *testing.T) {
 	s := NewSidebar()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// Move to account
 	s.MoveDown()
@@ -256,7 +256,7 @@ func TestSidebar_Select_Group(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// Cursor is on group header
 	selected := s.Select()
@@ -274,7 +274,7 @@ func TestSidebar_SelectedAccount(t *testing.T) {
 	s := NewSidebar()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// No selection yet
 	if s.SelectedAccount() != nil {
@@ -305,7 +305,7 @@ func TestSidebar_CursorItem(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	item := s.CursorItem()
 	if item == nil {
@@ -331,24 +331,6 @@ func TestSidebar_Focus(t *testing.T) {
 	s.SetFocused(true)
 	if !s.IsFocused() {
 		t.Error("sidebar should be focused after SetFocused(true)")
-	}
-}
-
-func TestSidebar_SetAccounts_WithBalances(t *testing.T) {
-	s := NewSidebar()
-	checking := testAccount("Checking", account.TypeChecking)
-	balances := map[types.ID]*account.Balance{
-		checking.ID: {
-			AccountID:      checking.ID,
-			CurrentBalance: types.MustNewMoney("1234.56"),
-			ClearedBalance: types.MustNewMoney("1000.00"),
-		},
-	}
-
-	s.SetAccounts([]*account.Account{checking}, balances)
-
-	if len(s.balances) != 1 {
-		t.Errorf("expected 1 balance, got %d", len(s.balances))
 	}
 }
 
@@ -395,7 +377,7 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Visa", account.TypeCreditCard),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	styles := widget.NewStyles()
 	styles.Resize(80, 24)
@@ -423,7 +405,7 @@ func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
 		testAccount("Wealthfront Joint Checking", account.TypeChecking),
 		testAccount("Wealthfront IRA", account.TypeInvestment),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	styles := widget.NewStyles()
 	styles.Resize(184, 64)
@@ -454,7 +436,7 @@ func TestSidebar_SetCursor(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Savings] = 3 items
 
 	s.SetCursor(1)
@@ -499,7 +481,7 @@ func TestSidebar_ItemCount(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Visa", account.TypeCreditCard),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Credit Cards, Visa] = 4 items
 
 	if s.ItemCount() != 4 {
@@ -513,7 +495,7 @@ func TestSidebar_HitTest(t *testing.T) {
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Savings] = 3 items
 
 	tests := []struct {
@@ -556,7 +538,7 @@ func TestSidebar_HitTest_WithScroll(t *testing.T) {
 		testAccount("MC", account.TypeCreditCard),
 		testAccount("Brokerage", account.TypeInvestment),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// items: [Bank Accounts, Checking, Savings, Credit Cards, Visa, MC, Investments, Brokerage] = 8
 
 	s.scrollOffset = 3 // Start from "Credit Cards"
@@ -581,7 +563,7 @@ func TestSidebar_ScrollOnMoveDown(t *testing.T) {
 		testAccount("MC", account.TypeCreditCard),
 		testAccount("Brokerage", account.TypeInvestment),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// 8 items total
 
 	styles := widget.NewStyles()
@@ -609,7 +591,7 @@ func TestSidebar_ScrollClamp(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// 2 items: [Bank Accounts, Checking]
 
 	// Force scroll offset beyond items
@@ -630,7 +612,7 @@ func TestSidebar_ScrollFollowsCursor(t *testing.T) {
 		testAccount("D", account.TypeInvestment),
 		testAccount("E", account.TypeLoan),
 	}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 	// 4 groups + 5 accounts = 9 items (Checking/Savings share Bank Accounts group)
 
 	// Set cursor near end
@@ -655,7 +637,7 @@ func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
 	s := NewSidebar()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// Select the account
 	s.MoveDown()
@@ -666,7 +648,7 @@ func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
 	}
 
 	// Reload accounts (simulates data refresh)
-	s.SetAccounts(accounts, nil)
+	s.SetAccounts(accounts)
 
 	// Selection should persist
 	if s.selectedAccountID != checking.ID {
@@ -746,13 +728,13 @@ func TestSidebar_SetAccountsKeepsCursorOnAccount(t *testing.T) {
 	oldSavings := testAccount("Old Savings", account.TypeSavings)
 	oldSavings.Close(types.Today())
 	accts := []*account.Account{checking, oldSavings, brokerage}
-	s.SetAccounts(accts, nil)
+	s.SetAccounts(accts)
 
 	if !s.SetCursorToAccount(brokerage.ID) {
 		t.Fatal("setup: brokerage not in the sidebar")
 	}
 	brokerage.Reopen()
-	s.SetAccounts(accts, nil)
+	s.SetAccounts(accts)
 
 	if item := s.CursorItem(); item == nil || item.accountID != brokerage.ID {
 		t.Errorf("cursor item = %+v, want the reopened brokerage", item)

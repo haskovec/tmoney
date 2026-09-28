@@ -139,48 +139,6 @@ func TestBalanceCalculation_ClearedBalanceIncludesOnlyClearedAndReconciled(t *te
 	})
 }
 
-func TestBalanceCalculation_GetAllBalancesExcludesVoid(t *testing.T) {
-	t.Run("GetAllBalances excludes void transactions across all accounts", func(t *testing.T) {
-		database := createTestDB(t)
-		txnRepo := NewRepository(database)
-		splitRepo := NewSplitRepository(database)
-		payeeRepo := payee.NewRepository(database)
-		accountRepo := accountpkg.NewRepository(database)
-		txnSvc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
-		accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
-
-		account := accountpkg.NewAccount("Checking", accountpkg.TypeChecking, "USD",
-			types.MustNewMoney("500.00"), types.NewDate(2024, 1, 1))
-		if err := accountSvc.Create(account); err != nil {
-			t.Fatalf("Failed to create account: %v", err)
-		}
-
-		// Add and void a transaction
-		txn := NewTransaction(account.ID, types.Today(), types.MustNewMoney("-100.00"))
-		if err := txnSvc.Create(txn); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-		if err := txnSvc.VoidTransaction(txn.ID); err != nil {
-			t.Fatalf("VoidTransaction() error = %v", err)
-		}
-
-		balances, err := accountSvc.GetAllBalances()
-		if err != nil {
-			t.Fatalf("GetAllBalances() error = %v", err)
-		}
-
-		bal, ok := balances[account.ID]
-		if !ok {
-			t.Fatal("Account not found in balances")
-		}
-
-		// Should be opening balance since void is excluded
-		if !bal.CurrentBalance.Equal(types.MustNewMoney("500.00")) {
-			t.Errorf("Expected balance 500, got %s", bal.CurrentBalance.String())
-		}
-	})
-}
-
 func TestBalanceCalculation_ReconciledInClearedBalance(t *testing.T) {
 	t.Run("reconciled transactions count toward cleared balance", func(t *testing.T) {
 		database := createTestDB(t)

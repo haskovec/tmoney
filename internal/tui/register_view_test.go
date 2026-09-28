@@ -559,7 +559,7 @@ func TestApp_Update_TransactionDialogSaved_SetsPendingSelectID(t *testing.T) {
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	savedID := types.NewID()
 	model, _ := app.Update(transactionDialogSavedMsg{savedID: savedID})

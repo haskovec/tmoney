@@ -28,7 +28,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.openAccountFromMouse(msg.accountID)
 
 	case sidebarLoadedMsg:
-		a.sidebar.SetAccounts(msg.accounts, msg.balances)
+		a.sidebar.SetAccounts(msg.accounts)
 		return a, nil
 
 	case scheduledDueCountMsg:

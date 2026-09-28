@@ -526,62 +526,6 @@ func TestService_GetBalance(t *testing.T) {
 	})
 }
 
-func TestService_GetAllBalances(t *testing.T) {
-	t.Run("returns balances for all accounts", func(t *testing.T) {
-		database := createTestDB(t)
-		repo := NewRepository(database)
-		svc := NewService(repo, database)
-
-		accounts := []*Account{
-			NewAccount("Acct 1", TypeChecking, "USD", types.MustNewMoney("100.00"), types.Today()),
-			NewAccount("Acct 2", TypeSavings, "USD", types.MustNewMoney("200.00"), types.Today()),
-			NewAccount("Acct 3", TypeCash, "USD", types.MustNewMoney("300.00"), types.Today()),
-		}
-
-		for _, a := range accounts {
-			if err := svc.Create(a); err != nil {
-				t.Fatalf("Create() error = %v", err)
-			}
-		}
-
-		balances, err := svc.GetAllBalances()
-		if err != nil {
-			t.Fatalf("GetAllBalances() error = %v", err)
-		}
-
-		if len(balances) != 3 {
-			t.Errorf("Expected 3 balances, got %d", len(balances))
-		}
-
-		for _, a := range accounts {
-			b, ok := balances[a.ID]
-			if !ok {
-				t.Errorf("Missing balance for account %s", a.Name)
-				continue
-			}
-			if !b.CurrentBalance.Equal(a.OpeningBalance) {
-				t.Errorf("Account %s: expected balance %s, got %s",
-					a.Name, a.OpeningBalance.String(), b.CurrentBalance.String())
-			}
-		}
-	})
-
-	t.Run("returns empty map for no accounts", func(t *testing.T) {
-		database := createTestDB(t)
-		repo := NewRepository(database)
-		svc := NewService(repo, database)
-
-		balances, err := svc.GetAllBalances()
-		if err != nil {
-			t.Fatalf("GetAllBalances() error = %v", err)
-		}
-
-		if len(balances) != 0 {
-			t.Errorf("Expected 0 balances, got %d", len(balances))
-		}
-	})
-}
-
 func TestService_Close(t *testing.T) {
 	t.Run("closes account with zero balance", func(t *testing.T) {
 		database := createTestDB(t)

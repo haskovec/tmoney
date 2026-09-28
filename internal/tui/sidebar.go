@@ -77,8 +77,6 @@ type Sidebar struct {
 
 	// Cached data
 	accounts []*account.Account
-	balances map[types.ID]*account.Balance
-
 	// Focus state
 	focused bool
 }
@@ -86,17 +84,13 @@ type Sidebar struct {
 // NewSidebar creates a new Sidebar with default state.
 func NewSidebar() *Sidebar {
 	return &Sidebar{
-		balances: make(map[types.ID]*account.Balance),
-		focused:  true,
+		focused: true,
 	}
 }
 
-// SetAccounts updates the sidebar with a new account list and balances.
-func (s *Sidebar) SetAccounts(accounts []*account.Account, balances map[types.ID]*account.Balance) {
+// SetAccounts updates the sidebar with a new account list.
+func (s *Sidebar) SetAccounts(accounts []*account.Account) {
 	s.accounts = accounts
-	if balances != nil {
-		s.balances = balances
-	}
 	s.rebuildItems()
 }
 

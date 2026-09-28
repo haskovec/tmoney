@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/spf13/cobra"
 )
@@ -56,8 +57,12 @@ func runAccountShow(opts *accountShowOptions, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %w", err)
 	}
+	figs, err := svc.Report.AccountFigures([]*accountdom.Account{acct})
+	if err != nil {
+		return fmt.Errorf("failed to get balance: %w", err)
+	}
 
-	printAccountDetails(w, acct, bal)
+	printAccountDetails(w, acct, bal, figs[0])
 
-	return nil
+	return figureErrors([]*accountdom.Account{acct}, figs)
 }
