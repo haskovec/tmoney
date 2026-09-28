@@ -46,50 +46,54 @@ This phase is item W1 in `specs/work-two-ledgers.md`. Ship it from there. When W
 
 Only the seven switches collapse. No method moves. Every fallback stays.
 
-- [ ] **VL-101 — `views.go` with ids and names; guard 1**
+- [x] **VL-101 — `views.go` with ids and names; guard 1**
   - Create `internal/tui/views.go` with `viewEntry` (only `id` and `name` for now), package-level `allViews` with eleven entries, `views()`, and `viewFor(v View) (viewEntry, bool)`. Neither accessor takes a receiver.
   - RED then GREEN in a new `views_guard_test.go`: **guard 1** — every `View` constant has exactly one entry, and no entry has a duplicate `id`. Reuse the VL-001 enumerator. Fail on an empty constant set.
 
-- [ ] **VL-102 — `View.String()` reads the table**
+- [x] **VL-102 — `View.String()` reads the table**
   - Replace the switch at `app.go:51` with a `viewFor` lookup. Keep the `"Unknown"` fallback; `TestViewString` pins it for `View(999)`.
 
-- [ ] **VL-103 — `render` and `fullScreen`; guard 3**
+- [x] **VL-103 — `render` and `fullScreen`; guard 3**
   - Add `render func(*App) string` and `fullScreen bool` to `viewEntry`. Fill `render` with the existing `renderX` method values. Set `fullScreen` on Reconciliation, Securities, Prices, CorporateActions, Amortization.
   - `renderContent` (`app_view.go:94`): the eleven-arm switch becomes `e.render(a)` with the `"Unknown view"` fallback. The five-way `||` becomes `e.fullScreen || a.styles.SidebarWidth() == 0`.
   - `handleMouseContent` (`app_mouse.go:81`): the five-way `||` becomes the same disjunct. Keep the `sidebarWidth == 0` half and the inner Dashboard branch as the design's §Phase 1 shows.
   - RED then GREEN: **guard 3** — no expression outside `views.go` compares `currentView` against three or more `View` constants. Add its self-test over fabricated source, in the `controller_guard_test.go` pattern.
 
-- [ ] **VL-104 — `onKey`**
+- [x] **VL-104 — `onKey`**
   - Add `onKey func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)`. Fill with the existing `handleXKeys` method values.
   - Replace the eleven-arm switch at `app.go:568` with the lookup. The four earlier branches in `handleKeyPress` stay exactly where they are.
+  - Done: with `onKey` in the table, the key handlers reach `View.String()`, which reads `allViews`, and Go refuses that initialization cycle. `init` fills `allViews` instead.
 
-- [ ] **VL-105 — `hints`**
+- [x] **VL-105 — `hints`**
   - Add `hints func(*App) string`. Replace the switch in `getKeyHints` (`app_view.go:148`) with the lookup. Keep the existing default.
 
-- [ ] **VL-106 — `shortcuts`**
+- [x] **VL-106 — `shortcuts`**
   - Add `shortcuts func() shortcutSection`. Replace the switch in `viewShortcutSections` (`help_overlay.go:225`) with the lookup. The VL-001 test must stay green.
 
-- [ ] **VL-107 — `table` (a func, because two views pick by mode)**
+- [x] **VL-107 — `table` (a func, because two views pick by mode)**
   - Add `table func(*App) *widget.Table`. Replace the switch in `activeTable` (`app_helpers.go:66`). Prices picks by `priceView.mode`; Portfolio picks by `portfolioMode`. Views without a table return nil.
   - Test: both modes of Prices and both modes of Portfolio return the expected table.
 
-- [ ] **VL-108 — `reload`, copied from the W2 arms**
+- [x] **VL-108 — `reload`, copied from the W2 arms**
   - Add `reload func(*App) []tea.Cmd`. Replace the switch in `reloadCurrentView` (`app_helpers.go:174`).
   - Correction (2026-09-27): the nil reload for Reconciliation and CorporateActions was the bug that W2 in `specs/work-two-ledgers.md` fixes. W2 ships first (W8 needs it). Copy its two arms verbatim: Reconciliation reloads through `loadReconciliationData` only when a session is on screen, and keeps the check marks that are still candidates; CorporateActions calls `loadCorporateActionViewData`.
   - Test: no entry has a nil `reload`. The W2 reload tests stay green.
+  - Done: the test checks every func that a lookup calls without a nil check (`render`, `onKey`, `hints`, `shortcuts`, `reload`, `focus`).
 
-- [ ] **VL-109 — `focus`, verbatim per arm; the tables-nil walk**
+- [x] **VL-109 — `focus`, verbatim per arm; the tables-nil walk**
   - Add `focus func(*App)`. Copy each arm of the focus block in `switchView` (`app_menu.go:296`) into its entry verbatim, every `!= nil` guard included. Do **not** level Amortization (`app_menu.go:366`, sidebar off only) with Corporate Actions (`app_menu.go:353`, sidebar off and table focused when non-nil).
   - Test (§5.2): build `&App{sidebar: NewSidebar(), statusbar: widget.NewStatusBar(), styles: widget.NewStyles()}` with every table nil. For each `View` value, set `currentView` to a different view and call `switchView(v)`. No panic.
+  - Done: a script compared each `focus` body with its old arm (11 of 11 the same). The walk test fails when one nil check is removed.
 
-- [ ] **VL-110 — Guard 2 with self-test**
+- [x] **VL-110 — Guard 2 with self-test**
   - RED then GREEN: **guard 2** — parse every production file in the package; a `switch` outside `views.go` whose cases name more than four `View` constants fails. State the number four in the guard's message. Add its self-test over fabricated source.
   - This item is last in the phase because it fails until VL-102 to VL-109 are done.
 
-- [ ] **VL-111 — Exit check and manual smoke**
+- [x] **VL-111 — Exit check and manual smoke**
   - Confirm: seven switches gone; the five-view list gone from both predicates; `View.String()` returns `"Unknown"` for a miss; the four pre-switch branches untouched; guards 1 to 3 green with self-tests.
   - Manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back.
   - Set the design document's phase 1 status to built.
+  - Done: the View menu holds only Theme, so the smoke test reached the views by their keys, the sidebar, and the view keys. It ran in a pty with fictional data, and its 40 screens matched the build before this phase. It found one old bug, left alone: the Prices detail hint never shows (see the design's phase 1 status).
 
 ## Phase 3: Split the Two God Files (the 4d motion)
 

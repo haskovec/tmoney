@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0 AND 3 BUILT; phases 1, 2 and 4 are proposed. Phase 0 shipped as W1 (PR #46). Phase 3 (the two file splits) is built; see its status note below.
+**Status:** PHASES 0, 1 AND 3 BUILT; phases 2 and 4 are proposed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -466,6 +466,34 @@ Two facts get recorded rather than changed:
    in a third place.
 4. **Self-tests** for 2 and 3 over fabricated source, in the
    `controller_guard_test.go` pattern.
+
+**Status: built** (2026-09-28). The seven switches and `View.String()`'s
+switch are lookups in `views.go`, and both full-screen predicates read
+`fullScreen`. On `main` before this phase, guard 2 fires on all eight
+switches and guard 3 on both predicates. Differences from the text above:
+
+- `init` fills `allViews`, not its declaration. The key handlers reach
+  `View.String()`, which reads `allViews`, and Go refuses that cycle in a
+  package-level initializer. The table is still built once, and `views()`
+  and `viewFor()` take no receiver.
+- Every entry has a `reload`. W2 (`specs/work-two-ledgers.md`) shipped first
+  and gave Reconciliation and Corporate Actions their reload arms, so the
+  `reload: nil` text in §2.1, §2.3, this section and §5.4 is out of date.
+  A test checks that no entry lacks a func that its lookup calls without a
+  nil check (`render`, `onKey`, `hints`, `shortcuts`, `reload`, `focus`).
+- `table` is nil for Dashboard and Reports, which have no table.
+- `hints` are closures over one constant, `commonKeyHints`, which is also
+  the default for a value that is not a view.
+- The View menu holds only Theme, so the smoke test reached the views by
+  their keys, the sidebar and the view keys. It ran in a pty with fictional
+  data: every view, `?` on each, clicks and the wheel, and Securities to
+  Corporate Actions and back. Its 40 screens, text and colours, were
+  identical to the same run on the build before this phase.
+
+Found and left alone, because this phase changes no behaviour: the Prices
+detail hint never shows. `updateStatusBar` runs only on a view switch, a
+database switch and start-up, and entering the detail mode is none of
+these, so the status bar keeps the list hint.
 
 ### Phase 2 — per-view state structs
 
