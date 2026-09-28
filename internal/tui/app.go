@@ -46,34 +46,12 @@ const (
 	ViewAmortization
 )
 
-// String returns the display name of the view.
+// String returns the display name of the view, from the view table.
 func (v View) String() string {
-	switch v {
-	case ViewDashboard:
-		return "Dashboard"
-	case ViewRegister:
-		return "Register"
-	case ViewScheduled:
-		return "Scheduled"
-	case ViewReports:
-		return "Reports"
-	case ViewReconciliation:
-		return "Reconciliation"
-	case ViewSecurities:
-		return "Securities"
-	case ViewPrices:
-		return "Prices"
-	case ViewInvestmentRegister:
-		return "Investment Register"
-	case ViewPortfolio:
-		return "Portfolio"
-	case ViewCorporateActions:
-		return "Corporate Actions"
-	case ViewAmortization:
-		return "Amortization"
-	default:
-		return "Unknown"
+	if e, ok := viewFor(v); ok && e.name != "" {
+		return e.name
 	}
+	return "Unknown"
 }
 
 // App is the main TUI application model.
@@ -582,31 +560,9 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// View-specific key handling
-	switch a.currentView {
-	case ViewDashboard:
-		return a.handleDashboardKeys(msg)
-	case ViewRegister:
-		return a.handleRegisterKeys(msg)
-	case ViewScheduled:
-		return a.handleScheduledKeys(msg)
-	case ViewReports:
-		return a.handleReportsKeys(msg)
-	case ViewReconciliation:
-		return a.handleReconciliationKeys(msg)
-	case ViewSecurities:
-		return a.handleSecurityViewKeys(msg)
-	case ViewPrices:
-		return a.handlePriceViewKeys(msg)
-	case ViewInvestmentRegister:
-		return a.handleInvestmentRegisterKeys(msg)
-	case ViewPortfolio:
-		return a.handlePortfolioKeys(msg)
-	case ViewCorporateActions:
-		return a.handleCorporateActionViewKeys(msg)
-	case ViewAmortization:
-		return a.handleAmortizationKeys(msg)
+	if e, ok := viewFor(a.currentView); ok {
+		return e.onKey(a, msg)
 	}
-
 	return a, nil
 }
 

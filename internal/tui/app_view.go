@@ -92,43 +92,16 @@ func (a *App) renderHeader() string {
 
 // renderContent renders the main content area based on current view.
 func (a *App) renderContent(height int) string {
-	var viewContent string
-	switch a.currentView {
-	case ViewDashboard:
-		viewContent = a.renderDashboard()
-	case ViewRegister:
-		viewContent = a.renderRegister()
-	case ViewScheduled:
-		viewContent = a.renderScheduled()
-	case ViewReports:
-		viewContent = a.renderReports()
-	case ViewReconciliation:
-		viewContent = a.renderReconciliation()
-	case ViewSecurities:
-		viewContent = a.renderSecurityView()
-	case ViewPrices:
-		viewContent = a.renderPriceView()
-	case ViewInvestmentRegister:
-		viewContent = a.renderInvestmentRegister()
-	case ViewPortfolio:
-		viewContent = a.renderPortfolioView()
-	case ViewCorporateActions:
-		viewContent = a.renderCorporateActionView()
-	case ViewAmortization:
-		viewContent = a.renderAmortizationView()
-	default:
-		viewContent = "Unknown view"
+	viewContent := "Unknown view"
+	e, ok := viewFor(a.currentView)
+	if ok {
+		viewContent = e.render(a)
 	}
 
-	// Reconciliation, Securities, Prices, Corporate Actions, and Amortization
-	// views are full-screen (no sidebar)
-	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices || a.currentView == ViewCorporateActions || a.currentView == ViewAmortization {
-		return a.styles.RenderViewContent(viewContent, a.width, height)
-	}
-
+	// A full-screen view, and every view in the small layout, has no sidebar
+	// and takes the full width.
 	sidebarWidth := a.styles.SidebarWidth()
-	if sidebarWidth == 0 {
-		// Small layout: no sidebar, full-width content
+	if e.fullScreen || sidebarWidth == 0 {
 		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
@@ -144,39 +117,15 @@ func (a *App) renderStatusBar() string {
 	return a.statusbar.Render(a.styles, a.width)
 }
 
-// getKeyHints returns key hints for the current view.
-func (a *App) getKeyHints() string {
-	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  5 prices  ? help  ctrl+q quit"
+// commonKeyHints ends the key hints of every view but Reconciliation.
+const commonKeyHints = "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  5 prices  ? help  ctrl+q quit"
 
-	switch a.currentView {
-	case ViewDashboard:
-		return "↑↓ navigate  ←→ collapse/expand  enter select  " + common
-	case ViewRegister:
-		return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + common
-	case ViewScheduled:
-		return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + common
-	case ViewReports:
-		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
-	case ViewReconciliation:
-		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
-	case ViewSecurities:
-		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + common
-	case ViewPrices:
-		if a.priceView != nil && a.priceView.mode == pricesViewDetail {
-			return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + common
-		}
-		return "↑↓ navigate  enter view history  / search  esc back  " + common
-	case ViewInvestmentRegister:
-		return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + common
-	case ViewPortfolio:
-		return "↑↓ navigate  enter lot detail  r register  esc back  " + common
-	case ViewCorporateActions:
-		return "↑↓ navigate  / filter  enter details  d delete  esc back  " + common
-	case ViewAmortization:
-		return "↑↓ navigate  g/G first/last  esc back  " + common
-	default:
-		return common
+// getKeyHints returns key hints for the current view, from the view table.
+func (a *App) getKeyHints() string {
+	if e, ok := viewFor(a.currentView); ok {
+		return e.hints(a)
 	}
+	return commonKeyHints
 }
 
 // renderError renders an error message.

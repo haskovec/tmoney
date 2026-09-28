@@ -64,30 +64,8 @@ func (a *App) tableContentRowOffset() int {
 
 // activeTable returns the currently active table for the current view, or nil.
 func (a *App) activeTable() *widget.Table {
-	switch a.currentView {
-	case ViewRegister:
-		return a.table
-	case ViewReconciliation:
-		return a.reconciliationTable
-	case ViewScheduled:
-		return a.scheduledTable
-	case ViewInvestmentRegister:
-		return a.investmentTable
-	case ViewPortfolio:
-		if a.portfolioData != nil {
-			return a.activePortfolioTable()
-		}
-	case ViewSecurities:
-		return a.securityTable
-	case ViewPrices:
-		if a.priceView != nil && a.priceView.mode == pricesViewList {
-			return a.priceListTable
-		}
-		return a.priceTable
-	case ViewAmortization:
-		return a.amortizationTable
-	case ViewCorporateActions:
-		return a.corporateActionViewTable
+	if e, ok := viewFor(a.currentView); ok && e.table != nil {
+		return e.table(a)
 	}
 	return nil
 }
@@ -173,44 +151,8 @@ func (a *App) invalidatePriceHistoryCache() {
 // investment register shows up on Esc → portfolio).
 func (a *App) reloadCurrentView() tea.Cmd {
 	cmds := []tea.Cmd{a.loadSidebarData()}
-	switch a.currentView {
-	case ViewDashboard:
-		cmds = append(cmds, a.loadDashboardData(), a.loadScheduledDueCount())
-	case ViewRegister:
-		accountID := a.sidebar.SelectedAccountID()
-		cmds = append(cmds, a.loadRegisterData(accountID))
-	case ViewInvestmentRegister:
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			cmds = append(cmds, a.loadInvestmentRegisterData(a.investmentRegister.account.ID))
-		}
-	case ViewPortfolio:
-		if a.portfolioData != nil && a.portfolioData.account != nil {
-			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
-		}
-	case ViewScheduled:
-		cmds = append(cmds, a.loadScheduledViewData(), a.loadScheduledDueCount())
-	case ViewReconciliation:
-		// No session on screen yet means its first load is still in flight;
-		// that load fills the table. Never start a session from here.
-		if r := a.reconciliation; r != nil && r.session != nil && r.account != nil {
-			cmds = append(cmds, a.reloadReconciliationData(r))
-		}
-	case ViewCorporateActions:
-		cmds = append(cmds, a.loadCorporateActionViewData())
-	case ViewReports:
-		if a.reports != nil {
-			cmds = append(cmds, a.loadReportsViewData(
-				a.reports.rtype, a.reports.year, a.reports.month, a.reports.includeTransfers,
-			))
-		}
-	case ViewSecurities:
-		cmds = append(cmds, a.loadSecurityViewData())
-	case ViewPrices:
-		cmds = append(cmds, a.loadPriceViewData())
-	case ViewAmortization:
-		if a.amortizationData != nil && a.amortizationData.account != nil {
-			cmds = append(cmds, a.loadAmortizationData(a.amortizationData.account.ID))
-		}
+	if e, ok := viewFor(a.currentView); ok {
+		cmds = append(cmds, e.reload(a)...)
 	}
 	return tea.Batch(cmds...)
 }
