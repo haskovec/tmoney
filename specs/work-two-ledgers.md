@@ -491,7 +491,7 @@ The investment ledger also has no `void` status (`transfer.StatusFromRegular` re
 
 ## W5c — One display figure for account list, show, and balance
 
-**Status:** done in PR #54. As built: `AccountFigure` also carries the account `Type`, which `TotalsByCurrency` needs to split assets from liabilities; `AccountFigures` takes the account list the command already has; `account show` prints its rows before it returns a valuation error, as the list commands do; the delete preview shows a valuation error in its line and does not fail. Removing `GetAllBalances` also removed a test in `tests/integration`.
+**Status:** done in PR #54. As built: `AccountFigure` also carries the account `Type`, which `TotalsByCurrency` needs to split assets from liabilities; `AccountFigures` takes the account list the command already has; `account show` prints its rows before it returns a valuation error, as the list commands do; the delete preview shows a valuation error in its line and does not fail. Removing `GetAllBalances` also removed a test in `tests/integration`. Added in review: `portfolio_holdings` lists active accounts only, so a closed account's holdings are read from its own lots or positions; before that, a closed brokerage holding shares was valued at its cash alone.
 **Decision:** The display figure lives on `report.Service`. In a list, a row that cannot be valued shows "error". Its currency has no total, and the command exits non-zero.
 
 ### Fix
