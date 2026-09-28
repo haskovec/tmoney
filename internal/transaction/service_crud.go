@@ -211,3 +211,9 @@ func (s *Service) ListByAccount(accountID types.ID) ([]*Transaction, error) {
 func (s *Service) ListByAccountAndDateRange(accountID types.ID, startDate, endDate types.Date) ([]*Transaction, error) {
 	return s.txnRepo.ListByAccountAndDateRange(accountID, startDate, endDate)
 }
+
+// Search returns the transactions that match every set field of criteria,
+// newest first. It is a read with no rule of its own.
+func (s *Service) Search(criteria SearchCriteria) ([]*Transaction, error) {
+	return s.txnRepo.Search(criteria)
+}

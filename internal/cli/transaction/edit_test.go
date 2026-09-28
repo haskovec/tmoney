@@ -70,7 +70,7 @@ func reload(t *testing.T, dbPath string, txnID types.ID) (*transactiondom.Transa
 		t.Fatalf("failed to reopen database: %v", err)
 	}
 	svc := app.NewServices(database)
-	txn, err := svc.TransactionRepo.GetByID(txnID)
+	txn, err := svc.Transaction.GetByID(txnID)
 	if err != nil {
 		database.Close()
 		t.Fatalf("failed to reload transaction: %v", err)

@@ -112,21 +112,21 @@ func runTransactionSearch(opts *transactionSearchOptions, w io.Writer) error {
 		criteria.MaxAmount = &maxAmt
 	}
 
-	// The repository's Search uses AND logic across PayeeName and Memo,
+	// Search uses AND logic across PayeeName and Memo,
 	// but we want OR semantics: match if either field contains the term.
 	// Run two queries and merge the results.
 	var transactions []*transactiondom.Transaction
 
 	payeeCriteria := criteria
 	payeeCriteria.Memo = ""
-	payeeResults, err := svc.TransactionRepo.Search(payeeCriteria)
+	payeeResults, err := svc.Transaction.Search(payeeCriteria)
 	if err != nil {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}
 
 	memoCriteria := criteria
 	memoCriteria.PayeeName = ""
-	memoResults, err := svc.TransactionRepo.Search(memoCriteria)
+	memoResults, err := svc.Transaction.Search(memoCriteria)
 	if err != nil {
 		return fmt.Errorf("failed to search transactions: %w", err)
 	}

@@ -60,7 +60,7 @@ func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
 		txnIDs = append(txnIDs, id)
 	}
 
-	firstTxn, err := svc.TransactionRepo.GetByID(txnIDs[0])
+	firstTxn, err := svc.Transaction.GetByID(txnIDs[0])
 	if err != nil {
 		return fmt.Errorf("transaction not found: %w", err)
 	}

@@ -225,7 +225,7 @@ func TestCutover_AutoPostUndo_TransferSchedule(t *testing.T) {
 
 	// Both legs are gone.
 	for _, acctID := range []types.ID{checking.ID, savings.ID} {
-		rows, err := svc.TransactionRepo.ListByAccount(acctID)
+		rows, err := svc.Transaction.ListByAccount(acctID)
 		if err != nil {
 			t.Fatalf("list rows: %v", err)
 		}

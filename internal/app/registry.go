@@ -52,12 +52,11 @@ type Services struct {
 	Transfer *transfer.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
-	AccountRepo     *account.Repository
-	TransactionRepo *transaction.Repository
-	CategoryRepo    *category.Repository
-	PayeeRepo       *payee.Repository
-	InvestmentRepo  *investment.Repository
-	LotRepo         *investment.LotRepository
+	AccountRepo    *account.Repository
+	CategoryRepo   *category.Repository
+	PayeeRepo      *payee.Repository
+	InvestmentRepo *investment.Repository
+	LotRepo        *investment.LotRepository
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
 	// category named "Value Adjustment" already exists, so the system
@@ -160,12 +159,11 @@ func NewServices(database *db.DB) *Services {
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
 
-		AccountRepo:     accountRepo,
-		TransactionRepo: txnRepo,
-		CategoryRepo:    categoryRepo,
-		PayeeRepo:       payeeRepo,
-		InvestmentRepo:  investmentRepo,
-		LotRepo:         lotRepo,
+		AccountRepo:    accountRepo,
+		CategoryRepo:   categoryRepo,
+		PayeeRepo:      payeeRepo,
+		InvestmentRepo: investmentRepo,
+		LotRepo:        lotRepo,
 	}
 }
 

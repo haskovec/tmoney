@@ -188,7 +188,7 @@ func TestTransferWiring_PlainVerbsRefuseTransferLegs(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	leg, err := svc.TransactionRepo.GetByID(res.From.RowID)
+	leg, err := svc.Transaction.GetByID(res.From.RowID)
 	if err != nil {
 		t.Fatalf("load leg: %v", err)
 	}

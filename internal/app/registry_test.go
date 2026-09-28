@@ -54,9 +54,6 @@ func TestNewServices(t *testing.T) {
 		if svc.AccountRepo == nil {
 			t.Error("AccountRepo should not be nil")
 		}
-		if svc.TransactionRepo == nil {
-			t.Error("TransactionRepo should not be nil")
-		}
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
 		}
