@@ -54,7 +54,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W5d | done (#55) | Net worth by currency, with row errors | W5c | medium |
 | W11 | done (#56) | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | done (#57) | Constructor must not write | — | medium |
-| W10 | open | Correct `docs/ARCHITECTURE.md` | W5c | small |
+| W10 | done (#58) | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | open | Corporate Actions keys must reach the view | — | small |
 | W8 | open | One view table in the TUI | W1, W2, and W12 | large |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
@@ -638,7 +638,7 @@ The writes exist for a reason. Old files need paycheck categories, the Value Adj
 
 ## W10 — Correct `docs/ARCHITECTURE.md`
 
-**Status:** open
+**Status:** done in PR #58. Correction: the problem list above says `investment` depends on "the transfer owner". It does not; `transfer` imports `investment`. The document shows the real direction. Left for later items: the TUI views table (W8) and the `AccountRepo` example (W9).
 **Needs:** W5c. Ship it as one pull request after W5c.
 
 ### Problem
