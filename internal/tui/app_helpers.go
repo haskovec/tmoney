@@ -64,30 +64,8 @@ func (a *App) tableContentRowOffset() int {
 
 // activeTable returns the currently active table for the current view, or nil.
 func (a *App) activeTable() *widget.Table {
-	switch a.currentView {
-	case ViewRegister:
-		return a.table
-	case ViewReconciliation:
-		return a.reconciliationTable
-	case ViewScheduled:
-		return a.scheduledTable
-	case ViewInvestmentRegister:
-		return a.investmentTable
-	case ViewPortfolio:
-		if a.portfolioData != nil {
-			return a.activePortfolioTable()
-		}
-	case ViewSecurities:
-		return a.securityTable
-	case ViewPrices:
-		if a.priceView != nil && a.priceView.mode == pricesViewList {
-			return a.priceListTable
-		}
-		return a.priceTable
-	case ViewAmortization:
-		return a.amortizationTable
-	case ViewCorporateActions:
-		return a.corporateActionViewTable
+	if e, ok := viewFor(a.currentView); ok && e.table != nil {
+		return e.table(a)
 	}
 	return nil
 }

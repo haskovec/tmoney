@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/haskovec/tmoney/internal/tui/widget"
+)
 
 // viewEntry is one view and the glue App supplies for it. Every per-view fact
 // the code needs lives here, so adding a view is adding one entry, and the
@@ -18,6 +22,11 @@ type viewEntry struct {
 	hints  func(*App) string // the status-bar key hints
 
 	shortcuts func() shortcutSection // the view's section in the help overlay
+
+	// table is the widget the mouse and the wheel address in this view. A
+	// func, not a field, because Prices and Portfolio pick between two tables
+	// by mode. It is nil for a view with no table.
+	table func(*App) *widget.Table
 }
 
 // allViews is the one list of views. It holds only constants and method
@@ -48,6 +57,7 @@ func init() {
 				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: registerShortcuts,
+			table:     func(a *App) *widget.Table { return a.table },
 		},
 		{
 			id:     ViewScheduled,
@@ -58,6 +68,7 @@ func init() {
 				return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: scheduledShortcuts,
+			table:     func(a *App) *widget.Table { return a.scheduledTable },
 		},
 		{
 			id:     ViewReports,
@@ -77,6 +88,7 @@ func init() {
 			onKey:      (*App).handleReconciliationKeys,
 			hints:      func(*App) string { return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help" },
 			shortcuts:  reconciliationShortcuts,
+			table:      func(a *App) *widget.Table { return a.reconciliationTable },
 		},
 		{
 			id:         ViewSecurities,
@@ -88,6 +100,7 @@ func init() {
 				return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + commonKeyHints
 			},
 			shortcuts: securitiesShortcuts,
+			table:     func(a *App) *widget.Table { return a.securityTable },
 		},
 		{
 			id:         ViewPrices,
@@ -102,6 +115,12 @@ func init() {
 				return "↑↓ navigate  enter view history  / search  esc back  " + commonKeyHints
 			},
 			shortcuts: pricesShortcuts,
+			table: func(a *App) *widget.Table {
+				if a.priceView != nil && a.priceView.mode == pricesViewList {
+					return a.priceListTable
+				}
+				return a.priceTable
+			},
 		},
 		{
 			id:     ViewInvestmentRegister,
@@ -112,6 +131,7 @@ func init() {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
 			},
 			shortcuts: investmentRegisterShortcuts,
+			table:     func(a *App) *widget.Table { return a.investmentTable },
 		},
 		{
 			id:        ViewPortfolio,
@@ -120,6 +140,12 @@ func init() {
 			onKey:     (*App).handlePortfolioKeys,
 			hints:     func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
 			shortcuts: portfolioShortcuts,
+			table: func(a *App) *widget.Table {
+				if a.portfolioData != nil {
+					return a.activePortfolioTable()
+				}
+				return nil
+			},
 		},
 		{
 			id:         ViewCorporateActions,
@@ -131,6 +157,7 @@ func init() {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: corporateActionShortcuts,
+			table:     func(a *App) *widget.Table { return a.corporateActionViewTable },
 		},
 		{
 			id:         ViewAmortization,
@@ -140,6 +167,7 @@ func init() {
 			onKey:      (*App).handleAmortizationKeys,
 			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
 			shortcuts:  amortizationShortcuts,
+			table:      func(a *App) *widget.Table { return a.amortizationTable },
 		},
 	}
 }
