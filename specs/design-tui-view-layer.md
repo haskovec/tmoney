@@ -493,7 +493,9 @@ switches and guard 3 on both predicates. Differences from the text above:
 Found and left alone, because this phase changes no behaviour: the Prices
 detail hint never shows. `updateStatusBar` runs only on a view switch, a
 database switch and start-up, and entering the detail mode is none of
-these, so the status bar keeps the list hint.
+these, so the status bar keeps the list hint. W13 in
+`specs/work-two-ledgers.md` fixes it (PR #62): `Update` refreshes the hints
+after every message.
 
 ### Phase 2 — per-view state structs
 
