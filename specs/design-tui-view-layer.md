@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PROPOSED — nothing built. Phase 0 is a bug fix and may ship alone.
+**Status:** PHASES 0 AND 3 BUILT; phases 1, 2 and 4 are proposed. Phase 0 shipped as W1 (PR #46). Phase 3 (the two file splits) is built; see its status note below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -538,6 +538,13 @@ security filter and its search-key handler; ~190), and
 Verified the way 4d was: a `go/ast` comparison of every declaration, doc
 comment included, against the original, and the splitter's orphan-comment
 report. Zero test lines.
+
+**Status: built** (2026-09-28). `price_view.go` is 261 lines and
+`investment_register_view.go` 398. Two differences from the plan above: the
+chart's debounce delay and its two messages moved into `price_chart.go` with
+the five methods, so the chart has one file in full; and `price_chart.go`
+gained one import (bubbletea). The comparer found all 1,120 declarations
+byte-identical after every step.
 
 ### Phase 4 — view controllers, priced and not committed
 

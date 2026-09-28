@@ -95,34 +95,35 @@ Only the seven switches collapse. No method moves. Every fallback stays.
 
 Move functions between files. Rename nothing. Change no signature. Zero test lines. One commit per new file.
 
-- [ ] **VL-201 — Rebuild the throwaway `go/ast` tools**
+- [x] **VL-201 — Rebuild the throwaway `go/ast` tools**
   - In the scratchpad, rebuild the two small `go/ast` tools the 4d work used: a mover that moves top-level declarations by name and reports any comment it would orphan, and a comparer that checks every declaration, doc comment included, is byte-identical to the original and none is missing or duplicated. Run the comparer after every item below.
 
-- [ ] **VL-202 — `price_dialog.go`**
+- [x] **VL-202 — `price_dialog.go`**
   - Move `handlePriceDialogKey`, `priceDialogAction`, `startPriceLookup`, `lookupPriceCmd`, `handlePriceLookupResult`, `submitPriceDialog`, `createPrice`, `updatePrice` and their free helpers. About 200 lines. One file-scope comment: this is a modal surface in `modals()`, not view code.
 
-- [ ] **VL-203 — `price_import_dialog.go`**
+- [x] **VL-203 — `price_import_dialog.go`**
   - Move `handlePriceImportDialogKey`, `priceImportDialogAction`, `submitImportPriceDialog`, `importPrices`. About 100 lines.
 
-- [ ] **VL-204 — Chart methods into the existing `price_chart.go`**
+- [x] **VL-204 — Chart methods into the existing `price_chart.go`**
   - Move `schedulePriceChartFetch`, `schedulePriceListChartFetchIfActive`, `fetchPriceChartHistory`, `handlePriceChartDebounceTick`, `applyPriceChartHistory`. About 130 lines. The chart then has one file.
 
-- [ ] **VL-205 — `price_view_render.go`**
+- [x] **VL-205 — `price_view_render.go`**
   - Move `buildPriceListTable`, `buildPriceTable`, `formatPriceRow`, `selectedPrice`, `renderPriceView`, `renderPriceList`, `composePriceListBody`, `buildPriceListChartPanel`, `resolveListPriceSecurity`, `listCursorSecurityID`, `renderPriceDetail`. About 350 lines.
 
-- [ ] **VL-206 — `price_view_keys.go`; check the gate**
+- [x] **VL-206 — `price_view_keys.go`; check the gate**
   - Move `handlePriceViewKeys`, `handlePriceListKeys`, `handlePriceDetailKeys`, `drillIntoSelectedListRow`, `handlePriceSearchKey`. About 200 lines.
   - Check: `price_view.go` ≤ 450 lines and holds only data, load and apply.
 
-- [ ] **VL-207 — `investment_type_selector.go`**
+- [x] **VL-207 — `investment_type_selector.go`**
   - Move `openInvestmentTypeSelector`, `handleInvestmentTypeSelectorKey`, `investmentTypeSelectorAction`, `dispatchInvestmentTypeSelection` and the type helpers. About 210 lines.
 
-- [ ] **VL-208 — `investment_register_filter.go`**
+- [x] **VL-208 — `investment_register_filter.go`**
   - Move the security filter and its search-key handler. About 190 lines.
 
-- [ ] **VL-209 — `investment_register_render.go`; check the gate**
+- [x] **VL-209 — `investment_register_render.go`; check the gate**
   - Move the render functions. About 200 lines.
   - Check: `investment_register_view.go` ≤ 500 lines; comparer reports zero problems and zero orphaned comments. Set the design document's phase 3 status to built.
+  - Done (branch `refactor/split-price-and-register-views`): `price_view.go` 261 lines, `investment_register_view.go` 398; all 1,120 declarations byte-identical. The chart's debounce delay and two messages also moved to `price_chart.go`. The two free section headers that became file comments were removed from `price_view.go` by hand, since the mover refuses to orphan a comment.
 
 ## Phase 2: Per-View State Structs
 
