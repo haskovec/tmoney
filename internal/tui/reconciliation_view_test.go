@@ -1103,3 +1103,35 @@ func TestMenuReconcile_InvestmentAccountRefused(t *testing.T) {
 		t.Error("the statement dialog did not open for a checking account")
 	}
 }
+
+// A closed brokerage gets the investment notice, not "reopen to reconcile":
+// reopening it would not make reconcile possible.
+func TestMenuReconcile_ClosedInvestmentAccountNotToldToReopen(t *testing.T) {
+	a := NewApp(dbtest.New(t), nil)
+	a.width, a.height = 120, 40
+	brokerage := account.NewAccount("Northwind Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2024, 1, 1))
+	if err := a.services.Account.Create(brokerage); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.services.Account.Close(brokerage.ID, types.Today()); err != nil {
+		t.Fatal(err)
+	}
+	runCmd(t, a, a.loadSidebarData(), 1)
+	if !a.sidebar.SetCursorToAccount(brokerage.ID) || !a.sidebar.Select() {
+		t.Fatal("the brokerage is not in the sidebar")
+	}
+
+	a.handleMenuAction(widget.MenuActionReconcileAccount, "")
+
+	notes := a.statusbar.Notifications()
+	if len(notes) == 0 {
+		t.Fatal("no notice")
+	}
+	last := notes[len(notes)-1].Text
+	if !strings.Contains(last, "Northwind Brokerage is an investment account") || strings.Contains(last, "reopen") {
+		t.Errorf("notice = %q, want the investment notice with no reopen advice", last)
+	}
+	if a.reconDialog != nil {
+		t.Error("the statement dialog opened")
+	}
+}

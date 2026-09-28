@@ -77,21 +77,32 @@ func buildStartReconciliationDialog(seedDate types.Date) *dialog.Dialog {
 	return d
 }
 
+// refuseInvestmentReconcile shows a notice and returns true when the selected
+// account is an investment account. Reconcile reads only the register ledger,
+// and StartReconciliation refuses these accounts whether open or closed, so a
+// caller that checks this first never opens a statement dialog to reject, and
+// never tells the user to reopen an account that still cannot be reconciled.
+func (a *App) refuseInvestmentReconcile() bool {
+	if a.sidebar == nil {
+		return false
+	}
+	acct := a.sidebar.SelectedAccount()
+	if acct == nil || !acct.Type.IsInvestmentType() {
+		return false
+	}
+	a.statusbar.AddNotification(
+		fmt.Sprintf("%s is an investment account. Reconcile applies to register accounts only.", acct.Name),
+		widget.NotificationAlert,
+	)
+	return true
+}
+
 // showStartReconciliationDialog shows the start reconciliation dialog, seeded
-// with the statement date from the last successful Start in this session.
-//
-// An investment account gets a notice instead. Reconcile reads only the
-// register ledger, and StartReconciliation refuses these accounts, so the
-// dialog would only collect a statement balance to reject.
+// with the statement date from the last successful Start in this session. An
+// investment account gets refuseInvestmentReconcile's notice instead.
 func (a *App) showStartReconciliationDialog() {
-	if a.sidebar != nil {
-		if acct := a.sidebar.SelectedAccount(); acct != nil && acct.Type.IsInvestmentType() {
-			a.statusbar.AddNotification(
-				fmt.Sprintf("%s is an investment account. Reconcile applies to register accounts only.", acct.Name),
-				widget.NotificationAlert,
-			)
-			return
-		}
+	if a.refuseInvestmentReconcile() {
+		return
 	}
 	a.reconDialog = buildStartReconciliationDialog(a.reconDialogLastStatementDate)
 	a.reconDialog.SetVisible(true)
