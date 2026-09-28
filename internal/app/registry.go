@@ -52,20 +52,15 @@ type Services struct {
 	Transfer *transfer.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
-	AccountRepo         *account.Repository
-	TransactionRepo     *transaction.Repository
-	SplitRepo           *transaction.SplitRepository
-	CategoryRepo        *category.Repository
-	PayeeRepo           *payee.Repository
-	ScheduledTxnRepo    *scheduled.Repository
-	ReconciliationRepo  *reconciliation.Repository
-	SecurityRepo        *security.Repository
-	PriceRepo           *price.Repository
-	InvestmentRepo      *investment.Repository
-	LotRepo             *investment.LotRepository
-	PositionRepo        *investment.PositionRepository
-	TransactionLotRepo  *investment.TransactionLotRepository
-	CorporateActionRepo *investment.CorporateActionRepository
+	AccountRepo     *account.Repository
+	TransactionRepo *transaction.Repository
+	SplitRepo       *transaction.SplitRepository
+	CategoryRepo    *category.Repository
+	PayeeRepo       *payee.Repository
+	SecurityRepo    *security.Repository
+	InvestmentRepo  *investment.Repository
+	LotRepo         *investment.LotRepository
+	PositionRepo    *investment.PositionRepository
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
 	// category named "Value Adjustment" already exists, so the system
@@ -168,20 +163,15 @@ func NewServices(database *db.DB) *Services {
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
 
-		AccountRepo:         accountRepo,
-		TransactionRepo:     txnRepo,
-		SplitRepo:           splitRepo,
-		CategoryRepo:        categoryRepo,
-		PayeeRepo:           payeeRepo,
-		ScheduledTxnRepo:    scheduledRepo,
-		ReconciliationRepo:  reconciliationRepo,
-		SecurityRepo:        securityRepo,
-		PriceRepo:           priceRepo,
-		InvestmentRepo:      investmentRepo,
-		LotRepo:             lotRepo,
-		PositionRepo:        positionRepo,
-		TransactionLotRepo:  transactionLotRepo,
-		CorporateActionRepo: corporateActionRepo,
+		AccountRepo:     accountRepo,
+		TransactionRepo: txnRepo,
+		SplitRepo:       splitRepo,
+		CategoryRepo:    categoryRepo,
+		PayeeRepo:       payeeRepo,
+		SecurityRepo:    securityRepo,
+		InvestmentRepo:  investmentRepo,
+		LotRepo:         lotRepo,
+		PositionRepo:    positionRepo,
 	}
 }
 

@@ -72,17 +72,8 @@ func TestNewServices(t *testing.T) {
 		if svc.PayeeRepo == nil {
 			t.Error("PayeeRepo should not be nil")
 		}
-		if svc.ScheduledTxnRepo == nil {
-			t.Error("ScheduledTxnRepo should not be nil")
-		}
-		if svc.ReconciliationRepo == nil {
-			t.Error("ReconciliationRepo should not be nil")
-		}
 		if svc.SecurityRepo == nil {
 			t.Error("SecurityRepo should not be nil")
-		}
-		if svc.PriceRepo == nil {
-			t.Error("PriceRepo should not be nil")
 		}
 		if svc.InvestmentRepo == nil {
 			t.Error("InvestmentRepo should not be nil")
@@ -92,9 +83,6 @@ func TestNewServices(t *testing.T) {
 		}
 		if svc.PositionRepo == nil {
 			t.Error("PositionRepo should not be nil")
-		}
-		if svc.TransactionLotRepo == nil {
-			t.Error("TransactionLotRepo should not be nil")
 		}
 	})
 
