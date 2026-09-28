@@ -16,6 +16,8 @@ type viewEntry struct {
 	render func(*App) string
 	onKey  func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	hints  func(*App) string // the status-bar key hints
+
+	shortcuts func() shortcutSection // the view's section in the help overlay
 }
 
 // allViews is the one list of views. It holds only constants and method
@@ -30,11 +32,12 @@ var allViews []viewEntry
 func init() {
 	allViews = []viewEntry{
 		{
-			id:     ViewDashboard,
-			name:   "Dashboard",
-			render: (*App).renderDashboard,
-			onKey:  (*App).handleDashboardKeys,
-			hints:  func(*App) string { return "↑↓ navigate  ←→ collapse/expand  enter select  " + commonKeyHints },
+			id:        ViewDashboard,
+			name:      "Dashboard",
+			render:    (*App).renderDashboard,
+			onKey:     (*App).handleDashboardKeys,
+			hints:     func(*App) string { return "↑↓ navigate  ←→ collapse/expand  enter select  " + commonKeyHints },
+			shortcuts: dashboardShortcuts,
 		},
 		{
 			id:     ViewRegister,
@@ -44,6 +47,7 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + commonKeyHints
 			},
+			shortcuts: registerShortcuts,
 		},
 		{
 			id:     ViewScheduled,
@@ -53,6 +57,7 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + commonKeyHints
 			},
+			shortcuts: scheduledShortcuts,
 		},
 		{
 			id:     ViewReports,
@@ -62,6 +67,7 @@ func init() {
 			hints: func(*App) string {
 				return "←→ period  n net worth  s spending  y year  m month  esc back  " + commonKeyHints
 			},
+			shortcuts: reportsShortcuts,
 		},
 		{
 			id:         ViewReconciliation,
@@ -70,6 +76,7 @@ func init() {
 			render:     (*App).renderReconciliation,
 			onKey:      (*App).handleReconciliationKeys,
 			hints:      func(*App) string { return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help" },
+			shortcuts:  reconciliationShortcuts,
 		},
 		{
 			id:         ViewSecurities,
@@ -80,6 +87,7 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + commonKeyHints
 			},
+			shortcuts: securitiesShortcuts,
 		},
 		{
 			id:         ViewPrices,
@@ -93,6 +101,7 @@ func init() {
 				}
 				return "↑↓ navigate  enter view history  / search  esc back  " + commonKeyHints
 			},
+			shortcuts: pricesShortcuts,
 		},
 		{
 			id:     ViewInvestmentRegister,
@@ -102,13 +111,15 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
 			},
+			shortcuts: investmentRegisterShortcuts,
 		},
 		{
-			id:     ViewPortfolio,
-			name:   "Portfolio",
-			render: (*App).renderPortfolioView,
-			onKey:  (*App).handlePortfolioKeys,
-			hints:  func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
+			id:        ViewPortfolio,
+			name:      "Portfolio",
+			render:    (*App).renderPortfolioView,
+			onKey:     (*App).handlePortfolioKeys,
+			hints:     func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
+			shortcuts: portfolioShortcuts,
 		},
 		{
 			id:         ViewCorporateActions,
@@ -119,6 +130,7 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},
+			shortcuts: corporateActionShortcuts,
 		},
 		{
 			id:         ViewAmortization,
@@ -127,6 +139,7 @@ func init() {
 			render:     (*App).renderAmortizationView,
 			onKey:      (*App).handleAmortizationKeys,
 			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
+			shortcuts:  amortizationShortcuts,
 		},
 	}
 }

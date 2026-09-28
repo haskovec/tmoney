@@ -213,29 +213,8 @@ func viewShortcutSections(view View) []shortcutSection {
 		navigationShortcuts(),
 	}
 
-	switch view {
-	case ViewDashboard:
-		sections = append(sections, dashboardShortcuts())
-	case ViewRegister:
-		sections = append(sections, registerShortcuts())
-	case ViewScheduled:
-		sections = append(sections, scheduledShortcuts())
-	case ViewReports:
-		sections = append(sections, reportsShortcuts())
-	case ViewReconciliation:
-		sections = append(sections, reconciliationShortcuts())
-	case ViewSecurities:
-		sections = append(sections, securitiesShortcuts())
-	case ViewPrices:
-		sections = append(sections, pricesShortcuts())
-	case ViewInvestmentRegister:
-		sections = append(sections, investmentRegisterShortcuts())
-	case ViewPortfolio:
-		sections = append(sections, portfolioShortcuts())
-	case ViewCorporateActions:
-		sections = append(sections, corporateActionShortcuts())
-	case ViewAmortization:
-		sections = append(sections, amortizationShortcuts())
+	if e, ok := viewFor(view); ok {
+		sections = append(sections, e.shortcuts())
 	}
 
 	sections = append(sections, dialogShortcuts())
