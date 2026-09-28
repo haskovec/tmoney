@@ -1,6 +1,8 @@
 package app
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/category"
@@ -11,6 +13,25 @@ import (
 func createTestDB(t *testing.T) *db.DB {
 	t.Helper()
 	return dbtest.New(t)
+}
+
+// Services exports services only. A repository field would let a caller skip
+// the rules of the service built on it, which W9 removed.
+func TestServices_ExportsNoRepository(t *testing.T) {
+	st := reflect.TypeFor[Services]()
+	if st.NumField() == 0 {
+		t.Fatal("Services has no fields, so this check proves nothing")
+	}
+	for i := range st.NumField() {
+		f := st.Field(i)
+		typ := f.Type
+		if typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+		if strings.HasSuffix(typ.Name(), "Repository") {
+			t.Errorf("Services.%s is a %s; give the reader a service method instead", f.Name, f.Type)
+		}
+	}
 }
 
 func TestNewServices(t *testing.T) {
