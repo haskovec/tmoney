@@ -13,6 +13,11 @@ import (
 // reaching past it — the status bar, a view reload, a service, switchView —
 // is an App method in the feature's own file.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// The key hints can depend on a view's state, not only on the view: the
+	// Prices hints follow its mode, which changes without a view switch. So
+	// read them again after every message.
+	defer a.refreshKeyHints()
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.handleWindowSize(msg.Width, msg.Height)

@@ -93,7 +93,7 @@ Only the seven switches collapse. No method moves. Every fallback stays.
   - Confirm: seven switches gone; the five-view list gone from both predicates; `View.String()` returns `"Unknown"` for a miss; the four pre-switch branches untouched; guards 1 to 3 green with self-tests.
   - Manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back.
   - Set the design document's phase 1 status to built.
-  - Done: the View menu holds only Theme, so the smoke test reached the views by their keys, the sidebar, and the view keys. It ran in a pty with fictional data, and its 40 screens matched the build before this phase. It found one old bug, left alone: the Prices detail hint never shows (see the design's phase 1 status).
+  - Done: the View menu holds only Theme, so the smoke test reached the views by their keys, the sidebar, and the view keys. It ran in a pty with fictional data, and its 40 screens matched the build before this phase. It found one old bug, left alone: the Prices detail hint never shows (see the design's phase 1 status). W13 fixes it in PR #62.
 
 ## Phase 3: Split the Two God Files (the 4d motion)
 

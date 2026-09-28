@@ -20,6 +20,15 @@ func (a *App) updateStatusBar() {
 	a.statusbar.SetKeyHints(a.getKeyHints())
 }
 
+// refreshKeyHints sets the status-bar key hints from the current state. Update
+// calls it after every message, because a view's hints can change while the
+// view stays on screen. An App built without a status bar has none to set.
+func (a *App) refreshKeyHints() {
+	if a.statusbar != nil {
+		a.statusbar.SetKeyHints(a.getKeyHints())
+	}
+}
+
 // tableContentRowOffset returns the number of content rows that precede
 // the active table's first y in the current view. Used by the mouse
 // click handler to translate a screen-space Y into a table-space Y.
