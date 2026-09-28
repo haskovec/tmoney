@@ -32,12 +32,17 @@ type viewEntry struct {
 	// reloadCurrentView's sidebar reload. It returns none while the view has
 	// nothing on screen to refresh yet. Every view has one.
 	reload func(*App) []tea.Cmd
+
+	// focus is what switchView does on arrival, when there is a sidebar:
+	// which pane takes the cursor. Each guards the tables that are built only
+	// when data arrives.
+	focus func(*App)
 }
 
-// allViews is the one list of views. It holds only constants and method
-// values, so reading it allocates nothing and needs no App. Read it through
-// views() and viewFor(), never by indexing with a View: View(999) must miss,
-// not panic.
+// allViews is the one list of views. It holds only constants, method values,
+// and funcs that capture nothing, so reading it allocates nothing and needs
+// no App. Read it through views() and viewFor(), never by indexing with a
+// View: View(999) must miss, not panic.
 //
 // init fills it, not the declaration: the funcs reach View.String(), which
 // reads allViews, and Go refuses that cycle in a package-level initializer.
@@ -55,6 +60,13 @@ func init() {
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.loadDashboardData(), a.loadScheduledDueCount()}
 			},
+			focus: func(a *App) {
+				// Dashboard uses sidebar navigation
+				a.sidebar.SetFocused(true)
+				if a.table != nil {
+					a.table.SetFocused(false)
+				}
+			},
 		},
 		{
 			id:     ViewRegister,
@@ -70,6 +82,13 @@ func init() {
 				accountID := a.sidebar.SelectedAccountID()
 				return []tea.Cmd{a.loadRegisterData(accountID)}
 			},
+			focus: func(a *App) {
+				// Start with table focused when entering register
+				a.sidebar.SetFocused(false)
+				if a.table != nil {
+					a.table.SetFocused(true)
+				}
+			},
 		},
 		{
 			id:     ViewScheduled,
@@ -83,6 +102,13 @@ func init() {
 			table:     func(a *App) *widget.Table { return a.scheduledTable },
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.loadScheduledViewData(), a.loadScheduledDueCount()}
+			},
+			focus: func(a *App) {
+				// Start with scheduled table focused
+				a.sidebar.SetFocused(false)
+				if a.scheduledTable != nil {
+					a.scheduledTable.SetFocused(true)
+				}
 			},
 		},
 		{
@@ -102,6 +128,13 @@ func init() {
 				}
 				return nil
 			},
+			focus: func(a *App) {
+				// Reports view doesn't use sidebar focus
+				a.sidebar.SetFocused(false)
+				if a.table != nil {
+					a.table.SetFocused(false)
+				}
+			},
 		},
 		{
 			id:         ViewReconciliation,
@@ -120,6 +153,13 @@ func init() {
 				}
 				return nil
 			},
+			focus: func(a *App) {
+				// Reconciliation is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.reconciliationTable != nil {
+					a.reconciliationTable.SetFocused(true)
+				}
+			},
 		},
 		{
 			id:         ViewSecurities,
@@ -133,6 +173,13 @@ func init() {
 			shortcuts: securitiesShortcuts,
 			table:     func(a *App) *widget.Table { return a.securityTable },
 			reload:    func(a *App) []tea.Cmd { return []tea.Cmd{a.loadSecurityViewData()} },
+			focus: func(a *App) {
+				// Securities is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.securityTable != nil {
+					a.securityTable.SetFocused(true)
+				}
+			},
 		},
 		{
 			id:         ViewPrices,
@@ -154,6 +201,13 @@ func init() {
 				return a.priceTable
 			},
 			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.loadPriceViewData()} },
+			focus: func(a *App) {
+				// Prices is full-screen, no sidebar
+				a.sidebar.SetFocused(false)
+				if a.priceTable != nil {
+					a.priceTable.SetFocused(true)
+				}
+			},
 		},
 		{
 			id:     ViewInvestmentRegister,
@@ -170,6 +224,13 @@ func init() {
 					return []tea.Cmd{a.loadInvestmentRegisterData(a.investmentRegister.account.ID)}
 				}
 				return nil
+			},
+			focus: func(a *App) {
+				// Start with investment table focused
+				a.sidebar.SetFocused(false)
+				if a.investmentTable != nil {
+					a.investmentTable.SetFocused(true)
+				}
 			},
 		},
 		{
@@ -191,6 +252,11 @@ func init() {
 				}
 				return nil
 			},
+			focus: func(a *App) {
+				// Start with portfolio table focused
+				a.sidebar.SetFocused(false)
+				a.setPortfolioTableFocused(true)
+			},
 		},
 		{
 			id:         ViewCorporateActions,
@@ -205,6 +271,14 @@ func init() {
 			table:     func(a *App) *widget.Table { return a.corporateActionViewTable },
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.loadCorporateActionViewData()}
+			},
+			focus: func(a *App) {
+				// Corporate Actions is full-screen, no sidebar (the table is
+				// (re)built and focused by buildCorporateActionTable).
+				a.sidebar.SetFocused(false)
+				if a.corporateActionViewTable != nil {
+					a.corporateActionViewTable.SetFocused(true)
+				}
 			},
 		},
 		{
@@ -221,6 +295,11 @@ func init() {
 					return []tea.Cmd{a.loadAmortizationData(a.amortizationData.account.ID)}
 				}
 				return nil
+			},
+			focus: func(a *App) {
+				// Amortization is full-screen, no sidebar. The table is built
+				// once its data loads (buildAmortizationTable focuses it then).
+				a.sidebar.SetFocused(false)
 			},
 		},
 	}

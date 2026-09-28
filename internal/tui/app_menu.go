@@ -319,70 +319,8 @@ func (a *App) switchView(v View) {
 
 		// Set focus appropriately for the new view
 		if a.sidebar != nil {
-			switch v {
-			case ViewRegister:
-				// Start with table focused when entering register
-				a.sidebar.SetFocused(false)
-				if a.table != nil {
-					a.table.SetFocused(true)
-				}
-			case ViewScheduled:
-				// Start with scheduled table focused
-				a.sidebar.SetFocused(false)
-				if a.scheduledTable != nil {
-					a.scheduledTable.SetFocused(true)
-				}
-			case ViewDashboard:
-				// Dashboard uses sidebar navigation
-				a.sidebar.SetFocused(true)
-				if a.table != nil {
-					a.table.SetFocused(false)
-				}
-			case ViewReports:
-				// Reports view doesn't use sidebar focus
-				a.sidebar.SetFocused(false)
-				if a.table != nil {
-					a.table.SetFocused(false)
-				}
-			case ViewReconciliation:
-				// Reconciliation is full-screen, no sidebar
-				a.sidebar.SetFocused(false)
-				if a.reconciliationTable != nil {
-					a.reconciliationTable.SetFocused(true)
-				}
-			case ViewSecurities:
-				// Securities is full-screen, no sidebar
-				a.sidebar.SetFocused(false)
-				if a.securityTable != nil {
-					a.securityTable.SetFocused(true)
-				}
-			case ViewCorporateActions:
-				// Corporate Actions is full-screen, no sidebar (the table is
-				// (re)built and focused by buildCorporateActionTable).
-				a.sidebar.SetFocused(false)
-				if a.corporateActionViewTable != nil {
-					a.corporateActionViewTable.SetFocused(true)
-				}
-			case ViewPrices:
-				// Prices is full-screen, no sidebar
-				a.sidebar.SetFocused(false)
-				if a.priceTable != nil {
-					a.priceTable.SetFocused(true)
-				}
-			case ViewAmortization:
-				// Amortization is full-screen, no sidebar. The table is built
-				// once its data loads (buildAmortizationTable focuses it then).
-				a.sidebar.SetFocused(false)
-			case ViewInvestmentRegister:
-				// Start with investment table focused
-				a.sidebar.SetFocused(false)
-				if a.investmentTable != nil {
-					a.investmentTable.SetFocused(true)
-				}
-			case ViewPortfolio:
-				// Start with portfolio table focused
-				a.sidebar.SetFocused(false)
-				a.setPortfolioTableFocused(true)
+			if e, ok := viewFor(v); ok {
+				e.focus(a)
 			}
 		}
 	}
