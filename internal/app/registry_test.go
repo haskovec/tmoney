@@ -147,12 +147,18 @@ func TestFileInit_PaycheckCategoriesExist(t *testing.T) {
 	t.Run("fresh file gets paycheck categories", func(t *testing.T) {
 		database := createTestDB(t)
 		svc := NewServices(database)
+		if err := svc.Prepare(); err != nil {
+			t.Fatal(err)
+		}
 		assertPresent(t, svc.Category)
 	})
 
 	t.Run("existing file gains missing paycheck categories on reopen", func(t *testing.T) {
 		database := createTestDB(t)
 		svc := NewServices(database)
+		if err := svc.Prepare(); err != nil {
+			t.Fatal(err)
+		}
 
 		// Simulate an existing database that pre-dates the paycheck-
 		// category seed: delete one of the children and its (also
@@ -169,8 +175,11 @@ func TestFileInit_PaycheckCategoriesExist(t *testing.T) {
 			t.Fatalf("delete Federal child: %v", err)
 		}
 
-		// Re-run service construction; this should re-create the child.
+		// Reopen; Prepare should re-create the child.
 		svc2 := NewServices(database)
+		if err := svc2.Prepare(); err != nil {
+			t.Fatal(err)
+		}
 		assertPresent(t, svc2.Category)
 	})
 }

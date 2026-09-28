@@ -13,7 +13,9 @@ import (
 
 // OpenServices opens the database and creates all services via the shared registry.
 // It also does a best-effort update of the recent files in the config.
-// Auto-posts due scheduled transactions and prints a summary if any were posted.
+// It runs the open-time repairs (app.Services.Prepare), then auto-posts due
+// scheduled transactions and prints a summary if any were posted. A failure
+// in either is printed to stderr as a warning, and the command still runs.
 func OpenServices(file string) (*db.DB, *app.Services, error) {
 	database, err := db.Open(file)
 	if err != nil {
@@ -28,8 +30,21 @@ func OpenServices(file string) (*db.DB, *app.Services, error) {
 
 	svc := app.NewServices(database)
 
-	// Auto-post due scheduled transactions on file open
-	if summary, err := svc.Scheduled.AutoPost(); err == nil && summary.PostedCount > 0 {
+	// Run the open-time repairs. A failure is shown, not fatal: failing here
+	// would also lock the user out of the commands that fix it
+	// (`investment rebuild-positions`, backup, export), and writes do not
+	// depend on these repairs. Printing it means no command hides it.
+	if err := svc.Prepare(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: startup repair failed: %v\n", err)
+	}
+
+	// Auto-post due scheduled transactions on file open, with the same rule
+	// for a failure.
+	summary, err := svc.Scheduled.AutoPost()
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "warning: auto-post of scheduled transactions failed: %v\n", err)
+	case summary.PostedCount > 0:
 		fmt.Fprintf(os.Stdout, "Auto-posted %d scheduled transaction(s)\n", summary.PostedCount)
 	}
 
