@@ -77,59 +77,23 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 			}
 		}
 
-		// Load open lots for the source security (lot-tracking accounts)
-		var lots []*investment.Lot
-		if a.services.LotRepo != nil {
-			var err error
-			lots, err = a.services.LotRepo.GetOpenLotsBySecurity(sourceID)
+		// The holdings the merger will change, by the merger's own rules. A
+		// lot-tracked account that sold out keeps a position row, and the
+		// merger skips it, so this does not read the repositories.
+		if a.services.CorporateAction != nil {
+			holdings, err := a.services.CorporateAction.MergerHoldings(sourceID)
 			if err != nil {
-				return errMsg{err: fmt.Errorf("failed to load lots: %w", err)}
+				return errMsg{err: err}
 			}
-		}
-
-		// Load positions for the source security (non-lot-tracking accounts)
-		var positions []*investment.Position
-		if a.services.PositionRepo != nil {
-			var err error
-			positions, err = a.services.PositionRepo.GetPositionsBySecurity(sourceID)
-			if err != nil {
-				return errMsg{err: fmt.Errorf("failed to load positions: %w", err)}
+			for _, h := range holdings {
+				data.accounts = append(data.accounts, mergerAffectedAccount{
+					accountID:   h.AccountID,
+					accountName: resolveAccountName(a, h.AccountID),
+					trackLots:   h.TrackLots,
+					lots:        h.Lots,
+					position:    h.Position,
+				})
 			}
-		}
-
-		// Group lots by account
-		lotsByAccount := make(map[types.ID][]*investment.Lot)
-		for _, lot := range lots {
-			lotsByAccount[lot.AccountID] = append(lotsByAccount[lot.AccountID], lot)
-		}
-
-		// Build affected accounts list
-		seen := make(map[types.ID]bool)
-
-		// Lot-tracking accounts
-		for acctID, acctLots := range lotsByAccount {
-			acctName := resolveAccountName(a, acctID)
-			data.accounts = append(data.accounts, mergerAffectedAccount{
-				accountID:   acctID,
-				accountName: acctName,
-				trackLots:   true,
-				lots:        acctLots,
-			})
-			seen[acctID] = true
-		}
-
-		// Non-lot-tracking accounts (positions not already covered by lots)
-		for _, pos := range positions {
-			if seen[pos.AccountID] {
-				continue
-			}
-			acctName := resolveAccountName(a, pos.AccountID)
-			data.accounts = append(data.accounts, mergerAffectedAccount{
-				accountID:   pos.AccountID,
-				accountName: acctName,
-				trackLots:   false,
-				position:    pos,
-			})
 		}
 
 		return mergerConfirmDataMsg{data: data}
