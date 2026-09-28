@@ -46,34 +46,12 @@ const (
 	ViewAmortization
 )
 
-// String returns the display name of the view.
+// String returns the display name of the view, from the view table.
 func (v View) String() string {
-	switch v {
-	case ViewDashboard:
-		return "Dashboard"
-	case ViewRegister:
-		return "Register"
-	case ViewScheduled:
-		return "Scheduled"
-	case ViewReports:
-		return "Reports"
-	case ViewReconciliation:
-		return "Reconciliation"
-	case ViewSecurities:
-		return "Securities"
-	case ViewPrices:
-		return "Prices"
-	case ViewInvestmentRegister:
-		return "Investment Register"
-	case ViewPortfolio:
-		return "Portfolio"
-	case ViewCorporateActions:
-		return "Corporate Actions"
-	case ViewAmortization:
-		return "Amortization"
-	default:
-		return "Unknown"
+	if e, ok := viewFor(v); ok && e.name != "" {
+		return e.name
 	}
+	return "Unknown"
 }
 
 // App is the main TUI application model.
