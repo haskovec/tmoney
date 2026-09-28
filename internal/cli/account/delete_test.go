@@ -144,9 +144,7 @@ func TestAccountCmd_HelpListsEditAndDelete(t *testing.T) {
 	}
 }
 
-// A brokerage keeps its history on the investment ledger. Before W5b the
-// delete counted only register rows, passed, and failed inside DuckDB with a
-// foreign-key driver error.
+// A brokerage keeps its history on the investment ledger.
 func TestAccountDelete_BrokerageWithHistory(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	svc := app.NewServices(database)

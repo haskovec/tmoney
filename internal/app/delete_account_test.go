@@ -32,8 +32,8 @@ func createAccount(t *testing.T, svc *Services, name string, typ account.Type) *
 }
 
 // assertRefused checks that Delete returned the named dependents and left the
-// account in place. A driver error (a foreign key firing inside DuckDB) is a
-// failure, which is the bug: the Go checks passed and the row delete did not.
+// account in place. A driver error (a foreign key firing inside DuckDB) fails
+// it: every refusal must come from DeleteBlocker.
 func assertRefused(t *testing.T, svc *Services, acct *account.Account, dependents string, count int) {
 	t.Helper()
 	err := svc.Account.Delete(acct.ID)
