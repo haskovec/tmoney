@@ -25,7 +25,7 @@ Rules that hold for every item:
 - No new package. No `tea.Model` sub-model. No change to key bindings, layout, or which views are full-screen.
 - The message arms in `app_update.go` do not move.
 - `currentView` stays a field on `App`.
-- The three pre-switch branches in `handleKeyPress` (`app.go:447`, `app.go:495`, `app.go:548`) do not move.
+- The four pre-switch branches in `handleKeyPress` do not move: the investment-register filter guard, the Corporate Actions filter guard (added by W12 in `specs/work-two-ledgers.md`), the Reconciliation branch, and the global Esc arm with its per-view exceptions.
 
 ---
 
@@ -61,7 +61,7 @@ Only the seven switches collapse. No method moves. Every fallback stays.
 
 - [ ] **VL-104 — `onKey`**
   - Add `onKey func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)`. Fill with the existing `handleXKeys` method values.
-  - Replace the eleven-arm switch at `app.go:568` with the lookup. The three earlier branches in `handleKeyPress` stay exactly where they are.
+  - Replace the eleven-arm switch at `app.go:568` with the lookup. The four earlier branches in `handleKeyPress` stay exactly where they are.
 
 - [ ] **VL-105 — `hints`**
   - Add `hints func(*App) string`. Replace the switch in `getKeyHints` (`app_view.go:148`) with the lookup. Keep the existing default.
@@ -87,7 +87,7 @@ Only the seven switches collapse. No method moves. Every fallback stays.
   - This item is last in the phase because it fails until VL-102 to VL-109 are done.
 
 - [ ] **VL-111 — Exit check and manual smoke**
-  - Confirm: seven switches gone; the five-view list gone from both predicates; `View.String()` returns `"Unknown"` for a miss; the three pre-switch branches untouched; guards 1 to 3 green with self-tests.
+  - Confirm: seven switches gone; the five-view list gone from both predicates; `View.String()` returns `"Unknown"` for a miss; the four pre-switch branches untouched; guards 1 to 3 green with self-tests.
   - Manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back.
   - Set the design document's phase 1 status to built.
 

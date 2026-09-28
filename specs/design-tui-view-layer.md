@@ -401,12 +401,14 @@ verbatim: `render` is the existing `renderX`, `onKey` the existing
 `handleXKeys`, and so on — no method moves, only the switch collapses.
 `View.String()` and `renderContent` keep their `"Unknown"` fallbacks (§2.1).
 
-**Only the switches move; three earlier branches in `handleKeyPress` stay
+**Only the switches move; the earlier branches in `handleKeyPress` stay
 exactly where they are.** They are per-view, but they are not the list, and
 each is load-bearing:
 
 - `app.go:447`: while the investment register's filter is being typed, every
-  key goes to that view, so digits do not switch views mid-query.
+  key goes to that view, so digits do not switch views mid-query. (W12 added
+  the same guard for the Corporate Actions filter, next to it, and an Esc
+  exception for its details panel.)
 - `app.go:495`: on the Reconciliation view only Quit and Help are global;
   everything else, including `1`–`5` and Esc, goes to the view, so a
   reconciliation in progress cannot be abandoned by a stray key.
@@ -645,7 +647,7 @@ is doing phase 4's job in phase 1's clothes; the guard is that `views()` and
 | Phase | Exit criteria |
 |---|---|
 | 0 | `?` on the Corporate Actions view lists its keys; a test renders the overlay for every `View` value and requires a view-specific section |
-| 1 | Seven switches gone, the five-view list gone from both predicates (their `SidebarWidth() == 0` halves and the Dashboard mouse branch kept), `View.String()` reads the table and still returns `"Unknown"` for a miss; the three pre-switch `handleKeyPress` branches untouched; guards 1–3 land with self-tests; the tables-nil `switchView` walk (§5.2) passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back** |
+| 1 | Seven switches gone, the five-view list gone from both predicates (their `SidebarWidth() == 0` halves and the Dashboard mouse branch kept), `View.String()` reads the table and still returns `"Unknown"` for a miss; the pre-switch `handleKeyPress` branches untouched; guards 1–3 land with self-tests; the tables-nil `switchView` walk (§5.2) passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back** |
 | 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the five recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the 335 test literals moved and no assertion changed |
 | 3 | `price_view.go` ≤ 450 and `investment_register_view.go` ≤ 500, each split by the declaration comparer with zero problems and zero orphaned comments; the two price dialogs in files of their own; the chart's `*App` methods in `price_chart.go` |
 | 4 | Not an exit; a table of per-view decisions with the measured count of what moved and what stayed, appended to this document as the 4c notes were to the earlier one |

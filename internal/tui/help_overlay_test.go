@@ -133,8 +133,8 @@ func TestViewShortcutSections(t *testing.T) {
 
 // TestCorporateActionShortcuts pins every entry, key and description. The
 // status-bar hint lists navigate, filter, details, delete and back; the
-// section adds the g/G and page keys the handler also binds. Esc reads
-// "Back", the key's real behavior: the global Esc handler runs first.
+// section adds the g/G and page keys the handler also binds. Esc names all
+// three things it does, as handleKeyPress routes it.
 func TestCorporateActionShortcuts(t *testing.T) {
 	s := corporateActionShortcuts()
 	if s.Title != "Corporate Actions" {
@@ -147,7 +147,7 @@ func TestCorporateActionShortcuts(t *testing.T) {
 		{"/", "Filter actions"},
 		{"Enter", "Show details"},
 		{"d", "Reverse and delete action (asks first)"},
-		{"Esc", "Back"},
+		{"Esc", "Close details or filter entry, else back"},
 	}
 	if !slices.Equal(s.Entries, want) {
 		t.Errorf("entries = %v\nwant      %v", s.Entries, want)

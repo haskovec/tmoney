@@ -59,14 +59,6 @@ func (a *App) loadCorporateActionViewData() tea.Cmd {
 	}
 }
 
-// closeCorporateActionView clears the register's state.
-func (a *App) closeCorporateActionView() {
-	a.corporateActionView = nil
-	a.corporateActionViewTable = nil
-	a.corporateActionViewFilter = ""
-	a.corporateActionDetail = nil
-}
-
 // filteredCorporateActions returns the subset of loaded actions whose
 // ticker, type, or details match the current filter query
 // (case-insensitive substring).
@@ -278,9 +270,9 @@ func (a *App) renderCorporateActionDetails() string {
 
 // corporateActionShortcuts returns the shortcut section for the Corporate
 // Actions help overlay. It lists the keys handleCorporateActionViewKeys binds;
-// keep it in step with the view's status-bar hint in getKeyHints. Esc is
-// "Back" because handleKeyPress claims Esc for every view before this
-// handler runs, so the handler's own Esc arms never see the key.
+// keep it in step with the view's status-bar hint in getKeyHints. Esc closes
+// the details panel or ends a filter entry (handleKeyPress routes those to
+// this view), and otherwise goes back.
 func corporateActionShortcuts() shortcutSection {
 	return shortcutSection{
 		Title: "Corporate Actions",
@@ -291,7 +283,7 @@ func corporateActionShortcuts() shortcutSection {
 			{"/", "Filter actions"},
 			{"Enter", "Show details"},
 			{"d", "Reverse and delete action (asks first)"},
-			{"Esc", "Back"},
+			{"Esc", "Close details or filter entry, else back"},
 		},
 	}
 }
@@ -327,11 +319,11 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 		return a, nil
 	}
 
+	// Esc on the list is not handled here: handleKeyPress's global Esc goes
+	// back (and refreshes the view it returns to), the one back path. It
+	// sends Esc here only to close the details panel, and the early guard
+	// sends every key here while the filter is typed.
 	switch {
-	case key.Matches(msg, a.keys.Escape):
-		a.closeCorporateActionView()
-		a.switchView(a.previousView)
-		return a, nil
 	case key.Matches(msg, a.keys.Up):
 		if a.corporateActionViewTable != nil {
 			a.corporateActionViewTable.MoveUp()
