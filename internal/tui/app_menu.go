@@ -309,6 +309,9 @@ func (a *App) switchView(v View) {
 		// dialog cascade — killing the mouse with no modal on screen.
 		if a.currentView == ViewCorporateActions {
 			a.corporateActionDetail = nil
+			// A filter entry ends with the view, or the view would return
+			// still capturing every key as filter text.
+			a.corporateActionViewFilterEditing = false
 		}
 		a.previousView = a.currentView
 		a.currentView = v

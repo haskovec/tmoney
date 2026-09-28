@@ -453,6 +453,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleInvestmentRegisterKeys(msg)
 	}
 
+	// The same for the Corporate Actions filter: while it is being typed, a
+	// digit or "?" is filter text, and Esc ends the entry.
+	if a.currentView == ViewCorporateActions && a.corporateActionViewFilterEditing {
+		return a.handleCorporateActionViewKeys(msg)
+	}
+
 	// Undo/redo key bindings (handled before menus since they should
 	// work from any non-dialog context)
 	switch {
@@ -558,6 +564,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// still-typing filter is already captured by the early guard above.)
 		if a.currentView == ViewInvestmentRegister && a.investmentRegisterFilterActive() {
 			return a.handleInvestmentRegisterKeys(msg)
+		}
+		// With the Corporate Actions details panel open, Esc closes the panel
+		// and stays in the view; let the view handler claim it. (A filter
+		// being typed is already captured by the early guard above.)
+		if a.currentView == ViewCorporateActions && a.corporateActionDetail != nil {
+			return a.handleCorporateActionViewKeys(msg)
 		}
 		// Go back to previous view or dashboard, and refresh that view's
 		// data so changes made in the view we're leaving (e.g. a new
