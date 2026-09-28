@@ -73,6 +73,12 @@ type StatusBar struct {
 	// remain queued and reappear once the toast is cleared.
 	toast *Toast
 
+	// sticky is a notification that lasts until ClearSticky: unlike the
+	// queued notifications, ClearNotifications leaves it alone. It holds a
+	// failure a routine refresh must not erase, such as a failed open-time
+	// repair.
+	sticky *Notification
+
 	// nextID is a monotonic counter for AddNotificationWithID handles.
 	nextID int
 }
@@ -150,6 +156,18 @@ func (sb *StatusBar) RemoveNotification(id int) {
 // ClearNotifications removes all notifications.
 func (sb *StatusBar) ClearNotifications() {
 	sb.notifications = nil
+}
+
+// SetSticky shows a notification ahead of the queued ones until ClearSticky.
+// ClearNotifications does not remove it; a toast still takes the slot while
+// the toast lasts.
+func (sb *StatusBar) SetSticky(text string, level NotificationLevel) {
+	sb.sticky = &Notification{Text: text, Level: level}
+}
+
+// ClearSticky removes the sticky notification.
+func (sb *StatusBar) ClearSticky() {
+	sb.sticky = nil
 }
 
 // Notifications returns the current notifications.
@@ -288,12 +306,16 @@ func (sb *StatusBar) renderNotifications(_ Styles, barBase lipgloss.Style) strin
 		return barBase.Render(sb.toast.Text)
 	}
 
-	if len(sb.notifications) == 0 {
+	queued := sb.notifications
+	if sb.sticky != nil {
+		queued = append([]Notification{*sb.sticky}, queued...)
+	}
+	if len(queued) == 0 {
 		return ""
 	}
 
 	var parts []string
-	for _, n := range sb.notifications {
+	for _, n := range queued {
 		switch n.Level {
 		case NotificationAlert:
 			parts = append(parts, alertStyle.Render(n.Text))

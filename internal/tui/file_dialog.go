@@ -269,6 +269,8 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.db = newDB
 	svc, prepareErr := newTUIServices(newDB)
 	a.services = *svc
+	// A repair failure belongs to the file it came from.
+	a.statusbar.ClearSticky()
 	if prepareErr != nil {
 		a.surfacePrepareError(prepareErr)
 	}

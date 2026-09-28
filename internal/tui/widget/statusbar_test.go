@@ -505,3 +505,27 @@ func TestClearToastCmd_FiresClearMsg(t *testing.T) {
 		t.Errorf("cmd() = %T, want ToastClearMsg", msg)
 	}
 }
+
+// A sticky notification outlasts ClearNotifications, shows ahead of the
+// queued ones, and goes only with ClearSticky.
+func TestStatusBar_Sticky(t *testing.T) {
+	sb := NewStatusBar()
+	sb.SetSticky("Startup repair failed", NotificationAlert)
+	sb.AddNotification("1 scheduled due", NotificationAlert)
+
+	render := func() string { return StripAnsi(sb.Render(NewStyles(), 200)) }
+	got := render()
+	if i, j := strings.Index(got, "Startup repair failed"), strings.Index(got, "1 scheduled due"); i < 0 || j < 0 || i > j {
+		t.Errorf("render = %q, want the sticky alert before the queued one", got)
+	}
+
+	sb.ClearNotifications()
+	if got := render(); !strings.Contains(got, "Startup repair failed") || strings.Contains(got, "scheduled due") {
+		t.Errorf("after ClearNotifications render = %q, want only the sticky alert", got)
+	}
+
+	sb.ClearSticky()
+	if got := render(); strings.Contains(got, "Startup repair failed") {
+		t.Errorf("after ClearSticky render = %q", got)
+	}
+}
