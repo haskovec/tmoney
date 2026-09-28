@@ -586,7 +586,7 @@ The `netWorthAsOf` query (`internal/report/report_service.go`) filters closed ac
 
 ## W7 — Constructor must not write
 
-**Status:** done in PR #57. As built: `clitest.OpenSvc` also runs `Prepare`, as a real CLI open does; a test fixture, `clitest.DamagedHealFile`, forces a real heal failure (a lot with more shares consumed than it held), so no test hook was added. The TUI alert logs the full error to the app log.
+**Status:** done in PR #57. As built: `clitest.OpenSvc` also runs `Prepare`, as a real CLI open does; a test fixture, `clitest.DamagedHealFile`, forces a real heal failure (a lot with more shares consumed than it held), so no test hook was added. The TUI alert logs the full error to the app log. Added in review: the alert is a sticky status-bar slot (`StatusBar.SetSticky`), because the due-count refresh after every open clears the queued notifications; it lasts while that file is open.
 **Decision:** `Prepare` runs all five steps and returns every failure. The CLI and the TUI show the failure loudly and continue.
 
 ### Problem
