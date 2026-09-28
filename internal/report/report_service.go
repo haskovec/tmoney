@@ -135,8 +135,9 @@ type registerRow struct {
 	balance  types.Money
 }
 
-// registerBalancesAsOf returns each account's register balance as of asOf:
-// opening balance plus non-void transactions dated on or before it.
+// registerBalancesAsOf returns the register balance as of asOf — opening
+// balance plus non-void transactions dated on or before it — of each account
+// that was open by then.
 func (s *Service) registerBalancesAsOf(asOfDate types.Date, includeClosed bool) ([]registerRow, error) {
 	query := `
 		SELECT
@@ -153,9 +154,11 @@ func (s *Service) registerBalancesAsOf(asOfDate types.Date, includeClosed bool) 
 				0
 			) as balance
 		FROM accounts a
-		WHERE 1=1
+		WHERE a.opening_date <= ?
 	`
-	args := []any{asOfDate}
+	// An account opened after asOf did not exist on that date: leave it out
+	// of the rows, the totals, and the valuation, closed or not.
+	args := []any{asOfDate, asOfDate}
 
 	if !includeClosed {
 		query += " AND (a.active = TRUE OR a.closed_date > ?)"

@@ -52,7 +52,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W6 | done (#53) | Refuse reconcile on an investment account | — | small |
 | W5c | done (#54) | One display figure for account list, show, and balance | — | medium |
 | W5d | done (#55) | Net worth by currency, with row errors | W5c | medium |
-| W11 | open | As-of net worth leaves out accounts not yet open | W5d | small |
+| W11 | done (#56) | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | open | Constructor must not write | — | medium |
 | W10 | open | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | open | Corporate Actions keys must reach the view | — | small |
@@ -564,7 +564,7 @@ Put the service tests in `internal/report`, next to `report_service_test.go`, or
 
 ## W11 — As-of net worth leaves out accounts not yet open
 
-**Status:** open
+**Status:** done in PR #56. The filter is `opening_date <= asOf` in the base query, so it holds with `--include-closed` too.
 **Needs:** W5d.
 
 ### Problem

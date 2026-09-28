@@ -418,8 +418,10 @@ func TestService_NetWorthAsOf(t *testing.T) {
 	t.Run("calculates net worth as of a past date", func(t *testing.T) {
 		svc, accountRepo, txnRepo := createTestReportService(t)
 
+		// Opened before the as-of date: an account opened later is not in
+		// that date's net worth at all.
 		openingBalance, _ := types.NewMoney("1000.00")
-		checking := account.NewAccount("Checking", account.TypeChecking, "USD", openingBalance, types.Today())
+		checking := account.NewAccount("Checking", account.TypeChecking, "USD", openingBalance, types.Today().AddDays(-30))
 		if err := accountRepo.Create(checking); err != nil {
 			t.Fatalf("Failed to create checking: %v", err)
 		}
@@ -754,8 +756,9 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 
+		// Opened before the as-of date, so it is in that date's report.
 		investBalance, _ := types.NewMoney("0.00")
-		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.Today())
+		invest := account.NewAccount("Brokerage", account.TypeInvestment, "USD", investBalance, types.NewDate(2024, 1, 1))
 		if err := accountRepo.Create(invest); err != nil {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
