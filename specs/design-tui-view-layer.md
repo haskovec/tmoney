@@ -530,9 +530,10 @@ other dialogs, not inside a view.
 
 `investment_register_view.go` (1,055) → four files, because the register
 proper is ~650 lines and would miss the exit gate as three:
-`investment_register_view.go` (data, load, table build, status toggle; ~450),
-`investment_register_render.go` (~200), `investment_register_filter.go` (the
-security filter and its search-key handler; ~190), and
+`investment_register_view.go` (data, load, keys, status toggle; ~400),
+`investment_register_render.go` (table build and render; ~330),
+`investment_register_filter.go` (the security filter and its search-key
+handler; ~190), and
 `investment_type_selector.go` (the dialog and its type helpers; ~210).
 
 Verified the way 4d was: a `go/ast` comparison of every declaration, doc
@@ -540,11 +541,17 @@ comment included, against the original, and the splitter's orphan-comment
 report. Zero test lines.
 
 **Status: built** (2026-09-28). `price_view.go` is 261 lines and
-`investment_register_view.go` 398. Two differences from the plan above: the
-chart's debounce delay and its two messages moved into `price_chart.go` with
-the five methods, so the chart has one file in full; and `price_chart.go`
-gained one import (bubbletea). The comparer found all 1,120 declarations
-byte-identical after every step.
+`investment_register_view.go` 398. Three differences from the plan as first
+written: the chart's debounce delay and its two messages moved into
+`price_chart.go` with the five methods, so the chart has one file in full;
+`price_chart.go` gained one import (bubbletea); and the four table-build
+helpers (`investmentRegisterColumns`, `shouldShowInvestmentBalance`,
+`buildInvestmentRegisterTable`, `formatInvestmentRegisterRow`) moved into
+`investment_register_render.go` with the render functions. The first plan
+kept table build in the view file; there the helpers would add about 127
+lines and put `investment_register_view.go` over the 500-line gate. The file
+list above now shows the split as built. The comparer found all 1,120
+declarations byte-identical after every step.
 
 ### Phase 4 — view controllers, priced and not committed
 

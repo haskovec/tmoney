@@ -123,7 +123,7 @@ Move functions between files. Rename nothing. Change no signature. Zero test lin
 - [x] **VL-209 — `investment_register_render.go`; check the gate**
   - Move the render functions. About 200 lines.
   - Check: `investment_register_view.go` ≤ 500 lines; comparer reports zero problems and zero orphaned comments. Set the design document's phase 3 status to built.
-  - Done (branch `refactor/split-price-and-register-views`): `price_view.go` 261 lines, `investment_register_view.go` 398; all 1,120 declarations byte-identical. The chart's debounce delay and two messages also moved to `price_chart.go`. The two free section headers that became file comments were removed from `price_view.go` by hand, since the mover refuses to orphan a comment.
+  - Done (branch `refactor/split-price-and-register-views`): `price_view.go` 261 lines, `investment_register_view.go` 398; all 1,120 declarations byte-identical. The chart's debounce delay and two messages also moved to `price_chart.go`. The four table-build helpers (`investmentRegisterColumns`, `shouldShowInvestmentBalance`, `buildInvestmentRegisterTable`, `formatInvestmentRegisterRow`) moved with the render functions, so `investment_register_render.go` is 329 lines; left in the view file, they would make that file about 525 lines, over the gate. The two free section headers that became file comments were removed from `price_view.go` by hand, since the mover refuses to orphan a comment.
 
 ## Phase 2: Per-View State Structs
 
