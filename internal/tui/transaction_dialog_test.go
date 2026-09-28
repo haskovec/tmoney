@@ -596,7 +596,7 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 	// Set up sidebar with a selected account
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	msg := transactionDialogSavedMsg{}
 	_, cmd := app.Update(msg)
@@ -617,7 +617,7 @@ func TestApp_Update_TransactionDialogSavedMsg_StoresStickyDate(t *testing.T) {
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	saved := types.NewDate(2024, time.January, 15)
 	model, _ := app.Update(transactionDialogSavedMsg{savedDate: saved})
@@ -742,7 +742,7 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	_, cmd := app.submitTransactionDialog()
 	if cmd == nil {
@@ -772,7 +772,7 @@ func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	// First saved date.
 	first := types.NewDate(2024, time.January, 15)
@@ -1028,7 +1028,7 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	model, cmd := app.submitTransactionDialog()
 	updatedApp := model.(*App)

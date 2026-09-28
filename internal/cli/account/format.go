@@ -8,11 +8,12 @@ import (
 
 	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
-	"github.com/haskovec/tmoney/internal/types"
+	reportdom "github.com/haskovec/tmoney/internal/report"
 )
 
-// printAccountsTable prints accounts in a formatted table.
-func printAccountsTable(w io.Writer, accounts []*accountdom.Account, balances map[types.ID]*accountdom.Balance) {
+// printAccountsTable prints accounts in a formatted table. figs holds one
+// figure per account, in the same order.
+func printAccountsTable(w io.Writer, accounts []*accountdom.Account, figs []reportdom.AccountFigure) {
 	if len(accounts) == 0 {
 		fmt.Fprintln(w, "No accounts found.")
 		return
@@ -25,11 +26,8 @@ func printAccountsTable(w io.Writer, accounts []*accountdom.Account, balances ma
 	fmt.Fprintln(tw, "Name\tType\tBalance\tCurrency")
 	fmt.Fprintln(tw, "----\t----\t-------\t--------")
 
-	for _, acct := range accounts {
-		balance := "N/A"
-		if b, ok := balances[acct.ID]; ok {
-			balance = cmdutil.FormatMoney(b.CurrentBalance, acct.Currency)
-		}
+	for i, acct := range accounts {
+		balance := formatFigure(figs[i])
 
 		// Annotate closed rows (only shown with --include-closed) with the
 		// close date, tolerating a NULL date on a pre-existing closed account.
@@ -51,10 +49,15 @@ func printAccountsTable(w io.Writer, accounts []*accountdom.Account, balances ma
 	}
 
 	tw.Flush()
+	printEstimateNote(w, figs)
 }
 
-// printAccountDetails prints detailed information for a single account.
-func printAccountDetails(w io.Writer, acct *accountdom.Account, bal *accountdom.Balance) {
+// printAccountDetails prints detailed information for a single account. A
+// register account shows its current and cleared register balance (bal). An
+// investment account shows its cash and total value from fig instead: its
+// register balance is not what it holds, and the investment ledger has no
+// cleared state.
+func printAccountDetails(w io.Writer, acct *accountdom.Account, bal *accountdom.Balance, fig reportdom.AccountFigure) {
 	fmt.Fprintf(w, "ACCOUNT: %s\n", acct.Name)
 	fmt.Fprintln(w, strings.Repeat("=", len("ACCOUNT: ")+len(acct.Name)))
 
@@ -76,8 +79,17 @@ func printAccountDetails(w io.Writer, acct *accountdom.Account, bal *accountdom.
 
 	fmt.Fprintf(w, "Opening Date:    %s\n", acct.OpeningDate.String())
 	fmt.Fprintf(w, "Opening Balance: %s\n", cmdutil.FormatMoney(acct.OpeningBalance, acct.Currency))
-	fmt.Fprintf(w, "Current Balance: %s\n", cmdutil.FormatMoney(bal.CurrentBalance, acct.Currency))
-	fmt.Fprintf(w, "Cleared Balance: %s\n", cmdutil.FormatMoney(bal.ClearedBalance, acct.Currency))
+	if acct.Type.IsInvestmentType() {
+		cash := "error"
+		if fig.Err == nil {
+			cash = cmdutil.FormatMoney(fig.Cash, acct.Currency)
+		}
+		fmt.Fprintf(w, "Cash:            %s\n", cash)
+		fmt.Fprintf(w, "Total Value:     %s\n", formatFigure(fig))
+	} else {
+		fmt.Fprintf(w, "Current Balance: %s\n", cmdutil.FormatMoney(bal.CurrentBalance, acct.Currency))
+		fmt.Fprintf(w, "Cleared Balance: %s\n", cmdutil.FormatMoney(bal.ClearedBalance, acct.Currency))
+	}
 
 	status := "Active"
 	if !acct.Active {
@@ -100,10 +112,14 @@ func printAccountDetails(w io.Writer, acct *accountdom.Account, bal *accountdom.
 	if acct.Notes.Valid {
 		fmt.Fprintf(w, "Notes:           %s\n", acct.Notes.String)
 	}
+	printEstimateNote(w, []reportdom.AccountFigure{fig})
 }
 
-// printBalancesTable prints balances for all accounts with net worth.
-func printBalancesTable(w io.Writer, accounts []*accountdom.Account, balances map[types.ID]*accountdom.Balance) {
+// printBalancesTable prints each account's figure and the net worth of each
+// currency. Money in different currencies is never added. A currency with an
+// account that could not be valued has no total: a sum that leaves the
+// account out would look like the real one.
+func printBalancesTable(w io.Writer, accounts []*accountdom.Account, figs []reportdom.AccountFigure) {
 	if len(accounts) == 0 {
 		fmt.Fprintln(w, "No accounts found.")
 		return
@@ -112,22 +128,8 @@ func printBalancesTable(w io.Writer, accounts []*accountdom.Account, balances ma
 	fmt.Fprintln(w, "BALANCES")
 	fmt.Fprintln(w, "========")
 
-	var totalAssets, totalLiabilities types.Money
-
-	for _, acct := range accounts {
-		bal := types.MustNewMoney("0")
-		if b, ok := balances[acct.ID]; ok {
-			bal = b.CurrentBalance
-		}
-
-		fmt.Fprintf(w, "%-20s %s\n", acct.Name+":", cmdutil.FormatMoney(bal, acct.Currency))
-
-		// Track net worth
-		if acct.Type.IsAssetType() {
-			totalAssets = totalAssets.Add(bal)
-		} else if acct.Type.IsLiabilityType() {
-			totalLiabilities = totalLiabilities.Add(bal)
-		}
+	for i, acct := range accounts {
+		fmt.Fprintf(w, "%-20s %s\n", acct.Name+":", formatFigure(figs[i]))
 	}
 
 	fmt.Fprintln(w, "------------------------")
@@ -135,6 +137,56 @@ func printBalancesTable(w io.Writer, accounts []*accountdom.Account, balances ma
 	// Net worth = assets + liabilities over signed balances: the standardized
 	// convention stores liability balances negative when owed (see
 	// specs/accounts.md), so adding them yields net worth.
-	netWorth := totalAssets.Add(totalLiabilities)
-	fmt.Fprintf(w, "%-20s %s\n", "Net Worth:", cmdutil.FormatMoney(netWorth, "USD"))
+	for _, t := range reportdom.TotalsByCurrency(figs) {
+		label := "Net Worth (" + t.Currency + "):"
+		total := "not available"
+		if t.Available {
+			total = cmdutil.FormatMoney(t.NetWorth, t.Currency)
+			if t.Estimated {
+				total = "~" + total
+			}
+		}
+		fmt.Fprintf(w, "%-20s %s\n", label, total)
+	}
+	printEstimateNote(w, figs)
+}
+
+// formatFigure renders an account's figure for a balance column: "error"
+// when it could not be valued, and a "~" prefix when it is estimated, as the
+// dashboard marks it.
+func formatFigure(fig reportdom.AccountFigure) string {
+	if fig.Err != nil {
+		return "error"
+	}
+	s := cmdutil.FormatMoney(fig.Displayed, fig.Currency)
+	if fig.Estimated {
+		s = "~" + s
+	}
+	return s
+}
+
+// printEstimateNote explains the "~" mark when any figure carries it.
+func printEstimateNote(w io.Writer, figs []reportdom.AccountFigure) {
+	for _, fig := range figs {
+		if fig.Err == nil && fig.Estimated {
+			fmt.Fprintln(w, "\n~ estimated: a holding has no price, so it is valued at cost.")
+			return
+		}
+	}
+}
+
+// figureErrors returns one error naming every account whose figure failed, or
+// nil. Commands print all rows first and return it, so the command exits
+// non-zero and the reasons reach stderr.
+func figureErrors(accounts []*accountdom.Account, figs []reportdom.AccountFigure) error {
+	var failed []string
+	for i, fig := range figs {
+		if fig.Err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %v", accounts[i].Name, fig.Err))
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("could not value %d account(s): %s", len(failed), strings.Join(failed, "; "))
 }

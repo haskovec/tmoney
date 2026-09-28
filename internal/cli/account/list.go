@@ -53,12 +53,12 @@ func runAccountList(opts *accountListOptions, w io.Writer) error {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
-	balances, err := svc.Account.GetAllBalances()
+	figs, err := svc.Report.AccountFigures(accounts)
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
 
-	printAccountsTable(w, accounts, balances)
+	printAccountsTable(w, accounts, figs)
 
-	return nil
+	return figureErrors(accounts, figs)
 }

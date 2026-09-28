@@ -1119,7 +1119,7 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 	// Set up sidebar with a selected account
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	// Submit the dialog (focus on Save button)
 	app.txn.dlg.SetFocusIndex(len(app.txn.dlg.Fields()))
@@ -1195,7 +1195,7 @@ func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
 
 	msg := splitDialogSavedMsg{}
 	_, cmd := app.Update(msg)

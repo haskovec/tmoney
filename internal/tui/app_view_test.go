@@ -169,7 +169,7 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 			}
 			app.styles = widget.NewStyles()
 			app.styles.Resize(termWidth, 24)
-			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+			app.sidebar.SetAccounts([]*account.Account{checking})
 
 			header := app.renderHeader()
 			headerWidth := lipgloss.Width(header)
@@ -246,7 +246,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 			}
 			app.styles = widget.NewStyles()
 			app.styles.Resize(termWidth, 24)
-			app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+			app.sidebar.SetAccounts([]*account.Account{checking})
 			app.sidebar.SetFocused(false)
 			// Build the register table
 			app.buildRegisterTable()
@@ -301,7 +301,7 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 	}
 	app.styles = widget.NewStyles()
 	app.styles.Resize(120, 24)
-	app.sidebar.SetAccounts([]*account.Account{checking}, nil)
+	app.sidebar.SetAccounts([]*account.Account{checking})
 
 	// Step 1: Render dashboard - should have exactly 24 lines
 	dashView := app.View()

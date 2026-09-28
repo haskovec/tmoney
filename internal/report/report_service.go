@@ -13,7 +13,8 @@ import (
 // ValuationResult holds the total value of an investment account and flags missing pricing.
 type ValuationResult struct {
 	TotalValue       types.Money
-	HasMissingPrices bool // true if any holdings used cost basis instead of market price
+	CashBalance      types.Money // the investment ledger's cash, part of TotalValue
+	HasMissingPrices bool        // true if any holdings used cost basis instead of market price
 }
 
 // InvestmentValuer computes the total value of an investment account (cash + holdings).

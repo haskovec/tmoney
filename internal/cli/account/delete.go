@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	accountdom "github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/dberrors"
 	"github.com/spf13/cobra"
@@ -75,8 +76,17 @@ func runAccountDelete(opts *accountDeleteOptions, w io.Writer) error {
 		fmt.Fprintln(w, "Would delete account:")
 		fmt.Fprintf(w, "  Name: %s\n", acct.Name)
 		fmt.Fprintf(w, "  Type: %s\n", acct.Type.DisplayName())
-		if bal, berr := svc.Account.GetBalance(acct.ID); berr == nil {
-			fmt.Fprintf(w, "  Balance: %s\n", cmdutil.FormatMoney(bal.CurrentBalance, acct.Currency))
+		// The preview reports what the account holds; a valuation error is
+		// shown, not fatal, so the blocking warning below still prints.
+		if figs, ferr := svc.Report.AccountFigures([]*accountdom.Account{acct}); ferr == nil {
+			label, line := "Balance", formatFigure(figs[0])
+			if acct.Type.IsInvestmentType() {
+				label = "Total Value"
+			}
+			if figs[0].Err != nil {
+				line += " (" + figs[0].Err.Error() + ")"
+			}
+			fmt.Fprintf(w, "  %s: %s\n", label, line)
 		}
 		if len(refs) > 0 {
 			fmt.Fprintf(w, "\nWarning: %d scheduled transaction(s) reference this account; "+

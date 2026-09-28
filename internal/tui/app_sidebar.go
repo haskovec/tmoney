@@ -5,13 +5,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/widget"
-	"github.com/haskovec/tmoney/internal/types"
 )
 
 // sidebarLoadedMsg is sent when sidebar data has been loaded.
 type sidebarLoadedMsg struct {
 	accounts []*account.Account
-	balances map[types.ID]*account.Balance
 }
 
 // loadSidebarData returns a command that loads accounts and balances for the sidebar.
@@ -27,11 +25,7 @@ func (a *App) loadSidebarData() tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		balances, err := a.services.Account.GetAllBalances()
-		if err != nil {
-			return errMsg{err: err}
-		}
-		return sidebarLoadedMsg{accounts: accounts, balances: balances}
+		return sidebarLoadedMsg{accounts: accounts}
 	}
 }
 

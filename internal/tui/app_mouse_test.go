@@ -45,7 +45,8 @@ func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
 	sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking", Type: account.TypeChecking},
 		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Brokerage", Type: account.TypeInvestment},
-	}, nil)
+	})
+
 	sidebar.SetFocused(false)
 	sidebar.cursor = 0
 
@@ -380,7 +381,7 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
-	app.sidebar.SetAccounts(accounts, nil)
+	app.sidebar.SetAccounts(accounts)
 
 	// Start with table focused
 	app.sidebar.SetFocused(false)
@@ -482,7 +483,7 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 		testAccount("Savings", account.TypeSavings),
 		testAccount("Visa", account.TypeCreditCard),
 	}
-	app.sidebar.SetAccounts(accounts, nil)
+	app.sidebar.SetAccounts(accounts)
 	// Sidebar focused by default
 
 	// Scroll down

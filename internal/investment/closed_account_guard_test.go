@@ -162,3 +162,44 @@ func TestInvestmentService_ReadsAllowedOnClosedAccount(t *testing.T) {
 		t.Fatalf("GetCashBalance on a closed account should succeed, got %v", err)
 	}
 }
+
+// A closed account's holdings still count in its valuation. The
+// portfolio_holdings view lists active accounts only, so reading it for a
+// closed account returned no holdings: a closed brokerage holding shares was
+// valued at its cash alone, with no error and no estimate mark.
+func TestGetAccountValuation_ClosedAccountKeepsHoldings(t *testing.T) {
+	for _, trackLots := range []bool{false, true} {
+		t.Run(map[bool]string{false: "positions", true: "lots"}[trackLots], func(t *testing.T) {
+			env := createFullTestService(t)
+			var acct *account.Account
+			if trackLots {
+				acct = createLotTrackingAccount(t, env.accountRepo, "Brokerage")
+			} else {
+				acct = createInvAccount(t, env.accountRepo, "Brokerage")
+			}
+			sec := createSec(t, env.secRepo, "VTI")
+			date := types.NewDate(2000, time.March, 1)
+			if _, err := env.svc.Deposit(acct.ID, date, types.MustNewMoney("600.00"), ""); err != nil {
+				t.Fatal(err)
+			}
+			price := types.MustNewMoney("100.00")
+			if _, err := env.svc.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("5"), nil, &price, types.ZeroMoney, ""); err != nil {
+				t.Fatal(err)
+			}
+			// Closed with shares, as an account closed before the close rule
+			// refused that, or restored closed by undo, can be.
+			closeInvAccount(t, env.accountRepo, acct)
+
+			val, err := env.valSvc.GetAccountValuation(acct.ID, types.Today(), ValuationOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !val.MarketValue.Equal(types.MustNewMoney("500.00")) {
+				t.Errorf("market value = %s, want 500.00 (5 shares at 100.00)", val.MarketValue)
+			}
+			if !val.TotalValue.Equal(types.MustNewMoney("600.00")) {
+				t.Errorf("total value = %s, want 600.00 (100.00 cash + 500.00 shares)", val.TotalValue)
+			}
+		})
+	}
+}

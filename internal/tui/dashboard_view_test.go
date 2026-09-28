@@ -879,9 +879,8 @@ func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
 	}
 
 	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{investAcct}, map[types.ID]*account.Balance{
-		investAcctID: {AccountID: investAcctID, CurrentBalance: types.MustNewMoney("10000.00")},
-	})
+	sidebar.SetAccounts([]*account.Account{investAcct})
+
 	// Move cursor to the account item (index 0 = group header, index 1 = account)
 	sidebar.cursor = 1
 
@@ -915,9 +914,8 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 	}
 
 	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{checkAcct}, map[types.ID]*account.Balance{
-		checkAcctID: {AccountID: checkAcctID, CurrentBalance: types.MustNewMoney("5000.00")},
-	})
+	sidebar.SetAccounts([]*account.Account{checkAcct})
+
 	sidebar.cursor = 1
 
 	app := &App{
@@ -946,7 +944,7 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investment.Holding, expanded map[types.ID]bool) *App {
 	t.Helper()
 	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{acct}, nil)
+	sidebar.SetAccounts([]*account.Account{acct})
 	sidebar.cursor = 1 // index 0 = group header, 1 = the account row
 
 	tickers := map[types.ID]string{}
@@ -1095,7 +1093,7 @@ func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
 		{BaseModel: types.BaseModel{ID: visa}, Name: "Visa", Type: account.TypeCreditCard},
 	}
 	sidebar := NewSidebar()
-	sidebar.SetAccounts(accounts, nil)
+	sidebar.SetAccounts(accounts)
 
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)

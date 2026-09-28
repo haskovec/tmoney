@@ -972,7 +972,8 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
-	}, nil)
+	})
+
 	app.sidebar.MoveDown() // move to account
 	app.sidebar.Select()
 

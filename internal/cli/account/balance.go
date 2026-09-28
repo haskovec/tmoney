@@ -22,7 +22,7 @@ func newAccountBalanceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "balance",
 		Short:        "Show balances for all active accounts",
-		Long:         "Show the current balance of every active account along with overall net worth.",
+		Long:         "Show what every active account is worth, and the net worth of each currency. An investment account shows its cash plus the value of its holdings; \"~\" marks a value estimated at cost because a holding has no price.",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,12 +50,12 @@ func runAccountBalance(opts *accountBalanceOptions, w io.Writer) error {
 		return fmt.Errorf("failed to list accounts: %w", err)
 	}
 
-	balances, err := svc.Account.GetAllBalances()
+	figs, err := svc.Report.AccountFigures(accounts)
 	if err != nil {
 		return fmt.Errorf("failed to get balances: %w", err)
 	}
 
-	printBalancesTable(w, accounts, balances)
+	printBalancesTable(w, accounts, figs)
 
-	return nil
+	return figureErrors(accounts, figs)
 }

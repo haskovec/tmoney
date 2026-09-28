@@ -189,40 +189,6 @@ func (s *Service) GetBalance(id types.ID) (*Balance, error) {
 	}, nil
 }
 
-// GetAllBalances returns balance information for all accounts.
-func (s *Service) GetAllBalances() (map[types.ID]*Balance, error) {
-	query := `
-		SELECT id, current_balance, cleared_balance
-		FROM account_balances
-	`
-
-	rows, err := s.db.Conn().Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get account balances: %w", err)
-	}
-	defer rows.Close()
-
-	balances := make(map[types.ID]*Balance)
-	for rows.Next() {
-		var id types.ID
-		var currentBalance, clearedBalance types.Money
-		if err := rows.Scan(&id, &currentBalance, &clearedBalance); err != nil {
-			return nil, fmt.Errorf("failed to scan account balance: %w", err)
-		}
-		balances[id] = &Balance{
-			AccountID:      id,
-			CurrentBalance: currentBalance,
-			ClearedBalance: clearedBalance,
-		}
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating account balances: %w", err)
-	}
-
-	return balances, nil
-}
-
 // Close closes an account after validating it can be closed.
 // An account can only be closed if it is empty — a zero register balance, or
 // for an investment account zero cash and no shares on the investment ledger —
