@@ -15,6 +15,7 @@ type viewEntry struct {
 
 	render func(*App) string
 	onKey  func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)
+	hints  func(*App) string // the status-bar key hints
 }
 
 // allViews is the one list of views. It holds only constants and method
@@ -33,24 +34,34 @@ func init() {
 			name:   "Dashboard",
 			render: (*App).renderDashboard,
 			onKey:  (*App).handleDashboardKeys,
+			hints:  func(*App) string { return "↑↓ navigate  ←→ collapse/expand  enter select  " + commonKeyHints },
 		},
 		{
 			id:     ViewRegister,
 			name:   "Register",
 			render: (*App).renderRegister,
 			onKey:  (*App).handleRegisterKeys,
+			hints: func(*App) string {
+				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:     ViewScheduled,
 			name:   "Scheduled",
 			render: (*App).renderScheduled,
 			onKey:  (*App).handleScheduledKeys,
+			hints: func(*App) string {
+				return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:     ViewReports,
 			name:   "Reports",
 			render: (*App).renderReports,
 			onKey:  (*App).handleReportsKeys,
+			hints: func(*App) string {
+				return "←→ period  n net worth  s spending  y year  m month  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:         ViewReconciliation,
@@ -58,6 +69,7 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderReconciliation,
 			onKey:      (*App).handleReconciliationKeys,
+			hints:      func(*App) string { return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help" },
 		},
 		{
 			id:         ViewSecurities,
@@ -65,6 +77,9 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderSecurityView,
 			onKey:      (*App).handleSecurityViewKeys,
+			hints: func(*App) string {
+				return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:         ViewPrices,
@@ -72,18 +87,28 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderPriceView,
 			onKey:      (*App).handlePriceViewKeys,
+			hints: func(a *App) string {
+				if a.priceView != nil && a.priceView.mode == pricesViewDetail {
+					return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + commonKeyHints
+				}
+				return "↑↓ navigate  enter view history  / search  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:     ViewInvestmentRegister,
 			name:   "Investment Register",
 			render: (*App).renderInvestmentRegister,
 			onKey:  (*App).handleInvestmentRegisterKeys,
+			hints: func(*App) string {
+				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:     ViewPortfolio,
 			name:   "Portfolio",
 			render: (*App).renderPortfolioView,
 			onKey:  (*App).handlePortfolioKeys,
+			hints:  func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
 		},
 		{
 			id:         ViewCorporateActions,
@@ -91,6 +116,9 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderCorporateActionView,
 			onKey:      (*App).handleCorporateActionViewKeys,
+			hints: func(*App) string {
+				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
+			},
 		},
 		{
 			id:         ViewAmortization,
@@ -98,6 +126,7 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderAmortizationView,
 			onKey:      (*App).handleAmortizationKeys,
+			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
 		},
 	}
 }

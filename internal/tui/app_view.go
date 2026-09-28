@@ -117,39 +117,15 @@ func (a *App) renderStatusBar() string {
 	return a.statusbar.Render(a.styles, a.width)
 }
 
-// getKeyHints returns key hints for the current view.
-func (a *App) getKeyHints() string {
-	common := "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  5 prices  ? help  ctrl+q quit"
+// commonKeyHints ends the key hints of every view but Reconciliation.
+const commonKeyHints = "Alt+key/F10 menu  1 dashboard  2 scheduled  3 reports  4 securities  5 prices  ? help  ctrl+q quit"
 
-	switch a.currentView {
-	case ViewDashboard:
-		return "↑↓ navigate  ←→ collapse/expand  enter select  " + common
-	case ViewRegister:
-		return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + common
-	case ViewScheduled:
-		return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + common
-	case ViewReports:
-		return "←→ period  n net worth  s spending  y year  m month  esc back  " + common
-	case ViewReconciliation:
-		return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help"
-	case ViewSecurities:
-		return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + common
-	case ViewPrices:
-		if a.priceView != nil && a.priceView.mode == pricesViewDetail {
-			return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + common
-		}
-		return "↑↓ navigate  enter view history  / search  esc back  " + common
-	case ViewInvestmentRegister:
-		return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + common
-	case ViewPortfolio:
-		return "↑↓ navigate  enter lot detail  r register  esc back  " + common
-	case ViewCorporateActions:
-		return "↑↓ navigate  / filter  enter details  d delete  esc back  " + common
-	case ViewAmortization:
-		return "↑↓ navigate  g/G first/last  esc back  " + common
-	default:
-		return common
+// getKeyHints returns key hints for the current view, from the view table.
+func (a *App) getKeyHints() string {
+	if e, ok := viewFor(a.currentView); ok {
+		return e.hints(a)
 	}
+	return commonKeyHints
 }
 
 // renderError renders an error message.
