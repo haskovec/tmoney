@@ -171,9 +171,12 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	case widget.MenuActionReconcileAccount:
 		a.menubar.Deactivate()
 		if a.sidebar.SelectedAccountID() != types.NilID {
-			if a.selectedAccountClosed() {
+			switch {
+			case a.refuseInvestmentReconcile():
+				// Before the closed check: reopening would not help.
+			case a.selectedAccountClosed():
 				a.statusbar.AddNotification("Account is closed — reopen to reconcile", widget.NotificationAlert)
-			} else {
+			default:
 				a.showStartReconciliationDialog()
 			}
 		}

@@ -30,3 +30,16 @@ type StatementDateFutureError struct{}
 func (e *StatementDateFutureError) Error() string {
 	return "statement date must not be in the future"
 }
+
+// InvestmentAccountError is returned when a reconciliation is started on an
+// investment account. Reconcile compares a statement with the register ledger;
+// an investment account keeps its cash and shares on the investment ledger,
+// which reconcile does not read, so a finished session would claim a match it
+// never checked.
+type InvestmentAccountError struct {
+	AccountID string
+}
+
+func (e *InvestmentAccountError) Error() string {
+	return fmt.Sprintf("account %s is an investment account; reconcile applies to the register ledger only", e.AccountID)
+}
