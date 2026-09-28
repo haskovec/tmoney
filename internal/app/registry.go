@@ -57,7 +57,6 @@ type Services struct {
 	SplitRepo       *transaction.SplitRepository
 	CategoryRepo    *category.Repository
 	PayeeRepo       *payee.Repository
-	SecurityRepo    *security.Repository
 	InvestmentRepo  *investment.Repository
 	LotRepo         *investment.LotRepository
 	PositionRepo    *investment.PositionRepository
@@ -168,7 +167,6 @@ func NewServices(database *db.DB) *Services {
 		SplitRepo:       splitRepo,
 		CategoryRepo:    categoryRepo,
 		PayeeRepo:       payeeRepo,
-		SecurityRepo:    securityRepo,
 		InvestmentRepo:  investmentRepo,
 		LotRepo:         lotRepo,
 		PositionRepo:    positionRepo,

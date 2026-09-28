@@ -72,9 +72,6 @@ func TestNewServices(t *testing.T) {
 		if svc.PayeeRepo == nil {
 			t.Error("PayeeRepo should not be nil")
 		}
-		if svc.SecurityRepo == nil {
-			t.Error("SecurityRepo should not be nil")
-		}
 		if svc.InvestmentRepo == nil {
 			t.Error("InvestmentRepo should not be nil")
 		}
