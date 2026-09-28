@@ -267,15 +267,23 @@ card, cash, loan, asset, and HSA cash use the register ledger (`transactions`).
 (`investment_transactions`, with `investment_lots` and `investment_positions`).
 
 - **Register balance** — `account_balances` view, read by
-  `account.Service.GetBalance`: opening balance plus non-void register rows.
-  For an investment account it is the opening balance plus any register rows
-  written to it by mistake; it is not what the account holds.
+  `account.Service.GetBalance`: the current balance is the opening balance
+  plus the non-void register rows, and the cleared balance is the opening
+  balance plus the rows with status `cleared` or `reconciled`. The view does
+  this for every account type. An investment account can have register rows
+  (`tmoney transaction add`, an import, or a posted non-transfer schedule
+  writes them), and `account.Service.Close` refuses while they total other
+  than zero. Either way the sum is not what an investment account holds.
 - **Investment value** — `investment.ValuationService.GetAccountValuation`:
   cash on the investment ledger plus the market value of open holdings.
 - **What the CLI shows** — `report.Service.AccountFigure` and
   `AccountFigures`: the register balance for a register account, the
-  investment value for an investment account. `account list`, `show`, and
-  `balance` take their figure from these, never from `GetBalance`.
+  investment value for an investment account. `account list` and
+  `account balance` take the figure they print from `AccountFigures`.
+  `account show` uses `AccountFigures` for an investment account (cash and
+  total value); for a register account it prints the current and cleared
+  balance from `account.Service.GetBalance`, since a figure has no cleared
+  balance.
 - **Net worth** — `report.Service.NetWorthAsOf`: one total per currency; money
   in different currencies is never added.
 - **Close** — `account.Service.Close` judges an investment account by its
@@ -364,7 +372,7 @@ See [specs/database.md](../specs/database.md) for the complete schema definition
 
 | View | Purpose |
 |------|---------|
-| `account_balances` | Register balance per account: current and cleared (opening balance + non-void register rows). Not an investment account's value; see Balances on Two Ledgers |
+| `account_balances` | Register balance per account: current (opening balance + non-void register rows) and cleared (opening balance + `cleared` and `reconciled` rows). Not an investment account's value; see Balances on Two Ledgers |
 | `portfolio_holdings` | Open shares and cost basis per active investment account and security (lots for a lot-tracked account, positions otherwise) |
 | `category_spending` | Monthly spending aggregated by category |
 
