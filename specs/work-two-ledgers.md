@@ -51,7 +51,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W5b | done (#52) | Delete counts the ledger of the account type | — | small |
 | W6 | done (#53) | Refuse reconcile on an investment account | — | small |
 | W5c | done (#54) | One display figure for account list, show, and balance | — | medium |
-| W5d | open | Net worth by currency, with row errors | W5c | medium |
+| W5d | done (#55) | Net worth by currency, with row errors | W5c | medium |
 | W11 | open | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | open | Constructor must not write | — | medium |
 | W10 | open | Correct `docs/ARCHITECTURE.md` | W5c | small |
@@ -536,7 +536,7 @@ Put the service tests in `internal/report`, next to `report_service_test.go`, or
 
 ## W5d — Net worth by currency, with row errors
 
-**Status:** open
+**Status:** done in PR #55. As built: `CurrencyTotal` also has `AssetsAvailable` and `LiabilitiesAvailable`, so a failed brokerage (an asset) does not hide a correct liabilities total; the as-of note (`NetWorth.InvestmentAsOfApproximate`) is printed by the CLI only, because the TUI Reports view always shows today; the valuer runs after the register query's rows are closed; `report net-worth` exits non-zero after printing a failed row, as the W5c commands do; the TUI shows a non-USD amount with its currency code.
 **Needs:** W5c.
 **Decision:** The net-worth report uses the same rule as the list. A failed row carries its error. Only the total of that currency is "not available".
 
