@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/haskovec/tmoney/internal/report"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
@@ -29,7 +30,7 @@ func TestNetWorth_InvestmentOpeningBalanceIsCash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NetWorthReport: %v", err)
 		}
-		return rpt.NetWorth
+		return onlyTotal(t, rpt).NetWorth
 	}
 
 	cash, err := svc.Investment.GetCashBalance(acct.ID)
@@ -69,4 +70,18 @@ func TestNetWorth_InvestmentOpeningBalanceIsCash(t *testing.T) {
 	if nw := netWorth(); !nw.Equal(types.MustNewMoney("1000.00")) {
 		t.Errorf("net worth after the buy = %s, want 1000", nw)
 	}
+}
+
+// onlyTotal returns the report's single currency total. These tests use one
+// currency; a report with no accounts has no total, which reads as zero.
+func onlyTotal(t *testing.T, nw *report.NetWorth) report.CurrencyTotal {
+	t.Helper()
+	switch len(nw.Totals) {
+	case 0:
+		return report.CurrencyTotal{Assets: types.ZeroMoney, Liabilities: types.ZeroMoney, NetWorth: types.ZeroMoney, Available: true}
+	case 1:
+		return nw.Totals[0]
+	}
+	t.Fatalf("totals = %+v, want one currency", nw.Totals)
+	return report.CurrencyTotal{}
 }

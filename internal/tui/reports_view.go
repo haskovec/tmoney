@@ -223,15 +223,9 @@ func (a *App) renderNetWorthReport() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
-	// Net worth summary
-	nwLabel := "Net Worth:  "
-	nwValue := formatDashboardMoney(nw.NetWorth)
-	nwStyle := a.styles.Positive
-	if nw.NetWorth.IsNegative() {
-		nwStyle = a.styles.Negative
-	}
+	// Net worth summary, one line per currency
 	sections = append(sections, "")
-	sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
+	sections = append(sections, a.renderNetWorthSummary(nw)...)
 	sections = append(sections, "")
 
 	// Assets and liabilities columns. nil: the Net Worth report has no

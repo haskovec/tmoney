@@ -34,8 +34,8 @@ func TestService_NetWorthAsOf_AccountClosedAfterAsOfDate(t *testing.T) {
 	if len(rpt.Assets) != 1 {
 		t.Fatalf("March: expected the then-open account, got %d assets", len(rpt.Assets))
 	}
-	if want := types.MustNewMoney("1000.00"); !rpt.TotalAssets.Equal(want) {
-		t.Errorf("March total assets = %s, want %s", rpt.TotalAssets, want)
+	if want := types.MustNewMoney("1000.00"); !onlyTotal(t, rpt).Assets.Equal(want) {
+		t.Errorf("March total assets = %s, want %s", onlyTotal(t, rpt).Assets, want)
 	}
 
 	// As of July 1 it was closed and is excluded.
@@ -93,8 +93,8 @@ func TestService_NetWorthAsOf_IncludesTransactionsDatedAsOfDay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NetWorthAsOf() error = %v", err)
 	}
-	if want := types.MustNewMoney("250.00"); !rpt.TotalAssets.Equal(want) {
-		t.Errorf("total assets = %s, want %s (the as-of day's transaction must count)", rpt.TotalAssets, want)
+	if want := types.MustNewMoney("250.00"); !onlyTotal(t, rpt).Assets.Equal(want) {
+		t.Errorf("total assets = %s, want %s (the as-of day's transaction must count)", onlyTotal(t, rpt).Assets, want)
 	}
 }
 

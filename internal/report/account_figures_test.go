@@ -121,8 +121,11 @@ func TestTotalsByCurrency(t *testing.T) {
 
 	t.Run("an error makes only its currency unavailable", func(t *testing.T) {
 		got := TotalsByCurrency(append(figs, AccountFigure{Type: account.TypeInvestment, Currency: "USD", Err: errors.New("x")}))
-		if got[1].Available {
-			t.Error("USD total is available with a failed USD row")
+		if got[1].Available || got[1].AssetsAvailable {
+			t.Error("USD net worth or assets total is available with a failed USD asset row")
+		}
+		if !got[1].LiabilitiesAvailable {
+			t.Error("a failed asset row hid the USD liabilities total")
 		}
 		if !got[0].Available {
 			t.Error("EUR total lost its availability to a USD error")

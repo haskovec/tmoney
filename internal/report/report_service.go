@@ -71,6 +71,11 @@ func (s *Service) NetWorthAsOfIncludingClosed(asOf time.Time) (*NetWorth, error)
 // Unless includeClosed is set, an account counts only if it was open on asOf:
 // active now, or closed after asOf. A closed account with no closed_date
 // (closed before migration 025 recorded dates) is treated as always closed.
+//
+// A register account's balance is its register balance as of asOf. An
+// investment account's is its valuation (valueInvestmentFigure, the rule
+// AccountFigures uses); a valuation error marks that row and its currency's
+// total, and the register balance never stands in for it.
 func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, error) {
 	// Bind a calendar date, not the timestamp. transactions.date and
 	// accounts.closed_date are DATE columns holding the LOCAL calendar day
@@ -79,13 +84,66 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 	// types.Today does, so the comparison is day-to-day in the same calendar.
 	asOfDate := types.NewDate(asOf.Year(), asOf.Month(), asOf.Day())
 
-	// Query to get account balances as of a specific date
-	// The balance is: opening_balance + sum(transactions where date <= asOf)
+	rows, err := s.registerBalancesAsOf(asOfDate, includeClosed)
+	if err != nil {
+		return nil, err
+	}
+
+	// Value investment accounts only after the query's rows are closed: the
+	// valuer runs its own queries, and holding the pooled connection while it
+	// waits for another deadlocked a one-connection pool.
+	nw := &NetWorth{AsOfDate: asOf}
+	figs := make([]AccountFigure, 0, len(rows))
+	for _, r := range rows {
+		fig := AccountFigure{AccountID: r.id, Type: r.typ, Currency: r.currency, Displayed: r.balance, Cash: r.balance}
+		if r.typ.IsInvestmentType() {
+			s.valueInvestmentFigure(&fig, asOfDate)
+			if asOfDate.Before(types.Today()) {
+				nw.InvestmentAsOfApproximate = true
+			}
+		}
+		figs = append(figs, fig)
+
+		ab := AccountBalance{
+			AccountID:      r.id,
+			Name:           r.name,
+			Type:           string(r.typ),
+			Currency:       r.currency,
+			Balance:        fig.Displayed,
+			EstimatedValue: fig.Estimated,
+			Err:            fig.Err,
+		}
+		if fig.Err != nil {
+			ab.Balance = types.ZeroMoney
+		}
+		if r.typ.IsAssetType() {
+			nw.Assets = append(nw.Assets, ab)
+		} else if r.typ.IsLiabilityType() {
+			nw.Liabilities = append(nw.Liabilities, ab)
+		}
+	}
+	nw.Totals = TotalsByCurrency(figs)
+	return nw, nil
+}
+
+// registerRow is one account's register balance as of a date.
+type registerRow struct {
+	id       types.ID
+	name     string
+	typ      account.Type
+	currency string
+	balance  types.Money
+}
+
+// registerBalancesAsOf returns each account's register balance as of asOf:
+// opening balance plus non-void transactions dated on or before it.
+func (s *Service) registerBalancesAsOf(asOfDate types.Date, includeClosed bool) ([]registerRow, error) {
 	query := `
 		SELECT
 			a.id,
 			a.name,
 			a.type,
+			a.currency,
 			a.opening_balance + COALESCE(
 				(SELECT SUM(t.amount)
 				 FROM transactions t
@@ -112,68 +170,18 @@ func (s *Service) netWorthAsOf(asOf time.Time, includeClosed bool) (*NetWorth, e
 	}
 	defer rows.Close()
 
-	var assets []AccountBalance
-	var liabilities []AccountBalance
-	totalAssets := types.ZeroMoney
-	totalLiabilities := types.ZeroMoney
-
+	var out []registerRow
 	for rows.Next() {
-		var accountID types.ID
-		var name string
-		var accountType account.Type
-		var balance types.Money
-
-		if err := rows.Scan(&accountID, &name, &accountType, &balance); err != nil {
+		var r registerRow
+		if err := rows.Scan(&r.id, &r.name, &r.typ, &r.currency, &r.balance); err != nil {
 			return nil, fmt.Errorf("failed to scan account balance: %w", err)
 		}
-
-		accountBalance := AccountBalance{
-			AccountID: accountID,
-			Name:      name,
-			Type:      string(accountType),
-			Balance:   balance,
-		}
-
-		// For investment accounts, use the investment valuer to get total value
-		// (cash + holdings market value) instead of the raw transaction balance.
-		if accountType.IsInvestmentType() && s.investmentValue != nil {
-			result, err := s.investmentValue.GetAccountValuation(accountID, asOfDate)
-			if err == nil {
-				accountBalance.Balance = result.TotalValue
-				accountBalance.EstimatedValue = result.HasMissingPrices
-				balance = result.TotalValue
-			}
-			// On error, fall through to use the transaction-based balance
-		}
-
-		if accountType.IsAssetType() {
-			assets = append(assets, accountBalance)
-			totalAssets = totalAssets.Add(balance)
-		} else if accountType.IsLiabilityType() {
-			liabilities = append(liabilities, accountBalance)
-			// Liability balances are stored signed (negative = owed), so the
-			// total stays signed too; presentation layers show the signed
-			// balance directly (a debt negative, a credit positive).
-			totalLiabilities = totalLiabilities.Add(balance)
-		}
+		out = append(out, r)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating account balances: %w", err)
 	}
-
-	// Net worth = assets + liabilities over signed balances (liabilities ≤ 0
-	// when owed), per the standardized liability sign convention.
-	netWorth := totalAssets.Add(totalLiabilities)
-
-	return &NetWorth{
-		AsOfDate:         asOf,
-		Assets:           assets,
-		Liabilities:      liabilities,
-		TotalAssets:      totalAssets,
-		TotalLiabilities: totalLiabilities,
-		NetWorth:         netWorth,
-	}, nil
+	return out, nil
 }
 
 // SpendingByCategoryMonth generates a spending by category report for a specific month.
