@@ -53,7 +53,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W5c | done (#54) | One display figure for account list, show, and balance | — | medium |
 | W5d | done (#55) | Net worth by currency, with row errors | W5c | medium |
 | W11 | done (#56) | As-of net worth leaves out accounts not yet open | W5d | small |
-| W7 | open | Constructor must not write | — | medium |
+| W7 | done (#57) | Constructor must not write | — | medium |
 | W10 | open | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | open | Corporate Actions keys must reach the view | — | small |
 | W8 | open | One view table in the TUI | W1, W2, and W12 | large |
@@ -586,7 +586,7 @@ The `netWorthAsOf` query (`internal/report/report_service.go`) filters closed ac
 
 ## W7 — Constructor must not write
 
-**Status:** open
+**Status:** done in PR #57. As built: `clitest.OpenSvc` also runs `Prepare`, as a real CLI open does; a test fixture, `clitest.DamagedHealFile`, forces a real heal failure (a lot with more shares consumed than it held), so no test hook was added. The TUI alert logs the full error to the app log.
 **Decision:** `Prepare` runs all five steps and returns every failure. The CLI and the TUI show the failure loudly and continue.
 
 ### Problem
