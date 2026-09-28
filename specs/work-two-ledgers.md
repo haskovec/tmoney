@@ -536,7 +536,7 @@ Put the service tests in `internal/report`, next to `report_service_test.go`, or
 
 ## W5d — Net worth by currency, with row errors
 
-**Status:** done in PR #55. As built: `CurrencyTotal` also has `AssetsAvailable` and `LiabilitiesAvailable`, so a failed brokerage (an asset) does not hide a correct liabilities total; the as-of note (`NetWorth.InvestmentAsOfApproximate`) is printed by the CLI only, because the TUI Reports view always shows today; the valuer runs after the register query's rows are closed; `report net-worth` exits non-zero after printing a failed row, as the W5c commands do; the TUI shows a non-USD amount with its currency code.
+**Status:** done in PR #55. As built: `CurrencyTotal` also has `AssetsAvailable` and `LiabilitiesAvailable`, so a failed brokerage (an asset) does not hide a correct liabilities total; the as-of note (`NetWorth.InvestmentAsOfApproximate`) is printed by the CLI only, because the TUI Reports view always shows today; the valuer runs after the register query's rows are closed; `report net-worth` exits non-zero after printing a failed row, as the W5c commands do; money in the CLI and the TUI goes through one formatter, `types.Money.Format` (decimal rounding, half away from zero; `$`, `€`, `£`, else the currency code), added in review after the TUI's own `%.2f` path printed some amounts a cent low; in review the dashboard also got per-currency totals on shared rows, the account currency on its total-return and holdings lines, `~` on an estimated assets total, and name widths measured from the amount.
 **Needs:** W5c.
 **Decision:** The net-worth report uses the same rule as the list. A failed row carries its error. Only the total of that currency is "not available".
 
