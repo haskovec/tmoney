@@ -52,7 +52,6 @@ type Services struct {
 	Transfer *transfer.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
-	CategoryRepo   *category.Repository
 	PayeeRepo      *payee.Repository
 	InvestmentRepo *investment.Repository
 
@@ -157,7 +156,6 @@ func NewServices(database *db.DB) *Services {
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
 
-		CategoryRepo:   categoryRepo,
 		PayeeRepo:      payeeRepo,
 		InvestmentRepo: investmentRepo,
 	}

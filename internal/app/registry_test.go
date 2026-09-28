@@ -57,9 +57,6 @@ func TestNewServices(t *testing.T) {
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
 		}
-		if svc.CategoryRepo == nil {
-			t.Error("CategoryRepo should not be nil")
-		}
 		if svc.PayeeRepo == nil {
 			t.Error("PayeeRepo should not be nil")
 		}
@@ -74,9 +71,9 @@ func TestNewServices(t *testing.T) {
 			t.Errorf("Account.List() error = %v", err)
 		}
 
-		_, err = svc.CategoryRepo.List()
+		_, err = svc.Category.List()
 		if err != nil {
-			t.Errorf("CategoryRepo.List() error = %v", err)
+			t.Errorf("Category.List() error = %v", err)
 		}
 
 		_, err = svc.PayeeRepo.List()
@@ -141,7 +138,7 @@ func TestFileInit_PaycheckCategoriesExist(t *testing.T) {
 		if err != nil {
 			t.Fatalf("initial Federal child lookup: %v", err)
 		}
-		if err := svc.CategoryRepo.Delete(fedChild.ID); err != nil {
+		if err := category.NewRepository(database).Delete(fedChild.ID); err != nil {
 			t.Fatalf("delete Federal child: %v", err)
 		}
 

@@ -170,11 +170,11 @@ func TestLoanAdd_CreatesLoanScheduleAndAsset(t *testing.T) {
 	}
 
 	// Default Loan:Interest category get-or-created.
-	parent, err := svc.CategoryRepo.GetByName("Loan", nil)
+	parent, err := svc.Category.GetByName("Loan", nil)
 	if err != nil {
 		t.Fatalf("Loan parent category not created: %v", err)
 	}
-	if _, err := svc.CategoryRepo.GetByName("Interest", &parent.ID); err != nil {
+	if _, err := svc.Category.GetByName("Interest", &parent.ID); err != nil {
 		t.Errorf("Loan:Interest child not created: %v", err)
 	}
 }
@@ -202,11 +202,11 @@ func TestLoanAdd_DefaultPrincipalCategory(t *testing.T) {
 	svc := clitest.OpenSvc(t, dbPath)
 
 	// Default Loan:Principal category get-or-created.
-	loanParent, err := svc.CategoryRepo.GetByName("Loan", nil)
+	loanParent, err := svc.Category.GetByName("Loan", nil)
 	if err != nil {
 		t.Fatalf("Loan parent not created: %v", err)
 	}
-	principalCat, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID)
+	principalCat, err := svc.Category.GetByName("Principal", &loanParent.ID)
 	if err != nil {
 		t.Fatalf("Loan:Principal child not created: %v", err)
 	}
@@ -234,11 +234,11 @@ func TestLoanAdd_ExplicitPrincipalCategory(t *testing.T) {
 	svc := clitest.OpenSvc(t, dbPath)
 
 	// The explicit path is created…
-	housing, err := svc.CategoryRepo.GetByName("Housing", nil)
+	housing, err := svc.Category.GetByName("Housing", nil)
 	if err != nil {
 		t.Fatalf("Housing parent not created: %v", err)
 	}
-	principalCat, err := svc.CategoryRepo.GetByName("Principal", &housing.ID)
+	principalCat, err := svc.Category.GetByName("Principal", &housing.ID)
 	if err != nil {
 		t.Fatalf("Housing:Principal not created: %v", err)
 	}
@@ -251,8 +251,8 @@ func TestLoanAdd_ExplicitPrincipalCategory(t *testing.T) {
 
 	// …and the default Loan:Principal is NOT created (the Loan parent still
 	// exists from the interest default, but has no Principal child).
-	if loanParent, err := svc.CategoryRepo.GetByName("Loan", nil); err == nil {
-		if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err == nil {
+	if loanParent, err := svc.Category.GetByName("Loan", nil); err == nil {
+		if _, err := svc.Category.GetByName("Principal", &loanParent.ID); err == nil {
 			t.Error("Loan:Principal should not be created when --principal-category is explicit")
 		}
 	}
@@ -276,8 +276,8 @@ func TestLoanAdd_EmptyPrincipalCategoryUnlabeled(t *testing.T) {
 	}
 
 	// No Loan:Principal was created.
-	if loanParent, err := svc.CategoryRepo.GetByName("Loan", nil); err == nil {
-		if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err == nil {
+	if loanParent, err := svc.Category.GetByName("Loan", nil); err == nil {
+		if _, err := svc.Category.GetByName("Principal", &loanParent.ID); err == nil {
 			t.Error(`Loan:Principal should not be created for --principal-category ""`)
 		}
 	}
@@ -342,14 +342,14 @@ func TestLoanAdd_ZeroRateOmitsInterestLine(t *testing.T) {
 	// the principal line is still labeled Loan:Principal by default, so the Loan
 	// parent + Principal child do exist (spec: "0% loans, principal still
 	// labeled").
-	loanParent, err := svc.CategoryRepo.GetByName("Loan", nil)
+	loanParent, err := svc.Category.GetByName("Loan", nil)
 	if err != nil {
 		t.Fatalf("Loan parent should exist for the default Loan:Principal: %v", err)
 	}
-	if _, err := svc.CategoryRepo.GetByName("Interest", &loanParent.ID); err == nil {
+	if _, err := svc.Category.GetByName("Interest", &loanParent.ID); err == nil {
 		t.Error("0% loan should not create the Loan:Interest category")
 	}
-	if _, err := svc.CategoryRepo.GetByName("Principal", &loanParent.ID); err != nil {
+	if _, err := svc.Category.GetByName("Principal", &loanParent.ID); err != nil {
 		t.Errorf("0%% loan should label its principal line Loan:Principal: %v", err)
 	}
 }

@@ -128,7 +128,7 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 		payeeNames[p.ID] = p.Name
 	}
 
-	categories, _ := svc.CategoryRepo.List()
+	categories, _ := svc.Category.List()
 	for _, c := range categories {
 		categoryNames[c.ID] = c.Name
 	}
