@@ -365,7 +365,7 @@ Do not add investment rows to the `account_balances` view. A buy is not a bank d
 
 ## W5a — Close refuses an investment account that is not empty
 
-**Status:** done in PR #51. `ValuationService.LedgerState` implements the port. With no port wired, `Close` returns `ErrNoInvestmentLedger`.
+**Status:** done in PR #51. `ValuationService.LedgerState` implements the port. With no port wired, `Close` returns `ErrNoInvestmentLedger`. Added in review: register rows can still land on an investment account (`transaction add`, import, a posted schedule), so `Close` also refuses while their non-void total, without the opening balance, is not zero (`HasBalanceError.RegisterRows`).
 **Decision:** The close rule stays on `account.Service.Close`, with a narrow port. The CLI, the TUI, and undo all go through that one door. The port returns cash and "has holdings" only. It does not return a price.
 
 ### Fix
