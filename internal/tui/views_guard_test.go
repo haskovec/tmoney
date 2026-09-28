@@ -39,6 +39,99 @@ func TestGuard_EveryViewHasOneEntry(t *testing.T) {
 	}
 }
 
+// maxViewSwitchCases is the most View constants a switch outside views.go may
+// name. Four is the largest feature switch (refreshAfterCorporateAction): a
+// list of which views have a feature, not a list of the views. Raise it only
+// as a visible decision.
+const maxViewSwitchCases = 4
+
+// TestGuard_NoViewSwitchOutsideTheTable is guard 2: outside views.go, no
+// switch names more than maxViewSwitchCases View constants in its cases. A
+// larger one is a second list of the views, and its arms belong in allViews.
+func TestGuard_NoViewSwitchOutsideTheTable(t *testing.T) {
+	names := viewConstantNames(t)
+	for _, path := range productionGoFiles(t) {
+		if path == "views.go" {
+			continue
+		}
+		for _, sw := range viewSwitches(t, readSourceFile(t, path), names) {
+			if len(sw.views) > maxViewSwitchCases {
+				t.Errorf("%s:%s has a switch that names %d View constants, more than %d; "+
+					"a per-view arm belongs in allViews (views.go)", path, sw.pos, len(sw.views), maxViewSwitchCases)
+			}
+		}
+	}
+}
+
+// viewSwitches returns each switch in src with the distinct View constants
+// its case expressions name, in either form: `case ViewA, ViewB:` and
+// `case a.currentView == ViewA:`. names is the set of constants.
+func viewSwitches(t *testing.T, src string, names map[string]bool) []viewChain {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "src.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse source: %v", err)
+	}
+	var out []viewChain
+	ast.Inspect(file, func(n ast.Node) bool {
+		sw, ok := n.(*ast.SwitchStmt)
+		if !ok {
+			return true
+		}
+		seen := map[string]bool{}
+		var views []string
+		for _, stmt := range sw.Body.List {
+			for _, expr := range stmt.(*ast.CaseClause).List {
+				ast.Inspect(expr, func(n ast.Node) bool {
+					if id, ok := n.(*ast.Ident); ok && names[id.Name] && !seen[id.Name] {
+						seen[id.Name] = true
+						views = append(views, id.Name)
+					}
+					return true
+				})
+			}
+		}
+		if len(views) > 0 {
+			out = append(out, viewChain{pos: strconv.Itoa(fset.Position(sw.Pos()).Line), views: views})
+		}
+		return true
+	})
+	return out
+}
+
+// TestGuard_ViewsSelfTest_Switches proves guard 2's finder sees both forms of
+// case, counts a constant once, and ignores what is not a View constant.
+func TestGuard_ViewsSelfTest_Switches(t *testing.T) {
+	names := map[string]bool{"ViewA": true, "ViewB": true, "ViewC": true, "ViewD": true, "ViewE": true}
+	got := viewSwitches(t, `package tui
+
+func (a *App) f(v View, n int) {
+	switch v {
+	case ViewA, ViewB:
+	case ViewC:
+	case ViewA:
+	default:
+	}
+	switch {
+	case a.currentView == ViewD || a.currentView == ViewE:
+	case n > 1:
+	}
+	switch n {
+	case 1, 2:
+	}
+}
+`, names)
+	var lines []string
+	for _, sw := range got {
+		lines = append(lines, sw.pos+":"+strings.Join(sw.views, ","))
+	}
+	want := []string{"4:ViewA,ViewB,ViewC", "10:ViewD,ViewE"}
+	if !slices.Equal(lines, want) {
+		t.Errorf("switches = %v, want %v", lines, want)
+	}
+}
+
 // TestGuard_NoFullScreenListOutsideTheTable is guard 3: outside views.go, no
 // chain of || and && compares currentView against three or more View
 // constants. Such a chain is a view list, like the full-screen predicate that
