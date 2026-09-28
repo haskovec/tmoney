@@ -120,13 +120,13 @@ func runExport(opts *exportOptions, w io.Writer) error {
 		exportOpts.EndDate = &d
 	}
 
-	// Create export service using repositories directly (they satisfy the provider interfaces)
+	// The services satisfy the export's provider interfaces.
 	exportSvc := imexport.NewExportService(
-		svc.AccountRepo,
-		svc.TransactionRepo,
-		svc.SplitRepo,
-		svc.PayeeRepo,
-		svc.CategoryRepo,
+		svc.Account,
+		svc.Transaction,
+		svc.Transaction,
+		svc.Payee,
+		svc.Category,
 	)
 
 	// Create output file

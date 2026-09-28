@@ -54,7 +54,6 @@ type Services struct {
 	// Repositories (exposed for direct use by CLI/TUI when needed)
 	AccountRepo     *account.Repository
 	TransactionRepo *transaction.Repository
-	SplitRepo       *transaction.SplitRepository
 	CategoryRepo    *category.Repository
 	PayeeRepo       *payee.Repository
 	InvestmentRepo  *investment.Repository
@@ -163,7 +162,6 @@ func NewServices(database *db.DB) *Services {
 
 		AccountRepo:     accountRepo,
 		TransactionRepo: txnRepo,
-		SplitRepo:       splitRepo,
 		CategoryRepo:    categoryRepo,
 		PayeeRepo:       payeeRepo,
 		InvestmentRepo:  investmentRepo,

@@ -64,7 +64,7 @@ type mockSplitProvider struct {
 	splits map[string][]*transaction.Split // txnID -> splits
 }
 
-func (m *mockSplitProvider) ListByTransaction(transactionID types.ID) ([]*transaction.Split, error) {
+func (m *mockSplitProvider) GetSplits(transactionID types.ID) ([]*transaction.Split, error) {
 	return m.splits[transactionID.String()], nil
 }
 
