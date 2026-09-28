@@ -65,7 +65,7 @@ func TestCutover_InvestmentRegisterDelete_CashTransfer(t *testing.T) {
 			if _, err := svc.Transfer.Get(res.TransferID); err == nil {
 				t.Error("transfer still readable after Delete")
 			}
-			rows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+			rows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 			if err != nil {
 				t.Fatalf("list investment rows: %v", err)
 			}

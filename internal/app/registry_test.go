@@ -48,17 +48,20 @@ func TestNewServices(t *testing.T) {
 		if svc.Investment == nil {
 			t.Error("Investment service should not be nil")
 		}
-	})
-
-	t.Run("all repositories are initialized", func(t *testing.T) {
-		if svc.Transfer == nil {
-			t.Error("Transfer service should not be nil")
+		if svc.InvestmentValuation == nil {
+			t.Error("InvestmentValuation service should not be nil")
+		}
+		if svc.InvestmentEdit == nil {
+			t.Error("InvestmentEdit service should not be nil")
+		}
+		if svc.CorporateAction == nil {
+			t.Error("CorporateAction service should not be nil")
+		}
+		if svc.TransferLink == nil {
+			t.Error("TransferLink service should not be nil")
 		}
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
-		}
-		if svc.InvestmentRepo == nil {
-			t.Error("InvestmentRepo should not be nil")
 		}
 	})
 

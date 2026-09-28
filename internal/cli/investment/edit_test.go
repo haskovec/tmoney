@@ -27,7 +27,7 @@ func findTxn(t *testing.T, dbPath string, txnType investmentdom.TransactionType)
 	if err != nil {
 		t.Fatalf("get account: %v", err)
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(acct.ID, investmentdom.TransactionFilter{Type: &txnType})
+	rows, err := svc.InvestmentValuation.ListTransactions(acct.ID, investmentdom.TransactionFilter{Type: &txnType})
 	if err != nil {
 		t.Fatalf("list %s txns: %v", txnType, err)
 	}
@@ -313,9 +313,9 @@ func TestInvestmentEdit_RefuseReconciled(t *testing.T) {
 	dbPath := seedEditFixture(t)
 	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
 
-	svc := clitest.OpenSvc(t, dbPath)
+	_, database := clitest.OpenSvcDB(t, dbPath)
 	buy.Status = investmentdom.TransactionStatusReconciled
-	if err := svc.InvestmentRepo.Update(buy); err != nil {
+	if err := investmentdom.NewRepository(database).Update(buy); err != nil {
 		t.Fatalf("mark reconciled: %v", err)
 	}
 

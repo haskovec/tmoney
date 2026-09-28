@@ -162,8 +162,8 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 
 			acctID := a.investmentRegister.account.ID
 
-			if a.investmentEditTxnID != types.NilID && a.services.InvestmentRepo != nil {
-				editTxn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
+			if a.investmentEditTxnID != types.NilID && a.services.InvestmentValuation != nil {
+				editTxn, err := a.services.InvestmentValuation.GetTransaction(a.investmentEditTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
 					lots, err := a.services.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
 					if err == nil {

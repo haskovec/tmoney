@@ -107,7 +107,7 @@ func OpenSvcDB(t *testing.T, dbPath string) (*app.Services, *db.DB) {
 // in the given investment account.
 func FindInvestmentLegForTest(t *testing.T, svc *app.Services, invAcctID types.ID) types.ID {
 	t.Helper()
-	rows, err := svc.InvestmentRepo.ListByAccount(invAcctID, investment.TransactionFilter{})
+	rows, err := svc.InvestmentValuation.ListTransactions(invAcctID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatalf("list investment txns: %v", err)
 	}

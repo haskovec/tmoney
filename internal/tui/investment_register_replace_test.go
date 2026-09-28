@@ -90,10 +90,10 @@ func TestEditWithdrawal_ToTransferCash_ReplacesRow(t *testing.T) {
 
 	runCmd(t, a, a.transfer.submit(a.transferDeps(), brokerage.ID), 1)
 
-	if _, err := svc.InvestmentRepo.GetByID(wd.ID); err == nil {
+	if _, err := svc.InvestmentValuation.GetTransaction(wd.ID); err == nil {
 		t.Error("the withdrawal row should be replaced")
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+	rows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

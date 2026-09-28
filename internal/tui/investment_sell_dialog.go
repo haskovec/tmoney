@@ -143,8 +143,8 @@ func (a *App) loadSellDialogData() tea.Cmd {
 			// If editing, get the security from the existing transaction
 			// For new transactions, lots will be loaded after security selection
 			// For now, if editing, load lots for that security
-			if a.investmentEditTxnID != types.NilID && a.services.InvestmentRepo != nil {
-				editTxn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
+			if a.investmentEditTxnID != types.NilID && a.services.InvestmentValuation != nil {
+				editTxn, err := a.services.InvestmentValuation.GetTransaction(a.investmentEditTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
 					lots, err := a.services.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
 					if err == nil {

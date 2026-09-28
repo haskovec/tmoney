@@ -145,7 +145,7 @@ func TestTransferWiring_InvestmentLegLandsInTheInvestmentLedger(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	invRows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+	invRows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatalf("list investment rows: %v", err)
 	}

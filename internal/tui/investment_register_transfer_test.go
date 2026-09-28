@@ -116,7 +116,7 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 		t.Fatalf("create transfer: %v", err)
 	}
 
-	invLeg, err := svc.InvestmentRepo.GetByID(res.From.RowID)
+	invLeg, err := svc.InvestmentValuation.GetTransaction(res.From.RowID)
 	if err != nil {
 		t.Fatalf("load investment leg: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestInvestmentRegister_DeleteKey_CashTransfer(t *testing.T) {
 			if _, err := env.svc.Transfer.Get(env.transferID); err == nil {
 				t.Error("transfer still readable after delete")
 			}
-			if _, err := env.svc.InvestmentRepo.GetByID(env.invLegID); err == nil {
+			if _, err := env.svc.InvestmentValuation.GetTransaction(env.invLegID); err == nil {
 				t.Error("investment leg survived the delete")
 			}
 
@@ -256,7 +256,7 @@ func dispatchType(t *testing.T, a *App, typ investment.TransactionType) {
 func TestEditCashTransferLeg_ToWithdrawal_Refused(t *testing.T) {
 	env := newInvRegTransferEnv(t, account.TypeChecking)
 	a := env.app
-	a.services.InvestmentRepo = env.svc.InvestmentRepo
+	a.services.InvestmentValuation = env.svc.InvestmentValuation
 	a.investmentEditTxnID = env.invLegID
 
 	dispatchType(t, a, investment.TransactionTypeWithdrawal)

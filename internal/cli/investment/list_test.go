@@ -233,7 +233,7 @@ func TestInvestmentList_ShowIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get account: %v", err)
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(acct.ID, investmentFilterAll())
+	rows, err := svc.InvestmentValuation.ListTransactions(acct.ID, investmentFilterAll())
 	if err != nil {
 		t.Fatalf("list investment txns: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestInvestmentList_NoIDsByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get account: %v", err)
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(acct.ID, investmentFilterAll())
+	rows, err := svc.InvestmentValuation.ListTransactions(acct.ID, investmentFilterAll())
 	if err != nil {
 		t.Fatalf("list investment txns: %v", err)
 	}
