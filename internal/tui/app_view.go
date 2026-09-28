@@ -92,43 +92,16 @@ func (a *App) renderHeader() string {
 
 // renderContent renders the main content area based on current view.
 func (a *App) renderContent(height int) string {
-	var viewContent string
-	switch a.currentView {
-	case ViewDashboard:
-		viewContent = a.renderDashboard()
-	case ViewRegister:
-		viewContent = a.renderRegister()
-	case ViewScheduled:
-		viewContent = a.renderScheduled()
-	case ViewReports:
-		viewContent = a.renderReports()
-	case ViewReconciliation:
-		viewContent = a.renderReconciliation()
-	case ViewSecurities:
-		viewContent = a.renderSecurityView()
-	case ViewPrices:
-		viewContent = a.renderPriceView()
-	case ViewInvestmentRegister:
-		viewContent = a.renderInvestmentRegister()
-	case ViewPortfolio:
-		viewContent = a.renderPortfolioView()
-	case ViewCorporateActions:
-		viewContent = a.renderCorporateActionView()
-	case ViewAmortization:
-		viewContent = a.renderAmortizationView()
-	default:
-		viewContent = "Unknown view"
+	viewContent := "Unknown view"
+	e, ok := viewFor(a.currentView)
+	if ok {
+		viewContent = e.render(a)
 	}
 
-	// Reconciliation, Securities, Prices, Corporate Actions, and Amortization
-	// views are full-screen (no sidebar)
-	if a.currentView == ViewReconciliation || a.currentView == ViewSecurities || a.currentView == ViewPrices || a.currentView == ViewCorporateActions || a.currentView == ViewAmortization {
-		return a.styles.RenderViewContent(viewContent, a.width, height)
-	}
-
+	// A full-screen view, and every view in the small layout, has no sidebar
+	// and takes the full width.
 	sidebarWidth := a.styles.SidebarWidth()
-	if sidebarWidth == 0 {
-		// Small layout: no sidebar, full-width content
+	if e.fullScreen || sidebarWidth == 0 {
 		return a.styles.RenderViewContent(viewContent, a.width, height)
 	}
 
