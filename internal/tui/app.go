@@ -560,31 +560,9 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// View-specific key handling
-	switch a.currentView {
-	case ViewDashboard:
-		return a.handleDashboardKeys(msg)
-	case ViewRegister:
-		return a.handleRegisterKeys(msg)
-	case ViewScheduled:
-		return a.handleScheduledKeys(msg)
-	case ViewReports:
-		return a.handleReportsKeys(msg)
-	case ViewReconciliation:
-		return a.handleReconciliationKeys(msg)
-	case ViewSecurities:
-		return a.handleSecurityViewKeys(msg)
-	case ViewPrices:
-		return a.handlePriceViewKeys(msg)
-	case ViewInvestmentRegister:
-		return a.handleInvestmentRegisterKeys(msg)
-	case ViewPortfolio:
-		return a.handlePortfolioKeys(msg)
-	case ViewCorporateActions:
-		return a.handleCorporateActionViewKeys(msg)
-	case ViewAmortization:
-		return a.handleAmortizationKeys(msg)
+	if e, ok := viewFor(a.currentView); ok {
+		return e.onKey(a, msg)
 	}
-
 	return a, nil
 }
 
