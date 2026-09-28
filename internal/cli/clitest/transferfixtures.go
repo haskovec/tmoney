@@ -71,12 +71,12 @@ func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *acc
 // OpenSvc opens the application services for a database file and registers a
 // cleanup that closes the underlying connection.
 //
-// It opens the DB and builds services directly (db.Open + app.NewServices)
-// rather than routing through cmdutil.OpenServices, because clitest must stay
-// free of internal/cli (D5/R2). The returned *app.Services is identical; only
-// cmdutil.OpenServices' incidental side effects (recent-files config write,
-// auto-post of due scheduled transactions) are skipped — both are no-ops for
-// these fixtures, which never seed scheduled transactions.
+// It opens the DB and builds services directly (db.Open + app.NewServices +
+// Prepare) rather than routing through cmdutil.OpenServices, because clitest
+// must stay free of internal/cli (D5/R2). The returned *app.Services is
+// identical; only cmdutil.OpenServices' incidental side effects (recent-files
+// config write, auto-post of due scheduled transactions) are skipped — both
+// are no-ops for these fixtures, which never seed scheduled transactions.
 func OpenSvc(t *testing.T, dbPath string) *app.Services {
 	t.Helper()
 	database, err := db.Open(dbPath)
@@ -84,7 +84,14 @@ func OpenSvc(t *testing.T, dbPath string) *app.Services {
 		t.Fatalf("OpenSvc: db.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	return app.NewServices(database)
+	// Open the way the CLI does (cmdutil.OpenServices): wire, then run the
+	// open-time repairs, which seed the system categories and heal stored
+	// positions.
+	svc := app.NewServices(database)
+	if err := svc.Prepare(); err != nil {
+		t.Fatalf("OpenSvc: Prepare: %v", err)
+	}
+	return svc
 }
 
 // FindInvestmentLegForTest returns the ID of the single investment transaction

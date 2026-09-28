@@ -98,7 +98,7 @@ func TestResolveTransferCategory_UnknownSubcategory(t *testing.T) {
 
 func TestResolveTransferCategory_SystemCategoryRejected(t *testing.T) {
 	dbPath, _, _ := clitest.SetupTransferAccounts(t)
-	// OpenSvc → app.NewServices seeds the system "Value Adjustment" category.
+	// OpenSvc runs Prepare, which seeds the system "Value Adjustment" category.
 	svc := clitest.OpenSvc(t, dbPath)
 
 	_, err := resolveTransferCategory(svc, category.ValueAdjustmentCategoryName)

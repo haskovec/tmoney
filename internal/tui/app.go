@@ -340,16 +340,18 @@ type App struct {
 // registers the price providers the TUI exposes (currently yahoo, used by
 // the securities view's "u" shortcut). All TUI code paths that swap the
 // underlying database must go through this helper so the provider
-// registry stays in sync with the freshly-built price service.
-func newTUIServices(database *db.DB) *app.Services {
+// registry stays in sync with the freshly-built price service. It also runs
+// the open-time repairs and returns their error, which the caller shows
+// (surfacePrepareError); the services are usable either way.
+func newTUIServices(database *db.DB) (*app.Services, error) {
 	svc := app.NewServices(database)
 	svc.Price.ProviderRegistry().Register(price.NewYahooProvider())
-	return svc
+	return svc, svc.Prepare()
 }
 
 // NewApp creates a new TUI application with the given database and optional config.
 func NewApp(database *db.DB, cfg *config.Config) *App {
-	svc := newTUIServices(database)
+	svc, prepareErr := newTUIServices(database)
 
 	a := &App{
 		db:                        database,
@@ -403,6 +405,9 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 	// auto-clear is scheduled in Init alongside the theme toast's.
 	if svc.ValueAdjustmentUserCollision {
 		a.surfaceValueAdjustmentCollision()
+	}
+	if prepareErr != nil {
+		a.surfacePrepareError(prepareErr)
 	}
 
 	return a

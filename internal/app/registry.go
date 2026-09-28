@@ -1,6 +1,9 @@
 package app
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/db"
@@ -66,12 +69,13 @@ type Services struct {
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
 	// category named "Value Adjustment" already exists, so the system
-	// category could not be seeded on open. The TUI surfaces a one-time
+	// category could not be seeded. Prepare sets it. The TUI surfaces a one-time
 	// notice; the CLI ignores it.
 	ValueAdjustmentUserCollision bool
 }
 
-// NewServices creates all repositories and services with proper dependency wiring.
+// NewServices creates all repositories and services with proper dependency
+// wiring. It writes nothing to the file; call Prepare after it.
 func NewServices(database *db.DB) *Services {
 	// Create repositories (leaf dependencies first)
 	accountRepo := account.NewRepository(database)
@@ -94,14 +98,6 @@ func NewServices(database *db.DB) *Services {
 
 	// Create services (inject cross-slice repo dependencies)
 	categorySvc := category.NewService(categoryRepo, database)
-	// Seed paycheck-wizard categories on every open so existing
-	// databases gain them automatically; best-effort, matches the
-	// HealAllAccounts precedent below.
-	_ = categorySvc.EnsurePaycheckCategories()
-	// Seed the system Value Adjustment category on every open (same
-	// best-effort rationale). A collision with a pre-existing user
-	// category is surfaced to the TUI as a one-time notice.
-	valueAdjustmentCollision, _ := categorySvc.EnsureValueAdjustmentCategory()
 	payeeSvc := payee.NewService(payeeRepo, database)
 	securitySvc := security.NewService(securityRepo, database,
 		security.WithLotChecker(lotRepo),
@@ -129,10 +125,6 @@ func NewServices(database *db.DB) *Services {
 	// investment. Built here, after the read model, so no setter is needed.
 	accountSvc := account.NewService(accountRepo, database, account.WithInvestmentLedger(investmentValuationSvc))
 	investmentEditSvc := investment.NewEditService(investmentSvc)
-	// Silently heal any desynced positions/lots so the user doesn't have to
-	// run rebuild-positions manually after upgrading. This is a no-op on
-	// databases that contain corporate-action records.
-	_, _ = investmentSvc.HealAllAccounts()
 
 	// The counterpart port mints and cleans up the investment-side row of a
 	// transfer LINE inside a split (e.g. a paycheck → 401k contribution line).
@@ -146,10 +138,6 @@ func NewServices(database *db.DB) *Services {
 	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo,
 		investment.NewCounterpartService(investmentRepo, accountRepo), database)
 	scheduledSvc := scheduled.NewService(scheduledRepo, txnRepo, txnSvc, database, accountRepo)
-	// Heal any schedule rows poisoned by older binaries that updated
-	// StartDate without syncing NextDate. Best-effort, mirrors the
-	// HealAllAccounts precedent above.
-	_, _ = scheduledSvc.HealNextDates()
 	reconciliationSvc := reconciliation.NewService(reconciliationRepo, txnRepo, accountRepo, database)
 	reportSvc := report.NewService(accountRepo, database, report.WithInvestmentValuer(&investmentValuerAdapter{svc: investmentValuationSvc}))
 	corporateActionSvc := investment.NewCorporateActionService(corporateActionRepo, lotRepo, positionRepo, priceRepo, investmentRepo, securityRepo, database)
@@ -162,12 +150,6 @@ func NewServices(database *db.DB) *Services {
 	// Injected after construction because a direct scheduled → transfer import is
 	// an "import cycle not allowed in test" (see scheduled/transfer_port.go).
 	scheduledSvc.SetTransferPort(transferSvc)
-	// Clear categories from transfer schedules whose pair cannot store one.
-	// Older binaries let the combination be created, and it is unpostable rather
-	// than merely mislabelled — the transfer owner refuses it, which used to
-	// abort the whole auto-post batch. Best-effort, and necessarily after the
-	// port is wired, since the rule lives behind it.
-	_, _ = scheduledSvc.HealTransferCategories()
 
 	return &Services{
 		Account:             accountSvc,
@@ -200,9 +182,51 @@ func NewServices(database *db.DB) *Services {
 		PositionRepo:        positionRepo,
 		TransactionLotRepo:  transactionLotRepo,
 		CorporateActionRepo: corporateActionRepo,
-
-		ValueAdjustmentUserCollision: valueAdjustmentCollision,
 	}
+}
+
+// Prepare runs the repairs an older file may need, once per open. NewServices
+// only wires the graph and writes nothing; every opener calls Prepare after it
+// (cmdutil.OpenServices, the TUI's newTUIServices).
+//
+// The steps, in order:
+//
+//   - seed the paycheck-wizard categories, so existing files gain them;
+//   - seed the system Value Adjustment category, recording in
+//     ValueAdjustmentUserCollision when a user category already holds the
+//     name (the TUI shows a one-time notice);
+//   - heal desynced positions and lots, so the user need not run
+//     rebuild-positions after an upgrade;
+//   - heal schedule rows whose NextDate an older binary left behind StartDate;
+//   - clear categories from transfer schedules whose pair cannot store one:
+//     older binaries let that be created, and the transfer owner refuses to
+//     post it. This needs the transfer port, which NewServices wires.
+//
+// Every step runs even after one fails, and Prepare returns errors.Join of
+// every failure. The steps do not depend on each other's data, so one failure
+// should not stop the other repairs, and a joined error hides none of them.
+// Callers show the error and carry on: writes do not depend on these repairs,
+// because each share operation heals its own account first.
+func (s *Services) Prepare() error {
+	var errs []error
+	if err := s.Category.EnsurePaycheckCategories(); err != nil {
+		errs = append(errs, fmt.Errorf("seed paycheck categories: %w", err))
+	}
+	collision, err := s.Category.EnsureValueAdjustmentCategory()
+	s.ValueAdjustmentUserCollision = collision
+	if err != nil {
+		errs = append(errs, fmt.Errorf("seed the Value Adjustment category: %w", err))
+	}
+	if _, err := s.Investment.HealAllAccounts(); err != nil {
+		errs = append(errs, fmt.Errorf("heal investment positions: %w", err))
+	}
+	if _, err := s.Scheduled.HealNextDates(); err != nil {
+		errs = append(errs, fmt.Errorf("heal schedule dates: %w", err))
+	}
+	if _, err := s.Scheduled.HealTransferCategories(); err != nil {
+		errs = append(errs, fmt.Errorf("heal transfer schedule categories: %w", err))
+	}
+	return errors.Join(errs...)
 }
 
 // investmentValuerAdapter adapts *investment.ValuationService to

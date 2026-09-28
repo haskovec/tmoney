@@ -267,7 +267,13 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 
 	// Set new database and reinitialize ALL services
 	a.db = newDB
-	a.services = *newTUIServices(newDB)
+	svc, prepareErr := newTUIServices(newDB)
+	a.services = *svc
+	// A repair failure belongs to the file it came from.
+	a.statusbar.ClearSticky()
+	if prepareErr != nil {
+		a.surfacePrepareError(prepareErr)
+	}
 
 	// The undo history describes rows in the file we just left, and every
 	// command on it captured the OLD services when it was built. Undoing one

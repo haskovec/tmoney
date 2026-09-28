@@ -1,6 +1,7 @@
 package investment
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -172,35 +173,38 @@ func (s *Service) rebuildPositionsInTx(accountID types.ID) (*RebuildResult, erro
 // HealAllAccounts runs RebuildPositions for every investment account in the
 // database. It is intended to be invoked once when the app opens a database
 // so that desynced positions/lots — caused by older binaries or aborted
-// edits — are silently corrected before the user sees them. Healing is
+// edits — are corrected before the user sees them. Healing is
 // per-security: securities that participate in a corporate action are left
 // untouched, but every other security in the account is recomputed even when
 // the database contains corporate-action history.
 //
-// Errors from individual accounts are not fatal: HealAllAccounts logs nothing
-// and continues so a single bad account can't keep the app from launching.
-// The count of accounts where something was actually recomputed is returned
-// for telemetry/testing.
+// An account that fails does not stop the others: HealAllAccounts goes on,
+// then returns an error that joins every failure and names each account, so
+// the caller can show it (app.Services.Prepare does). The count of accounts
+// where something was actually recomputed is returned for telemetry/testing.
 func (s *Service) HealAllAccounts() (int, error) {
 	accounts, err := s.accountRepo.List(false)
 	if err != nil {
 		return 0, fmt.Errorf("HealAllAccounts: %w", err)
 	}
 	healed := 0
+	var failed []error
 	for _, acct := range accounts {
 		if !acct.Type.IsInvestmentType() {
 			continue
 		}
 		res, err := s.RebuildPositions(acct.ID)
 		if err != nil {
-			// Skip the account; don't break startup.
+			// Go on to the other accounts, and report this one: a heal that
+			// failed silently left its positions wrong behind a normal view.
+			failed = append(failed, fmt.Errorf("account %q: %w", acct.Name, err))
 			continue
 		}
 		if res.PositionsRecomputed > 0 || res.LotsRecomputed > 0 {
 			healed++
 		}
 	}
-	return healed, nil
+	return healed, errors.Join(failed...)
 }
 
 // syncPositionAndLots recomputes the position for (accountID, securityID)

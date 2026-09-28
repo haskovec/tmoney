@@ -7,6 +7,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/cli"
+	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -74,5 +75,18 @@ func TestInvestmentRebuildPositions_UnknownAccount(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected not-found error, got: %v", err)
+	}
+}
+
+// The repair tool runs when the open-time repair fails. A fatal open would
+// lock the user out of the one command that can fix the file.
+func TestRebuildPositions_RunsWhenStartupRepairFails(t *testing.T) {
+	dbPath := clitest.DamagedHealFile(t)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{
+		"investment", "rebuild-positions", "--file", dbPath, "--account", "Healthy Brokerage",
+	}, stdout, stderr); err != nil {
+		t.Fatalf("rebuild-positions on a file whose startup repair fails: %v\nstderr=%s", err, stderr)
 	}
 }
