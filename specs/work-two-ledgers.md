@@ -57,7 +57,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W10 | done (#58) | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | done (#60) | Corporate Actions keys must reach the view | — | small |
 | W8 | done (#59, #61) | One view table in the TUI | W1, W2, and W12 | large |
-| W13 | open | The Prices detail hint must show | — | small |
+| W13 | done (#62) | The Prices detail hint must show | — | small |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -746,7 +746,7 @@ The exit criteria of plan phases 1 and 3 are met. `price_view.go` and `investmen
 
 ## W13 — The Prices detail hint must show
 
-**Status:** open
+**Status:** done in PR #62. As built: the refresh is `refreshKeyHints` (`internal/tui/app_helpers.go`), deferred at the top of `Update`; it skips an App with no status bar, as some tests build. A pty smoke run differs from the build before only in the status line of the Prices history.
 **Source:** The smoke test of W8 phase 1 (`specs/implementation-plan-tui-view-layer.md`, VL-111), 2026-09-28. The bug is older than W8: `main` before W8 has it too.
 
 ### Problem
