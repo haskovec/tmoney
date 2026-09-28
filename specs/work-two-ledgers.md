@@ -50,7 +50,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W5a | done (#51) | Close refuses an investment account that is not empty | — | medium |
 | W5b | done (#52) | Delete counts the ledger of the account type | — | small |
 | W6 | done (#53) | Refuse reconcile on an investment account | — | small |
-| W5c | open | One display figure for account list, show, and balance | — | medium |
+| W5c | done (#54) | One display figure for account list, show, and balance | — | medium |
 | W5d | open | Net worth by currency, with row errors | W5c | medium |
 | W11 | open | As-of net worth leaves out accounts not yet open | W5d | small |
 | W7 | open | Constructor must not write | — | medium |
@@ -457,7 +457,7 @@ See the W5 problem. Two more facts:
 
 ## W6 — Refuse reconcile on an investment account
 
-**Status:** done in PR #53. The service error is `InvestmentAccountError`, the TUI guard is in `showStartReconciliationDialog` (menu and `r` key), and the migration is 036.
+**Status:** done in PR #53. The service error is `InvestmentAccountError`, the TUI guard is `refuseInvestmentReconcile`, which the menu calls before its closed check and the register `r` key reaches through `showStartReconciliationDialog`, and the migration is 036.
 **Decision:** A migration deletes the reconciliation sessions that already exist on investment accounts.
 
 ### Problem
@@ -491,7 +491,7 @@ The investment ledger also has no `void` status (`transfer.StatusFromRegular` re
 
 ## W5c — One display figure for account list, show, and balance
 
-**Status:** open
+**Status:** done in PR #54. As built: `AccountFigure` also carries the account `Type`, which `TotalsByCurrency` needs to split assets from liabilities; `AccountFigures` takes the account list the command already has; `account show` prints its rows before it returns a valuation error, as the list commands do; the delete preview shows a valuation error in its line and does not fail. Removing `GetAllBalances` also removed a test in `tests/integration`.
 **Decision:** The display figure lives on `report.Service`. In a list, a row that cannot be valued shows "error". Its currency has no total, and the command exits non-zero.
 
 ### Fix
