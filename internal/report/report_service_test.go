@@ -1,6 +1,7 @@
 package report
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -106,14 +107,14 @@ func TestService_NetWorth_EmptyDatabase(t *testing.T) {
 		if len(report.Liabilities) != 0 {
 			t.Errorf("Expected 0 liabilities, got %d", len(report.Liabilities))
 		}
-		if !report.TotalAssets.IsZero() {
-			t.Errorf("Expected zero total assets, got %s", report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.IsZero() {
+			t.Errorf("Expected zero total assets, got %s", onlyTotal(t, report).Assets.String())
 		}
-		if !report.TotalLiabilities.IsZero() {
-			t.Errorf("Expected zero total liabilities, got %s", report.TotalLiabilities.String())
+		if !onlyTotal(t, report).Liabilities.IsZero() {
+			t.Errorf("Expected zero total liabilities, got %s", onlyTotal(t, report).Liabilities.String())
 		}
-		if !report.NetWorth.IsZero() {
-			t.Errorf("Expected zero net worth, got %s", report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.IsZero() {
+			t.Errorf("Expected zero net worth, got %s", onlyTotal(t, report).NetWorth.String())
 		}
 	})
 }
@@ -146,11 +147,11 @@ func TestService_NetWorth_AssetAccounts(t *testing.T) {
 		}
 
 		expectedTotal, _ := types.NewMoney("6000.00")
-		if !report.TotalAssets.Equal(expectedTotal) {
-			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedTotal) {
+			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), onlyTotal(t, report).Assets.String())
 		}
-		if !report.NetWorth.Equal(expectedTotal) {
-			t.Errorf("Expected net worth %s, got %s", expectedTotal.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedTotal) {
+			t.Errorf("Expected net worth %s, got %s", expectedTotal.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 
@@ -171,6 +172,10 @@ func TestService_NetWorth_AssetAccounts(t *testing.T) {
 				t.Fatalf("Failed to create account %s: %v", acct.Name, err)
 			}
 		}
+		// A brokerage is valued by the valuer, never by its register balance.
+		svc = NewService(accountRepo, svc.db, WithInvestmentValuer(&figureValuer{
+			results: map[types.ID]ValuationResult{investment.ID: {TotalValue: balance, CashBalance: balance}},
+		}))
 
 		report, err := svc.NetWorthReport()
 		if err != nil {
@@ -182,8 +187,8 @@ func TestService_NetWorth_AssetAccounts(t *testing.T) {
 		}
 
 		expectedTotal, _ := types.NewMoney("5000.00")
-		if !report.TotalAssets.Equal(expectedTotal) {
-			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedTotal) {
+			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 }
@@ -217,14 +222,14 @@ func TestService_NetWorth_LiabilityAccounts(t *testing.T) {
 
 		// Totals stay signed (liabilities ≤ 0); display layers negate.
 		expectedLiabilities, _ := types.NewMoney("-10500.00")
-		if !report.TotalLiabilities.Equal(expectedLiabilities) {
-			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		if !onlyTotal(t, report).Liabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), onlyTotal(t, report).Liabilities.String())
 		}
 
 		// Net worth should be negative when only liabilities exist
 		expectedNetWorth, _ := types.NewMoney("-10500.00")
-		if !report.NetWorth.Equal(expectedNetWorth) {
-			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 
@@ -252,13 +257,13 @@ func TestService_NetWorth_LiabilityAccounts(t *testing.T) {
 
 		// The credit offsets the debt: -10000 + 50 = -9950
 		expectedLiabilities, _ := types.NewMoney("-9950.00")
-		if !report.TotalLiabilities.Equal(expectedLiabilities) {
-			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		if !onlyTotal(t, report).Liabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), onlyTotal(t, report).Liabilities.String())
 		}
 
 		expectedNetWorth, _ := types.NewMoney("-9950.00")
-		if !report.NetWorth.Equal(expectedNetWorth) {
-			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 }
@@ -294,20 +299,20 @@ func TestService_NetWorth_MixedAccounts(t *testing.T) {
 
 		// Total assets: 5000 + 10000 = 15000
 		expectedAssets, _ := types.NewMoney("15000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), onlyTotal(t, report).Assets.String())
 		}
 
 		// Total liabilities: -2000 (signed)
 		expectedLiabilities, _ := types.NewMoney("-2000.00")
-		if !report.TotalLiabilities.Equal(expectedLiabilities) {
-			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		if !onlyTotal(t, report).Liabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), onlyTotal(t, report).Liabilities.String())
 		}
 
 		// Net worth: 15000 + (-2000) = 13000
 		expectedNetWorth, _ := types.NewMoney("13000.00")
-		if !report.NetWorth.Equal(expectedNetWorth) {
-			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 
@@ -338,8 +343,8 @@ func TestService_NetWorth_MixedAccounts(t *testing.T) {
 		// Regression: the old subtract path computed 5000 - (-500) = 5500,
 		// overstating net worth. Correct: 5000 + (-500) = 4500.
 		expectedNetWorth, _ := types.NewMoney("4500.00")
-		if !report.NetWorth.Equal(expectedNetWorth) {
-			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 }
@@ -369,8 +374,8 @@ func TestService_NetWorth_WithTransactions(t *testing.T) {
 
 		// Balance: 1000 + 500 - 200 = 1300
 		expectedBalance, _ := types.NewMoney("1300.00")
-		if !report.TotalAssets.Equal(expectedBalance) {
-			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedBalance) {
+			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 }
@@ -405,8 +410,8 @@ func TestService_NetWorthAsOf(t *testing.T) {
 
 		// Balance: 1000 + 500 = 1500 (future transaction not included)
 		expectedBalance, _ := types.NewMoney("1500.00")
-		if !report.TotalAssets.Equal(expectedBalance) {
-			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedBalance) {
+			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 
@@ -433,8 +438,8 @@ func TestService_NetWorthAsOf(t *testing.T) {
 
 		// Balance: 1000 (transaction not yet happened)
 		expectedBalance, _ := types.NewMoney("1000.00")
-		if !report.TotalAssets.Equal(expectedBalance) {
-			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedBalance) {
+			t.Errorf("Expected total assets %s, got %s", expectedBalance.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 }
@@ -496,8 +501,8 @@ func TestService_NetWorth_ClosedAccounts(t *testing.T) {
 		}
 
 		expectedTotal, _ := types.NewMoney("6000.00")
-		if !report.TotalAssets.Equal(expectedTotal) {
-			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedTotal) {
+			t.Errorf("Expected total assets %s, got %s", expectedTotal.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 }
@@ -614,11 +619,11 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 
 		// Total assets: checking $5000 + investment $15000 = $20000
 		expectedAssets, _ := types.NewMoney("20000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), onlyTotal(t, report).Assets.String())
 		}
-		if !report.NetWorth.Equal(expectedAssets) {
-			t.Errorf("Expected net worth %s, got %s", expectedAssets.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedAssets) {
+			t.Errorf("Expected net worth %s, got %s", expectedAssets.String(), onlyTotal(t, report).NetWorth.String())
 		}
 
 		// Verify the investment account balance shows valuation, not opening balance
@@ -631,7 +636,7 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back to transaction balance when valuer returns error", func(t *testing.T) {
+	t.Run("a valuer error marks the row, never the register balance", func(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 
@@ -641,25 +646,28 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
 
-		valuer := &mockInvestmentValuer{
-			err: fmt.Errorf("valuation failed"),
-		}
-
-		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+		svc := NewService(accountRepo, database, WithInvestmentValuer(&mockInvestmentValuer{err: fmt.Errorf("valuation failed")}))
 
 		report, err := svc.NetWorthReport()
 		if err != nil {
 			t.Fatalf("NetWorthReport() error = %v", err)
 		}
 
-		// Should fall back to the transaction-based balance of $1000
-		expectedAssets, _ := types.NewMoney("1000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s (fallback), got %s", expectedAssets.String(), report.TotalAssets.String())
+		// The row is marked and shows no amount; the opening balance never
+		// stands in for the value, and the currency has no total.
+		if len(report.Assets) != 1 || report.Assets[0].Err == nil {
+			t.Fatalf("assets = %+v, want one row with an error", report.Assets)
+		}
+
+		if !report.Assets[0].Balance.IsZero() || report.Assets[0].EstimatedValue {
+			t.Errorf("failed row shows balance %s, estimated %v; want zero, false", report.Assets[0].Balance, report.Assets[0].EstimatedValue)
+		}
+		if total := onlyTotal(t, report); total.Available || total.AssetsAvailable {
+			t.Errorf("USD total = %+v, want not available", total)
 		}
 	})
 
-	t.Run("without valuer uses transaction-based balance for investment accounts", func(t *testing.T) {
+	t.Run("without a valuer the investment row is refused", func(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 
@@ -669,7 +677,6 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
 
-		// No valuer provided — should use transaction-based balance
 		svc := NewService(accountRepo, database)
 
 		report, err := svc.NetWorthReport()
@@ -677,9 +684,19 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 			t.Fatalf("NetWorthReport() error = %v", err)
 		}
 
-		expectedAssets, _ := types.NewMoney("1000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		// The row is marked and shows no amount; the opening balance never
+		// stands in for the value, and the currency has no total.
+		if len(report.Assets) != 1 || report.Assets[0].Err == nil {
+			t.Fatalf("assets = %+v, want one row with an error", report.Assets)
+		}
+		if !errors.Is(report.Assets[0].Err, ErrNoInvestmentValuer) {
+			t.Errorf("row error = %v, want ErrNoInvestmentValuer", report.Assets[0].Err)
+		}
+		if !report.Assets[0].Balance.IsZero() || report.Assets[0].EstimatedValue {
+			t.Errorf("failed row shows balance %s, estimated %v; want zero, false", report.Assets[0].Balance, report.Assets[0].EstimatedValue)
+		}
+		if total := onlyTotal(t, report); total.Available || total.AssetsAvailable {
+			t.Errorf("USD total = %+v, want not available", total)
 		}
 	})
 
@@ -717,19 +734,19 @@ func TestService_NetWorth_InvestmentAccountValuation(t *testing.T) {
 		}
 
 		expectedAssets, _ := types.NewMoney("25000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), onlyTotal(t, report).Assets.String())
 		}
 
 		expectedLiabilities, _ := types.NewMoney("-3000.00")
-		if !report.TotalLiabilities.Equal(expectedLiabilities) {
-			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), report.TotalLiabilities.String())
+		if !onlyTotal(t, report).Liabilities.Equal(expectedLiabilities) {
+			t.Errorf("Expected total liabilities %s, got %s", expectedLiabilities.String(), onlyTotal(t, report).Liabilities.String())
 		}
 
 		// Net worth: 25000 + (-3000) = 22000
 		expectedNetWorth, _ := types.NewMoney("22000.00")
-		if !report.NetWorth.Equal(expectedNetWorth) {
-			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), report.NetWorth.String())
+		if !onlyTotal(t, report).NetWorth.Equal(expectedNetWorth) {
+			t.Errorf("Expected net worth %s, got %s", expectedNetWorth.String(), onlyTotal(t, report).NetWorth.String())
 		}
 	})
 
@@ -887,7 +904,7 @@ func TestService_NetWorth_MissingPriceFallback(t *testing.T) {
 		}
 	})
 
-	t.Run("valuer error falls back to transaction balance with no estimated flag", func(t *testing.T) {
+	t.Run("valuer error marks the row with no estimated flag", func(t *testing.T) {
 		database := createTestDB(t)
 		accountRepo := account.NewRepository(database)
 
@@ -897,27 +914,24 @@ func TestService_NetWorth_MissingPriceFallback(t *testing.T) {
 			t.Fatalf("Failed to create investment account: %v", err)
 		}
 
-		valuer := &mockInvestmentValuer{
-			err: fmt.Errorf("valuation failed"),
-		}
-
-		svc := NewService(accountRepo, database, WithInvestmentValuer(valuer))
+		svc := NewService(accountRepo, database, WithInvestmentValuer(&mockInvestmentValuer{err: fmt.Errorf("valuation failed")}))
 
 		report, err := svc.NetWorthReport()
 		if err != nil {
 			t.Fatalf("NetWorthReport() error = %v", err)
 		}
 
-		for _, a := range report.Assets {
-			if a.AccountID == invest.ID {
-				if a.EstimatedValue {
-					t.Error("On valuer error, should not flag EstimatedValue (using transaction balance instead)")
-				}
-				expectedBalance, _ := types.NewMoney("1000.00")
-				if !a.Balance.Equal(expectedBalance) {
-					t.Errorf("Expected fallback balance %s, got %s", expectedBalance.String(), a.Balance.String())
-				}
-			}
+		// The row is marked and shows no amount; the opening balance never
+		// stands in for the value, and the currency has no total.
+		if len(report.Assets) != 1 || report.Assets[0].Err == nil {
+			t.Fatalf("assets = %+v, want one row with an error", report.Assets)
+		}
+
+		if !report.Assets[0].Balance.IsZero() || report.Assets[0].EstimatedValue {
+			t.Errorf("failed row shows balance %s, estimated %v; want zero, false", report.Assets[0].Balance, report.Assets[0].EstimatedValue)
+		}
+		if total := onlyTotal(t, report); total.Available || total.AssetsAvailable {
+			t.Errorf("USD total = %+v, want not available", total)
 		}
 	})
 
@@ -974,8 +988,8 @@ func TestService_NetWorth_MissingPriceFallback(t *testing.T) {
 
 		// Total assets still correct: 20000 + 5000 = 25000
 		expectedAssets, _ := types.NewMoney("25000.00")
-		if !report.TotalAssets.Equal(expectedAssets) {
-			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), report.TotalAssets.String())
+		if !onlyTotal(t, report).Assets.Equal(expectedAssets) {
+			t.Errorf("Expected total assets %s, got %s", expectedAssets.String(), onlyTotal(t, report).Assets.String())
 		}
 	})
 }
@@ -1442,4 +1456,18 @@ func TestService_SpendingByCategoryDateRange(t *testing.T) {
 			t.Errorf("Expected period %q, got %q", expectedPeriod, report.Period)
 		}
 	})
+}
+
+// onlyTotal returns the report's single currency total. These tests use one
+// currency; a report with no accounts has no total, which reads as zero.
+func onlyTotal(t *testing.T, nw *NetWorth) CurrencyTotal {
+	t.Helper()
+	switch len(nw.Totals) {
+	case 0:
+		return CurrencyTotal{Assets: types.ZeroMoney, Liabilities: types.ZeroMoney, NetWorth: types.ZeroMoney, Available: true}
+	case 1:
+		return nw.Totals[0]
+	}
+	t.Fatalf("totals = %+v, want one currency", nw.Totals)
+	return CurrencyTotal{}
 }

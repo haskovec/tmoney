@@ -48,9 +48,7 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 				Liabilities: []report.AccountBalance{
 					{Name: "Visa", Balance: types.MustNewMoney("-1500.00")},
 				},
-				TotalAssets:      types.MustNewMoney("15000.00"),
-				TotalLiabilities: types.MustNewMoney("-1500.00"),
-				NetWorth:         types.MustNewMoney("13500.00"),
+				Totals: usdTotals(types.MustNewMoney("15000.00"), types.MustNewMoney("-1500.00"), types.MustNewMoney("13500.00")),
 			},
 		},
 	}
@@ -97,12 +95,10 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
-				AsOfDate:         types.Today().Time(),
-				Assets:           nil,
-				Liabilities:      []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
-				TotalAssets:      types.MustNewMoney("0"),
-				TotalLiabilities: types.MustNewMoney("-5000.00"),
-				NetWorth:         types.MustNewMoney("-5000.00"),
+				AsOfDate:    types.Today().Time(),
+				Assets:      nil,
+				Liabilities: []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
+				Totals:      usdTotals(types.MustNewMoney("0"), types.MustNewMoney("-5000.00"), types.MustNewMoney("-5000.00")),
 			},
 		},
 	}
@@ -521,7 +517,7 @@ func TestApp_Update_ReportsViewDataLoaded(t *testing.T) {
 	data := &reportsViewData{
 		rtype: reportTypeNetWorth,
 		netWorth: &report.NetWorth{
-			NetWorth: types.MustNewMoney("10000"),
+			Totals: usdTotals(types.MustNewMoney("10000"), types.ZeroMoney, types.MustNewMoney("10000")),
 		},
 	}
 
@@ -647,10 +643,8 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		reports: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
-				AsOfDate:         types.Today().Time(),
-				TotalAssets:      types.MustNewMoney("1000"),
-				TotalLiabilities: types.ZeroMoney,
-				NetWorth:         types.MustNewMoney("1000"),
+				AsOfDate: types.Today().Time(),
+				Totals:   usdTotals(types.MustNewMoney("1000"), types.ZeroMoney, types.MustNewMoney("1000")),
 			},
 		},
 	}
@@ -890,7 +884,7 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
 				AsOfDate: types.Today().Time(),
-				NetWorth: types.MustNewMoney("0.00"),
+				Totals:   usdTotals(types.MustNewMoney("0.00"), types.ZeroMoney, types.MustNewMoney("0.00")),
 			},
 		},
 	}

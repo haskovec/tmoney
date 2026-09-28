@@ -119,9 +119,12 @@ type CurrencyTotal struct {
 	Liabilities types.Money // signed: negative when owed
 	NetWorth    types.Money
 	// Available is false when an account in this currency could not be
-	// valued; the three sums then leave that account out and must not be
-	// shown as the total.
-	Available bool
+	// valued; NetWorth then leaves that account out and must not be shown as
+	// the total. AssetsAvailable and LiabilitiesAvailable say the same of each
+	// side, so a failed asset does not hide a correct liabilities total.
+	Available            bool
+	AssetsAvailable      bool
+	LiabilitiesAvailable bool
 	// Estimated is true when any account in this currency is Estimated.
 	Estimated bool
 }
@@ -133,13 +136,18 @@ func TotalsByCurrency(figs []AccountFigure) []CurrencyTotal {
 		t, ok := byCur[fig.Currency]
 		if !ok {
 			t = &CurrencyTotal{
-				Currency: fig.Currency, Available: true,
+				Currency: fig.Currency, Available: true, AssetsAvailable: true, LiabilitiesAvailable: true,
 				Assets: types.ZeroMoney, Liabilities: types.ZeroMoney, NetWorth: types.ZeroMoney,
 			}
 			byCur[fig.Currency] = t
 		}
 		if fig.Err != nil {
 			t.Available = false
+			if fig.Type.IsLiabilityType() {
+				t.LiabilitiesAvailable = false
+			} else {
+				t.AssetsAvailable = false
+			}
 			continue
 		}
 		t.Estimated = t.Estimated || fig.Estimated

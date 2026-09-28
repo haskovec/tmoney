@@ -397,10 +397,8 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 		dashboardExpandedAccounts: expanded,
 		dashboard: &dashboardData{
 			netWorth: &report.NetWorth{
-				Assets:           assets,
-				TotalAssets:      types.MustNewMoney("200000.00"),
-				TotalLiabilities: types.ZeroMoney,
-				NetWorth:         types.MustNewMoney("200000.00"),
+				Assets: assets,
+				Totals: usdTotals(types.MustNewMoney("200000.00"), types.ZeroMoney, types.MustNewMoney("200000.00")),
 			},
 			investmentHoldings: holdings,
 			securityTickers:    tickers,

@@ -33,7 +33,7 @@ func TestReportNetWorth_Empty(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"NET WORTH REPORT", "ASSETS", "LIABILITIES", "NET WORTH:"} {
+	for _, want := range []string{"NET WORTH REPORT", "ASSETS", "LIABILITIES", "NET WORTH:\t(no accounts)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output, got:\n%s", want, out)
 		}
@@ -224,5 +224,61 @@ func TestReportNetWorth_Help(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected `report net-worth --help` to contain %q; got:\n%s", want, out)
 		}
+	}
+}
+
+// One net worth per currency, each with its code; no total mixes them.
+func TestReportNetWorth_PerCurrency(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	repo := account.NewRepository(database)
+	for _, a := range []*account.Account{
+		account.NewAccount("Contoso Checking", account.TypeChecking, "USD", types.MustNewMoney("100.00"), types.Today()),
+		account.NewAccount("Fabrikam Sparkonto", account.TypeSavings, "EUR", types.MustNewMoney("40.00"), types.Today()),
+	} {
+		if err := repo.Create(a); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("report net-worth: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Fabrikam Sparkonto  €40.00", "NET WORTH (EUR):\t€40.00", "NET WORTH (USD):\t$100.00"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "140") {
+		t.Errorf("a total mixed currencies:\n%s", out)
+	}
+}
+
+// A past as-of date with a brokerage says the brokerage is not a replay.
+func TestReportNetWorth_AsOfInvestmentNote(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	acct := account.NewAccount("Northwind Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.MustParseDate("2020-01-01"))
+	if err := account.NewRepository(database).Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	const note = "Investment accounts show current cash and shares, priced as of this date."
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--as-of", "2021-06-30", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("report net-worth --as-of: %v", err)
+	}
+	if !strings.Contains(stdout.String(), note) {
+		t.Errorf("past report lacks the note:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := cli.ExecuteWith([]string{"report", "net-worth", "--file", dbPath}, stdout, stderr); err != nil {
+		t.Fatalf("report net-worth: %v", err)
+	}
+	if strings.Contains(stdout.String(), note) {
+		t.Errorf("today's report carries the note:\n%s", stdout.String())
 	}
 }

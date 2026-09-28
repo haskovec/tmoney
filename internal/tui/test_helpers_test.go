@@ -5,8 +5,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // restoreDefaultTheme reapplies the embedded default theme. Use as a
@@ -51,4 +53,13 @@ func paramDec(s string) investment.ParamDecimal {
 		panic(err)
 	}
 	return d
+}
+
+// usdTotals is a one-currency net-worth total, every part available, for
+// tests that build a report.NetWorth by hand.
+func usdTotals(assets, liabilities, netWorth types.Money) []report.CurrencyTotal {
+	return []report.CurrencyTotal{{
+		Currency: "USD", Assets: assets, Liabilities: liabilities, NetWorth: netWorth,
+		Available: true, AssetsAvailable: true, LiabilitiesAvailable: true,
+	}}
 }

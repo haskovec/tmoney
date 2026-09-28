@@ -79,5 +79,5 @@ func runReportNetWorth(opts *reportNetWorthOptions, w io.Writer) error {
 	}
 
 	printNetWorthReport(w, rpt)
-	return nil
+	return netWorthErrors(rpt)
 }

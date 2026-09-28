@@ -6,41 +6,11 @@
 package cmdutil
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// FormatMoney formats a Money value with currency symbol.
-// Always displays 2 decimal places for currencies.
+// FormatMoney formats a Money value for display in currency. It is
+// types.Money.Format, the one formatter the CLI and the TUI share.
 func FormatMoney(m types.Money, currency string) string {
-	// Format with 2 decimal places
-	value := fmt.Sprintf("%.2f", m.Float64())
-
-	// Determine symbol and formatting
-	var symbol string
-	var format string
-	switch currency {
-	case "USD":
-		symbol = "$"
-		format = "symbol"
-	case "EUR":
-		symbol = "€"
-		format = "symbol"
-	case "GBP":
-		symbol = "£"
-		format = "symbol"
-	default:
-		return fmt.Sprintf("%s %s", currency, value)
-	}
-
-	if format == "symbol" {
-		if m.IsNegative() {
-			return fmt.Sprintf("-%s%s", symbol, strings.TrimPrefix(value, "-"))
-		}
-		return fmt.Sprintf("%s%s", symbol, value)
-	}
-
-	return value
+	return m.Format(currency)
 }

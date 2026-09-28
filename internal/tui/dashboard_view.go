@@ -212,14 +212,8 @@ func (a *App) renderDashboard() string {
 	// Net worth display
 	if a.dashboard.netWorth != nil {
 		nw := a.dashboard.netWorth
-		nwLabel := "Net Worth:  "
-		nwValue := formatDashboardMoney(nw.NetWorth)
-		nwStyle := a.styles.Positive
-		if nw.NetWorth.IsNegative() {
-			nwStyle = a.styles.Negative
-		}
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Bold.Render(nwLabel)+nwStyle.Bold(true).Render(nwValue))
+		sections = append(sections, a.renderNetWorthSummary(nw)...)
 		sections = append(sections, "")
 
 		// Assets and Liabilities columns. renderAssetLiabilityColumns fills
@@ -287,11 +281,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		assetsLines = append(assetsLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Assets {
-			name := widget.Truncate(acct.Name, colWidth-14)
-			amount := formatDashboardMoney(acct.Balance)
-			if acct.EstimatedValue {
-				amount = "~" + amount
-			}
+			amount := netWorthRowAmount(acct)
 
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
@@ -307,7 +297,12 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 				}
 			}
 
-			line := fmt.Sprintf("%s%-*s %s", prefix, colWidth-len(amount)-lipgloss.Width(prefix)-2, name, a.amountStyleBySign(acct.Balance).Render(amount))
+			// Size the name from the amount's measured width: a currency code
+			// and a sign make the amount wider than "$" did, and a row wider
+			// than the column wraps and shifts the hit-test rows.
+			nameWidth := max(colWidth-lipgloss.Width(amount)-lipgloss.Width(prefix)-2, 1)
+			name := widget.Truncate(acct.Name, nameWidth)
+			line := fmt.Sprintf("%s%-*s %s", prefix, nameWidth, name, a.netWorthRowStyle(acct).Render(amount))
 			if expandable && expandableRows != nil {
 				if headerIdxToID == nil {
 					headerIdxToID = map[int]types.ID{}
@@ -320,21 +315,17 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// regardless of expand state so the headline figure stays
 			// visible.
 			if account.Type(acct.Type).IsInvestmentType() {
-				if tr := a.renderDashboardTRLine(acct.AccountID, colWidth); tr != "" {
+				if tr := a.renderDashboardTRLine(acct.AccountID, acct.Currency, colWidth); tr != "" {
 					assetsLines = append(assetsLines, tr)
 				}
 			}
 
 			// Show top holdings if investment account is expanded
 			if account.Type(acct.Type).IsInvestmentType() && a.dashboardExpandedAccounts[acct.AccountID] {
-				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, colWidth)...)
+				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, acct.Currency, colWidth)...)
 			}
 		}
 	}
-	assetsLines = append(assetsLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
-	totalLabel := "Total"
-	totalAmt := formatDashboardMoney(report.TotalAssets)
-	assetsLines = append(assetsLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalAmt)-4, totalLabel, a.amountStyleBySign(report.TotalAssets).Bold(true).Render(totalAmt)))
 
 	// Build liabilities column. Liability balances are stored signed
 	// (negative = owed); under the LIABILITIES heading they render the raw
@@ -346,25 +337,32 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Liabilities {
-			name := widget.Truncate(acct.Name, colWidth-14)
-			amount := formatDashboardMoney(acct.Balance)
-			if acct.EstimatedValue {
-				amount = "~" + amount
-			}
-			line := fmt.Sprintf("  %-*s %s", colWidth-len(amount)-4, name, a.amountStyleBySign(acct.Balance).Render(amount))
+			amount := netWorthRowAmount(acct)
+			nameWidth := max(colWidth-lipgloss.Width(amount)-4, 1)
+			name := widget.Truncate(acct.Name, nameWidth)
+			line := fmt.Sprintf("  %-*s %s", nameWidth, name, a.netWorthRowStyle(acct).Render(amount))
 			liabLines = append(liabLines, line)
 		}
 	}
-	liabLines = append(liabLines, a.styles.Muted.Render("  "+strings.Repeat("─", colWidth-4)))
-	totalLiabAmt := formatDashboardMoney(report.TotalLiabilities)
-	liabLines = append(liabLines, fmt.Sprintf("  %-*s %s", colWidth-len(totalLiabAmt)-4, totalLabel, a.amountStyleBySign(report.TotalLiabilities).Bold(true).Render(totalLiabAmt)))
-
-	// Ensure both columns have the same height
+	// Make the account sections the same height first, then add the totals,
+	// so each currency's assets total and liabilities total share a row.
+	// Padding after the totals instead let one extra asset line (a TR row,
+	// an expanded holding) pair the EUR assets total with the USD
+	// liabilities total.
 	for len(assetsLines) < len(liabLines) {
 		assetsLines = append(assetsLines, "")
 	}
 	for len(liabLines) < len(assetsLines) {
 		liabLines = append(liabLines, "")
+	}
+	sep := a.styles.Muted.Render("  " + strings.Repeat("─", colWidth-4))
+	assetsLines = append(assetsLines, sep)
+	liabLines = append(liabLines, sep)
+	for _, t := range report.Totals {
+		// Only valued accounts (assets) can be estimated, so only the assets
+		// total carries "~".
+		assetsLines = append(assetsLines, a.renderColumnTotal(colWidth, t.Currency, t.Assets, t.AssetsAvailable, t.Estimated))
+		liabLines = append(liabLines, a.renderColumnTotal(colWidth, t.Currency, t.Liabilities, t.LiabilitiesAvailable, false))
 	}
 
 	// Join columns side by side, tracking the cumulative output-line index so
@@ -393,6 +391,63 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 // non-negative amount (a healthy asset, or a credit / paid-ahead liability)
 // uses the Positive/green style. This keeps an overpaid card from reading as a
 // debt and an overdrawn account from reading as healthy.
+// renderNetWorthSummary renders one "Net Worth (CUR):" line per currency.
+// Money in different currencies is never added. A currency with an account
+// that could not be valued shows "not available", not a partial sum.
+func (a *App) renderNetWorthSummary(nw *report.NetWorth) []string {
+	lines := make([]string, 0, len(nw.Totals))
+	for _, t := range nw.Totals {
+		label := a.styles.Bold.Render("Net Worth (" + t.Currency + "):  ")
+		if !t.Available {
+			lines = append(lines, label+a.styles.Negative.Bold(true).Render("not available"))
+			continue
+		}
+		value := formatDashboardMoneyIn(t.NetWorth, t.Currency)
+		if t.Estimated {
+			value = "~" + value
+		}
+		lines = append(lines, label+a.amountStyleBySign(t.NetWorth).Bold(true).Render(value))
+	}
+	return lines
+}
+
+// renderColumnTotal renders a column's total line for one currency, marked
+// "~" when estimated. The label is truncated to the width the amount leaves,
+// so a long currency amount cannot widen the line past the column.
+func (a *App) renderColumnTotal(colWidth int, currency string, total types.Money, available, estimated bool) string {
+	amt, style := "not available", a.styles.Negative.Bold(true)
+	if available {
+		amt, style = formatDashboardMoneyIn(total, currency), a.amountStyleBySign(total).Bold(true)
+		if estimated {
+			amt = "~" + amt
+		}
+	}
+	labelWidth := max(colWidth-lipgloss.Width(amt)-4, 1)
+	label := widget.Truncate("Total ("+currency+")", labelWidth)
+	return fmt.Sprintf("  %-*s %s", labelWidth, label, style.Render(amt))
+}
+
+// netWorthRowAmount is a report row's amount: "error" when it could not be
+// valued, and "~" when it is estimated at cost.
+func netWorthRowAmount(acct report.AccountBalance) string {
+	if acct.Err != nil {
+		return "error"
+	}
+	amount := formatDashboardMoneyIn(acct.Balance, acct.Currency)
+	if acct.EstimatedValue {
+		amount = "~" + amount
+	}
+	return amount
+}
+
+// netWorthRowStyle colors a row's amount by sign, and an error as negative.
+func (a *App) netWorthRowStyle(acct report.AccountBalance) lipgloss.Style {
+	if acct.Err != nil {
+		return a.styles.Negative
+	}
+	return a.amountStyleBySign(acct.Balance)
+}
+
 func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
 	if balance.IsNegative() {
 		return a.styles.Negative
@@ -409,7 +464,7 @@ func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
 //
 // A nil TotalReturnPct (denominator zero — no buys ever) renders as the
 // "—" placeholder so the row shape stays stable across accounts.
-func (a *App) renderDashboardTRLine(accountID types.ID, colWidth int) string {
+func (a *App) renderDashboardTRLine(accountID types.ID, currency string, colWidth int) string {
 	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
 		return ""
 	}
@@ -423,7 +478,7 @@ func (a *App) renderDashboardTRLine(accountID types.ID, colWidth int) string {
 		pctStr = fmt.Sprintf("%.2f%%", *val.TotalReturnPct)
 	}
 
-	amount := formatDashboardMoney(val.TotalReturn)
+	amount := formatDashboardMoneyIn(val.TotalReturn, currency)
 	right := amount + " " + pctStr
 
 	style := a.styles.Muted
@@ -439,7 +494,7 @@ func (a *App) renderDashboardTRLine(accountID types.ID, colWidth int) string {
 }
 
 // renderDashboardHoldings renders the top holdings for an investment account on the dashboard.
-func (a *App) renderDashboardHoldings(accountID types.ID, colWidth int) []string {
+func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWidth int) []string {
 	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
 		return nil
 	}
@@ -474,12 +529,12 @@ func (a *App) renderDashboardHoldings(accountID types.ID, colWidth int) []string
 				ticker = t
 			}
 		}
-		ticker = widget.Truncate(ticker, colWidth-20)
-		amount := formatDashboardMoney(h.MarketValue)
+		amount := formatDashboardMoneyIn(h.MarketValue, currency)
+		ticker = widget.Truncate(ticker, max(colWidth-lipgloss.Width(amount)-6, 1))
 		if !h.HasPricing {
 			amount = "~" + amount
 		}
-		line := fmt.Sprintf("    %-*s %s", colWidth-len(amount)-6, ticker, a.styles.Muted.Render(amount))
+		line := fmt.Sprintf("    %-*s %s", max(colWidth-lipgloss.Width(amount)-6, 1), ticker, a.styles.Muted.Render(amount))
 		lines = append(lines, line)
 	}
 
