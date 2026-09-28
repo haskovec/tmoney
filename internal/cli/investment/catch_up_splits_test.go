@@ -55,7 +55,7 @@ func TestInvestmentBuy_CatchUpSplits_LotTracked(t *testing.T) {
 	acct, _ := svc.Account.GetByName("Brokerage")
 
 	// Both lots are now 20 shares (10 → 20 each); position is 40.
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if len(lots) != 2 {
 		t.Fatalf("expected 2 lots, got %d", len(lots))
 	}

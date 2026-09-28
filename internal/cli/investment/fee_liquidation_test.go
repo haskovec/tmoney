@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -216,7 +217,7 @@ func TestInvestmentFeeLiquidation_WithLotAllocation(t *testing.T) {
 	if _, err := svc.Investment.Buy(acct.ID, sec.ID, types.Today(), types.MustNewQuantity("10"), nil, clitest.PtrMoney("150"), types.ZeroMoney, ""); err != nil {
 		t.Fatalf("failed to buy: %v", err)
 	}
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if len(lots) == 0 {
 		t.Fatal("no lots found after buy")
 	}

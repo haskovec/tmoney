@@ -136,7 +136,7 @@ func (a *App) loadSellDialogData() tea.Cmd {
 
 		// Load lots if the account is lot-tracking
 		if a.investmentRegister != nil && a.investmentRegister.account != nil &&
-			a.investmentRegister.account.TrackLots && a.services.LotRepo != nil {
+			a.investmentRegister.account.TrackLots && a.services.InvestmentValuation != nil {
 
 			acctID := a.investmentRegister.account.ID
 
@@ -146,7 +146,7 @@ func (a *App) loadSellDialogData() tea.Cmd {
 			if a.investmentEditTxnID != types.NilID && a.services.InvestmentRepo != nil {
 				editTxn, err := a.services.InvestmentRepo.GetByID(a.investmentEditTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
-					lots, err := a.services.LotRepo.ListByAccountAndSecurity(acctID, editTxn.SecurityID.ID, false)
+					lots, err := a.services.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
 					if err == nil {
 						data.lots = lots
 					}
@@ -349,10 +349,10 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	// per-lot allocation fields when editing an existing sell; for a new sell
 	// we default to FIFO (matching the lot-backfill default) so the sale isn't
 	// blocked with "lot allocations required".
-	if !hasErrors && numLots == 0 && a.services.LotRepo != nil &&
+	if !hasErrors && numLots == 0 && a.services.InvestmentValuation != nil &&
 		a.investmentRegister != nil && a.investmentRegister.account != nil &&
 		a.investmentRegister.account.TrackLots {
-		openLots, lerr := a.services.LotRepo.ListByAccountAndSecurity(a.investmentRegister.account.ID, securityID, false)
+		openLots, lerr := a.services.InvestmentValuation.ListOpenLots(a.investmentRegister.account.ID, securityID)
 		if lerr != nil {
 			fields[2].Error = "Could not load lots for allocation"
 			hasErrors = true

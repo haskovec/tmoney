@@ -69,9 +69,6 @@ func TestNewServices(t *testing.T) {
 		if svc.InvestmentRepo == nil {
 			t.Error("InvestmentRepo should not be nil")
 		}
-		if svc.LotRepo == nil {
-			t.Error("LotRepo should not be nil")
-		}
 	})
 
 	t.Run("services are functional", func(t *testing.T) {

@@ -533,7 +533,7 @@ func TestInvestmentEdit_LotTrackedSellRepointsLots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve security: %v", err)
 	}
-	lots, err := seedSvc.LotRepo.ListByAccountAndSecurity(seedAcct.ID, sec.ID, false)
+	lots, err := seedSvc.InvestmentValuation.ListOpenLots(seedAcct.ID, sec.ID)
 	if err != nil || len(lots) != 1 {
 		t.Fatalf("expected 1 open lot, got %d (err %v)", len(lots), err)
 	}

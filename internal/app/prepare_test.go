@@ -56,7 +56,7 @@ func damagedLotFile(t *testing.T) (*db.DB, *Services, *account.Account, types.ID
 	broken := mk("Broken Brokerage", true)
 	healthy := mk("Healthy Brokerage", false)
 
-	lots, err := svc.LotRepo.ListByAccountAndSecurity(broken.ID, sec.ID, false)
+	lots, err := svc.InvestmentValuation.ListOpenLots(broken.ID, sec.ID)
 	if err != nil || len(lots) != 1 {
 		t.Fatalf("lots = %d, %v; want 1", len(lots), err)
 	}

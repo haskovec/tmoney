@@ -40,7 +40,7 @@ func lotIDByDate(t *testing.T, dbPath, dateStr string) string {
 	defer database.Close()
 	svc := app.NewServices(database)
 	sec, _ := svc.Security.GetByTicker("AAPL", "")
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	for _, l := range lots {
 		if l.PurchaseDate.Time().Equal(d.Time()) {
 			return l.ID.String()
@@ -92,7 +92,7 @@ func TestInvestmentSplitLot_Forward(t *testing.T) {
 	svc := app.NewServices(database)
 	sec, _ := svc.Security.GetByTicker("AAPL", "")
 	acct, _ := svc.Account.GetByName("Brokerage")
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if len(lots) != 2 {
 		t.Fatalf("expected 2 lots, got %d", len(lots))
 	}
