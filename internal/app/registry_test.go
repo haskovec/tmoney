@@ -57,9 +57,6 @@ func TestNewServices(t *testing.T) {
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
 		}
-		if svc.PayeeRepo == nil {
-			t.Error("PayeeRepo should not be nil")
-		}
 		if svc.InvestmentRepo == nil {
 			t.Error("InvestmentRepo should not be nil")
 		}
@@ -76,9 +73,9 @@ func TestNewServices(t *testing.T) {
 			t.Errorf("Category.List() error = %v", err)
 		}
 
-		_, err = svc.PayeeRepo.List()
+		_, err = svc.Payee.List()
 		if err != nil {
-			t.Errorf("PayeeRepo.List() error = %v", err)
+			t.Errorf("Payee.List() error = %v", err)
 		}
 	})
 }

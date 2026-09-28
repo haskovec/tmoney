@@ -171,7 +171,7 @@ func TestTransactionEdit_PayeeAutoCreates(t *testing.T) {
 	if !txn.PayeeID.Valid {
 		t.Fatal("payee should be set")
 	}
-	py, err := svc.PayeeRepo.GetByID(txn.PayeeID.ID)
+	py, err := svc.Payee.GetByID(txn.PayeeID.ID)
 	if err != nil || py.Name != "New Bakery" {
 		t.Errorf("payee = %v (err %v), want New Bakery", py, err)
 	}

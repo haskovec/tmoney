@@ -123,7 +123,7 @@ func runTransactionList(opts *transactionListOptions, w io.Writer) error {
 	payeeNames := make(map[types.ID]string)
 	categoryNames := make(map[types.ID]string)
 
-	payees, _ := svc.PayeeRepo.List()
+	payees, _ := svc.Payee.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
 	}

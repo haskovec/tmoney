@@ -111,7 +111,7 @@ func runScheduledPost(opts *scheduledPostOptions, w io.Writer) error {
 
 	payeeName := "-"
 	if st.HasPayee() {
-		py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
+		py, err := svc.Payee.GetByID(st.PayeeID.ID)
 		if err == nil {
 			payeeName = py.Name
 		}

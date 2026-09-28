@@ -274,7 +274,7 @@ func printTransactionSummary(w io.Writer, svc *app.Services, header string, txn 
 	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())
 	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(txn.Amount, currency))
 	if txn.PayeeID.Valid {
-		if py, err := svc.PayeeRepo.GetByID(txn.PayeeID.ID); err == nil {
+		if py, err := svc.Payee.GetByID(txn.PayeeID.ID); err == nil {
 			fmt.Fprintf(w, "  Payee:    %s\n", py.Name)
 		}
 	}

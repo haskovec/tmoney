@@ -52,7 +52,6 @@ type Services struct {
 	Transfer *transfer.Service
 
 	// Repositories (exposed for direct use by CLI/TUI when needed)
-	PayeeRepo      *payee.Repository
 	InvestmentRepo *investment.Repository
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
@@ -156,7 +155,6 @@ func NewServices(database *db.DB) *Services {
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
 
-		PayeeRepo:      payeeRepo,
 		InvestmentRepo: investmentRepo,
 	}
 }

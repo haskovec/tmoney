@@ -291,7 +291,7 @@ func printScheduledSummary(w io.Writer, svc *app.Services, header string, st *sc
 		}
 		fmt.Fprintf(w, "  Transfer to: %s\n", destName)
 	} else if st.HasPayee() {
-		if py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID); err == nil {
+		if py, err := svc.Payee.GetByID(st.PayeeID.ID); err == nil {
 			fmt.Fprintf(w, "  Payee:     %s\n", py.Name)
 		}
 	}
