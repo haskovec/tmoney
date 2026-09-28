@@ -48,8 +48,8 @@ func assertStillOpen(t *testing.T, svc *Service, id types.ID) {
 	}
 }
 
-// An investment account's register balance is always zero: its cash and
-// shares live on the investment ledger. Close must ask that ledger.
+// An investment account's cash and shares live on the investment ledger, so
+// Close asks that ledger. The refusal marks the amount as investment cash.
 func TestService_Close_InvestmentAccount(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -75,6 +75,9 @@ func TestService_Close_InvestmentAccount(t *testing.T) {
 			}
 			if !balErr.Balance.Equal(types.MustNewMoney(tc.wantCash)) {
 				t.Errorf("Balance = %s, want %s", balErr.Balance, tc.wantCash)
+			}
+			if !balErr.InvestmentCash || balErr.RegisterRows {
+				t.Errorf("flags = cash %v, register %v; want investment cash only", balErr.InvestmentCash, balErr.RegisterRows)
 			}
 			assertStillOpen(t, svc, acct.ID)
 		})
@@ -128,7 +131,9 @@ func TestHasBalanceError_NamesTheCause(t *testing.T) {
 	}{
 		{HasBalanceError{ID: "a", Balance: types.MustNewMoney("5")}, "cannot close account a: has balance of 5"},
 		{HasBalanceError{ID: "a", HoldsShares: true}, "cannot close account a: it holds shares"},
-		{HasBalanceError{ID: "a", Balance: types.MustNewMoney("5"), HoldsShares: true}, "cannot close account a: it holds shares and has a cash balance of 5"},
+		{HasBalanceError{ID: "a", Balance: types.MustNewMoney("5"), HoldsShares: true, InvestmentCash: true}, "cannot close account a: it holds shares and has cash of 5"},
+		{HasBalanceError{ID: "a", Balance: types.MustNewMoney("5"), InvestmentCash: true}, "cannot close account a: it has cash of 5"},
+		{HasBalanceError{ID: "a", Balance: types.MustNewMoney("5"), RegisterRows: true}, "cannot close account a: it has register transactions that total 5"},
 	}
 	for _, tc := range cases {
 		if got := tc.err.Error(); got != tc.want {

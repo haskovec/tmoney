@@ -22,9 +22,11 @@ type Service struct {
 }
 
 // InvestmentLedger reports what an investment account still holds on the
-// investment ledger. Close needs it because an investment account's register
-// balance is always zero: its cash and shares are rows this package cannot
-// read without importing investment, which imports account.
+// investment ledger. Close needs it because an investment account's cash and
+// shares are rows this package cannot read without importing investment, which
+// imports account. The register balance (account_balances) does not stand in
+// for them: it is the opening balance plus register rows, and the investment
+// cash already counts the opening balance.
 //
 // cash is the investment ledger's cash balance, the figure valuation reports
 // as CashBalance. hasHoldings is true while any open lot or position still has
@@ -234,6 +236,17 @@ func (s *Service) requireEmpty(account *Account) error {
 		return nil
 	}
 
+	// Register rows can still land on an investment account (a manual add, an
+	// import, a posted schedule), and a close would freeze them. Their total
+	// excludes the opening balance, which the investment cash below counts.
+	registerRows, err := s.registerRowsTotal(account.ID)
+	if err != nil {
+		return err
+	}
+	if !registerRows.IsZero() {
+		return &HasBalanceError{ID: account.ID.String(), Balance: registerRows, RegisterRows: true}
+	}
+
 	if s.invLedger == nil {
 		return fmt.Errorf("cannot close investment account %s: %w", account.ID, ErrNoInvestmentLedger)
 	}
@@ -242,9 +255,24 @@ func (s *Service) requireEmpty(account *Account) error {
 		return fmt.Errorf("failed to read investment ledger for close: %w", err)
 	}
 	if !cash.IsZero() || held {
-		return &HasBalanceError{ID: account.ID.String(), Balance: cash, HoldsShares: held}
+		return &HasBalanceError{ID: account.ID.String(), Balance: cash, HoldsShares: held, InvestmentCash: true}
 	}
 	return nil
+}
+
+// registerRowsTotal sums the account's non-void register rows, the same rows
+// account_balances adds, without the opening balance.
+func (s *Service) registerRowsTotal(id types.ID) (types.Money, error) {
+	var total types.Money
+	err := s.db.Conn().QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM transactions
+		 WHERE CAST(account_id AS VARCHAR) = ? AND status != 'void'`,
+		id.String(),
+	).Scan(&total)
+	if err != nil {
+		return types.ZeroMoney, fmt.Errorf("failed to total register rows: %w", err)
+	}
+	return total, nil
 }
 
 // validateCloseDate enforces max(opening_date, latest_txn_date) <= closedDate <= today.

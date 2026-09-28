@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -22,9 +23,14 @@ type closeEnv struct {
 
 func newCloseEnv(t *testing.T, trackLots bool) closeEnv {
 	t.Helper()
+	return newCloseEnvWithOpening(t, trackLots, "0")
+}
+
+func newCloseEnvWithOpening(t *testing.T, trackLots bool, opening string) closeEnv {
+	t.Helper()
 	svc := NewServices(createTestDB(t))
 	acct := account.NewAccount("Northwind Brokerage", account.TypeInvestment, "USD",
-		types.ZeroMoney, types.NewDate(2024, time.January, 1))
+		types.MustNewMoney(opening), types.NewDate(2024, time.January, 1))
 	acct.TrackLots = trackLots
 	if err := svc.Account.Create(acct); err != nil {
 		t.Fatal(err)
@@ -65,8 +71,7 @@ func (e closeEnv) assertOpen(t *testing.T) {
 	}
 }
 
-// A brokerage's register balance is always zero. Before W5a, Close read only
-// that, so a brokerage with shares or cash closed and froze them.
+// A brokerage with shares or investment cash stays open.
 func TestClose_Brokerage_RefusedWhileNotEmpty(t *testing.T) {
 	for _, trackLots := range []bool{false, true} {
 		name := map[bool]string{false: "positions", true: "lots"}[trackLots]
@@ -163,6 +168,48 @@ func TestClose_Brokerage_UndoCommandUsesTheSameRule(t *testing.T) {
 	var balErr *account.HasBalanceError
 	if !errors.As(err, &balErr) || !balErr.HoldsShares {
 		t.Fatalf("Execute() error = %v, want HasBalanceError holding shares", err)
+	}
+	e.assertOpen(t)
+}
+
+// The opening balance is investment cash. Register-balance thinking would
+// see 100 here after the withdrawal; the account is empty.
+func TestClose_Brokerage_OpeningBalance(t *testing.T) {
+	t.Run("still held is refused", func(t *testing.T) {
+		e := newCloseEnvWithOpening(t, false, "100.00")
+		err := e.svc.Account.Close(e.acct.ID, types.Today())
+		var balErr *account.HasBalanceError
+		if !errors.As(err, &balErr) || !balErr.InvestmentCash || !balErr.Balance.Equal(types.MustNewMoney("100.00")) {
+			t.Fatalf("Close() error = %v, want investment cash of 100.00", err)
+		}
+		e.assertOpen(t)
+	})
+
+	t.Run("withdrawn closes", func(t *testing.T) {
+		e := newCloseEnvWithOpening(t, false, "100.00")
+		if _, err := e.svc.Investment.Withdrawal(e.acct.ID, types.NewDate(2024, time.February, 1), types.MustNewMoney("100.00"), ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.Account.Close(e.acct.ID, types.Today()); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+}
+
+// Register rows can still land on an investment account (a manual add, an
+// import, a posted schedule). A close would freeze them, so they refuse it,
+// even when the investment ledger is empty.
+func TestClose_Brokerage_RegisterRowsRefuse(t *testing.T) {
+	e := newCloseEnv(t, false)
+	row := transaction.NewTransaction(e.acct.ID, types.NewDate(2024, time.February, 1), types.MustNewMoney("-40.00"))
+	if err := e.svc.Transaction.Create(row); err != nil {
+		t.Fatal(err)
+	}
+
+	err := e.svc.Account.Close(e.acct.ID, types.Today())
+	var balErr *account.HasBalanceError
+	if !errors.As(err, &balErr) || !balErr.RegisterRows || !balErr.Balance.Equal(types.MustNewMoney("-40.00")) {
+		t.Fatalf("Close() error = %v, want register rows totaling -40.00", err)
 	}
 	e.assertOpen(t)
 }

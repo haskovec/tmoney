@@ -126,10 +126,15 @@ func closeAccountErrorMessage(err error) string {
 	var balErr *account.HasBalanceError
 	var dateErr *account.InvalidCloseDateError
 	switch {
+	case errors.As(err, &balErr) && balErr.RegisterRows:
+		return fmt.Sprintf("Cannot close: the account has register transactions that total %s. Delete or move them first.",
+			formatDashboardMoney(balErr.Balance))
 	case errors.As(err, &balErr) && balErr.HoldsShares && !balErr.Balance.IsZero():
-		return "Cannot close: the account still holds shares and cash."
+		return fmt.Sprintf("Cannot close: the account still holds shares and cash of %s.", formatDashboardMoney(balErr.Balance))
 	case errors.As(err, &balErr) && balErr.HoldsShares:
 		return "Cannot close: the account still holds shares."
+	case errors.As(err, &balErr) && balErr.InvestmentCash:
+		return fmt.Sprintf("Cannot close: the account has cash of %s. Move the cash out first.", formatDashboardMoney(balErr.Balance))
 	case errors.As(err, &balErr):
 		return "Cannot close: the account balance must be zero."
 	case errors.As(err, &dateErr):
