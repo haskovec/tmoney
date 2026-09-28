@@ -37,8 +37,9 @@ type AccountBalance struct {
 	Balance        types.Money
 	EstimatedValue bool // true when any holding uses cost basis due to missing pricing data
 	// Err is set when an investment account could not be valued. Balance is
-	// then zero and must not be shown, and the account's currency has no
-	// total (see CurrencyTotal).
+	// then zero and must not be shown. That currency's net worth, and the
+	// total of the side the account is on, are not available; the other
+	// side's total still shows (see CurrencyTotal).
 	Err error
 }
 

@@ -142,6 +142,31 @@ func (m Money) String() string {
 	return m.value.String()
 }
 
+// Format renders m for display in currency: rounded to two places in
+// decimal, half away from zero, never through float64 (which printed 1.005 as
+// 1.00). USD, EUR and GBP take their symbol with the minus sign before it
+// ("-$30.00"); any other currency takes its code ("JPY 30.00"). An empty
+// currency is USD. This is the one money formatter: the CLI and the TUI both
+// call it, so they cannot drift apart.
+func (m Money) Format(currency string) string {
+	rounded := m.value.Round(2)
+	digits := rounded.Abs().StringFixed(2)
+	sign := ""
+	if rounded.IsNegative() {
+		sign = "-"
+	}
+	switch currency {
+	case "", "USD":
+		return sign + "$" + digits
+	case "EUR":
+		return sign + "€" + digits
+	case "GBP":
+		return sign + "£" + digits
+	default:
+		return currency + " " + sign + digits
+	}
+}
+
 // Float64 returns the float64 representation (may lose precision).
 func (m Money) Float64() float64 {
 	f, _ := m.value.Float64()

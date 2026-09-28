@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
@@ -1327,7 +1328,7 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 
 	view := widget.StripAnsi(app.renderDashboard())
 	for _, want := range []string{
-		"Net Worth (EUR):  EUR 40.00",
+		"Net Worth (EUR):  €40.00",
 		"Net Worth (USD):  not available",
 		"Northwind Brokerage",
 		"error",
@@ -1337,5 +1338,115 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("dashboard lacks %q:\n%s", want, view)
 		}
+	}
+}
+
+// dashboardColumns renders the net-worth columns for a two-currency report:
+// more asset rows than liability rows, so a layout that padded after the
+// totals would pair the currencies wrongly.
+func dashboardColumns(t *testing.T, width int) string {
+	t.Helper()
+	styles := widget.NewStyles()
+	styles.Resize(width+20, 40)
+	m := types.MustNewMoney
+	app := &App{styles: styles}
+	nw := &report.NetWorth{
+		Assets: []report.AccountBalance{
+			{Name: "Fabrikam Sparkonto with a long name", Type: "savings", Currency: "EUR", Balance: m("40.00")},
+			{Name: "Contoso Checking with a long name", Type: "checking", Currency: "USD", Balance: m("100.00")},
+			{Name: "Tailspin Yen Account with a long name", Type: "savings", Currency: "JPY", Balance: m("-100000.00")},
+		},
+		Liabilities: []report.AccountBalance{
+			{Name: "Contoso Card", Type: "credit_card", Currency: "USD", Balance: m("-30.00")},
+		},
+		Totals: []report.CurrencyTotal{
+			{Currency: "EUR", Assets: m("40.00"), NetWorth: m("40.00"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true, Estimated: true},
+			{Currency: "JPY", Assets: m("-100000.00"), NetWorth: m("-100000.00"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
+			{Currency: "USD", Assets: m("100.00"), Liabilities: m("-30.00"), NetWorth: m("70.00"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
+		},
+	}
+	return widget.StripAnsi(app.renderAssetLiabilityColumns(nw, width, nil))
+}
+
+// Each currency's assets total and liabilities total are on one row.
+func TestRenderAssetLiabilityColumns_TotalsShareARow(t *testing.T) {
+	out := dashboardColumns(t, 120)
+	for _, cur := range []string{"EUR", "JPY", "USD"} {
+		var row string
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "Total ("+cur+")") {
+				row = line
+				break
+			}
+		}
+		if n := strings.Count(row, "Total ("+cur+")"); n != 2 {
+			t.Errorf("row for %s holds %d of its totals, want 2 on one row: %q\n%s", cur, n, row, out)
+		}
+	}
+}
+
+// Only the assets total carries "~": only valued accounts can be estimated.
+func TestRenderAssetLiabilityColumns_EstimatedAssetsTotal(t *testing.T) {
+	out := dashboardColumns(t, 120)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Total (EUR)") {
+			if !strings.Contains(line, "~€40.00") {
+				t.Errorf("EUR assets total is not marked estimated: %q", line)
+			}
+			if strings.Count(line, "~") != 1 {
+				t.Errorf("the liabilities total carries ~ too: %q", line)
+			}
+		}
+	}
+}
+
+// At an 80-column terminal no row is wider than the two columns, even with a
+// long name next to a wide signed amount in a currency code.
+func TestRenderAssetLiabilityColumns_FitsNarrowWidth(t *testing.T) {
+	const width = 60 // an 80-column terminal's content width
+	colWidth := max((width-6)/2, 20)
+	out := dashboardColumns(t, width)
+	for _, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w > 2*colWidth+2 {
+			t.Errorf("row is %d wide, over %d: %q", w, 2*colWidth+2, line)
+		}
+	}
+	// The assets column must hold its own row: the wide amount ends inside
+	// it. (The row text before it is ASCII, so the byte offset is the cell.)
+	const amount = "JPY -100000.00"
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if i := strings.Index(line, amount); i >= 0 {
+			found = true
+			if end := i + len(amount); end > colWidth {
+				t.Errorf("assets row ends at cell %d, past the %d-cell column: %q", end, colWidth, line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("the wide amount was cut:\n%s", out)
+	}
+}
+
+// The total-return line and the holdings under a brokerage use its currency.
+func TestDashboardTRAndHoldings_UseAccountCurrency(t *testing.T) {
+	styles := widget.NewStyles()
+	styles.Resize(120, 40)
+	id := types.NewID()
+	app := &App{styles: styles, dashboard: &dashboardData{
+		investmentHoldings: map[types.ID]*investment.AccountValuation{
+			id: {
+				TotalReturn: types.MustNewMoney("12.50"),
+				Holdings:    []investment.Holding{{SecurityID: types.NewID(), Shares: types.MustNewQuantity("3"), MarketValue: types.MustNewMoney("300.00")}},
+			},
+		},
+	}}
+
+	if tr := widget.StripAnsi(app.renderDashboardTRLine(id, "EUR", 40)); !strings.Contains(tr, "€12.50") || strings.Contains(tr, "$") {
+		t.Errorf("TR line = %q, want euros", tr)
+	}
+	holdings := widget.StripAnsi(strings.Join(app.renderDashboardHoldings(id, "EUR", 40), "\n"))
+	if !strings.Contains(holdings, "€300.00") || strings.Contains(holdings, "$") {
+		t.Errorf("holdings = %q, want euros", holdings)
 	}
 }
