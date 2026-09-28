@@ -30,7 +30,11 @@ func (s *ValuationService) getHoldings(acct *account.Account, asOf types.Date, o
 		err      error
 	)
 	switch {
-	case s.holdingsRepo != nil:
+	// The portfolio_holdings view lists active accounts only. A closed account
+	// can still hold shares (closed before the close rule refused that, or
+	// restored closed by undo), so its holdings come from its own lots or
+	// positions, by the view's rule, rather than silently from nothing.
+	case s.holdingsRepo != nil && acct.Active:
 		holdings, err = s.getHoldingsFromView(acct, asOf)
 	case acct.TrackLots:
 		holdings, err = s.getHoldingsFromLots(acct, asOf)

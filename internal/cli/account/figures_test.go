@@ -128,3 +128,37 @@ func TestAccountFigures_TotalsPerCurrency(t *testing.T) {
 		t.Errorf("balance added across currencies:\n%s", out)
 	}
 }
+
+// A closed brokerage that still holds shares is listed at cash plus shares,
+// not at its cash alone.
+func TestAccountFigures_ClosedBrokerageKeepsHoldings(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	svc := app.NewServices(database)
+	acct := createAcct(t, svc, "Northwind Brokerage", accountdom.TypeInvestment, "USD", "0")
+	sec := security.NewSecurity("FABR", "Fabrikam Inc.", security.TypeStock)
+	if err := svc.Security.Create(sec); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	date := types.MustParseDate("2020-02-01")
+	if _, err := svc.Investment.Deposit(acct.ID, date, types.MustNewMoney("600.00"), ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	price := types.MustNewMoney("100.00")
+	if _, err := svc.Investment.Buy(acct.ID, sec.ID, date, types.MustNewQuantity("5"), nil, &price, types.ZeroMoney, ""); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	// Closed with shares, which Close now refuses: set the row directly.
+	acct.Close(types.MustParseDate("2020-03-01"))
+	if err := accountdom.NewRepository(database).Update(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	out, err := runAcct(t, "list", "--include-closed", "--file", dbPath)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(out, "$600.00") {
+		t.Errorf("closed brokerage is not listed at $600.00 (cash plus shares):\n%s", out)
+	}
+}
