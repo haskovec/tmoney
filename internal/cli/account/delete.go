@@ -26,7 +26,9 @@ func newAccountDeleteCmd() *cobra.Command {
 		Use:   "delete <name>",
 		Short: "Delete an account",
 		Long: "Permanently delete an account. Delete only works on an account with no " +
-			"transactions and no scheduled transactions referencing it; for an account " +
+			"transactions or investment history, no transfer rows in other accounts that " +
+			"name it, no scheduled transactions referencing it, and no reconciliation in " +
+			"progress; its completed reconciliations are deleted with it. For an account " +
 			"with history, `tmoney account close` is usually the better option (it freezes " +
 			"the account while preserving its transactions). Prints a dry-run preview by " +
 			"default; pass --confirm to delete.",
@@ -80,6 +82,8 @@ func runAccountDelete(opts *accountDeleteOptions, w io.Writer) error {
 			fmt.Fprintf(w, "\nWarning: %d scheduled transaction(s) reference this account; "+
 				"delete is blocked until they are redirected (tmoney scheduled edit --account) "+
 				"or removed (tmoney scheduled delete).\n", len(refs))
+		} else if berr := svc.Account.DeleteBlocker(acct.ID); berr != nil {
+			fmt.Fprintf(w, "\nWarning: %v\n", deleteRefusal(acct.Name, berr))
 		}
 		fmt.Fprintln(w, "\nRe-run with --confirm to delete.")
 		return nil
@@ -92,20 +96,33 @@ func runAccountDelete(opts *accountDeleteOptions, w io.Writer) error {
 	}
 
 	if err := svc.Account.Delete(acct.ID); err != nil {
-		var depErr *dberrors.HasDependentsError
-		if errors.As(err, &depErr) {
-			if depErr.Dependents == "transactions" {
-				return fmt.Errorf("cannot delete account %q: it has %d %s — close it instead (tmoney account close)",
-					acct.Name, depErr.Count, depErr.Dependents)
-			}
-			return fmt.Errorf("cannot delete account %q: it has %d %s",
-				acct.Name, depErr.Count, depErr.Dependents)
-		}
-		return fmt.Errorf("failed to delete account: %w", err)
+		return deleteRefusal(acct.Name, err)
 	}
 
 	fmt.Fprintf(w, "Deleted account %q.\n", acct.Name)
 
 	cmdutil.AutoBackupAfterModification(database)
 	return nil
+}
+
+// deleteRefusal turns a delete refusal into a sentence that names the account
+// and says what to do. Other errors pass through wrapped.
+func deleteRefusal(name string, err error) error {
+	var depErr *dberrors.HasDependentsError
+	if !errors.As(err, &depErr) {
+		return fmt.Errorf("failed to delete account: %w", err)
+	}
+	switch depErr.Dependents {
+	case "transactions", "investment transactions":
+		return fmt.Errorf("cannot delete account %q: it has %d %s — close it instead (tmoney account close)",
+			name, depErr.Count, depErr.Dependents)
+	case "transfer references":
+		return fmt.Errorf("cannot delete account %q: %d transfer row(s) in other accounts name it as their other side; "+
+			"delete those transfers first", name, depErr.Count)
+	case "active reconciliation":
+		return fmt.Errorf("cannot delete account %q: it has a reconciliation in progress; "+
+			"finish it (tmoney reconcile finish) or cancel it in the TUI first", name)
+	default:
+		return fmt.Errorf("cannot delete account %q: it has %d %s", name, depErr.Count, depErr.Dependents)
+	}
 }

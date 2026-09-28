@@ -81,6 +81,9 @@ func (c *EditAccountCommand) Description() string {
 // =============================================================================
 
 // DeleteAccountCommand deletes an account and can undo it by recreating.
+// Undo recreates the account row only. The completed reconciliation sessions
+// that Delete removes with the account do not come back; they described a
+// ledger that was already empty.
 type DeleteAccountCommand struct {
 	svc    *account.Service
 	id     types.ID
