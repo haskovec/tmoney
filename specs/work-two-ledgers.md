@@ -3,7 +3,7 @@
 **Date:** 2026-09-27
 **Status:** OPEN. The order table gives the status of each item.
 **Source:** Code review of the tree on 2026-09-27. Not a pull-request diff.
-**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46.
+**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, and W13 from the smoke test of W8 phase 1.
 
 Use this file as the queue. Do one work item at a time. Do not start an item whose **Needs** line is still open. When an item ships, change its status line to the commit, and do not delete the problem statement. The next reader needs to know why the code looks the way it does.
 
@@ -57,6 +57,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W10 | done (#58) | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | done (#60) | Corporate Actions keys must reach the view | — | small |
 | W8 | done (#59, #61) | One view table in the TUI | W1, W2, and W12 | large |
+| W13 | open | The Prices detail hint must show | — | small |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -742,6 +743,35 @@ The exit criteria of plan phases 1 and 3 are met. `price_view.go` and `investmen
 
 - Do not move dialog `open` / `submit` / `close` off `App` for every view. The design prices that and does not require it.
 - Do not start from `specs/code-quality-review.md` item 4. That item mixes four jobs. The design splits them.
+
+## W13 — The Prices detail hint must show
+
+**Status:** open
+**Source:** The smoke test of W8 phase 1 (`specs/implementation-plan-tui-view-layer.md`, VL-111), 2026-09-28. The bug is older than W8: `main` before W8 has it too.
+
+### Problem
+
+The Prices view has two modes, the list and one security's history, and each has its own status-bar key hints. The history hints name the keys that work only there: `enter edit`, `n new`, `d delete`, `i import`. They never show.
+
+`updateStatusBar` (`internal/tui/app_helpers.go`) sets the hints. Only a view switch, a database switch, and the start of the app call it. The mode changes without a view switch, in three places: Enter on the list, Esc in the history, and a load that arrives in history mode (the drill from Securities opens Prices first and loads the history after). So the status bar keeps the hints of the mode that was on screen at the last view switch, which is almost always the list.
+
+### Fix
+
+`Update` refreshes the key hints after every message, with a deferred call at its top. The hints then follow any state that they read, in every path, now and for a later view with modes. `updateStatusBar` stays the one place that sets the context (the view name and the file), which changes only with the view or the file.
+
+### Tests
+
+| Case | Assert |
+| --- | --- |
+| The list loads | The hints contain `enter view history`. |
+| Enter on the list | The mode is history. The hints contain `i import`. |
+| Esc in the history | The mode is list. The hints contain `enter view history`. |
+| A load arrives in history mode | The hints contain `i import`. |
+
+### Do not
+
+- Do not change the hint text.
+- Do not refresh the hints in the render path. `View` must not write state that it does not need for the mouse.
 
 ## W9 — Stop exporting repositories from `app.Services`
 
