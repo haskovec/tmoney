@@ -89,6 +89,11 @@ func (s *Service) StartReconciliation(accountID types.ID, statementDate types.Da
 		return nil, err
 	}
 
+	// Reconcile reads only the register ledger.
+	if acct.Type.IsInvestmentType() {
+		return nil, &InvestmentAccountError{AccountID: accountID.String()}
+	}
+
 	// Cannot reconcile a closed account
 	if !acct.Active {
 		return nil, &account.AccountClosedError{ID: accountID.String()}

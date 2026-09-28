@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -1061,5 +1062,44 @@ func TestMenuBarHasReconcileAccount(t *testing.T) {
 	}
 	if !found {
 		t.Error("widget.MenuActionReconcileAccount not found in menu bar")
+	}
+}
+
+// The Reconcile menu action refuses an investment account before the
+// statement dialog opens, and still opens it for a register account.
+func TestMenuReconcile_InvestmentAccountRefused(t *testing.T) {
+	a := NewApp(dbtest.New(t), nil)
+	a.width, a.height = 120, 40
+	date := types.NewDate(2024, 1, 1)
+	brokerage := account.NewAccount("Northwind Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, date)
+	checking := account.NewAccount("Contoso Checking", account.TypeChecking, "USD", types.ZeroMoney, date)
+	for _, acct := range []*account.Account{brokerage, checking} {
+		if err := a.services.Account.Create(acct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runCmd(t, a, a.loadSidebarData(), 1)
+
+	selectAndReconcile := func(acct *account.Account) {
+		t.Helper()
+		if !a.sidebar.SetCursorToAccount(acct.ID) || !a.sidebar.Select() {
+			t.Fatalf("%s is not in the sidebar", acct.Name)
+		}
+		a.reconDialog = nil
+		a.handleMenuAction(widget.MenuActionReconcileAccount, "")
+	}
+
+	selectAndReconcile(brokerage)
+	if a.reconDialog != nil {
+		t.Error("the statement dialog opened for an investment account")
+	}
+	notes := a.statusbar.Notifications()
+	if len(notes) == 0 || !strings.Contains(notes[len(notes)-1].Text, "Northwind Brokerage is an investment account") {
+		t.Errorf("notifications = %v, want the investment-account notice", notes)
+	}
+
+	selectAndReconcile(checking)
+	if a.reconDialog == nil {
+		t.Error("the statement dialog did not open for a checking account")
 	}
 }

@@ -213,3 +213,25 @@ func TestReconcileCmd_HelpListsStart(t *testing.T) {
 		t.Errorf("expected `reconcile --help` to list `start`; got:\n%s", stdout.String())
 	}
 }
+
+// `reconcile start` goes through the same service check as the TUI.
+func TestReconcileStart_InvestmentAccountRefused(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "test.tdb")
+	acct := account.NewAccount("Northwind Brokerage", account.TypeInvestment, "USD", types.ZeroMoney, types.MustParseDate("2024-01-01"))
+	if err := account.NewRepository(database).Create(acct); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	database.Close()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	err := cli.ExecuteWith([]string{
+		"reconcile", "start",
+		"--account", "Northwind Brokerage",
+		"--statement-date", "2024-01-31",
+		"--statement-balance", "100.00",
+		"--file", dbPath,
+	}, stdout, stderr)
+	if err == nil || !strings.Contains(err.Error(), "is an investment account; reconcile applies to the register ledger only") {
+		t.Fatalf("expected the investment-account refusal, got %v", err)
+	}
+}

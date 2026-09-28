@@ -79,7 +79,20 @@ func buildStartReconciliationDialog(seedDate types.Date) *dialog.Dialog {
 
 // showStartReconciliationDialog shows the start reconciliation dialog, seeded
 // with the statement date from the last successful Start in this session.
+//
+// An investment account gets a notice instead. Reconcile reads only the
+// register ledger, and StartReconciliation refuses these accounts, so the
+// dialog would only collect a statement balance to reject.
 func (a *App) showStartReconciliationDialog() {
+	if a.sidebar != nil {
+		if acct := a.sidebar.SelectedAccount(); acct != nil && acct.Type.IsInvestmentType() {
+			a.statusbar.AddNotification(
+				fmt.Sprintf("%s is an investment account. Reconcile applies to register accounts only.", acct.Name),
+				widget.NotificationAlert,
+			)
+			return
+		}
+	}
 	a.reconDialog = buildStartReconciliationDialog(a.reconDialogLastStatementDate)
 	a.reconDialog.SetVisible(true)
 }
