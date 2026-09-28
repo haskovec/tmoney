@@ -17,18 +17,24 @@ tmoney/
 │   ├── account/         # Account feature (model, repository, service)
 │   ├── category/        # Category feature (model, repository, service)
 │   ├── payee/           # Payee feature (model, repository, service)
-│   ├── transaction/     # Transaction feature (model, repos for txn/split/transfer, service)
+│   ├── transaction/     # Register ledger (model, repos for txn/split, service)
+│   ├── transfer/        # Owner of cash transfers across both ledgers (create, edit, void, delete)
+│   ├── transferlink/    # Links two existing rows into a transfer, through transfer/
 │   ├── scheduled/       # Scheduled transaction feature (model, repository, service)
-│   ├── reconciliation/  # Reconciliation feature (model, repository, service)
-│   ├── report/          # Report feature (model, service)
+│   ├── loan/            # Loan amortization engine (used by scheduled/, the CLI, and the TUI)
+│   ├── reconciliation/  # Reconciliation feature, register ledger only (model, repository, service)
+│   ├── report/          # Reports: account figures, net worth per currency, spending (no repository)
 │   ├── security/        # Security master feature (model, repository, service)
 │   ├── price/           # Price feature (model, repository, service, provider)
-│   ├── investment/      # Investment feature (models, repos for txn/lot/position, service)
+│   ├── investment/      # Investment ledger (txn/lot/position repos, trades, share transfers,
+│   │                    #   corporate actions, valuation)
 │   ├── types/           # Shared value types (Money, ID, Date, Quantity, Validator)
 │   ├── dberrors/        # Shared repository error types
 │   ├── dbutil/          # Shared database helper functions
+│   ├── dbtest/          # Test database builders
 │   ├── app/             # Composition root (service registry)
-│   ├── db/              # Database connection, migrations, error types
+│   ├── db/              # Database connection, migrations, transactions (WithTx), error types
+│   ├── applog/          # Append-only app log (~/.config/tmoney/log.txt)
 │   ├── tui/             # Bubbletea TUI application
 │   ├── config/          # User configuration (~/.config/tmoney/)
 │   ├── backup/          # Database backup and restore
@@ -80,16 +86,21 @@ Types are named to avoid stutter with the package name:
 
 | Slice | Contents | Cross-Slice Dependencies |
 |-------|----------|------------------------|
-| `account/` | Account model, repository, service | — |
+| `account/` | Account model, repository, service (close rule via the `InvestmentLedger` port) | — |
 | `category/` | Category model, repository, service | — |
 | `payee/` | Payee model, repository, service | — |
 | `security/` | Security model, repository, service | — |
-| `transaction/` | Transaction, Split, Transfer models + repos + service | `payee` (for auto-category) |
-| `scheduled/` | Scheduled transaction model, repository, service | `transaction` (for posting) |
-| `reconciliation/` | Reconciliation session model, repository, service | `transaction`, `account` |
-| `report/` | Report models, service (no repository) | `account` |
+| `transaction/` | Register ledger: Transaction and Split models + repos + service | `account`, `category`, `payee` |
+| `transfer/` | Cash transfers across both ledgers: the one door for create, edit, void, delete | `account`, `category`, `investment`, `transaction` |
+| `transferlink/` | Finds rows to link as a transfer; `transfer/` performs the link | `account`, `transaction` |
+| `scheduled/` | Scheduled transaction model, repository, service | `account`, `category`, `loan`, `transaction` (transfers post through a port into `transfer/`) |
+| `loan/` | Loan amortization engine | — |
+| `reconciliation/` | Reconciliation session model, repository, service | `account`, `transaction` |
+| `report/` | Report models, service (no repository) | `account` (investment value through the `InvestmentValuer` port) |
 | `price/` | Price model, repository, service, provider interface | `security` |
-| `investment/` | Investment transaction, Lot, Position, TransactionLot models + repos + service | `account` |
+| `investment/` | Investment ledger: transaction, Lot, Position models + repos; trades, share transfers, corporate actions, `ValuationService` | `account`, `price`, `security` |
+
+Where the import direction forbids a call, a port defined in the lower package carries it, and `internal/app` wires the implementation: `account.InvestmentLedger` is implemented by `investment.ValuationService`, `report.InvestmentValuer` by a small adapter over it in `internal/app`, and `scheduled`'s transfer port by `transfer.Service`.
 
 ### Shared Foundation Packages
 
@@ -124,7 +135,7 @@ The `Services` struct and `NewServices(db)` factory function wire all repositori
 ```go
 svc := app.NewServices(database)
 svc.Account.Create(acct)           // account.Service
-svc.Transaction.Create(txn, nil)   // transaction.Service
+svc.Transaction.Create(txn)        // transaction.Service
 svc.AccountRepo.GetByID(id)       // account.Repository
 ```
 
@@ -219,24 +230,57 @@ Built on the [Bubbletea](https://github.com/charmbracelet/bubbletea) framework w
 
 ```
 User input (TUI dialog or CLI flags)
-  → transaction.Service.Create(txn, splits)
+  → transaction.Service.Create(txn)                 (or CreateWithSplits(txn, splits))
     → Validate fields
     → transaction.Repository.Create()          [INSERT]
     → transaction.SplitRepository.Create()     [INSERT per split]
-  → TUI: refresh register, update sidebar balances
+  → TUI: refresh register and sidebar
   → Undo manager: record operation
 ```
 
 ### Transfer Between Accounts
 
+A cash transfer has one owner, `transfer.Service`, for every pair of ledgers:
+bank↔bank, bank↔investment, and investment↔investment. Create, edit, void, and
+delete all go through it; callers do not reach past it into
+`transaction.Service` or `investment.Service` for transfer work.
+
 ```
-User input
-  → transaction.Service.CreateTransfer(from, to, amount)
-    → Create TransferPair (two linked transactions)
-    → transaction.TransferRepository.Create()
-      → transaction.Repository.Create() × 2
-    → Recalculate balances for both accounts
+User input (TUI transfer dialog, `tmoney transfer add`)
+  → transfer.Service.Create(transfer.Spec{FromAccountID, ToAccountID, Date, Amount, ...})
+    → Validate both accounts and the category rules
+    → db.DB.WithTx: write both legs in one database transaction
+        register account   → transactions row
+        investment account → investment_transactions row (transfer_cash)
+      each leg carries the shared transfer_id and names the other account
 ```
+
+Nothing is recalculated or stored: balances are computed on read (see
+Balances below). Share transfers are separate and stay in `investment/`
+(`Service.TransferShares`, `EditService.UpdateTransferShares`).
+
+### Balances on Two Ledgers
+
+An account keeps its history on one of two ledgers. Checking, savings, credit
+card, cash, loan, asset, and HSA cash use the register ledger (`transactions`).
+`investment` and `hsa_investment` use the investment ledger
+(`investment_transactions`, with `investment_lots` and `investment_positions`).
+
+- **Register balance** — `account_balances` view, read by
+  `account.Service.GetBalance`: opening balance plus non-void register rows.
+  For an investment account it is the opening balance plus any register rows
+  written to it by mistake; it is not what the account holds.
+- **Investment value** — `investment.ValuationService.GetAccountValuation`:
+  cash on the investment ledger plus the market value of open holdings.
+- **What the CLI shows** — `report.Service.AccountFigure` and
+  `AccountFigures`: the register balance for a register account, the
+  investment value for an investment account. `account list`, `show`, and
+  `balance` take their figure from these, never from `GetBalance`.
+- **Net worth** — `report.Service.NetWorthAsOf`: one total per currency; money
+  in different currencies is never added.
+- **Close** — `account.Service.Close` judges an investment account by its
+  investment ledger (cash and shares) through the `account.InvestmentLedger`
+  port, not by its register balance.
 
 ### Scheduled Transaction Auto-Post
 
@@ -268,7 +312,7 @@ Creates timestamped copies of the database file. Supports listing available back
 
 ### Undo/Redo (`internal/undo/`)
 
-Session-scoped undo/redo via an `Operation` interface with `Do()` and `Undo()` methods. Integrated with TUI dialogs for transaction and account operations. Not persisted across sessions.
+Session-scoped undo/redo via a `Command` interface with `Execute()`, `Undo()`, and `Description()` methods. Integrated with TUI dialogs for transaction and account operations. Not persisted across sessions.
 
 ### Configuration (`internal/config/`)
 
@@ -305,8 +349,10 @@ See [specs/database.md](../specs/database.md) for the complete schema definition
 |-------|---------|
 | `_metadata` | File identification and schema version |
 | `accounts` | Financial accounts |
-| `transactions` | Money movement records |
+| `transactions` | Register ledger: money movement records |
 | `transaction_splits` | Category allocation for splits |
+| `investment_transactions` | Investment ledger: trades, cash, income, transfers |
+| `investment_positions` | Aggregate share position per account and security |
 | `categories` | Income/expense categories (hierarchical) |
 | `payees` | Transaction counterparties |
 | `payee_aliases` | Pattern matching rules for payees |
@@ -318,7 +364,8 @@ See [specs/database.md](../specs/database.md) for the complete schema definition
 
 | View | Purpose |
 |------|---------|
-| `account_balances` | Current and cleared balance per account |
+| `account_balances` | Register balance per account: current and cleared (opening balance + non-void register rows). Not an investment account's value; see Balances on Two Ledgers |
+| `portfolio_holdings` | Open shares and cost basis per active investment account and security (lots for a lot-tracked account, positions otherwise) |
 | `category_spending` | Monthly spending aggregated by category |
 
 ## Testing
