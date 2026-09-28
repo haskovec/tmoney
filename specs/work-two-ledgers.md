@@ -49,7 +49,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W4 | done (#50) | Share-transfer edit must keep both legs | — | medium |
 | W5a | done (#51) | Close refuses an investment account that is not empty | — | medium |
 | W5b | done (#52) | Delete counts the ledger of the account type | — | small |
-| W6 | open | Refuse reconcile on an investment account | — | small |
+| W6 | done (#53) | Refuse reconcile on an investment account | — | small |
 | W5c | open | One display figure for account list, show, and balance | — | medium |
 | W5d | open | Net worth by currency, with row errors | W5c | medium |
 | W11 | open | As-of net worth leaves out accounts not yet open | W5d | small |
@@ -457,7 +457,7 @@ See the W5 problem. Two more facts:
 
 ## W6 — Refuse reconcile on an investment account
 
-**Status:** open
+**Status:** done in PR #53. The service error is `InvestmentAccountError`, the TUI guard is in `showStartReconciliationDialog` (menu and `r` key), and the migration is 036.
 **Decision:** A migration deletes the reconciliation sessions that already exist on investment accounts.
 
 ### Problem
