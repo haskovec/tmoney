@@ -56,7 +56,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W7 | done (#57) | Constructor must not write | — | medium |
 | W10 | done (#58) | Correct `docs/ARCHITECTURE.md` | W5c | small |
 | W12 | open | Corporate Actions keys must reach the view | — | small |
-| W8 | open | One view table in the TUI | W1, W2, and W12 | large |
+| W8 | phase 3 done (#59) | One view table in the TUI | W1, W2, and W12 | large |
 | W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -703,7 +703,7 @@ W1 made the help line say "Back", because that is what Esc does today (`corporat
 
 ## W8 — One view table in the TUI
 
-**Status:** open
+**Status:** open. Phase 3 (the two file splits) is done in PR #59. Phase 1 (the view table) waits for W12.
 **Needs:** W1, W2, and W12. The table copies the fixed key routing and help text.
 **Decision:** The queue for this work is `specs/implementation-plan-tui-view-layer.md`. W8 is phases 1 and 3 of that plan (VL-101 to VL-111, and VL-201 to VL-209). Phases 2 and 4 stay only in the plan. Mark progress in the plan, not here. Change this status line when both phases are done.
 

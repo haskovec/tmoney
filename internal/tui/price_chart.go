@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/NimbleMarkets/ntcharts/v2/linechart"
 	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
@@ -380,4 +381,108 @@ func niceYLabelFormatter(step float64) linechart.LabelFormatter {
 	return func(_ int, v float64) string {
 		return fmt.Sprintf(format, math.Floor(v/step)*step)
 	}
+}
+
+// priceChartDebounceDelay is the time a cursor must dwell on a row
+// before the chart panel issues a fetch for the highlighted ticker.
+// Declared as a var so tests can shorten it; user-facing default is 150 ms.
+var priceChartDebounceDelay = 150 * time.Millisecond
+
+// priceChartDebounceTickMsg is delivered when a scheduled debounce timer
+// fires. The handler in app.go's Update verifies (a) gen still matches
+// priceView.chartDebounceGen (i.e. no later schedule has superseded
+// this one), and (b) the cursor is still on secID; if both hold, it
+// dispatches the actual price-history fetch. Otherwise it drops the
+// tick — that's how rapid cursor movement collapses to a single fetch.
+type priceChartDebounceTickMsg struct {
+	gen   int
+	secID types.ID
+}
+
+// priceChartHistoryLoadedMsg carries the result of a debounced fetch.
+// Its handler stores prices in priceView.historyCache and sets
+// chartDisplayedID = secID so the next render shows the new ticker.
+type priceChartHistoryLoadedMsg struct {
+	secID  types.ID
+	prices []*price.Price
+}
+
+// schedulePriceChartFetch returns a debounced tea.Cmd that, after
+// priceChartDebounceDelay elapses, emits a priceChartDebounceTickMsg
+// for secID. Each call bumps priceView.chartDebounceGen so any earlier
+// in-flight tick becomes stale (the tick handler drops mismatched gen).
+// Returns nil when there is no priceView to schedule against.
+func (a *App) schedulePriceChartFetch(secID types.ID) tea.Cmd {
+	if a.priceView == nil {
+		return nil
+	}
+	a.priceView.chartDebounceGen++
+	gen := a.priceView.chartDebounceGen
+	return tea.Tick(priceChartDebounceDelay, func(_ time.Time) tea.Msg {
+		return priceChartDebounceTickMsg{gen: gen, secID: secID}
+	})
+}
+
+// schedulePriceListChartFetchIfActive returns a debounced chart-fetch cmd
+// for the security under the prices-list cursor, or nil when the prices
+// landing list isn't the active surface. Mouse selection (single click,
+// wheel scroll) calls this so the chart panel tracks the cursor exactly
+// as keyboard navigation does (handlePriceListKeys). Without it the table
+// highlight moves but the chart keeps showing the previously fetched
+// ticker via the chartDisplayedID fallback in buildPriceListChartPanel.
+func (a *App) schedulePriceListChartFetchIfActive() tea.Cmd {
+	if a.currentView != ViewPrices || a.priceView == nil || a.priceView.mode != pricesViewList {
+		return nil
+	}
+	secID := a.listCursorSecurityID()
+	if secID.IsNil() {
+		return nil
+	}
+	return a.schedulePriceChartFetch(secID)
+}
+
+// fetchPriceChartHistory returns a tea.Cmd that synchronously calls the
+// price service for secID's full history and emits a
+// priceChartHistoryLoadedMsg. On error, it returns no message — the
+// chart simply stays in its current state until the next cursor move.
+func (a *App) fetchPriceChartHistory(secID types.ID) tea.Cmd {
+	return func() tea.Msg {
+		if a.services.Price == nil {
+			return nil
+		}
+		prices, err := a.services.Price.GetPriceHistory(secID, nil, nil)
+		if err != nil {
+			return nil
+		}
+		return priceChartHistoryLoadedMsg{secID: secID, prices: prices}
+	}
+}
+
+// handlePriceChartDebounceTick fetches the chart history for the row the tick
+// was scheduled against, unless the tick is stale (a later schedule superseded
+// it), the cursor has moved off that row (the move scheduled its own tick), or
+// the history is already cached — in which case it only promotes the cached
+// series to displayed.
+func (a *App) handlePriceChartDebounceTick(msg priceChartDebounceTickMsg) tea.Cmd {
+	if a.priceView == nil || msg.gen != a.priceView.chartDebounceGen || a.listCursorSecurityID() != msg.secID {
+		return nil
+	}
+	if a.priceView.historyCache != nil {
+		if _, ok := a.priceView.historyCache.Lookup(msg.secID); ok {
+			a.priceView.chartDisplayedID = msg.secID
+			return nil
+		}
+	}
+	return a.fetchPriceChartHistory(msg.secID)
+}
+
+// applyPriceChartHistory caches a fetched series and shows it.
+func (a *App) applyPriceChartHistory(msg priceChartHistoryLoadedMsg) {
+	if a.priceView == nil {
+		return
+	}
+	if a.priceView.historyCache != nil {
+		a.priceView.historyCache.Put(msg.secID, msg.prices)
+	}
+	a.priceView.chartDisplayedID = msg.secID
 }
