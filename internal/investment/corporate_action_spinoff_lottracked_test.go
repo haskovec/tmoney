@@ -13,7 +13,7 @@ import (
 // position. The position path must skip lot-tracked accounts.
 func TestSpinOff_LotTrackedAccount_DoesNotDoubleCountPosition(t *testing.T) {
 	env := createCATestEnv(t)
-	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createLotTrackingAccount(t, env.accountRepo, "Northwind IRA")
 	parent := createSec(t, env.secRepo, "ETHE")
 	child := createSec(t, env.secRepo, "ETH")
 	spinDate := types.NewDate(2024, time.July, 23)

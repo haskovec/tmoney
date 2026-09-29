@@ -88,21 +88,21 @@ Create a new account. `--name` and `--type` are required; other fields take sens
 - `--track-lots` — Track individual tax lots (`investment`/`hsa_investment` accounts only; default on for those types). Pass `--track-lots=false` to opt out and use the average-cost path instead. To enable lots on an *existing* account (with a historical backfill), use `investment enable-lots`, not `account edit`.
 
 ```bash
-tmoney account add --name "Chase Checking" --type checking \
+tmoney account add --name "Cedar Checking" --type checking \
   --currency USD --opening-balance 1000.00 --opening-date 2024-01-15 \
-  --institution "Chase Bank" --account-number 1234567890 \
+  --institution "Cedar Bank" --account-number 1234567890 \
   --notes "Primary checking account"
 tmoney account add --name "Acme IRA" --type investment --track-lots=false
 ```
 
 ```
 Account created successfully!
-  Name:            Chase Checking
+  Name:            Cedar Checking
   Type:            Checking
   Currency:        USD
   Opening Balance: $1,000.00
   Opening Date:    2024-01-15
-  Institution:     Chase Bank
+  Institution:     Cedar Bank
   Account Number:  1234567890
   Notes:           Primary checking account
 ```
@@ -122,7 +122,7 @@ tmoney account balance
 ```
 BALANCES
 ========
-Chase Checking:     $5,234.56
+Cedar Checking:     $5,234.56
 Savings:           $12,000.00
 Visa Card:         -$1,234.56
 Investment:        $45,678.90
@@ -209,8 +209,8 @@ effect (delta semantics); at least one editable flag is required.
 - `--confirm` — Apply a type change that moves rows between ledgers. Without it the plan is printed and nothing changes.
 
 ```bash
-tmoney account edit --name "Chase Checking" --new-name "Main Checking"
-tmoney account edit --name "Chase Checking" --institution "Acme Bank" --notes ""
+tmoney account edit --name "Cedar Checking" --new-name "Main Checking"
+tmoney account edit --name "Cedar Checking" --institution "Acme Bank" --notes ""
 tmoney account edit --name "Cedar Bank HSA" --type hsa            # prints the plan
 tmoney account edit --name "Cedar Bank HSA" --type hsa --confirm  # moves the rows
 ```
@@ -266,7 +266,7 @@ tmoney account list --include-closed
 ACCOUNTS
 ========
 Name                          Type          Balance      Currency
-Chase Checking                checking      $5,234.56    USD
+Cedar Checking                checking      $5,234.56    USD
 Savings                       savings       $12,000.00   USD
 Visa Card                     credit_card   -$1,234.56   USD
 Investment                    investment    $45,678.90   USD
@@ -295,15 +295,15 @@ tmoney account reopen "Old Savings"
 Show full details and current balance for the named account.
 
 ```bash
-tmoney account show "Chase Checking"
+tmoney account show "Cedar Checking"
 ```
 
 ```
-ACCOUNT: Chase Checking
+ACCOUNT: Cedar Checking
 =======================
 Type:            checking
 Currency:        USD
-Institution:     Chase Bank
+Institution:     Cedar Bank
 Account Number:  ****1234
 Opening Date:    2020-01-15
 Opening Balance: $1,000.00
@@ -1097,7 +1097,7 @@ tmoney loan add --name "Mortgage" \
   --current-balance 312450.22 --rate 6.5 --payment 2401.86 \
   --next-payment-date 2026-08-01 --from-account "Checking" \
   --escrow "Housing:Property Tax=650" --escrow "Housing:Home Insurance=120" \
-  --payee "Wells Fargo" --asset-name "123 Main St" --asset-value 450000
+  --payee "Fabrikam Mortgage" --asset-name "123 Main St" --asset-value 450000
 
 tmoney loan add --name "Car Loan" \
   --principal 32000 --rate 5.9 --term-months 60 --open-date 2026-07-01 \
@@ -1356,7 +1356,7 @@ As of: 2024-01-15
 
 ASSETS
 ------
-Chase Checking:     $5,234.56
+Cedar Checking:     $5,234.56
 Savings:           $12,000.00
 Investment:        $45,678.90
 ------------------------
@@ -1804,7 +1804,7 @@ tmoney transaction list --account Checking --show-ids
 ```
 
 ```
-TRANSACTIONS: Chase Checking
+TRANSACTIONS: Cedar Checking
 ============================
 Date        Payee              Category            Amount      Balance
 2024-01-15  Kroger             Food:Groceries      -$125.43    $5,234.56
@@ -1844,8 +1844,8 @@ tmoney transaction search "amazon" --show-ids
 SEARCH RESULTS: "amazon"
 ========================
 Account          Date        Payee    Category          Amount
-Chase Checking   2024-01-12  Amazon   Shopping:General  -$45.99
-Chase Checking   2024-01-05  Amazon   Shopping:General  -$23.45
+Cedar Checking   2024-01-12  Amazon   Shopping:General  -$45.99
+Cedar Checking   2024-01-05  Amazon   Shopping:General  -$23.45
 Visa Card        2023-12-28  Amazon   Shopping:General  -$156.78
 ```
 

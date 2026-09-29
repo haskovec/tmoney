@@ -144,7 +144,7 @@ func TestPlanLotBackfill_Methods(t *testing.T) {
 
 func TestPlanLotBackfill_TransferIn(t *testing.T) {
 	env := createFullTestService(t)
-	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createInvAccount(t, env.accountRepo, "Northwind IRA")
 	sec := createSec(t, env.secRepo, "NEM")
 
 	// Inbound transfer_shares carries its basis on total_amount (price NULL),

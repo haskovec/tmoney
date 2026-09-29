@@ -31,7 +31,7 @@ const (
 	SidebarWidthMedium = 20
 	// SidebarWidthLarge is the floor used at the large-layout breakpoint.
 	// Beyond that breakpoint the sidebar grows with terminal width up to
-	// SidebarWidthMax so long account names like "Wealthfront Joint
+	// SidebarWidthMax so long account names like "Northwind Primary
 	// Checking" stop getting truncated on wide terminals.
 	SidebarWidthLarge = 24
 	SidebarWidthMax   = 40

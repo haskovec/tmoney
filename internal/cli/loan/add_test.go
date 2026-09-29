@@ -65,9 +65,9 @@ func TestLoanAdd_CreatesLoanScheduleAndAsset(t *testing.T) {
 	out, err := runLoan(t, "loan", "add", "--file", dbPath,
 		"--name", "Mortgage", "--current-balance", "312450.22", "--rate", "6.5",
 		"--payment", "2401.86", "--next-payment-date", "2026-08-01",
-		"--from-account", "Checking", "--institution", "Wells Fargo Home",
+		"--from-account", "Checking", "--institution", "Fabrikam Home Loans",
 		"--escrow", "Housing:Property Tax=650", "--escrow", "Housing:Home Insurance=120",
-		"--payee", "Wells Fargo", "--asset-name", "123 Main St", "--asset-value", "450000")
+		"--payee", "Fabrikam Mortgage", "--asset-name", "123 Main St", "--asset-value", "450000")
 	if err != nil {
 		t.Fatalf("loan add: %v (out: %s)", err, out)
 	}
@@ -91,8 +91,8 @@ func TestLoanAdd_CreatesLoanScheduleAndAsset(t *testing.T) {
 	if !loanAcct.InterestRate.Valid || !loanAcct.InterestRate.Money.Equal(types.MustNewMoney("6.5")) {
 		t.Errorf("loan APR = %v, want 6.5", loanAcct.InterestRate)
 	}
-	if !loanAcct.Institution.Valid || loanAcct.Institution.String != "Wells Fargo Home" {
-		t.Errorf("loan institution = %v, want Wells Fargo Home", loanAcct.Institution)
+	if !loanAcct.Institution.Valid || loanAcct.Institution.String != "Fabrikam Home Loans" {
+		t.Errorf("loan institution = %v, want Fabrikam Home Loans", loanAcct.Institution)
 	}
 
 	// Asset account.
@@ -108,8 +108,8 @@ func TestLoanAdd_CreatesLoanScheduleAndAsset(t *testing.T) {
 	}
 
 	// Payee auto-created.
-	if _, err := svc.Payee.GetByName("Wells Fargo"); err != nil {
-		t.Errorf("payee Wells Fargo not created: %v", err)
+	if _, err := svc.Payee.GetByName("Fabrikam Mortgage"); err != nil {
+		t.Errorf("payee Fabrikam Mortgage not created: %v", err)
 	}
 
 	// Schedule: loan-shaped, monthly, day-of-month 1, indefinite, auto-post off.

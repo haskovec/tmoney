@@ -195,7 +195,7 @@ func TestAccountAdd_WithAllOptions(t *testing.T) {
 		"--currency", "EUR",
 		"--opening-balance", "1000.50",
 		"--opening-date", "2024-01-15",
-		"--institution", "Chase Bank",
+		"--institution", "Cedar Bank",
 		"--account-number", "1234567890",
 		"--notes", "Primary account",
 	}, stdout, stderr)
@@ -204,7 +204,7 @@ func TestAccountAdd_WithAllOptions(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"Primary Checking", "EUR", "1000.50", "2024-01-15", "Chase Bank", "1234567890", "Primary account"} {
+	for _, want := range []string{"Primary Checking", "EUR", "1000.50", "2024-01-15", "Cedar Bank", "1234567890", "Primary account"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output, got: %s", want, out)
 		}
@@ -226,8 +226,8 @@ func TestAccountAdd_WithAllOptions(t *testing.T) {
 	if acct.OpeningDate.String() != "2024-01-15" {
 		t.Errorf("opening date = %s, want 2024-01-15", acct.OpeningDate.String())
 	}
-	if !acct.Institution.Valid || acct.Institution.String != "Chase Bank" {
-		t.Errorf("institution = %v, want Chase Bank", acct.Institution)
+	if !acct.Institution.Valid || acct.Institution.String != "Cedar Bank" {
+		t.Errorf("institution = %v, want Cedar Bank", acct.Institution)
 	}
 	if !acct.AccountNumber.Valid || acct.AccountNumber.String != "1234567890" {
 		t.Errorf("account number = %v, want 1234567890", acct.AccountNumber)

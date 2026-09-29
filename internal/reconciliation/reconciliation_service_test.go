@@ -385,7 +385,7 @@ func TestService_FinishReconciliation_SplitTransaction(t *testing.T) {
 	svc := NewService(reconRepo, txnRepo, accountRepo, database)
 	txnSvc := transaction.NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 
-	acct := createTestCheckingAccount(t, accountRepo, "Wealthfront Checking", "1000.00")
+	acct := createTestCheckingAccount(t, accountRepo, "Northwind Checking", "1000.00")
 
 	cat1 := category.NewCategory("Salary", category.TypeIncome)
 	cat2 := category.NewCategory("Bonus", category.TypeIncome)

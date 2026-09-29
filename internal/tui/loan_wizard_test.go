@@ -169,13 +169,13 @@ func TestLoanWizard_CreatesLoanAccountAndSchedule(t *testing.T) {
 	env := newLoanWizardEnv(t)
 
 	env.set(loanFieldName, "Mortgage")
-	env.set(loanFieldInstitution, "Wells Fargo")
+	env.set(loanFieldInstitution, "Fabrikam Mortgage")
 	env.set(loanFieldCurrentBalance, "380000")
 	env.set(loanFieldAPR, "6.5")
 	env.set(loanFieldPayment, "2401.86")
 	env.set(loanFieldNextPaymentDate, "08/01/2026")
 	env.selectOption(t, loanFieldFromAccount, "Checking")
-	env.set(loanFieldPayee, "Wells Fargo")
+	env.set(loanFieldPayee, "Fabrikam Mortgage")
 	// Interest category left at the default (Loan > Interest, get-or-created).
 	// One escrow line.
 	env.selectOption(t, loanFieldEscrowStart, "Housing > Property Tax")
@@ -200,8 +200,8 @@ func TestLoanWizard_CreatesLoanAccountAndSchedule(t *testing.T) {
 	if !loanAcct.InterestRate.Valid || !loanAcct.InterestRate.Money.Equal(types.MustNewMoney("6.5")) {
 		t.Errorf("interest rate = %v, want 6.5", loanAcct.InterestRate)
 	}
-	if !loanAcct.Institution.Valid || loanAcct.Institution.String != "Wells Fargo" {
-		t.Errorf("institution = %v, want Wells Fargo", loanAcct.Institution)
+	if !loanAcct.Institution.Valid || loanAcct.Institution.String != "Fabrikam Mortgage" {
+		t.Errorf("institution = %v, want Fabrikam Mortgage", loanAcct.Institution)
 	}
 
 	// Schedule is loan-shaped, monthly, indefinite, on the funding account.

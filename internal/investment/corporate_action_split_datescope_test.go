@@ -14,7 +14,7 @@ import (
 
 func TestCorporateActionService_Split_SkipsLotsPurchasedAfterSplitDate(t *testing.T) {
 	env := createCATestEnv(t)
-	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createLotTrackingAccount(t, env.accountRepo, "Northwind IRA")
 	sec := createSec(t, env.secRepo, "VTI")
 	buyDate := types.NewDate(2019, time.March, 1)   // bought post-split
 	splitDate := types.NewDate(2008, time.June, 18) // VTI's real 2008 2:1 split

@@ -51,7 +51,7 @@ func TestAccountShow_ValidAccount(t *testing.T) {
 	database, dbPath := dbtest.NewFile(t, "test.tdb")
 	repo := accountdom.NewRepository(database)
 	acct := accountdom.NewAccount("Test Checking", accountdom.TypeChecking, "USD", types.MustNewMoney("1000.00"), types.Today())
-	acct.SetInstitution("Chase Bank")
+	acct.SetInstitution("Cedar Bank")
 	acct.SetAccountNumber("1234567890")
 	if err := repo.Create(acct); err != nil {
 		t.Fatalf("setup: create account: %v", err)
@@ -64,7 +64,7 @@ func TestAccountShow_ValidAccount(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"ACCOUNT: Test Checking", "Checking", "USD", "Chase Bank", "****7890", "Current Balance", "Active"} {
+	for _, want := range []string{"ACCOUNT: Test Checking", "Checking", "USD", "Cedar Bank", "****7890", "Current Balance", "Active"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output, got: %s", want, out)
 		}

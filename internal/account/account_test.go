@@ -249,7 +249,7 @@ func TestTypeScanValue(t *testing.T) {
 func TestNewAccount(t *testing.T) {
 	t.Run("Creates account with required fields", func(t *testing.T) {
 		acc := NewAccount(
-			"Chase Checking",
+			"Cedar Checking",
 			TypeChecking,
 			"USD",
 			types.MustNewMoney("1000.00"),
@@ -259,8 +259,8 @@ func TestNewAccount(t *testing.T) {
 		if acc.ID.IsNil() {
 			t.Error("NewAccount should create non-nil ID")
 		}
-		if acc.Name != "Chase Checking" {
-			t.Errorf("Expected name 'Chase Checking', got %q", acc.Name)
+		if acc.Name != "Cedar Checking" {
+			t.Errorf("Expected name 'Cedar Checking', got %q", acc.Name)
 		}
 		if acc.Type != TypeChecking {
 			t.Errorf("Expected type checking, got %q", acc.Type)
@@ -484,18 +484,18 @@ func TestAccountValidation(t *testing.T) {
 func TestAccountOptionalFields(t *testing.T) {
 	t.Run("SetInstitution sets valid value", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
-		acc.SetInstitution("Chase Bank")
+		acc.SetInstitution("Cedar Bank")
 		if !acc.Institution.Valid {
 			t.Error("Institution should be valid after SetInstitution")
 		}
-		if acc.Institution.String != "Chase Bank" {
-			t.Errorf("Expected 'Chase Bank', got %q", acc.Institution.String)
+		if acc.Institution.String != "Cedar Bank" {
+			t.Errorf("Expected 'Cedar Bank', got %q", acc.Institution.String)
 		}
 	})
 
 	t.Run("SetInstitution clears with empty string", func(t *testing.T) {
 		acc := NewAccount("Test", TypeChecking, "USD", types.ZeroMoney, types.Today())
-		acc.SetInstitution("Chase Bank")
+		acc.SetInstitution("Cedar Bank")
 		acc.SetInstitution("")
 		if acc.Institution.Valid {
 			t.Error("Institution should be invalid after clearing")

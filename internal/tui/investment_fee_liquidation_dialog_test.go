@@ -104,7 +104,7 @@ func feeLiqApp(t *testing.T, secID, acctID types.ID) *App {
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Fidelity 401k",
+				Name:      "Acme 401k",
 				Type:      account.TypeInvestment,
 				// TrackLots false → non-lot path, nil allocations, no lotRepo needed.
 			},

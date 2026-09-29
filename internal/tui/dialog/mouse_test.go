@@ -514,7 +514,7 @@ func TestDialog_HandleMouse_ClickCancel_WhenScrolling(t *testing.T) {
 // shifts and clicks miss.
 func TestDialog_HandleMouse_ClickCancel_WithWrappingMessage(t *testing.T) {
 	d := NewDialog("Stock Split")
-	d.SetMessage("Ratio is N:M — N new shares for every M held. e.g. 2:1 = forward 2-for-1, 1:2 = halves shares.\n\nAfter split:\n  E*Trade Rollover IRA: 10 → 20 shares\n  Wealthfront IRA: 656.09894 → 1312.19788 shares")
+	d.SetMessage("Ratio is N:M — N new shares for every M held. e.g. 2:1 = forward 2-for-1, 1:2 = halves shares.\n\nAfter split:\n  Maple Invest Rollover IRA: 10 → 20 shares\n  Northwind IRA: 150.25 → 300.5 shares")
 	d.AddTextField("Date", "06/18/2008", "", 0)
 	d.AddTextField("Ratio", "2:1", "", 0)
 	d.SetVisible(true)

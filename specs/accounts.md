@@ -25,7 +25,7 @@ Accounts represent financial accounts that hold money or track balances. Each ac
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | UUID | Yes | Unique identifier |
-| `name` | string | Yes | Display name (e.g., "Chase Checking") |
+| `name` | string | Yes | Display name (e.g., "Cedar Checking") |
 | `type` | enum | Yes | One of the account types above |
 | `currency` | string | Yes | ISO 4217 currency code (e.g., "USD") |
 | `opening_balance` | decimal | Yes | Starting balance when account was created |

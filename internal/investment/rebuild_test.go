@@ -269,7 +269,7 @@ func TestRebuildPositions_LotTracked_HealsCleanSecurityWithCAPresent(t *testing.
 	// while another security carries a corporate action. The clean security's
 	// lot must be restored even though the database has corporate-action history.
 	env := createFullTestService(t)
-	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createLotTrackingAccount(t, env.accountRepo, "Northwind IRA")
 	withCA := createSec(t, env.secRepo, "GBTC")
 	vnq := createSec(t, env.secRepo, "VNQ")
 	date := types.NewDate(2024, time.March, 15)
