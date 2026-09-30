@@ -404,7 +404,7 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -415,11 +415,11 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// Press 't' for transfer
 	tKey := tea.KeyPressMsg{Code: 't', Text: "t"}
@@ -734,7 +734,7 @@ func TestCurrentRegisterAccountID(t *testing.T) {
 
 	app := &App{
 		currentView:        ViewRegister,
-		register:           &registerData{account: regAcct},
+		register:           registerViewState{data: &registerData{account: regAcct}},
 		investmentRegister: &investmentRegisterData{account: invAcct},
 	}
 	if got := app.currentRegisterAccountID(); got != regAcct.ID {
@@ -998,7 +998,7 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
@@ -1009,7 +1009,7 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -1158,7 +1158,7 @@ func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) 
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -1179,11 +1179,11 @@ func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) 
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleRegisterKeys(enter)

@@ -180,10 +180,10 @@ func TestRegisterKey_A_OpensAmortizationForLoan(t *testing.T) {
 	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
 
 	env.app.currentView = ViewRegister
-	env.app.register = &registerData{account: env.loan}
-	env.app.table = widget.NewTable(registerColumns(false))
+	env.app.register.data = &registerData{account: env.loan}
+	env.app.register.table = widget.NewTable(registerColumns(false))
 	env.app.sidebar.SetFocused(false)
-	env.app.table.SetFocused(true)
+	env.app.register.table.SetFocused(true)
 
 	model, cmd := env.app.handleRegisterKeys(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	env.app = model.(*App)
@@ -205,10 +205,10 @@ func TestRegisterKey_A_NoOpForNonLoan(t *testing.T) {
 	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
 
 	env.app.currentView = ViewRegister
-	env.app.register = &registerData{account: env.funding} // checking, not a loan
-	env.app.table = widget.NewTable(registerColumns(false))
+	env.app.register.data = &registerData{account: env.funding} // checking, not a loan
+	env.app.register.table = widget.NewTable(registerColumns(false))
 	env.app.sidebar.SetFocused(false)
-	env.app.table.SetFocused(true)
+	env.app.register.table.SetFocused(true)
 
 	model, cmd := env.app.handleRegisterKeys(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	env.app = model.(*App)

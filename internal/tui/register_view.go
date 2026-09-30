@@ -14,6 +14,14 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// registerViewState is everything the account register view owns. Its zero
+// value is the view before its first load. pendingRegisterSelectID is NOT
+// here: dialog save paths set it, so it stays on App as a handoff.
+type registerViewState struct {
+	data  *registerData
+	table *widget.Table
+}
+
 // registerData holds the loaded data for the account register view.
 type registerData struct {
 	account       *account.Account
@@ -101,13 +109,13 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
 			a.sidebar.SetFocused(false)
-			if a.table != nil {
-				a.table.SetFocused(true)
+			if a.register.table != nil {
+				a.register.table.SetFocused(true)
 			}
 		} else {
 			a.sidebar.SetFocused(true)
-			if a.table != nil {
-				a.table.SetFocused(false)
+			if a.register.table != nil {
+				a.register.table.SetFocused(false)
 			}
 		}
 		return a, nil
@@ -119,34 +127,34 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// widget.Table-focused key handling
-	if a.table == nil || a.register == nil {
+	if a.register.table == nil || a.register.data == nil {
 		return a, nil
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.table.MoveUp()
+		a.register.table.MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.table.MoveDown()
+		a.register.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.table.MoveToTop()
+		a.register.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.table.MoveToBottom()
+		a.register.table.MoveToBottom()
 	case msg.String() == "pgup":
 		tableHeight := max(a.height-6, 1)
-		a.table.PageUp(tableHeight)
+		a.register.table.PageUp(tableHeight)
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
-		a.table.PageDown(tableHeight)
+		a.register.table.PageDown(tableHeight)
 	case msg.String() == "a":
 		// Amortization drill-in — loan accounts only (read-only, so it works
 		// on a closed loan too). A no-op on non-loan accounts.
-		if a.register.account != nil && a.register.account.Type == account.TypeLoan {
+		if a.register.data.account != nil && a.register.data.account.Type == account.TypeLoan {
 			a.switchView(ViewAmortization)
-			return a, a.loadAmortizationData(a.register.account.ID)
+			return a, a.loadAmortizationData(a.register.data.account.ID)
 		}
 		return a, nil
-	case a.register.account != nil && a.register.account.IsClosed() &&
+	case a.register.data.account != nil && a.register.data.account.IsClosed() &&
 		(msg.String() == "c" || msg.String() == "v" || msg.String() == "t" || msg.String() == "r" ||
 			key.Matches(msg, a.keys.Delete) || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter)):
 		// A closed account is frozen: navigation still works, but every
@@ -181,16 +189,16 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // transfer-edit flow (Phase 2). Split rows route to the split-edit flow
 // (Phase 3).
 func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil {
+	if a.register.table == nil || a.register.data == nil {
 		return a, nil
 	}
 
-	cursor := a.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.transactions) {
+	cursor := a.register.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.data.transactions) {
 		return a, nil
 	}
 
-	txn := a.register.transactions[cursor]
+	txn := a.register.data.transactions[cursor]
 
 	if txn.IsVoid() {
 		a.statusbar.AddNotification("Cannot edit void transaction", widget.NotificationAlert)
@@ -210,16 +218,16 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 
 // toggleTransactionStatus toggles the cleared/uncleared status of the selected transaction.
 func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.services.Transaction == nil {
+	if a.register.table == nil || a.register.data == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
-	cursor := a.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.transactions) {
+	cursor := a.register.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.data.transactions) {
 		return a, nil
 	}
 
-	txn := a.register.transactions[cursor]
+	txn := a.register.data.transactions[cursor]
 
 	// Cannot toggle void transactions
 	if txn.IsVoid() {
@@ -288,16 +296,16 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 
 // showVoidConfirmation shows a confirmation dialog before voiding the selected transaction.
 func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.services.Transaction == nil {
+	if a.register.table == nil || a.register.data == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
-	cursor := a.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.transactions) {
+	cursor := a.register.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.data.transactions) {
 		return a, nil
 	}
 
-	txn := a.register.transactions[cursor]
+	txn := a.register.data.transactions[cursor]
 
 	// Cannot void already-void transactions
 	if txn.IsVoid() {
@@ -354,16 +362,16 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 // entirely rather than zeroing them out. Runs through the undo manager so
 // Ctrl+Z restores the deletion.
 func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
-	if a.table == nil || a.register == nil || a.services.Transaction == nil {
+	if a.register.table == nil || a.register.data == nil || a.services.Transaction == nil {
 		return a, nil
 	}
 
-	cursor := a.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.transactions) {
+	cursor := a.register.table.Cursor()
+	if cursor < 0 || cursor >= len(a.register.data.transactions) {
 		return a, nil
 	}
 
-	txn := a.register.transactions[cursor]
+	txn := a.register.data.transactions[cursor]
 
 	// Cannot delete void transactions (Service.Delete rejects with IsVoidError).
 	// Surface a status-bar notification before opening the dialog the user can't complete.
@@ -434,7 +442,7 @@ func (a *App) shouldShowRegisterBalance() bool {
 
 // buildRegisterTable creates and populates the table for the register view.
 func (a *App) buildRegisterTable() {
-	if a.register == nil {
+	if a.register.data == nil {
 		return
 	}
 
@@ -446,27 +454,27 @@ func (a *App) buildRegisterTable() {
 	var balances []types.Money
 	if showBalance {
 		opening := types.ZeroMoney
-		if a.register.account != nil {
-			opening = a.register.account.OpeningBalance
+		if a.register.data.account != nil {
+			opening = a.register.data.account.OpeningBalance
 		}
-		balances = runningBalances(a.register.transactions, opening)
+		balances = runningBalances(a.register.data.transactions, opening)
 	}
 
-	if a.table == nil {
-		a.table = widget.NewTable(columns)
+	if a.register.table == nil {
+		a.register.table = widget.NewTable(columns)
 	} else {
-		a.table.SetColumns(columns)
+		a.register.table.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.register.transactions))
-	for i, txn := range a.register.transactions {
+	rows := make([][]string, len(a.register.data.transactions))
+	for i, txn := range a.register.data.transactions {
 		row := a.formatRegisterRow(txn)
 		if showBalance {
 			row = append(row, formatDashboardMoney(balances[i]))
 		}
 		rows[i] = row
 	}
-	a.table.SetRows(rows)
+	a.register.table.SetRows(rows)
 
 	// After a save, move the cursor onto the just-saved row by matching its
 	// transaction ID. Selecting by ID (not position) keeps the cursor on the
@@ -475,9 +483,9 @@ func (a *App) buildRegisterTable() {
 	// rebuild against a stale ledger (e.g. a resize landing in the async
 	// save→reload window) preserves the pending selection for the real reload.
 	if !a.pendingRegisterSelectID.IsNil() {
-		for i, txn := range a.register.transactions {
+		for i, txn := range a.register.data.transactions {
 			if txn.ID == a.pendingRegisterSelectID {
-				a.table.SetCursor(i)
+				a.register.table.SetCursor(i)
 				a.pendingRegisterSelectID = types.NilID
 				break
 			}
@@ -485,9 +493,9 @@ func (a *App) buildRegisterTable() {
 	}
 
 	// Apply void row styling
-	for i, txn := range a.register.transactions {
+	for i, txn := range a.register.data.transactions {
 		if txn.IsVoid() {
-			a.table.SetRowStyle(i, widget.RowStyleVoid)
+			a.register.table.SetRowStyle(i, widget.RowStyleVoid)
 		}
 	}
 }
@@ -511,13 +519,13 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	// Payee
 	payee := ""
 	if txn.IsTransfer() {
-		if name, ok := a.register.accountNames[txn.TransferAccountID.ID]; ok {
+		if name, ok := a.register.data.accountNames[txn.TransferAccountID.ID]; ok {
 			payee = "Transfer: " + name
 		} else {
 			payee = "Transfer"
 		}
 	} else if txn.HasPayee() {
-		if name, ok := a.register.payeeNames[txn.PayeeID.ID]; ok {
+		if name, ok := a.register.data.payeeNames[txn.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
@@ -525,7 +533,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	// Category
 	category := ""
 	if txn.HasCategory() {
-		if name, ok := a.register.categoryNames[txn.CategoryID.ID]; ok {
+		if name, ok := a.register.data.categoryNames[txn.CategoryID.ID]; ok {
 			category = name
 		}
 	} else if txn.IsTransfer() {
@@ -540,7 +548,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 
 // renderRegister renders the account register view.
 func (a *App) renderRegister() string {
-	if a.register == nil {
+	if a.register.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading register...")
@@ -551,10 +559,10 @@ func (a *App) renderRegister() string {
 	var sections []string
 
 	// Title row: account name + balance
-	acctName := strings.ToUpper(a.register.account.Name)
+	acctName := strings.ToUpper(a.register.data.account.Name)
 	balStr := ""
-	if a.register.balance != nil {
-		balStr = "Bal: " + formatDashboardMoney(a.register.balance.CurrentBalance)
+	if a.register.data.balance != nil {
+		balStr = "Bal: " + formatDashboardMoney(a.register.data.balance.CurrentBalance)
 	}
 	// widget.Truncate account name if it would overflow available space
 	maxNameWidth := max(
@@ -564,7 +572,7 @@ func (a *App) renderRegister() string {
 	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(balStr)-4, 1)
 
 	balStyle := a.styles.Positive
-	if a.register.balance != nil && a.register.balance.CurrentBalance.IsNegative() {
+	if a.register.data.balance != nil && a.register.data.balance.CurrentBalance.IsNegative() {
 		balStyle = a.styles.Negative
 	}
 	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + balStyle.Render(balStr)
@@ -572,11 +580,11 @@ func (a *App) renderRegister() string {
 
 	// Closed-account banner: a closed account's register is read-only.
 	closedBanner := false
-	if a.register.account != nil && a.register.account.IsClosed() {
+	if a.register.data.account != nil && a.register.data.account.IsClosed() {
 		closedBanner = true
 		label := "Closed · read-only"
-		if a.register.account.ClosedDate.Valid {
-			label = "Closed " + a.register.account.ClosedDate.Date.String() + " · read-only"
+		if a.register.data.account.ClosedDate.Valid {
+			label = "Closed " + a.register.data.account.ClosedDate.Date.String() + " · read-only"
 		}
 		sections = append(sections, a.styles.Muted.Render(label))
 	}
@@ -596,13 +604,13 @@ func (a *App) renderRegister() string {
 	scrollInfoHeight := 1 // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
-	if a.table != nil {
+	if a.register.table != nil {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.table.Render(a.styles, tableWidth, tableHeight))
-		if info := a.table.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.register.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.register.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
-	} else if len(a.register.transactions) == 0 {
+	} else if len(a.register.data.transactions) == 0 {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No transactions"))
 		sections = append(sections, "")

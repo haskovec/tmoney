@@ -146,7 +146,7 @@ func (a *App) handleWindowSize(width, height int) {
 	a.height = height
 	a.styles.Resize(width, height)
 	a.ready = true
-	if a.register != nil && tableHasBalanceColumn(a.table) != a.shouldShowRegisterBalance() {
+	if a.register.data != nil && tableHasBalanceColumn(a.register.table) != a.shouldShowRegisterBalance() {
 		a.buildRegisterTable()
 	}
 	// The effective decision also suppresses the balance column while a

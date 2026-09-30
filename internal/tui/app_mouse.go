@@ -283,7 +283,7 @@ func (a *App) openAccountFromMouse(accountID types.ID) tea.Cmd {
 		a.switchView(ViewPortfolio)
 		return a.loadPortfolioData(accountID)
 	}
-	a.register = nil
+	a.register.data = nil
 	a.switchView(ViewRegister)
 	return a.loadRegisterData(accountID)
 }

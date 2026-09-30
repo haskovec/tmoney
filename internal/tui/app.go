@@ -95,9 +95,8 @@ type App struct {
 	// Dashboard view state (data loaded asynchronously)
 	dashboard dashboardViewState
 
-	// Register data (loaded when account is selected)
-	register *registerData
-	table    *widget.Table
+	// Register view state (data loaded when an account is selected)
+	register registerViewState
 
 	// Amortization view data (loan-account drill-in via 'a')
 	amortizationData  *amortizationViewData

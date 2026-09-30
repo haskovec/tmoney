@@ -20,7 +20,7 @@ func TestApp_RenderRegister_Loading(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		register:    nil,
+		register:    registerViewState{data: nil},
 	}
 
 	view := app.renderRegister()
@@ -42,41 +42,43 @@ func TestApp_RenderRegister_WithData(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
-			account: &account.Account{
-				BaseModel: types.BaseModel{ID: accountID},
-				Name:      "Checking",
-				Active:    true,
-			},
-			transactions: []*transaction.Transaction{
-				{
-					BaseModel:  types.BaseModel{ID: types.NewID()},
-					AccountID:  accountID,
-					Date:       types.Today(),
-					Amount:     types.MustNewMoney("-125.43"),
-					Status:     transaction.StatusCleared,
-					PayeeID:    types.NullableID{ID: payeeID, Valid: true},
-					CategoryID: types.NullableID{ID: categoryID, Valid: true},
+		register: registerViewState{
+			data: &registerData{
+				account: &account.Account{
+					BaseModel: types.BaseModel{ID: accountID},
+					Name:      "Checking",
+					Active:    true,
 				},
-				{
-					BaseModel: types.BaseModel{ID: types.NewID()},
-					AccountID: accountID,
-					Date:      types.Today(),
-					Amount:    types.MustNewMoney("2500.00"),
-					Status:    transaction.StatusUncleared,
-					PayeeID:   types.NullableID{ID: payeeID, Valid: true},
+				transactions: []*transaction.Transaction{
+					{
+						BaseModel:  types.BaseModel{ID: types.NewID()},
+						AccountID:  accountID,
+						Date:       types.Today(),
+						Amount:     types.MustNewMoney("-125.43"),
+						Status:     transaction.StatusCleared,
+						PayeeID:    types.NullableID{ID: payeeID, Valid: true},
+						CategoryID: types.NullableID{ID: categoryID, Valid: true},
+					},
+					{
+						BaseModel: types.BaseModel{ID: types.NewID()},
+						AccountID: accountID,
+						Date:      types.Today(),
+						Amount:    types.MustNewMoney("2500.00"),
+						Status:    transaction.StatusUncleared,
+						PayeeID:   types.NullableID{ID: payeeID, Valid: true},
+					},
 				},
+				balance: &account.Balance{
+					AccountID:      accountID,
+					CurrentBalance: types.MustNewMoney("5234.57"),
+					ClearedBalance: types.MustNewMoney("5000.00"),
+				},
+				payeeNames:    map[types.ID]string{payeeID: "Kroger"},
+				categoryNames: map[types.ID]string{categoryID: "Groceries"},
+				accountNames:  make(map[types.ID]string),
 			},
-			balance: &account.Balance{
-				AccountID:      accountID,
-				CurrentBalance: types.MustNewMoney("5234.57"),
-				ClearedBalance: types.MustNewMoney("5000.00"),
-			},
-			payeeNames:    map[types.ID]string{payeeID: "Kroger"},
-			categoryNames: map[types.ID]string{categoryID: "Groceries"},
-			accountNames:  make(map[types.ID]string),
+			table: nil,
 		},
-		table: nil,
 	}
 
 	app.buildRegisterTable()
@@ -113,7 +115,7 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Savings",
@@ -124,7 +126,7 @@ func TestApp_RenderRegister_EmptyTransactions(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -149,7 +151,7 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Credit Card",
@@ -160,7 +162,7 @@ func TestApp_RenderRegister_NegativeBalance(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -184,7 +186,7 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -205,7 +207,7 @@ func TestApp_RenderRegister_TransferDisplay(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  map[types.ID]string{otherAccountID: "Savings"},
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -230,7 +232,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -245,32 +247,32 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 
 	// widget.Table should start focused, sidebar not
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// Move down
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.Update(downKey)
-	if app.table.Cursor() != 1 {
-		t.Errorf("cursor should be 1 after down, got %d", app.table.Cursor())
+	if app.register.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after down, got %d", app.register.table.Cursor())
 	}
 
 	// Move down again
 	app.Update(downKey)
-	if app.table.Cursor() != 2 {
-		t.Errorf("cursor should be 2 after two downs, got %d", app.table.Cursor())
+	if app.register.table.Cursor() != 2 {
+		t.Errorf("cursor should be 2 after two downs, got %d", app.register.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.Update(upKey)
-	if app.table.Cursor() != 1 {
-		t.Errorf("cursor should be 1 after up, got %d", app.table.Cursor())
+	if app.register.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after up, got %d", app.register.table.Cursor())
 	}
 }
 
@@ -288,7 +290,7 @@ func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -297,11 +299,11 @@ func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	model, _ := app.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	updatedApp := model.(*App)
@@ -325,7 +327,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -336,13 +338,13 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 
 	// Start with table focused
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// Tab should switch focus to sidebar
 	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
@@ -351,7 +353,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 	if !app.sidebar.IsFocused() {
 		t.Error("sidebar should be focused after Tab")
 	}
-	if app.table.IsFocused() {
+	if app.register.table.IsFocused() {
 		t.Error("table should not be focused after Tab")
 	}
 
@@ -361,7 +363,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 	if app.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused after second Tab")
 	}
-	if !app.table.IsFocused() {
+	if !app.register.table.IsFocused() {
 		t.Error("table should be focused after second Tab")
 	}
 }
@@ -404,17 +406,17 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 	if cmd != nil {
 		t.Error("registerLoadedMsg should not return a command")
 	}
-	if updatedApp.register == nil {
+	if updatedApp.register.data == nil {
 		t.Fatal("register data should be set")
 	}
-	if updatedApp.register.account.Name != "Checking" {
-		t.Errorf("register account name = %q, want %q", updatedApp.register.account.Name, "Checking")
+	if updatedApp.register.data.account.Name != "Checking" {
+		t.Errorf("register account name = %q, want %q", updatedApp.register.data.account.Name, "Checking")
 	}
-	if updatedApp.table == nil {
+	if updatedApp.register.table == nil {
 		t.Fatal("table should be created")
 	}
-	if updatedApp.table.RowCount() != 1 {
-		t.Errorf("table row count = %d, want 1", updatedApp.table.RowCount())
+	if updatedApp.register.table.RowCount() != 1 {
+		t.Errorf("table row count = %d, want 1", updatedApp.register.table.RowCount())
 	}
 }
 
@@ -425,7 +427,7 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -446,16 +448,16 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 			payeeNames:    map[types.ID]string{payeeID: "Shell"},
 			categoryNames: map[types.ID]string{categoryID: "Gas"},
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
 
-	if app.table.RowCount() != 1 {
-		t.Fatalf("expected 1 row, got %d", app.table.RowCount())
+	if app.register.table.RowCount() != 1 {
+		t.Fatalf("expected 1 row, got %d", app.register.table.RowCount())
 	}
 
-	row := app.table.SelectedRow()
+	row := app.register.table.SelectedRow()
 	if row == nil {
 		t.Fatal("selected row should not be nil")
 	}
@@ -492,21 +494,21 @@ func TestApp_BuildRegisterTable_SelectsPendingByID(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true},
 			transactions:  txns,
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 		pendingRegisterSelectID: newID,
 	}
 
 	app.buildRegisterTable()
 
-	if app.table.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 (the back-dated new transaction)", app.table.Cursor())
+	if app.register.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (the back-dated new transaction)", app.register.table.Cursor())
 	}
 	if !app.pendingRegisterSelectID.IsNil() {
 		t.Error("pendingRegisterSelectID should be cleared after selection")
@@ -526,23 +528,23 @@ func TestApp_BuildRegisterTable_NoPendingLeavesCursor(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true},
 			transactions:  txns,
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("0")},
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
-	app.table.SetCursor(2)
+	app.register.table.SetCursor(2)
 	// Rebuild (simulating a reload with no pending selection).
 	app.buildRegisterTable()
 
-	if app.table.Cursor() != 2 {
-		t.Errorf("cursor = %d, want 2 (unchanged)", app.table.Cursor())
+	if app.register.table.Cursor() != 2 {
+		t.Errorf("cursor = %d, want 2 (unchanged)", app.register.table.Cursor())
 	}
 }
 
@@ -587,7 +589,7 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app := &App{
 				styles: widget.NewStyles(),
-				register: &registerData{
+				register: registerViewState{data: &registerData{
 					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 					transactions: []*transaction.Transaction{
 						{
@@ -602,11 +604,11 @@ func TestApp_BuildRegisterTable_StatusIndicators(t *testing.T) {
 					payeeNames:    make(map[types.ID]string),
 					categoryNames: make(map[types.ID]string),
 					accountNames:  make(map[types.ID]string),
-				},
+				}},
 			}
 
 			app.buildRegisterTable()
-			row := app.table.SelectedRow()
+			row := app.register.table.SelectedRow()
 			if row[1] != tt.expected {
 				t.Errorf("status indicator = %q, want %q", row[1], tt.expected)
 			}
@@ -625,7 +627,7 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 		width:       60,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "My Super Duper Extremely Long Savings Account Name That Overflows",
@@ -636,7 +638,7 @@ func TestApp_RenderRegister_LongAccountName(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -668,7 +670,7 @@ func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -679,7 +681,7 @@ func TestApp_RenderRegister_EmptyShowsHint(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderRegister()
@@ -697,7 +699,7 @@ func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -712,11 +714,11 @@ func TestApp_BuildRegisterTable_VoidStatusIndicator(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
-	row := app.table.SelectedRow()
+	row := app.register.table.SelectedRow()
 	if row[1] != "V" {
 		t.Errorf("void status indicator = %q, want %q", row[1], "V")
 	}
@@ -727,7 +729,7 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -756,21 +758,21 @@ func TestApp_BuildRegisterTable_VoidRowStyling(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
 
 	// Void row (index 1) should have widget.RowStyleVoid
-	if style, ok := app.table.RowStyles()[1]; !ok || style != widget.RowStyleVoid {
+	if style, ok := app.register.table.RowStyles()[1]; !ok || style != widget.RowStyleVoid {
 		t.Errorf("void row style = %v (ok=%v), want widget.RowStyleVoid", style, ok)
 	}
 
 	// Non-void rows should not have a style override
-	if _, ok := app.table.RowStyles()[0]; ok {
+	if _, ok := app.register.table.RowStyles()[0]; ok {
 		t.Error("cleared row should not have a style override")
 	}
-	if _, ok := app.table.RowStyles()[2]; ok {
+	if _, ok := app.register.table.RowStyles()[2]; ok {
 		t.Error("uncleared row should not have a style override")
 	}
 }
@@ -793,7 +795,7 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app := &App{
 				styles: widget.NewStyles(),
-				register: &registerData{
+				register: registerViewState{data: &registerData{
 					account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 					transactions: []*transaction.Transaction{
 						{
@@ -808,11 +810,11 @@ func TestApp_BuildRegisterTable_AllFourStatusIndicators(t *testing.T) {
 					payeeNames:    make(map[types.ID]string),
 					categoryNames: make(map[types.ID]string),
 					accountNames:  make(map[types.ID]string),
-				},
+				}},
 			}
 
 			app.buildRegisterTable()
-			row := app.table.SelectedRow()
+			row := app.register.table.SelectedRow()
 			if row[1] != tt.expected {
 				t.Errorf("status indicator = %q, want %q", row[1], tt.expected)
 			}
@@ -831,7 +833,7 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -846,7 +848,7 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -878,7 +880,7 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -893,7 +895,7 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -923,7 +925,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -938,7 +940,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -974,7 +976,7 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -989,7 +991,7 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1019,7 +1021,7 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1034,7 +1036,7 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1067,7 +1069,7 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1084,7 +1086,7 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  map[types.ID]string{transferAccountID: "Savings"},
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1114,7 +1116,7 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1129,7 +1131,7 @@ func TestApp_VoidKey_InRegisterView(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1158,7 +1160,7 @@ func TestApp_RegisterFrozenOnClosedAccount(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel:  types.BaseModel{ID: accountID},
 				Name:       "Old Checking",
@@ -1172,11 +1174,11 @@ func TestApp_RegisterFrozenOnClosedAccount(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// 'r' must not open the reconciliation dialog.
 	app.handleRegisterKeys(tea.KeyPressMsg{Code: 'r', Text: "r"})
@@ -1228,7 +1230,7 @@ func TestApp_ShowVoidConfirmation_NilGuards(t *testing.T) {
 	}
 
 	// Nil register
-	app.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
+	app.register.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
 	_, cmd = app.showVoidConfirmation()
 	if cmd != nil {
 		t.Error("showVoidConfirmation() should return nil when register is nil")
@@ -1246,7 +1248,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1261,7 +1263,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1294,7 +1296,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1309,7 +1311,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1342,7 +1344,7 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1357,7 +1359,7 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1390,7 +1392,7 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1407,7 +1409,7 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  map[types.ID]string{transferAccountID: "Savings"},
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1441,7 +1443,7 @@ func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Test", Active: true},
 			transactions: []*transaction.Transaction{
 				{
@@ -1456,7 +1458,7 @@ func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildRegisterTable()
@@ -1486,7 +1488,7 @@ func TestApp_ShowDeleteConfirmation_NilGuards(t *testing.T) {
 		t.Error("showDeleteConfirmation() should return nil when table is nil")
 	}
 
-	app.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
+	app.register.table = widget.NewTable([]widget.Column{{Header: "A", Width: 10}})
 	_, cmd = app.showDeleteConfirmation()
 	if cmd != nil {
 		t.Error("showDeleteConfirmation() should return nil when register is nil")

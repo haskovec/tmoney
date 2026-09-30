@@ -1218,7 +1218,7 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
@@ -1229,7 +1229,7 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()})},
 	}
 
@@ -1342,7 +1342,7 @@ func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -1361,11 +1361,11 @@ func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleRegisterKeys(enter)

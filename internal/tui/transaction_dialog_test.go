@@ -459,7 +459,7 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -470,11 +470,11 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// Press 'n' for new transaction
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
@@ -1213,7 +1213,7 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: types.NewID()},
 				Name:      "Checking",
@@ -1224,7 +1224,7 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
@@ -1878,7 +1878,7 @@ func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testin
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -1897,11 +1897,11 @@ func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testin
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleRegisterKeys(enter)
@@ -1925,7 +1925,7 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -1944,11 +1944,11 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleRegisterKeys(enter)
@@ -1974,7 +1974,7 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -1993,11 +1993,11 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handleRegisterKeys(enter)

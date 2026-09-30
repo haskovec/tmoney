@@ -227,14 +227,16 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-		register:    &registerData{},
-		width:       100,
-		height:      24,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
-	app.table.SetRows([][]string{{"row1"}, {"row2"}, {"row3"}})
+	app.register.table.SetRows([][]string{{"row1"}, {"row2"}, {"row3"}})
 
 	sidebarWidth := app.styles.SidebarWidth()
 
@@ -249,8 +251,8 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.table.Cursor() != 1 {
-		t.Errorf("table cursor = %d, want 1", updatedApp.table.Cursor())
+	if updatedApp.register.table.Cursor() != 1 {
+		t.Errorf("table cursor = %d, want 1", updatedApp.register.table.Cursor())
 	}
 }
 
@@ -335,15 +337,17 @@ func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-		register:    &registerData{},
-		width:       100,
-		height:      24,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	// Start with sidebar focused
 	app.sidebar.SetFocused(true)
-	app.table.SetFocused(false)
+	app.register.table.SetFocused(false)
 
 	sidebarWidth := app.styles.SidebarWidth()
 
@@ -359,7 +363,7 @@ func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
 	if updatedApp.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused after clicking content area")
 	}
-	if !updatedApp.table.IsFocused() {
+	if !updatedApp.register.table.IsFocused() {
 		t.Error("table should be focused after clicking content area")
 	}
 }
@@ -371,10 +375,12 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-		register:    &registerData{},
-		width:       100,
-		height:      24,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 
@@ -385,7 +391,7 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 
 	// Start with table focused
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	// Click in sidebar area
 	msg := tea.MouseClickMsg{X: 5, Y: 2, Button: tea.MouseLeft}
@@ -395,7 +401,7 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 	if !updatedApp.sidebar.IsFocused() {
 		t.Error("sidebar should be focused after clicking in sidebar area")
 	}
-	if updatedApp.table.IsFocused() {
+	if updatedApp.register.table.IsFocused() {
 		t.Error("table should not be focused after clicking in sidebar area")
 	}
 }
@@ -407,23 +413,25 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-		register:    &registerData{},
-		width:       100,
-		height:      24,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
-	app.table.SetRows([][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}})
+	app.register.table.SetFocused(true)
+	app.register.table.SetRows([][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}})
 
 	// Scroll down
 	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.table.Cursor() != 1 {
-		t.Errorf("after wheel down, cursor = %d, want 1", updatedApp.table.Cursor())
+	if updatedApp.register.table.Cursor() != 1 {
+		t.Errorf("after wheel down, cursor = %d, want 1", updatedApp.register.table.Cursor())
 	}
 
 	// Scroll up
@@ -431,8 +439,8 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	model, _ = updatedApp.Update(msg)
 	updatedApp = model.(*App)
 
-	if updatedApp.table.Cursor() != 0 {
-		t.Errorf("after wheel up, cursor = %d, want 0", updatedApp.table.Cursor())
+	if updatedApp.register.table.Cursor() != 0 {
+		t.Errorf("after wheel up, cursor = %d, want 0", updatedApp.register.table.Cursor())
 	}
 }
 
@@ -449,15 +457,17 @@ func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		table:       widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-		register:    &registerData{},
-		width:       100,
-		height:      24,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
-	app.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
+	app.register.table.SetFocused(true)
+	app.register.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
 
 	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
 	_, cmd := app.Update(msg)

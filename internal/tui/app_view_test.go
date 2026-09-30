@@ -235,14 +235,14 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 				width:       termWidth,
 				height:      24,
 				ready:       true,
-				register: &registerData{
+				register: registerViewState{data: &registerData{
 					account:       checking,
 					balance:       &account.Balance{CurrentBalance: types.MustNewMoney("0.00")},
 					transactions:  nil,
 					payeeNames:    map[types.ID]string{},
 					categoryNames: map[types.ID]string{},
 					accountNames:  map[types.ID]string{},
-				},
+				}},
 			}
 			app.styles = widget.NewStyles()
 			app.styles.Resize(termWidth, 24)
