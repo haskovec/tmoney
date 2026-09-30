@@ -231,6 +231,25 @@ func (s *ValuationService) GetHoldings(accountID types.ID, asOf types.Date, opts
 	return s.getHoldings(acct, asOf, opts)
 }
 
+// GetTransaction returns one investment transaction by id, as stored. It is a
+// read with no rule of its own.
+func (s *ValuationService) GetTransaction(id types.ID) (*Transaction, error) {
+	return s.repo.GetByID(id)
+}
+
+// ListTransactions returns an account's investment transactions that match
+// filter, as stored. It is a read with no rule of its own.
+func (s *ValuationService) ListTransactions(accountID types.ID, filter TransactionFilter) ([]*Transaction, error) {
+	return s.repo.ListByAccount(accountID, filter)
+}
+
+// ListOpenLots returns the account's open lots of a security, as stored. It
+// is a read with no rule of its own: the sell and share-transfer dialogs show
+// these lots, and a new sell allocates across them.
+func (s *ValuationService) ListOpenLots(accountID, securityID types.ID) ([]*Lot, error) {
+	return s.lotRepo.ListByAccountAndSecurity(accountID, securityID, false)
+}
+
 // GetLotDetail returns lot-level detail for a specific security in a lot-tracking account.
 func (s *ValuationService) GetLotDetail(accountID types.ID, securityID types.ID, asOf types.Date) ([]LotDetail, error) {
 	acct, err := loadInvestmentAccount(s.accountRepo, accountID)

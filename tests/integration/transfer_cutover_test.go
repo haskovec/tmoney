@@ -65,7 +65,7 @@ func TestCutover_InvestmentRegisterDelete_CashTransfer(t *testing.T) {
 			if _, err := svc.Transfer.Get(res.TransferID); err == nil {
 				t.Error("transfer still readable after Delete")
 			}
-			rows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+			rows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 			if err != nil {
 				t.Fatalf("list investment rows: %v", err)
 			}
@@ -225,7 +225,7 @@ func TestCutover_AutoPostUndo_TransferSchedule(t *testing.T) {
 
 	// Both legs are gone.
 	for _, acctID := range []types.ID{checking.ID, savings.ID} {
-		rows, err := svc.TransactionRepo.ListByAccount(acctID)
+		rows, err := svc.Transaction.ListByAccount(acctID)
 		if err != nil {
 			t.Fatalf("list rows: %v", err)
 		}

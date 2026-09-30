@@ -68,6 +68,55 @@ func (s *CorporateActionService) Merger(sourceSecurityID, targetSecurityID types
 	return ca, nil
 }
 
+// MergerHolding is one account's holding that a merger of its security
+// changes: its open lots when it holds the security in lots, its position
+// otherwise.
+type MergerHolding struct {
+	AccountID types.ID
+	TrackLots bool
+	Lots      []*Lot
+	Position  *Position
+}
+
+// MergerHoldings returns what Merger would change for the source security, by
+// the rules Merger applies: every open lot, grouped by account in the order
+// the lots come, then every position whose account has never held the
+// security in lots. A preview reads this rather than the repositories: a
+// lot-tracked account that sold out keeps a position row, and Merger skips it.
+func (s *CorporateActionService) MergerHoldings(sourceSecurityID types.ID) ([]MergerHolding, error) {
+	lots, err := s.lotRepo.GetOpenLotsBySecurity(sourceSecurityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load lots: %w", err)
+	}
+	var out []MergerHolding
+	index := make(map[types.ID]int)
+	for _, lot := range lots {
+		i, ok := index[lot.AccountID]
+		if !ok {
+			i = len(out)
+			index[lot.AccountID] = i
+			out = append(out, MergerHolding{AccountID: lot.AccountID, TrackLots: true})
+		}
+		out[i].Lots = append(out[i].Lots, lot)
+	}
+
+	positions, err := s.positionRepo.GetPositionsBySecurity(sourceSecurityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load positions: %w", err)
+	}
+	for _, pos := range positions {
+		usesLots, err := s.accountUsesLotsFor(pos.AccountID, sourceSecurityID)
+		if err != nil {
+			return nil, err
+		}
+		if usesLots {
+			continue
+		}
+		out = append(out, MergerHolding{AccountID: pos.AccountID, Position: pos})
+	}
+	return out, nil
+}
+
 // mergerProcessLots handles the merger for lot-tracking accounts.
 // For each open lot of the source security: close the lot, create a new lot for
 // the target security with adjusted shares and cost basis, and create an exchange transaction.

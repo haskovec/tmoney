@@ -243,11 +243,11 @@ func applyFieldEdits(svc *app.Services, txn *transactiondom.Transaction, opts *t
 // like "Food:Groceries" resolve). Shared by `transaction add` and
 // `transaction edit`.
 func resolveCategoryByName(svc *app.Services, name string) (*category.Category, error) {
-	cat, err := svc.CategoryRepo.GetByName(name, nil)
+	cat, err := svc.Category.GetByName(name, nil)
 	if err == nil {
 		return cat, nil
 	}
-	categories, listErr := svc.CategoryRepo.List()
+	categories, listErr := svc.Category.List()
 	if listErr != nil {
 		return nil, fmt.Errorf("category %q not found", name)
 	}
@@ -274,12 +274,12 @@ func printTransactionSummary(w io.Writer, svc *app.Services, header string, txn 
 	fmt.Fprintf(w, "  Date:     %s\n", txn.Date.String())
 	fmt.Fprintf(w, "  Amount:   %s\n", cmdutil.FormatMoney(txn.Amount, currency))
 	if txn.PayeeID.Valid {
-		if py, err := svc.PayeeRepo.GetByID(txn.PayeeID.ID); err == nil {
+		if py, err := svc.Payee.GetByID(txn.PayeeID.ID); err == nil {
 			fmt.Fprintf(w, "  Payee:    %s\n", py.Name)
 		}
 	}
 	if txn.CategoryID.Valid {
-		if cat, err := svc.CategoryRepo.GetByID(txn.CategoryID.ID); err == nil {
+		if cat, err := svc.Category.GetByID(txn.CategoryID.ID); err == nil {
 			fmt.Fprintf(w, "  Category: %s\n", cat.Name)
 		}
 	}

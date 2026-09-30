@@ -20,8 +20,12 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// Services is the central registry for all application services and repositories.
-// This is the single source of truth for wiring up the application layer.
+// Services is the central registry for all application services. This is the
+// single source of truth for wiring up the application layer.
+//
+// It exports services only. Each repository stays inside the services built
+// on it, so a caller cannot skip a service rule; a test that must read or
+// write stored state directly builds its own repository on the database.
 type Services struct {
 	// Services
 	Account        *account.Service
@@ -50,22 +54,6 @@ type Services struct {
 	// must not reach past it into transaction.Service or investment.Service
 	// for transfer work.
 	Transfer *transfer.Service
-
-	// Repositories (exposed for direct use by CLI/TUI when needed)
-	AccountRepo         *account.Repository
-	TransactionRepo     *transaction.Repository
-	SplitRepo           *transaction.SplitRepository
-	CategoryRepo        *category.Repository
-	PayeeRepo           *payee.Repository
-	ScheduledTxnRepo    *scheduled.Repository
-	ReconciliationRepo  *reconciliation.Repository
-	SecurityRepo        *security.Repository
-	PriceRepo           *price.Repository
-	InvestmentRepo      *investment.Repository
-	LotRepo             *investment.LotRepository
-	PositionRepo        *investment.PositionRepository
-	TransactionLotRepo  *investment.TransactionLotRepository
-	CorporateActionRepo *investment.CorporateActionRepository
 
 	// ValueAdjustmentUserCollision is true when a *user* (non-system)
 	// category named "Value Adjustment" already exists, so the system
@@ -167,21 +155,6 @@ func NewServices(database *db.DB) *Services {
 		CorporateAction:     corporateActionSvc,
 		TransferLink:        transferLinkSvc,
 		Transfer:            transferSvc,
-
-		AccountRepo:         accountRepo,
-		TransactionRepo:     txnRepo,
-		SplitRepo:           splitRepo,
-		CategoryRepo:        categoryRepo,
-		PayeeRepo:           payeeRepo,
-		ScheduledTxnRepo:    scheduledRepo,
-		ReconciliationRepo:  reconciliationRepo,
-		SecurityRepo:        securityRepo,
-		PriceRepo:           priceRepo,
-		InvestmentRepo:      investmentRepo,
-		LotRepo:             lotRepo,
-		PositionRepo:        positionRepo,
-		TransactionLotRepo:  transactionLotRepo,
-		CorporateActionRepo: corporateActionRepo,
 	}
 }
 

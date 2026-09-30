@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -39,7 +40,7 @@ func lotIDByDate(t *testing.T, dbPath, dateStr string) string {
 	defer database.Close()
 	svc := app.NewServices(database)
 	sec, _ := svc.Security.GetByTicker("AAPL", "")
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	for _, l := range lots {
 		if l.PurchaseDate.Time().Equal(d.Time()) {
 			return l.ID.String()
@@ -91,7 +92,7 @@ func TestInvestmentSplitLot_Forward(t *testing.T) {
 	svc := app.NewServices(database)
 	sec, _ := svc.Security.GetByTicker("AAPL", "")
 	acct, _ := svc.Account.GetByName("Brokerage")
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if len(lots) != 2 {
 		t.Fatalf("expected 2 lots, got %d", len(lots))
 	}
@@ -103,7 +104,7 @@ func TestInvestmentSplitLot_Forward(t *testing.T) {
 			t.Errorf("lot %s shares != original_shares (%s vs %s)", l.ID, l.Shares.String(), l.OriginalShares.String())
 		}
 	}
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("GetByAccountAndSecurity: %v", err)
 	}

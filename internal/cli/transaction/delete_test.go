@@ -22,7 +22,7 @@ func reloadOptional(t *testing.T, dbPath string, txnID types.ID) (*transactiondo
 		t.Fatalf("failed to reopen database: %v", err)
 	}
 	svc := app.NewServices(database)
-	txn, err := svc.TransactionRepo.GetByID(txnID)
+	txn, err := svc.Transaction.GetByID(txnID)
 	if err != nil {
 		txn = nil
 	}

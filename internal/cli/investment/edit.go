@@ -125,7 +125,7 @@ func runInvestmentEdit(opts *investmentEditOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
-	old, err := svc.InvestmentRepo.GetByID(txnID)
+	old, err := svc.InvestmentValuation.GetTransaction(txnID)
 	if err != nil {
 		return fmt.Errorf("investment transaction %s not found", opts.txnID)
 	}

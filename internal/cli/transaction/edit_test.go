@@ -70,7 +70,7 @@ func reload(t *testing.T, dbPath string, txnID types.ID) (*transactiondom.Transa
 		t.Fatalf("failed to reopen database: %v", err)
 	}
 	svc := app.NewServices(database)
-	txn, err := svc.TransactionRepo.GetByID(txnID)
+	txn, err := svc.Transaction.GetByID(txnID)
 	if err != nil {
 		database.Close()
 		t.Fatalf("failed to reload transaction: %v", err)
@@ -171,7 +171,7 @@ func TestTransactionEdit_PayeeAutoCreates(t *testing.T) {
 	if !txn.PayeeID.Valid {
 		t.Fatal("payee should be set")
 	}
-	py, err := svc.PayeeRepo.GetByID(txn.PayeeID.ID)
+	py, err := svc.Payee.GetByID(txn.PayeeID.ID)
 	if err != nil || py.Name != "New Bakery" {
 		t.Errorf("payee = %v (err %v), want New Bakery", py, err)
 	}

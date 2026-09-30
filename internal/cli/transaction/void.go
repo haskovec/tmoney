@@ -52,12 +52,12 @@ func runTransactionVoid(opts *transactionVoidOptions, w io.Writer) error {
 		return fmt.Errorf("invalid transaction ID: %w", err)
 	}
 
-	txn, err := svc.TransactionRepo.GetByID(txnID)
+	txn, err := svc.Transaction.GetByID(txnID)
 	if err != nil {
 		return fmt.Errorf("transaction not found: %w", err)
 	}
 
-	acct, _ := svc.AccountRepo.GetByID(txn.AccountID)
+	acct, _ := svc.Account.GetByID(txn.AccountID)
 	accountName := "Unknown"
 	currency := "USD"
 	if acct != nil {

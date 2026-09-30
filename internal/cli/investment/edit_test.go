@@ -27,7 +27,7 @@ func findTxn(t *testing.T, dbPath string, txnType investmentdom.TransactionType)
 	if err != nil {
 		t.Fatalf("get account: %v", err)
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(acct.ID, investmentdom.TransactionFilter{Type: &txnType})
+	rows, err := svc.InvestmentValuation.ListTransactions(acct.ID, investmentdom.TransactionFilter{Type: &txnType})
 	if err != nil {
 		t.Fatalf("list %s txns: %v", txnType, err)
 	}
@@ -131,9 +131,9 @@ func TestInvestmentEdit_BuyShares_KeepsAmount(t *testing.T) {
 	}
 
 	// Position reflects the new share count.
-	svc := clitest.OpenSvc(t, dbPath)
+	svc, database := clitest.OpenSvcDB(t, dbPath)
 	acct, _ := svc.Account.GetByName("Brokerage")
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
 	if err != nil {
 		t.Fatalf("get position: %v", err)
 	}
@@ -313,9 +313,9 @@ func TestInvestmentEdit_RefuseReconciled(t *testing.T) {
 	dbPath := seedEditFixture(t)
 	buy := findTxn(t, dbPath, investmentdom.TransactionTypeBuy)
 
-	svc := clitest.OpenSvc(t, dbPath)
+	_, database := clitest.OpenSvcDB(t, dbPath)
 	buy.Status = investmentdom.TransactionStatusReconciled
-	if err := svc.InvestmentRepo.Update(buy); err != nil {
+	if err := investmentdom.NewRepository(database).Update(buy); err != nil {
 		t.Fatalf("mark reconciled: %v", err)
 	}
 
@@ -533,7 +533,7 @@ func TestInvestmentEdit_LotTrackedSellRepointsLots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve security: %v", err)
 	}
-	lots, err := seedSvc.LotRepo.ListByAccountAndSecurity(seedAcct.ID, sec.ID, false)
+	lots, err := seedSvc.InvestmentValuation.ListOpenLots(seedAcct.ID, sec.ID)
 	if err != nil || len(lots) != 1 {
 		t.Fatalf("expected 1 open lot, got %d (err %v)", len(lots), err)
 	}
@@ -571,9 +571,9 @@ func TestInvestmentEdit_LotTrackedSellRepointsLots(t *testing.T) {
 		t.Errorf("expected sell shares 5, got %s", after.Shares.Quantity)
 	}
 
-	svc := clitest.OpenSvc(t, dbPath)
+	svc, database := clitest.OpenSvcDB(t, dbPath)
 	acct, _ := svc.Account.GetByName("Brokerage")
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, after.SecurityID.ID)
 	if err != nil {
 		t.Fatalf("get position: %v", err)
 	}

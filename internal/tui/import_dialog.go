@@ -506,13 +506,13 @@ func (a *App) applyImportResult(msg importCompletedMsg) tea.Cmd {
 // newImportService assembles the import pipeline over the services App holds,
 // and reports an error rather than building a registry when they are absent.
 func newImportService(svc app.Services) (*imexport.ImportService, error) {
-	if svc.Category == nil || svc.Payee == nil || svc.Transaction == nil || svc.TransactionRepo == nil || svc.PayeeRepo == nil {
+	if svc.Category == nil || svc.Payee == nil || svc.Transaction == nil {
 		return nil, fmt.Errorf("services not available")
 	}
 	return imexport.NewImportService(
 		imexport.NewServiceCategoryResolver(svc.Category),
 		imexport.NewServicePayeeResolver(svc.Payee),
-		imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
+		imexport.NewServiceTransactionStore(svc.Transaction, svc.Payee),
 		imexport.NewServiceTransactionCreator(svc.Transaction),
 	), nil
 }

@@ -108,7 +108,7 @@ func runInvestmentList(opts *investmentListOptions, w io.Writer) error {
 		filter.SecurityID = &sec.ID
 	}
 
-	txns, err := svc.InvestmentRepo.ListByAccount(acct.ID, filter)
+	txns, err := svc.InvestmentValuation.ListTransactions(acct.ID, filter)
 	if err != nil {
 		return fmt.Errorf("failed to list investment transactions: %w", err)
 	}
@@ -117,7 +117,7 @@ func runInvestmentList(opts *investmentListOptions, w io.Writer) error {
 		txns = txns[:opts.limit]
 	}
 
-	securities, err := svc.SecurityRepo.List(security.Filter{})
+	securities, err := svc.Security.List(security.Filter{})
 	if err != nil {
 		return fmt.Errorf("failed to list securities: %w", err)
 	}

@@ -1,7 +1,7 @@
 # Work list: two ledgers, and the defects around them
 
 **Date:** 2026-09-27
-**Status:** OPEN. The order table gives the status of each item.
+**Status:** DONE. Every item in the order table has shipped; each item keeps its problem statement and as-built notes.
 **Source:** Code review of the tree on 2026-09-27. Not a pull-request diff.
 **Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, and W13 from the smoke test of W8 phase 1.
 
@@ -58,7 +58,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W12 | done (#60) | Corporate Actions keys must reach the view | — | small |
 | W8 | done (#59, #61) | One view table in the TUI | W1, W2, and W12 | large |
 | W13 | done (#62) | The Prices detail hint must show | — | small |
-| W9 | open | Stop exporting repositories from `app.Services` | W5c | large |
+| W9 | done (#63) | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
 
@@ -775,7 +775,13 @@ The Prices view has two modes, the list and one security's history, and each has
 
 ## W9 — Stop exporting repositories from `app.Services`
 
-**Status:** open
+**Status:** done in PR #63. As built:
+
+- The first commit removed five fields, not six: `SplitRepo` had one reader, `export`, so it moved in its own commit. Export now takes the account, transaction, payee, and category services; its split provider's method is `GetSplits`, the name `transaction.Service` already has.
+- New pass-throughs with no rule of their own: `transaction.Service.Search` (the CLI search; the dead-code phase of `specs/design-service-decomposition.md` had removed it when it had no caller), and `ValuationService.GetTransaction`, `ListTransactions`, and `ListOpenLots`. The import store is `imexport.NewServiceTransactionStore`, over the transaction and payee services.
+- One caller could not move without its rule: the merger preview read `LotRepo` and `PositionRepo` and skipped a position only when its account had open lots. The merger skips a position when its account has ever held the security in lots, and a lot-tracked account that sold out keeps a position row with shares. `CorporateActionService.MergerHoldings` returns the holdings by the merger's rule, and the preview reads it. That fix is its own commit, before the field deletion.
+- Tests that must read or write stored state directly build their own repository on the database; `clitest.OpenSvcDB` returns the database next to the services, because a second open of the same file in one process is not safe.
+- `TestServices_ExportsNoRepository` fails on a field whose type is a repository, and `TestNewServices` checks the services only.
 **Needs:** W5c.
 **Decision:** Delete the repository fields. Do not unexport them, and do not add an `apptest` package. A repository holds only the database handle, so a test builds its own with `<pkg>.NewRepository(db)`.
 

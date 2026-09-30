@@ -125,7 +125,7 @@ func runImport(opts *importOptions, w io.Writer) error {
 	importSvc := imexport.NewImportService(
 		imexport.NewServiceCategoryResolver(svc.Category),
 		imexport.NewServicePayeeResolver(svc.Payee),
-		imexport.NewRepoTransactionStore(svc.TransactionRepo, svc.PayeeRepo),
+		imexport.NewServiceTransactionStore(svc.Transaction, svc.Payee),
 		imexport.NewServiceTransactionCreator(svc.Transaction),
 	)
 

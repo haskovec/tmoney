@@ -369,7 +369,7 @@ func getOrCreateCategoryPath(svc *app.Services, path string) (types.ID, error) {
 // (nil for a top-level category), creating it (expense-classified) if no such
 // category exists. A lookup failure other than not-found is surfaced.
 func getOrCreateCategory(svc *app.Services, name string, parentID *types.ID) (types.ID, error) {
-	cat, err := svc.CategoryRepo.GetByName(name, parentID)
+	cat, err := svc.Category.GetByName(name, parentID)
 	if err == nil {
 		return cat.ID, nil
 	}

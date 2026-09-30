@@ -60,7 +60,7 @@ func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
 		txnIDs = append(txnIDs, id)
 	}
 
-	firstTxn, err := svc.TransactionRepo.GetByID(txnIDs[0])
+	firstTxn, err := svc.Transaction.GetByID(txnIDs[0])
 	if err != nil {
 		return fmt.Errorf("transaction not found: %w", err)
 	}
@@ -80,7 +80,7 @@ func runReconcileMark(opts *reconcileMarkOptions, w io.Writer) error {
 
 	difference := session.StatementBalance.Sub(clearedTotal)
 
-	account, _ := svc.AccountRepo.GetByID(firstTxn.AccountID)
+	account, _ := svc.Account.GetByID(firstTxn.AccountID)
 	currency := "USD"
 	if account != nil {
 		currency = account.Currency

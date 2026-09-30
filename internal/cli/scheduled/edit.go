@@ -248,11 +248,11 @@ func applyScheduledEdits(svc *app.Services, st *scheduleddom.Transaction, opts *
 // category and then across all categories (so subcategory display names like
 // "Food:Groceries" resolve). Shared by the scheduled edit and add paths.
 func resolveScheduledCategory(svc *app.Services, name string) (*category.Category, error) {
-	cat, err := svc.CategoryRepo.GetByName(name, nil)
+	cat, err := svc.Category.GetByName(name, nil)
 	if err == nil {
 		return cat, nil
 	}
-	categories, listErr := svc.CategoryRepo.List()
+	categories, listErr := svc.Category.List()
 	if listErr != nil {
 		return nil, fmt.Errorf("category %q not found", name)
 	}
@@ -291,12 +291,12 @@ func printScheduledSummary(w io.Writer, svc *app.Services, header string, st *sc
 		}
 		fmt.Fprintf(w, "  Transfer to: %s\n", destName)
 	} else if st.HasPayee() {
-		if py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID); err == nil {
+		if py, err := svc.Payee.GetByID(st.PayeeID.ID); err == nil {
 			fmt.Fprintf(w, "  Payee:     %s\n", py.Name)
 		}
 	}
 	if st.HasCategory() {
-		if cat, err := svc.CategoryRepo.GetByID(st.CategoryID.ID); err == nil {
+		if cat, err := svc.Category.GetByID(st.CategoryID.ID); err == nil {
 			fmt.Fprintf(w, "  Category:  %s\n", cat.Name)
 		}
 	}

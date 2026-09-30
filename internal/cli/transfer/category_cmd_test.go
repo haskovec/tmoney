@@ -46,8 +46,8 @@ func TestTransferAdd_WithCategory_MirrorsToBothLegs(t *testing.T) {
 	}
 
 	svc := clitest.OpenSvc(t, dbPath)
-	fromLegs, _ := svc.TransactionRepo.ListByAccount(checking.ID)
-	toLegs, _ := svc.TransactionRepo.ListByAccount(savings.ID)
+	fromLegs, _ := svc.Transaction.ListByAccount(checking.ID)
+	toLegs, _ := svc.Transaction.ListByAccount(savings.ID)
 	if len(fromLegs) != 1 || len(toLegs) != 1 {
 		t.Fatalf("expected one leg per account, got from=%d to=%d", len(fromLegs), len(toLegs))
 	}
@@ -85,7 +85,7 @@ func TestTransferAdd_WithSubcategoryPath(t *testing.T) {
 	}
 
 	svc := clitest.OpenSvc(t, dbPath)
-	legs, _ := svc.TransactionRepo.ListByAccount(checking.ID)
+	legs, _ := svc.Transaction.ListByAccount(checking.ID)
 	if len(legs) != 1 {
 		t.Fatalf("expected one leg, got %d", len(legs))
 	}
@@ -159,7 +159,7 @@ func TestTransferAdd_RegToInv_CategoryOnBankLeg(t *testing.T) {
 	}
 
 	svc := clitest.OpenSvc(t, dbPath)
-	legs, _ := svc.TransactionRepo.ListByAccount(checking.ID)
+	legs, _ := svc.Transaction.ListByAccount(checking.ID)
 	if len(legs) != 1 {
 		t.Fatalf("expected one regular leg on Checking, got %d", len(legs))
 	}
@@ -182,7 +182,7 @@ func TestTransferAdd_InvToReg_CategoryOnBankLeg(t *testing.T) {
 	}
 
 	svc := clitest.OpenSvc(t, dbPath)
-	legs, _ := svc.TransactionRepo.ListByAccount(checking.ID)
+	legs, _ := svc.Transaction.ListByAccount(checking.ID)
 	if len(legs) != 1 {
 		t.Fatalf("expected one regular leg on Checking, got %d", len(legs))
 	}

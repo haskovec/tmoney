@@ -23,7 +23,7 @@ func newReplaceEnv(t *testing.T, row func(svc *app.Services, brokerageID types.I
 	svc := app.NewServices(dbtest.New(t))
 	mk := func(name string, at account.Type) *account.Account {
 		a := account.NewAccount(name, at, "USD", types.MustNewMoney("1000.00"), types.NewDate(2019, time.January, 1))
-		if err := svc.AccountRepo.Create(a); err != nil {
+		if err := svc.Account.Create(a); err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
 		return a
@@ -90,10 +90,10 @@ func TestEditWithdrawal_ToTransferCash_ReplacesRow(t *testing.T) {
 
 	runCmd(t, a, a.transfer.submit(a.transferDeps(), brokerage.ID), 1)
 
-	if _, err := svc.InvestmentRepo.GetByID(wd.ID); err == nil {
+	if _, err := svc.InvestmentValuation.GetTransaction(wd.ID); err == nil {
 		t.Error("the withdrawal row should be replaced")
 	}
-	rows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+	rows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

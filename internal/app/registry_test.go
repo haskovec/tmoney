@@ -1,6 +1,8 @@
 package app
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/category"
@@ -11,6 +13,25 @@ import (
 func createTestDB(t *testing.T) *db.DB {
 	t.Helper()
 	return dbtest.New(t)
+}
+
+// Services exports services only. A repository field would let a caller skip
+// the rules of the service built on it, which W9 removed.
+func TestServices_ExportsNoRepository(t *testing.T) {
+	st := reflect.TypeFor[Services]()
+	if st.NumField() == 0 {
+		t.Fatal("Services has no fields, so this check proves nothing")
+	}
+	for i := range st.NumField() {
+		f := st.Field(i)
+		typ := f.Type
+		if typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+		if strings.HasSuffix(typ.Name(), "Repository") {
+			t.Errorf("Services.%s is a %s; give the reader a service method instead", f.Name, f.Type)
+		}
+	}
 }
 
 func TestNewServices(t *testing.T) {
@@ -48,53 +69,20 @@ func TestNewServices(t *testing.T) {
 		if svc.Investment == nil {
 			t.Error("Investment service should not be nil")
 		}
-	})
-
-	t.Run("all repositories are initialized", func(t *testing.T) {
-		if svc.AccountRepo == nil {
-			t.Error("AccountRepo should not be nil")
+		if svc.InvestmentValuation == nil {
+			t.Error("InvestmentValuation service should not be nil")
 		}
-		if svc.TransactionRepo == nil {
-			t.Error("TransactionRepo should not be nil")
+		if svc.InvestmentEdit == nil {
+			t.Error("InvestmentEdit service should not be nil")
 		}
-		if svc.SplitRepo == nil {
-			t.Error("SplitRepo should not be nil")
+		if svc.CorporateAction == nil {
+			t.Error("CorporateAction service should not be nil")
 		}
-		if svc.Transfer == nil {
-			t.Error("Transfer service should not be nil")
+		if svc.TransferLink == nil {
+			t.Error("TransferLink service should not be nil")
 		}
 		if svc.Transfer == nil {
 			t.Error("Transfer service should not be nil")
-		}
-		if svc.CategoryRepo == nil {
-			t.Error("CategoryRepo should not be nil")
-		}
-		if svc.PayeeRepo == nil {
-			t.Error("PayeeRepo should not be nil")
-		}
-		if svc.ScheduledTxnRepo == nil {
-			t.Error("ScheduledTxnRepo should not be nil")
-		}
-		if svc.ReconciliationRepo == nil {
-			t.Error("ReconciliationRepo should not be nil")
-		}
-		if svc.SecurityRepo == nil {
-			t.Error("SecurityRepo should not be nil")
-		}
-		if svc.PriceRepo == nil {
-			t.Error("PriceRepo should not be nil")
-		}
-		if svc.InvestmentRepo == nil {
-			t.Error("InvestmentRepo should not be nil")
-		}
-		if svc.LotRepo == nil {
-			t.Error("LotRepo should not be nil")
-		}
-		if svc.PositionRepo == nil {
-			t.Error("PositionRepo should not be nil")
-		}
-		if svc.TransactionLotRepo == nil {
-			t.Error("TransactionLotRepo should not be nil")
 		}
 	})
 
@@ -104,14 +92,14 @@ func TestNewServices(t *testing.T) {
 			t.Errorf("Account.List() error = %v", err)
 		}
 
-		_, err = svc.CategoryRepo.List()
+		_, err = svc.Category.List()
 		if err != nil {
-			t.Errorf("CategoryRepo.List() error = %v", err)
+			t.Errorf("Category.List() error = %v", err)
 		}
 
-		_, err = svc.PayeeRepo.List()
+		_, err = svc.Payee.List()
 		if err != nil {
-			t.Errorf("PayeeRepo.List() error = %v", err)
+			t.Errorf("Payee.List() error = %v", err)
 		}
 	})
 }
@@ -171,7 +159,7 @@ func TestFileInit_PaycheckCategoriesExist(t *testing.T) {
 		if err != nil {
 			t.Fatalf("initial Federal child lookup: %v", err)
 		}
-		if err := svc.CategoryRepo.Delete(fedChild.ID); err != nil {
+		if err := category.NewRepository(database).Delete(fedChild.ID); err != nil {
 			t.Fatalf("delete Federal child: %v", err)
 		}
 

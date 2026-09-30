@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -54,7 +55,7 @@ func TestInvestmentBuy_CatchUpSplits_LotTracked(t *testing.T) {
 	acct, _ := svc.Account.GetByName("Brokerage")
 
 	// Both lots are now 20 shares (10 → 20 each); position is 40.
-	lots, _ := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, _ := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if len(lots) != 2 {
 		t.Fatalf("expected 2 lots, got %d", len(lots))
 	}
@@ -66,7 +67,7 @@ func TestInvestmentBuy_CatchUpSplits_LotTracked(t *testing.T) {
 			t.Errorf("lot %s shares (%s) != original_shares (%s)", l.ID, l.Shares.String(), l.OriginalShares.String())
 		}
 	}
-	pos, err := svc.PositionRepo.GetByAccountAndSecurity(acct.ID, sec.ID)
+	pos, err := investmentdom.NewPositionRepository(database).GetByAccountAndSecurity(acct.ID, sec.ID)
 	if err != nil {
 		t.Fatalf("GetByAccountAndSecurity: %v", err)
 	}

@@ -45,7 +45,7 @@ type TransactionProvider interface {
 
 // SplitProvider retrieves splits for export.
 type SplitProvider interface {
-	ListByTransaction(transactionID types.ID) ([]*transaction.Split, error)
+	GetSplits(transactionID types.ID) ([]*transaction.Split, error)
 }
 
 // PayeeProvider retrieves payee names for export.
@@ -243,7 +243,7 @@ func (s *ExportService) buildExportRecord(
 	}
 
 	// Resolve category or splits
-	splits, err := s.splits.ListByTransaction(txn.ID)
+	splits, err := s.splits.GetSplits(txn.ID)
 	if err != nil {
 		return nil, fmt.Errorf("listing splits for transaction %s: %w", txn.ID.String(), err)
 	}

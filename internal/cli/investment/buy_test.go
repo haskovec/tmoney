@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/cli"
 	"github.com/haskovec/tmoney/internal/cli/clitest"
 	"github.com/haskovec/tmoney/internal/db"
+	investmentdom "github.com/haskovec/tmoney/internal/investment"
 )
 
 func TestInvestmentBuy_MissingFile(t *testing.T) {
@@ -283,7 +284,7 @@ func TestInvestmentBuy_WithLotTracking(t *testing.T) {
 
 	svc := app.NewServices(database)
 	sec, _ := svc.Security.GetByTicker("AAPL", "")
-	lots, err := svc.LotRepo.GetOpenLotsBySecurity(sec.ID)
+	lots, err := investmentdom.NewLotRepository(database).GetOpenLotsBySecurity(sec.ID)
 	if err != nil {
 		t.Fatalf("failed to list lots: %v", err)
 	}

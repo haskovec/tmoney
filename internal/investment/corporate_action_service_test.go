@@ -2228,3 +2228,62 @@ func errorsAs(err error, target any) bool {
 	}
 	return false
 }
+
+// The merger preview lists what Merger changes, by Merger's own rules: every
+// open lot, by account, and every position whose account has never held the
+// security in lots. A lot-tracked account that sold out keeps a position row,
+// because lot sells do not update it, and Merger skips that account. So the
+// preview must skip it too.
+func TestCorporateActionService_MergerHoldings(t *testing.T) {
+	env := createCATestEnv(t)
+	source := createSec(t, env.secRepo, "OLD")
+	date := types.NewDate(2024, time.January, 15)
+	buy := func(acct *account.Account, shares, amount string) {
+		t.Helper()
+		if _, err := env.invSvc.Deposit(acct.ID, date, types.MustNewMoney("10000.00"), ""); err != nil {
+			t.Fatalf("Deposit() error = %v", err)
+		}
+		total := types.MustNewMoney(amount)
+		if _, err := env.invSvc.Buy(acct.ID, source.ID, date, types.MustNewQuantity(shares), &total, nil, types.ZeroMoney, ""); err != nil {
+			t.Fatalf("Buy() error = %v", err)
+		}
+	}
+
+	lotAcct := createLotTrackingAccount(t, env.accountRepo, "Northwind Lots")
+	buy(lotAcct, "10", "1000.00")
+	buy(lotAcct, "5", "600.00")
+	posAcct := createInvAccount(t, env.accountRepo, "Contoso Brokerage")
+	buy(posAcct, "7", "700.00")
+	soldOut := createLotTrackingAccount(t, env.accountRepo, "Fabrikam Sold Out")
+	buy(soldOut, "4", "400.00")
+	lots, _ := env.lotRepo.ListByAccountAndSecurity(soldOut.ID, source.ID, false)
+	sellTotal := types.MustNewMoney("480.00")
+	if _, err := env.invSvc.Sell(soldOut.ID, source.ID, date, types.MustNewQuantity("4"), &sellTotal, nil, types.ZeroMoney, "",
+		[]SellLotAllocation{{LotID: lots[0].ID, Shares: types.MustNewQuantity("4")}}); err != nil {
+		t.Fatalf("Sell() error = %v", err)
+	}
+	if pos, err := env.positionRepo.GetByAccountAndSecurity(soldOut.ID, source.ID); err != nil || pos.Shares.IsZero() {
+		t.Fatalf("precondition: the sold-out lot account keeps a position row with shares (got %v, %v)", pos, err)
+	}
+
+	got, err := env.caSvc.MergerHoldings(source.ID)
+	if err != nil {
+		t.Fatalf("MergerHoldings() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("MergerHoldings() = %d holdings, want 2 (the lot account and the position account): %+v", len(got), got)
+	}
+	byAccount := map[types.ID]MergerHolding{}
+	for _, h := range got {
+		byAccount[h.AccountID] = h
+	}
+	if h := byAccount[lotAcct.ID]; !h.TrackLots || len(h.Lots) != 2 || h.Position != nil {
+		t.Errorf("lot account holding = %+v, want its two open lots", h)
+	}
+	if h := byAccount[posAcct.ID]; h.TrackLots || h.Position == nil || !h.Position.Shares.Equal(types.MustNewQuantity("7")) {
+		t.Errorf("position account holding = %+v, want its 7-share position", h)
+	}
+	if h, ok := byAccount[soldOut.ID]; ok {
+		t.Errorf("the sold-out lot account is listed (%+v), but Merger skips it", h)
+	}
+}

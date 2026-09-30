@@ -37,7 +37,7 @@ func openTransferServices(t *testing.T) (*app.Services, *db.DB) {
 func makeTransferAccount(t *testing.T, svc *app.Services, name string, at account.Type) *account.Account {
 	t.Helper()
 	acct := account.NewAccount(name, at, "USD", types.MustNewMoney("1000.00"), types.NewDate(2024, 1, 1))
-	if err := svc.AccountRepo.Create(acct); err != nil {
+	if err := svc.Account.Create(acct); err != nil {
 		t.Fatalf("create %s: %v", name, err)
 	}
 	return acct
@@ -145,7 +145,7 @@ func TestTransferWiring_InvestmentLegLandsInTheInvestmentLedger(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	invRows, err := svc.InvestmentRepo.ListByAccount(brokerage.ID, investment.TransactionFilter{})
+	invRows, err := svc.InvestmentValuation.ListTransactions(brokerage.ID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatalf("list investment rows: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestTransferWiring_PlainVerbsRefuseTransferLegs(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	leg, err := svc.TransactionRepo.GetByID(res.From.RowID)
+	leg, err := svc.Transaction.GetByID(res.From.RowID)
 	if err != nil {
 		t.Fatalf("load leg: %v", err)
 	}

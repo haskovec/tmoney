@@ -75,33 +75,33 @@ func (r *servicePayeeResolver) ResolvePayee(name string) (types.ID, types.Nullab
 	return p.ID, defaultCatID, nil
 }
 
-// NewRepoTransactionStore returns a TransactionStore backed by transaction
-// and payee repositories.
-func NewRepoTransactionStore(transactionRepo *transaction.Repository, payeeRepo *payee.Repository) TransactionStore {
-	return &repoTransactionStore{transactionRepo: transactionRepo, payeeRepo: payeeRepo}
+// NewServiceTransactionStore returns a TransactionStore backed by the
+// transaction and payee services.
+func NewServiceTransactionStore(transactions *transaction.Service, payees *payee.Service) TransactionStore {
+	return &serviceTransactionStore{transactions: transactions, payees: payees}
 }
 
-type repoTransactionStore struct {
-	transactionRepo *transaction.Repository
-	payeeRepo       *payee.Repository
+type serviceTransactionStore struct {
+	transactions *transaction.Service
+	payees       *payee.Service
 }
 
-func (s *repoTransactionStore) ListByAccount(accountID types.ID) ([]*transaction.Transaction, error) {
-	return s.transactionRepo.ListByAccount(accountID)
+func (s *serviceTransactionStore) ListByAccount(accountID types.ID) ([]*transaction.Transaction, error) {
+	return s.transactions.ListByAccount(accountID)
 }
 
-func (s *repoTransactionStore) GetPayeeName(payeeID types.ID) string {
+func (s *serviceTransactionStore) GetPayeeName(payeeID types.ID) string {
 	if payeeID.IsNil() {
 		return ""
 	}
-	p, err := s.payeeRepo.GetByID(payeeID)
+	p, err := s.payees.GetByID(payeeID)
 	if err != nil {
 		return ""
 	}
 	return p.Name
 }
 
-func (s *repoTransactionStore) GetBankReferenceID(txn *transaction.Transaction) string {
+func (s *serviceTransactionStore) GetBankReferenceID(txn *transaction.Transaction) string {
 	if txn.HasBankReferenceID() {
 		return txn.BankReferenceID.String
 	}

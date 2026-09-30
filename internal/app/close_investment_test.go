@@ -118,7 +118,7 @@ func TestClose_Brokerage_EmptyCloses(t *testing.T) {
 			e.buyAll(t)
 			var alloc []investment.SellLotAllocation
 			if trackLots {
-				lots, err := e.svc.LotRepo.ListByAccountAndSecurity(e.acct.ID, e.secID, false)
+				lots, err := e.svc.InvestmentValuation.ListOpenLots(e.acct.ID, e.secID)
 				if err != nil || len(lots) != 1 {
 					t.Fatalf("lots = %d, %v; want 1", len(lots), err)
 				}

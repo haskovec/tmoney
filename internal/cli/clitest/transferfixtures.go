@@ -79,6 +79,15 @@ func SetupTransferDispatchAccounts(t *testing.T) (string, *account.Account, *acc
 // are no-ops for these fixtures, which never seed scheduled transactions.
 func OpenSvc(t *testing.T, dbPath string) *app.Services {
 	t.Helper()
+	svc, _ := OpenSvcDB(t, dbPath)
+	return svc
+}
+
+// OpenSvcDB is OpenSvc that also returns the open database, for a test that
+// checks stored state through a repository it builds itself. app.Services
+// exports no repositories.
+func OpenSvcDB(t *testing.T, dbPath string) (*app.Services, *db.DB) {
+	t.Helper()
 	database, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatalf("OpenSvc: db.Open: %v", err)
@@ -91,14 +100,14 @@ func OpenSvc(t *testing.T, dbPath string) *app.Services {
 	if err := svc.Prepare(); err != nil {
 		t.Fatalf("OpenSvc: Prepare: %v", err)
 	}
-	return svc
+	return svc, database
 }
 
 // FindInvestmentLegForTest returns the ID of the single investment transaction
 // in the given investment account.
 func FindInvestmentLegForTest(t *testing.T, svc *app.Services, invAcctID types.ID) types.ID {
 	t.Helper()
-	rows, err := svc.InvestmentRepo.ListByAccount(invAcctID, investment.TransactionFilter{})
+	rows, err := svc.InvestmentValuation.ListTransactions(invAcctID, investment.TransactionFilter{})
 	if err != nil {
 		t.Fatalf("list investment txns: %v", err)
 	}

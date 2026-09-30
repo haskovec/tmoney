@@ -67,7 +67,7 @@ func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 
 	stUpdated, _ := svc.Scheduled.GetByID(stID)
 
-	acct, _ := svc.AccountRepo.GetByID(st.AccountID)
+	acct, _ := svc.Account.GetByID(st.AccountID)
 	accountName := "Unknown"
 	if acct != nil {
 		accountName = acct.Name
@@ -75,7 +75,7 @@ func runScheduledSkip(opts *scheduledSkipOptions, w io.Writer) error {
 
 	payeeName := "-"
 	if st.HasPayee() {
-		py, err := svc.PayeeRepo.GetByID(st.PayeeID.ID)
+		py, err := svc.Payee.GetByID(st.PayeeID.ID)
 		if err == nil {
 			payeeName = py.Name
 		}

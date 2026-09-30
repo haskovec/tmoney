@@ -40,7 +40,7 @@ func DamagedHealFile(t *testing.T) string {
 		if !spec.trackLots {
 			continue
 		}
-		lots, err := svc.LotRepo.ListByAccountAndSecurity(acct.ID, sec.ID, false)
+		lots, err := svc.InvestmentValuation.ListOpenLots(acct.ID, sec.ID)
 		if err != nil || len(lots) != 1 {
 			t.Fatalf("DamagedHealFile: lots = %d, %v", len(lots), err)
 		}

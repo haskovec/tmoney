@@ -52,8 +52,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load investment transactions via repository
-		if a.services.InvestmentRepo != nil {
-			txns, err := a.services.InvestmentRepo.ListByAccount(accountID, investment.TransactionFilter{})
+		if a.services.InvestmentValuation != nil {
+			txns, err := a.services.InvestmentValuation.ListTransactions(accountID, investment.TransactionFilter{})
 			if err != nil {
 				return errMsg{err: err}
 			}

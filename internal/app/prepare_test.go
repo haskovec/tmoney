@@ -7,6 +7,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -55,7 +56,7 @@ func damagedLotFile(t *testing.T) (*db.DB, *Services, *account.Account, types.ID
 	broken := mk("Broken Brokerage", true)
 	healthy := mk("Healthy Brokerage", false)
 
-	lots, err := svc.LotRepo.ListByAccountAndSecurity(broken.ID, sec.ID, false)
+	lots, err := svc.InvestmentValuation.ListOpenLots(broken.ID, sec.ID)
 	if err != nil || len(lots) != 1 {
 		t.Fatalf("lots = %d, %v; want 1", len(lots), err)
 	}
@@ -76,7 +77,7 @@ func damagedLotFile(t *testing.T) (*db.DB, *Services, *account.Account, types.ID
 // Prepare returns a heal failure instead of dropping it, and the failure of
 // one account does not stop the others from healing.
 func TestPrepare_ReportsHealFailureAndHealsTheRest(t *testing.T) {
-	_, svc, healthy, secID := damagedLotFile(t)
+	database, svc, healthy, secID := damagedLotFile(t)
 
 	err := svc.Prepare()
 	if err == nil {
@@ -86,7 +87,7 @@ func TestPrepare_ReportsHealFailureAndHealsTheRest(t *testing.T) {
 		t.Errorf("Prepare() error = %v, want it to name the broken account", err)
 	}
 
-	pos, perr := svc.PositionRepo.GetByAccountAndSecurity(healthy.ID, secID)
+	pos, perr := investment.NewPositionRepository(database).GetByAccountAndSecurity(healthy.ID, secID)
 	if perr != nil {
 		t.Fatal(perr)
 	}

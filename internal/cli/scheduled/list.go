@@ -88,17 +88,17 @@ func runScheduledList(opts *scheduledListOptions, w io.Writer) error {
 	accountNames := make(map[types.ID]string)
 	accountCurrencies := make(map[types.ID]string)
 
-	payees, _ := svc.PayeeRepo.List()
+	payees, _ := svc.Payee.List()
 	for _, p := range payees {
 		payeeNames[p.ID] = p.Name
 	}
 
-	categories, _ := svc.CategoryRepo.List()
+	categories, _ := svc.Category.List()
 	for _, c := range categories {
 		categoryNames[c.ID] = c.Name
 	}
 
-	accounts, _ := svc.AccountRepo.List(false)
+	accounts, _ := svc.Account.List(false)
 	for _, a := range accounts {
 		accountNames[a.ID] = a.Name
 		accountCurrencies[a.ID] = a.Currency

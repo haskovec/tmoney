@@ -1070,7 +1070,7 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 			},
 		},
 		services: app.Services{
-			LotRepo: nil, // guarded: with no repo wired, the FIFO branch is skipped
+			InvestmentValuation: nil, // guarded: with no read model wired, the FIFO branch is skipped
 		},
 	}
 
