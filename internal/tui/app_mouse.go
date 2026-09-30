@@ -121,7 +121,7 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // sidebar-less small layout, sidebarWidth+1 otherwise). A click on any other
 // row, or in the LIABILITIES column of a header row, is ignored.
 func (a *App) handleMouseDashboard(m tea.Mouse, contentY, contentStartX int) (tea.Model, tea.Cmd) {
-	acctID, ok := a.dashboardAccountRows[contentY]
+	acctID, ok := a.dashboard.accountRows[contentY]
 	if !ok {
 		return a, nil
 	}
@@ -139,10 +139,10 @@ func (a *App) handleMouseDashboard(m tea.Mouse, contentY, contentStartX int) (te
 		return a, nil
 	}
 
-	if a.dashboardExpandedAccounts == nil {
-		a.dashboardExpandedAccounts = make(map[types.ID]bool)
+	if a.dashboard.expandedAccounts == nil {
+		a.dashboard.expandedAccounts = make(map[types.ID]bool)
 	}
-	a.dashboardExpandedAccounts[acctID] = !a.dashboardExpandedAccounts[acctID]
+	a.dashboard.expandedAccounts[acctID] = !a.dashboard.expandedAccounts[acctID]
 	// Keep the sidebar cursor on the clicked account so a follow-up keyboard
 	// ←/→ operates on the same one.
 	a.sidebar.SetCursorToAccount(acctID)

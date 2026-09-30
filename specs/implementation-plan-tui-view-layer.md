@@ -143,8 +143,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - RED then GREEN in `views_guard_test.go`: walk `App`'s fields for struct types declared in this package whose pointer does **not** implement `Modal`; fail if that set is empty; fail if any holds a pointer in `servicePointerTypes()`. No hand list.
   - Done: `TestGuard_NoViewStateHoldsAService`. The rule also finds `App`'s other non-modal structs (`Sidebar`, `keyMap`, `backupDialogState`, `mergerConfirmSurface`), and none may hold a service either. The walk goes down through pointers, slices, arrays, maps and this package's structs, because after VL-301 the view's data struct is one level below `App`. RED: a `*price.Service` put in `priceViewData` for a moment failed the guard at `priceViewState.data.svc`. The self-test runs the finder and the walk over fabricated types.
 
-- [ ] **VL-303 — `dashboardViewState`**
+- [x] **VL-303 — `dashboardViewState`**
   - Fields: `data`, `expandedAccounts`, `accountRows`. Test (§5.1): a click on a dashboard row without a prior render is a no-op, not a stale account.
+  - Done: `a.dashboard` is now the state struct, so `a.dashboard` became `a.dashboard.data`. The test is `TestApp_Dashboard_MouseClickBeforeRenderIsNoOp`; with stale rows put in the map, it fails. A stale row cannot occur in the running program: Bubble Tea renders after every `Update` (`tea.go`, `eventLoop`), so a click always reads the rows of the latest render. `switchDatabase` and `reloadAfterRestore` still clear only `data`, as before.
 
 - [ ] **VL-304 — `registerViewState`**
   - Fields: `data`, `table`. `pendingRegisterSelectID` stays on `App`.

@@ -92,14 +92,8 @@ type App struct {
 	// Transaction and Investment on account type.
 	services app.Services
 
-	// Dashboard data (loaded asynchronously)
-	dashboard                 *dashboardData
-	dashboardExpandedAccounts map[types.ID]bool // tracks expanded investment accounts on dashboard
-	// dashboardAccountRows maps a content-pane row (0-based, as seen by a
-	// mouse click's contentY) to the investment account whose expandable
-	// ▸/▾ header renders on that row. Rebuilt every renderDashboard; used by
-	// handleMouseDashboard to toggle expand/collapse on click.
-	dashboardAccountRows map[int]types.ID
+	// Dashboard view state (data loaded asynchronously)
+	dashboard dashboardViewState
 
 	// Register data (loaded when account is selected)
 	register *registerData
@@ -329,18 +323,18 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 	svc, prepareErr := newTUIServices(database)
 
 	a := &App{
-		db:                        database,
-		cfg:                       cfg,
-		currentView:               ViewDashboard,
-		styles:                    widget.NewStyles(),
-		sidebar:                   NewSidebar(),
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		undoManager:               undo.NewManager(),
-		keys:                      defaultKeyMap(),
-		services:                  *svc,
-		dashboardExpandedAccounts: make(map[types.ID]bool),
-		createCat:                 createCatSurface{origin: newCreateCatOrigin()},
+		db:          database,
+		cfg:         cfg,
+		currentView: ViewDashboard,
+		styles:      widget.NewStyles(),
+		sidebar:     NewSidebar(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		undoManager: undo.NewManager(),
+		keys:        defaultKeyMap(),
+		services:    *svc,
+		dashboard:   dashboardViewState{expandedAccounts: make(map[types.ID]bool)},
+		createCat:   createCatSurface{origin: newCreateCatOrigin()},
 	}
 
 	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {

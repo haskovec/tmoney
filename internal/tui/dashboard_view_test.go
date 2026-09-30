@@ -23,7 +23,7 @@ func TestApp_RenderDashboard_Loading(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      widget.NewStyles(),
-		dashboard:   nil, // not loaded yet
+		dashboard:   dashboardViewState{data: nil}, // not loaded yet
 	}
 	app.styles.Resize(100, 30)
 
@@ -41,7 +41,7 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{
 					{Name: "Checking", Balance: types.MustNewMoney("5000.00")},
@@ -56,7 +56,7 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 			upcomingTxns: nil,
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -101,7 +101,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets:      nil,
 				Liabilities: []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
@@ -109,7 +109,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 			},
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -134,7 +134,7 @@ func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets:      []report.AccountBalance{{Name: "Checking", Balance: types.MustNewMoney("1000.00")}},
 				Liabilities: []report.AccountBalance{{Name: "Apple Card", Type: "credit_card", Balance: types.MustNewMoney("625.21")}},
@@ -142,7 +142,7 @@ func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
 			},
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -201,7 +201,7 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Totals: usdTotals(types.MustNewMoney("1000"), types.ZeroMoney, types.MustNewMoney("1000")),
 			},
@@ -216,7 +216,7 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 			upcomingTxns: nil,
 			payeeNames:   map[types.ID]string{payeeID: "Landlord"},
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -243,13 +243,13 @@ func TestApp_RenderDashboard_EmptyData(t *testing.T) {
 		width:       80,
 		height:      24,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Totals: usdTotals(types.ZeroMoney, types.ZeroMoney, types.ZeroMoney),
 			},
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -285,10 +285,10 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 	if cmd != nil {
 		t.Error("dashboardLoadedMsg should not return a command")
 	}
-	if updatedApp.dashboard == nil {
+	if updatedApp.dashboard.data == nil {
 		t.Fatal("dashboard data should be set")
 	}
-	if !updatedApp.dashboard.netWorth.Totals[0].NetWorth.Equal(types.MustNewMoney("5000")) {
+	if !updatedApp.dashboard.data.netWorth.Totals[0].NetWorth.Equal(types.MustNewMoney("5000")) {
 		t.Error("dashboard net worth should be $5000")
 	}
 }
@@ -301,14 +301,14 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 		width:       60,
 		height:      20,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{{Name: "Checking", Balance: types.MustNewMoney("100")}},
 				Totals: usdTotals(types.MustNewMoney("100"), types.ZeroMoney, types.MustNewMoney("100")),
 			},
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	// Should not panic on small width
@@ -326,11 +326,11 @@ func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
 		width:       80,
 		height:      24,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth:     nil,
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderDashboard()
@@ -349,38 +349,40 @@ func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
 	securityID2 := types.NewID()
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: types.NewID(), Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
-					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: types.NewID(), Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
+						{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+					},
+					Liabilities: nil,
+					Totals:      usdTotals(types.MustNewMoney("30000.00"), types.ZeroMoney, types.MustNewMoney("30000.00")),
 				},
-				Liabilities: nil,
-				Totals:      usdTotals(types.MustNewMoney("30000.00"), types.ZeroMoney, types.MustNewMoney("30000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID:   investAccountID,
-					CashBalance: types.MustNewMoney("5000.00"),
-					MarketValue: types.MustNewMoney("20000.00"),
-					TotalValue:  types.MustNewMoney("25000.00"),
-					Holdings: []investment.Holding{
-						{SecurityID: securityID1, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true},
-						{SecurityID: securityID2, MarketValue: types.MustNewMoney("8000.00"), HasPricing: true},
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID:   investAccountID,
+						CashBalance: types.MustNewMoney("5000.00"),
+						MarketValue: types.MustNewMoney("20000.00"),
+						TotalValue:  types.MustNewMoney("25000.00"),
+						Holdings: []investment.Holding{
+							{SecurityID: securityID1, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true},
+							{SecurityID: securityID2, MarketValue: types.MustNewMoney("8000.00"), HasPricing: true},
+						},
 					},
 				},
+				securityTickers: map[types.ID]string{
+					securityID1: "AAPL",
+					securityID2: "GOOG",
+				},
+				payeeNames:   make(map[types.ID]string),
+				accountNames: make(map[types.ID]string),
 			},
-			securityTickers: map[types.ID]string{
-				securityID1: "AAPL",
-				securityID2: "GOOG",
-			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
 		},
 	}
 
@@ -422,32 +424,34 @@ func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
 	securityID := types.NewID()
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{}, // not expanded
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{}, // not expanded
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID:   investAccountID,
-					CashBalance: types.MustNewMoney("5000.00"),
-					MarketValue: types.MustNewMoney("20000.00"),
-					TotalValue:  types.MustNewMoney("25000.00"),
-					Holdings: []investment.Holding{
-						{SecurityID: securityID, MarketValue: types.MustNewMoney("20000.00"), HasPricing: true},
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID:   investAccountID,
+						CashBalance: types.MustNewMoney("5000.00"),
+						MarketValue: types.MustNewMoney("20000.00"),
+						TotalValue:  types.MustNewMoney("25000.00"),
+						Holdings: []investment.Holding{
+							{SecurityID: securityID, MarketValue: types.MustNewMoney("20000.00"), HasPricing: true},
+						},
 					},
 				},
+				securityTickers: map[types.ID]string{securityID: "AAPL"},
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			securityTickers: map[types.ID]string{securityID: "AAPL"},
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 
@@ -475,32 +479,34 @@ func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
 	securityID := types.NewID()
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "401k", Type: "investment", Balance: types.MustNewMoney("10000.00"), EstimatedValue: true},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "401k", Type: "investment", Balance: types.MustNewMoney("10000.00"), EstimatedValue: true},
+					},
+					Totals: usdTotals(types.MustNewMoney("10000.00"), types.ZeroMoney, types.MustNewMoney("10000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("10000.00"), types.ZeroMoney, types.MustNewMoney("10000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID:   investAccountID,
-					CashBalance: types.ZeroMoney,
-					MarketValue: types.MustNewMoney("10000.00"),
-					TotalValue:  types.MustNewMoney("10000.00"),
-					Holdings: []investment.Holding{
-						{SecurityID: securityID, MarketValue: types.MustNewMoney("10000.00"), HasPricing: false},
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID:   investAccountID,
+						CashBalance: types.ZeroMoney,
+						MarketValue: types.MustNewMoney("10000.00"),
+						TotalValue:  types.MustNewMoney("10000.00"),
+						Holdings: []investment.Holding{
+							{SecurityID: securityID, MarketValue: types.MustNewMoney("10000.00"), HasPricing: false},
+						},
 					},
 				},
+				securityTickers: map[types.ID]string{securityID: "VXUS"},
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			securityTickers: map[types.ID]string{securityID: "VXUS"},
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 
@@ -523,30 +529,32 @@ func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
 	investAccountID := types.NewID()
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "Empty Fund", Type: "investment", Balance: types.MustNewMoney("1000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "Empty Fund", Type: "investment", Balance: types.MustNewMoney("1000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("1000.00"), types.ZeroMoney, types.MustNewMoney("1000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("1000.00"), types.ZeroMoney, types.MustNewMoney("1000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID:   investAccountID,
-					CashBalance: types.MustNewMoney("1000.00"),
-					MarketValue: types.ZeroMoney,
-					TotalValue:  types.MustNewMoney("1000.00"),
-					Holdings:    nil,
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID:   investAccountID,
+						CashBalance: types.MustNewMoney("1000.00"),
+						MarketValue: types.ZeroMoney,
+						TotalValue:  types.MustNewMoney("1000.00"),
+						Holdings:    nil,
+					},
 				},
+				securityTickers: make(map[types.ID]string),
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			securityTickers: make(map[types.ID]string),
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 
@@ -581,27 +589,29 @@ func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
 	}
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "Big Portfolio", Type: "investment", Balance: types.MustNewMoney("28000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "Big Portfolio", Type: "investment", Balance: types.MustNewMoney("28000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("28000.00"), types.ZeroMoney, types.MustNewMoney("28000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("28000.00"), types.ZeroMoney, types.MustNewMoney("28000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID: investAccountID,
-					Holdings:  holdings,
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID: investAccountID,
+						Holdings:  holdings,
+					},
 				},
+				securityTickers: tickers,
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			securityTickers: tickers,
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 
@@ -635,22 +645,24 @@ func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 	investAccountID := types.NewID()
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("10000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("10000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("10000.00"), types.ZeroMoney, types.MustNewMoney("10000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("10000.00"), types.ZeroMoney, types.MustNewMoney("10000.00")),
+				investmentHoldings: nil, // nil map
+				securityTickers:    nil,
+				payeeNames:         make(map[types.ID]string),
+				accountNames:       make(map[types.ID]string),
 			},
-			investmentHoldings: nil, // nil map
-			securityTickers:    nil,
-			payeeNames:         make(map[types.ID]string),
-			accountNames:       make(map[types.ID]string),
 		},
 	}
 
@@ -672,29 +684,31 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 	pct := 22.51
 
 	app := &App{
-		currentView:               ViewDashboard,
-		width:                     120,
-		height:                    40,
-		styles:                    styles,
-		dashboardExpandedAccounts: map[types.ID]bool{investAccountID: true},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+		currentView: ViewDashboard,
+		width:       120,
+		height:      40,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{investAccountID: true},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
-			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				investAccountID: {
-					AccountID:      investAccountID,
-					TotalValue:     types.MustNewMoney("25000.00"),
-					TotalReturn:    types.MustNewMoney("5267.50"),
-					TotalReturnPct: &pct,
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					investAccountID: {
+						AccountID:      investAccountID,
+						TotalValue:     types.MustNewMoney("25000.00"),
+						TotalReturn:    types.MustNewMoney("5267.50"),
+						TotalReturnPct: &pct,
+					},
 				},
+				securityTickers: map[types.ID]string{},
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			securityTickers: map[types.ID]string{},
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 
@@ -725,7 +739,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 		width:       120,
 		height:      40,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{
 					{AccountID: investAccountID, Name: "Brokerage", Type: "investment", Balance: types.MustNewMoney("9000.00")},
@@ -743,7 +757,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 			securityTickers: map[types.ID]string{},
 			payeeNames:      make(map[types.ID]string),
 			accountNames:    make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := widget.StripAnsi(app.renderDashboard())
@@ -769,7 +783,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 		width:       120,
 		height:      40,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{
 					{AccountID: investAccountID, Name: "Rollover IRA", Type: "investment", Balance: types.MustNewMoney("10000.00")},
@@ -787,7 +801,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 			securityTickers: map[types.ID]string{},
 			payeeNames:      make(map[types.ID]string),
 			accountNames:    make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := widget.StripAnsi(app.renderDashboard())
@@ -813,7 +827,7 @@ func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 		width:       120,
 		height:      40,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{
 					{AccountID: checkingID, Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
@@ -824,7 +838,7 @@ func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 			securityTickers:    map[types.ID]string{},
 			payeeNames:         make(map[types.ID]string),
 			accountNames:       make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := widget.StripAnsi(app.renderDashboard())
@@ -928,28 +942,30 @@ func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investme
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 	return &App{
-		currentView:               ViewDashboard,
-		keys:                      defaultKeyMap(),
-		sidebar:                   sidebar,
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		styles:                    styles,
-		width:                     120,
-		height:                    40,
-		dashboardExpandedAccounts: expanded,
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: acct.ID, Name: acct.Name, Type: string(acct.Type), Balance: types.MustNewMoney("25000.00")},
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		sidebar:     sidebar,
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      styles,
+		width:       120,
+		height:      40,
+		dashboard: dashboardViewState{
+			expandedAccounts: expanded,
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: acct.ID, Name: acct.Name, Type: string(acct.Type), Balance: types.MustNewMoney("25000.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
 				},
-				Totals: usdTotals(types.MustNewMoney("25000.00"), types.ZeroMoney, types.MustNewMoney("25000.00")),
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					acct.ID: {AccountID: acct.ID, Holdings: holdings},
+				},
+				securityTickers: tickers,
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				acct.ID: {AccountID: acct.ID, Holdings: holdings},
-			},
-			securityTickers: tickers,
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 }
@@ -967,7 +983,7 @@ func TestApp_Dashboard_RightExpandsLeftCollapses(t *testing.T) {
 
 	// Right expands.
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
-	if !app.dashboardExpandedAccounts[acctID] {
+	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("Right should expand the selected investment account")
 	}
 	if !contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
@@ -976,7 +992,7 @@ func TestApp_Dashboard_RightExpandsLeftCollapses(t *testing.T) {
 
 	// Left collapses.
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyLeft})
-	if app.dashboardExpandedAccounts[acctID] {
+	if app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("Left should collapse the selected investment account")
 	}
 	if contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
@@ -993,11 +1009,11 @@ func TestApp_Dashboard_ToggleVimKeys(t *testing.T) {
 
 	// 'l' expands, 'h' collapses (vim bindings mirror →/←).
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if !app.dashboardExpandedAccounts[acctID] {
+	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("'l' should expand the selected investment account")
 	}
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: 'h', Text: "h"})
-	if app.dashboardExpandedAccounts[acctID] {
+	if app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("'h' should collapse the selected investment account")
 	}
 }
@@ -1007,10 +1023,10 @@ func TestApp_Dashboard_ToggleNoOpForNonInvestment(t *testing.T) {
 	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Checking", Type: account.TypeChecking}
 	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{})
 	// Overwrite the auto-built holdings entry: a checking account carries none.
-	app.dashboard.investmentHoldings = map[types.ID]*investment.AccountValuation{}
+	app.dashboard.data.investmentHoldings = map[types.ID]*investment.AccountValuation{}
 
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
-	if _, exists := app.dashboardExpandedAccounts[acctID]; exists {
+	if _, exists := app.dashboard.expandedAccounts[acctID]; exists {
 		t.Error("toggle should be a no-op for a non-investment account (no map entry created)")
 	}
 }
@@ -1023,7 +1039,7 @@ func TestApp_Dashboard_ToggleWorksForCashOnlyAccount(t *testing.T) {
 	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{acctID: false})
 
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
-	if !app.dashboardExpandedAccounts[acctID] {
+	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("toggle should expand a cash-only investment account (it shows the ▸/▾ affordance)")
 	}
 	if !contains(widget.StripAnsi(app.renderDashboard()), "cash only") {
@@ -1036,10 +1052,10 @@ func TestApp_Dashboard_ToggleNoOpWhenValuationMissing(t *testing.T) {
 	acct := &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Unvalued IRA", Type: account.TypeInvestment}
 	app := dashboardToggleApp(t, acct, nil, map[types.ID]bool{})
 	// No valuation entry loaded for this account → no affordance, no toggle.
-	app.dashboard.investmentHoldings = map[types.ID]*investment.AccountValuation{}
+	app.dashboard.data.investmentHoldings = map[types.ID]*investment.AccountValuation{}
 
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
-	if _, exists := app.dashboardExpandedAccounts[acctID]; exists {
+	if _, exists := app.dashboard.expandedAccounts[acctID]; exists {
 		t.Error("toggle should be a no-op for an investment account with no loaded valuation")
 	}
 }
@@ -1066,35 +1082,37 @@ func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 	app := &App{
-		currentView:               ViewDashboard,
-		keys:                      defaultKeyMap(),
-		sidebar:                   sidebar,
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		styles:                    styles,
-		width:                     120,
-		height:                    40,
-		ready:                     true,
-		dashboardExpandedAccounts: map[types.ID]bool{invA: true, invB: false},
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: []report.AccountBalance{
-					{AccountID: chk, Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
-					{AccountID: invA, Name: "Brokerage A", Type: "investment", Balance: types.MustNewMoney("25000.00")},
-					{AccountID: invB, Name: "Brokerage B", Type: "investment", Balance: types.MustNewMoney("15000.00")},
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		sidebar:     sidebar,
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      styles,
+		width:       120,
+		height:      40,
+		ready:       true,
+		dashboard: dashboardViewState{
+			expandedAccounts: map[types.ID]bool{invA: true, invB: false},
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: []report.AccountBalance{
+						{AccountID: chk, Name: "Checking", Type: "checking", Balance: types.MustNewMoney("5000.00")},
+						{AccountID: invA, Name: "Brokerage A", Type: "investment", Balance: types.MustNewMoney("25000.00")},
+						{AccountID: invB, Name: "Brokerage B", Type: "investment", Balance: types.MustNewMoney("15000.00")},
+					},
+					Liabilities: []report.AccountBalance{
+						{AccountID: visa, Name: "Visa", Type: "credit_card", Balance: types.MustNewMoney("-1200.00")},
+					},
+					Totals: usdTotals(types.MustNewMoney("45000.00"), types.MustNewMoney("-1200.00"), types.MustNewMoney("43800.00")),
 				},
-				Liabilities: []report.AccountBalance{
-					{AccountID: visa, Name: "Visa", Type: "credit_card", Balance: types.MustNewMoney("-1200.00")},
+				investmentHoldings: map[types.ID]*investment.AccountValuation{
+					invA: {AccountID: invA, Holdings: []investment.Holding{{SecurityID: secA, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}},
+					invB: {AccountID: invB, Holdings: []investment.Holding{{SecurityID: secB, MarketValue: types.MustNewMoney("15000.00"), HasPricing: true}}},
 				},
-				Totals: usdTotals(types.MustNewMoney("45000.00"), types.MustNewMoney("-1200.00"), types.MustNewMoney("43800.00")),
+				securityTickers: map[types.ID]string{secA: "AAA", secB: "BBB"},
+				payeeNames:      make(map[types.ID]string),
+				accountNames:    make(map[types.ID]string),
 			},
-			investmentHoldings: map[types.ID]*investment.AccountValuation{
-				invA: {AccountID: invA, Holdings: []investment.Holding{{SecurityID: secA, MarketValue: types.MustNewMoney("12000.00"), HasPricing: true}}},
-				invB: {AccountID: invB, Holdings: []investment.Holding{{SecurityID: secB, MarketValue: types.MustNewMoney("15000.00"), HasPricing: true}}},
-			},
-			securityTickers: map[types.ID]string{secA: "AAA", secB: "BBB"},
-			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		},
 	}
 	return app, map[types.ID]string{invA: "Brokerage A", invB: "Brokerage B"}
@@ -1107,10 +1125,10 @@ func TestApp_Dashboard_MouseRowMapMatchesAffordance(t *testing.T) {
 	app, names := dashboardMouseApp(t)
 
 	lines := strings.Split(widget.StripAnsi(app.renderDashboard()), "\n")
-	if len(app.dashboardAccountRows) != 2 {
-		t.Fatalf("expected 2 expandable-account rows recorded, got %d", len(app.dashboardAccountRows))
+	if len(app.dashboard.accountRows) != 2 {
+		t.Fatalf("expected 2 expandable-account rows recorded, got %d", len(app.dashboard.accountRows))
 	}
-	for row, id := range app.dashboardAccountRows {
+	for row, id := range app.dashboard.accountRows {
 		if row < 0 || row >= len(lines) {
 			t.Fatalf("recorded row %d out of range [0,%d)", row, len(lines))
 		}
@@ -1128,14 +1146,14 @@ func TestApp_Dashboard_MouseRowMapMatchesAffordance(t *testing.T) {
 // moves the sidebar cursor onto it, and a second click collapses it.
 func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
-	app.renderDashboard() // populate dashboardAccountRows
+	app.renderDashboard() // populate dashboard.accountRows
 
 	// Find the collapsed account's header row.
 	var targetRow int
 	var targetID types.ID
 	found := false
-	for row, id := range app.dashboardAccountRows {
-		if !app.dashboardExpandedAccounts[id] {
+	for row, id := range app.dashboard.accountRows {
+		if !app.dashboard.expandedAccounts[id] {
 			targetRow, targetID, found = row, id, true
 		}
 	}
@@ -1149,7 +1167,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	model, _ := app.Update(click)
 	app = model.(*App)
 
-	if !app.dashboardExpandedAccounts[targetID] {
+	if !app.dashboard.expandedAccounts[targetID] {
 		t.Fatal("clicking the ▸ header should expand the account")
 	}
 	if item := app.sidebar.CursorItem(); item == nil || item.accountID != targetID {
@@ -1158,7 +1176,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 
 	// Re-render to refresh the row map (layout changed), then click again to collapse.
 	app.renderDashboard()
-	for row, id := range app.dashboardAccountRows {
+	for row, id := range app.dashboard.accountRows {
 		if id == targetID {
 			targetRow = row
 		}
@@ -1166,7 +1184,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	click2 := tea.MouseClickMsg{X: contentStartX + 2, Y: targetRow + 1, Button: tea.MouseLeft}
 	model, _ = app.Update(click2)
 	app = model.(*App)
-	if app.dashboardExpandedAccounts[targetID] {
+	if app.dashboard.expandedAccounts[targetID] {
 		t.Error("clicking the ▾ header again should collapse the account")
 	}
 }
@@ -1180,11 +1198,11 @@ func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
 
 	var row int
 	var id types.ID
-	for r, i := range app.dashboardAccountRows {
+	for r, i := range app.dashboard.accountRows {
 		row, id = r, i
 		break
 	}
-	before := app.dashboardExpandedAccounts[id]
+	before := app.dashboard.expandedAccounts[id]
 
 	contentStartX := app.styles.SidebarWidth() + 1
 	colWidth := max((app.styles.ContentWidth()-6)/2, 20)
@@ -1193,7 +1211,7 @@ func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
 	model, _ := app.Update(click)
 	app = model.(*App)
 
-	if app.dashboardExpandedAccounts[id] != before {
+	if app.dashboard.expandedAccounts[id] != before {
 		t.Error("a click in the LIABILITIES column must not toggle an asset account")
 	}
 }
@@ -1203,7 +1221,7 @@ func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
 func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
 	app.renderDashboard()
-	snapshot := maps.Clone(app.dashboardExpandedAccounts)
+	snapshot := maps.Clone(app.dashboard.expandedAccounts)
 
 	contentStartX := app.styles.SidebarWidth() + 1
 	// contentY 0 is the top padding line — not an account header.
@@ -1212,9 +1230,40 @@ func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
 	app = model.(*App)
 
 	for id, v := range snapshot {
-		if app.dashboardExpandedAccounts[id] != v {
+		if app.dashboard.expandedAccounts[id] != v {
 			t.Errorf("clicking a non-header row must not change expand state for %s", id)
 		}
+	}
+}
+
+// TestApp_Dashboard_MouseClickBeforeRenderIsNoOp pins the order the row map
+// needs: renderDashboard writes dashboard.accountRows and a click reads it, so
+// a click that no render has come before finds no row. It must be a no-op, not
+// a toggle of some account.
+func TestApp_Dashboard_MouseClickBeforeRenderIsNoOp(t *testing.T) {
+	// A rendered twin tells where the ▸/▾ header rows would be.
+	rendered, _ := dashboardMouseApp(t)
+	rendered.renderDashboard()
+	if len(rendered.dashboard.accountRows) == 0 {
+		t.Fatal("the fixture should render expandable account rows")
+	}
+
+	app, _ := dashboardMouseApp(t)
+	snapshot := maps.Clone(app.dashboard.expandedAccounts)
+	cursorBefore := app.sidebar.CursorItem()
+	contentStartX := app.styles.SidebarWidth() + 1
+	for row := range rendered.dashboard.accountRows {
+		click := tea.MouseClickMsg{X: contentStartX + 2, Y: row + 1, Button: tea.MouseLeft}
+		model, _ := app.Update(click)
+		app = model.(*App)
+	}
+
+	if !maps.Equal(app.dashboard.expandedAccounts, snapshot) {
+		t.Errorf("a click before any render changed the expand state: got %v, want %v",
+			app.dashboard.expandedAccounts, snapshot)
+	}
+	if app.sidebar.CursorItem() != cursorBefore {
+		t.Error("a click before any render moved the sidebar cursor")
 	}
 }
 
@@ -1224,14 +1273,14 @@ func TestApp_Dashboard_HoldingsStartCollapsed(t *testing.T) {
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 	app := &App{
-		currentView:               ViewDashboard,
-		keys:                      defaultKeyMap(),
-		menubar:                   widget.NewMenuBar(),
-		statusbar:                 widget.NewStatusBar(),
-		styles:                    styles,
-		width:                     120,
-		height:                    40,
-		dashboardExpandedAccounts: map[types.ID]bool{},
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      styles,
+		width:       120,
+		height:      40,
+		dashboard:   dashboardViewState{expandedAccounts: map[types.ID]bool{}},
 	}
 
 	data := &dashboardData{
@@ -1252,7 +1301,7 @@ func TestApp_Dashboard_HoldingsStartCollapsed(t *testing.T) {
 	app = model.(*App)
 
 	// Loading data must NOT auto-expand — accounts start collapsed.
-	if app.dashboardExpandedAccounts[acctID] {
+	if app.dashboard.expandedAccounts[acctID] {
 		t.Error("investment accounts should start collapsed on load, not auto-expanded")
 	}
 	view := widget.StripAnsi(app.renderDashboard())
@@ -1272,14 +1321,14 @@ func TestApp_Dashboard_ExpansionSurvivesReload(t *testing.T) {
 	// Starts collapsed (empty preference map); user expands it.
 	app := dashboardToggleApp(t, acct, holdings, map[types.ID]bool{})
 	app.handleDashboardKeys(tea.KeyPressMsg{Code: tea.KeyRight})
-	if !app.dashboardExpandedAccounts[acctID] {
+	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("precondition: account should be expanded after Right")
 	}
 
 	// A dashboard reload (e.g. after posting a transaction) must NOT reset
 	// the user's expansion back to the collapsed default.
 	reload := dashboardLoadedMsg{data: &dashboardData{
-		netWorth: app.dashboard.netWorth,
+		netWorth: app.dashboard.data.netWorth,
 		investmentHoldings: map[types.ID]*investment.AccountValuation{
 			acctID: {AccountID: acctID, Holdings: holdings},
 		},
@@ -1290,7 +1339,7 @@ func TestApp_Dashboard_ExpansionSurvivesReload(t *testing.T) {
 	model, _ := app.Update(reload)
 	app = model.(*App)
 
-	if !app.dashboardExpandedAccounts[acctID] {
+	if !app.dashboard.expandedAccounts[acctID] {
 		t.Error("a user's expansion must survive a dashboard reload")
 	}
 }
@@ -1307,7 +1356,7 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 		width:       140,
 		height:      40,
 		styles:      styles,
-		dashboard: &dashboardData{
+		dashboard: dashboardViewState{data: &dashboardData{
 			netWorth: &report.NetWorth{
 				Assets: []report.AccountBalance{
 					{Name: "Northwind Brokerage", Type: "investment", Currency: "USD", Err: errors.New("boom")},
@@ -1323,7 +1372,7 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 			},
 			payeeNames:   make(map[types.ID]string),
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := widget.StripAnsi(app.renderDashboard())
@@ -1433,14 +1482,14 @@ func TestDashboardTRAndHoldings_UseAccountCurrency(t *testing.T) {
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 	id := types.NewID()
-	app := &App{styles: styles, dashboard: &dashboardData{
+	app := &App{styles: styles, dashboard: dashboardViewState{data: &dashboardData{
 		investmentHoldings: map[types.ID]*investment.AccountValuation{
 			id: {
 				TotalReturn: types.MustNewMoney("12.50"),
 				Holdings:    []investment.Holding{{SecurityID: types.NewID(), Shares: types.MustNewQuantity("3"), MarketValue: types.MustNewMoney("300.00")}},
 			},
 		},
-	}}
+	}}}
 
 	if tr := widget.StripAnsi(app.renderDashboardTRLine(id, "EUR", 40)); !strings.Contains(tr, "€12.50") || strings.Contains(tr, "$") {
 		t.Errorf("TR line = %q, want euros", tr)

@@ -282,7 +282,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.undoManager.Clear()
 
 	// Clear all cached view data
-	a.dashboard = nil
+	a.dashboard.data = nil
 	a.register = nil
 	a.table = nil
 	a.scheduled = nil
