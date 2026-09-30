@@ -149,8 +149,8 @@ func (a *App) loadInvestmentEditTxn() (*investment.Transaction, bool) {
 // (Buy/Sell/Reinvest Dividend all auto-create a price record), so a user
 // who edits a chart and then returns sees the fresh data point.
 func (a *App) invalidatePriceHistoryCache() {
-	if a.priceView != nil && a.priceView.historyCache != nil {
-		a.priceView.historyCache.Clear()
+	if a.prices.data != nil && a.prices.data.historyCache != nil {
+		a.prices.data.historyCache.Clear()
 	}
 }
 

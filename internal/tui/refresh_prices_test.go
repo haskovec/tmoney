@@ -168,7 +168,7 @@ func TestHandlePriceListKeys_UTriggersRefresh(t *testing.T) {
 	a, fp, _ := setupRefreshTUITest(t, "AAPL")
 	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
 
-	a.priceView = &priceViewData{mode: pricesViewList}
+	a.prices.data = &priceViewData{mode: pricesViewList}
 	a.buildPriceListTable()
 
 	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
@@ -192,7 +192,7 @@ func TestHandlePriceDetailKeys_UTriggersRefresh(t *testing.T) {
 	a, fp, secs := setupRefreshTUITest(t, "AAPL")
 	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:             pricesViewDetail,
 		selectedSecurity: secs[0],
 	}
@@ -294,7 +294,7 @@ func TestRefreshCompleteMsg_ClearsHistoryCache(t *testing.T) {
 	cache.Put(secB.ID, []*price.Price{
 		price.NewPrice(secB.ID, types.NewDate(2026, time.April, 15), types.NewMoneyFromFloat(420.00), price.SourceManual),
 	})
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:         pricesViewList,
 		historyCache: cache,
 	}
@@ -304,10 +304,10 @@ func TestRefreshCompleteMsg_ClearsHistoryCache(t *testing.T) {
 	}}
 	a.Update(priceRefreshCompleteMsg{result: result})
 
-	if _, ok := a.priceView.historyCache.Lookup(secA.ID); ok {
+	if _, ok := a.prices.data.historyCache.Lookup(secA.ID); ok {
 		t.Errorf("priceRefreshCompleteMsg should clear cache entry for %v (AAPL)", secA.ID)
 	}
-	if _, ok := a.priceView.historyCache.Lookup(secB.ID); ok {
+	if _, ok := a.prices.data.historyCache.Lookup(secB.ID); ok {
 		t.Errorf("priceRefreshCompleteMsg should clear cache entry for %v (MSFT)", secB.ID)
 	}
 }

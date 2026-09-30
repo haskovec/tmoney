@@ -110,7 +110,7 @@ historyCache map[types.ID][]*price.Price
 | CSV import (`priceImportedMsg`) | Evict that security's entry |
 | Bulk refresh `u` | Clear entire cache |
 | Leave and re-enter prices view | **Keep** cache (it's still valid) |
-| Switch database file | Cache is rebuilt automatically with the new `priceView` |
+| Switch database file | Cache is rebuilt automatically with the new `prices.data` |
 
 The CRUD invalidations hook into the existing message handlers that already trigger `reloadPriceViewKeepingMode()` — they call `evict(id)` before the reload. The bulk-refresh path calls `clear()` because the provider response doesn't tell us per-ticker which rows changed.
 

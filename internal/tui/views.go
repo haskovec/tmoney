@@ -188,24 +188,24 @@ func init() {
 			render:     (*App).renderPriceView,
 			onKey:      (*App).handlePriceViewKeys,
 			hints: func(a *App) string {
-				if a.priceView != nil && a.priceView.mode == pricesViewDetail {
+				if a.prices.data != nil && a.prices.data.mode == pricesViewDetail {
 					return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + commonKeyHints
 				}
 				return "↑↓ navigate  enter view history  / search  esc back  " + commonKeyHints
 			},
 			shortcuts: pricesShortcuts,
 			table: func(a *App) *widget.Table {
-				if a.priceView != nil && a.priceView.mode == pricesViewList {
-					return a.priceListTable
+				if a.prices.data != nil && a.prices.data.mode == pricesViewList {
+					return a.prices.listTable
 				}
-				return a.priceTable
+				return a.prices.table
 			},
 			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.loadPriceViewData()} },
 			focus: func(a *App) {
 				// Prices is full-screen, no sidebar
 				a.sidebar.SetFocused(false)
-				if a.priceTable != nil {
-					a.priceTable.SetFocused(true)
+				if a.prices.table != nil {
+					a.prices.table.SetFocused(true)
 				}
 			},
 		},

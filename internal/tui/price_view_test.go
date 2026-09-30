@@ -136,19 +136,19 @@ func TestBuildPriceTable(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 
 	app := &App{
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			prices:           []*price.Price{p1, p2},
-		},
+		}},
 	}
 
 	app.buildPriceTable()
 
-	if app.priceTable == nil {
-		t.Fatal("priceTable should not be nil after build")
+	if app.prices.table == nil {
+		t.Fatal("prices.table should not be nil after build")
 	}
-	if app.priceTable.RowCount() != 2 {
-		t.Errorf("expected 2 rows, got %d", app.priceTable.RowCount())
+	if app.prices.table.RowCount() != 2 {
+		t.Errorf("expected 2 rows, got %d", app.prices.table.RowCount())
 	}
 }
 
@@ -166,22 +166,22 @@ func TestBuildPriceTable_SortedByDateDesc(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 
 	app := &App{
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			// Prices already sorted desc (as returned by service)
 			prices: []*price.Price{p2, p3, p1},
-		},
+		}},
 	}
 
 	app.buildPriceTable()
 
-	if app.priceTable == nil {
-		t.Fatal("priceTable should not be nil")
+	if app.prices.table == nil {
+		t.Fatal("prices.table should not be nil")
 	}
 
 	// widget.Table should have rows sorted by date desc (newest first)
-	if app.priceTable.RowCount() != 3 {
-		t.Fatalf("expected 3 rows, got %d", app.priceTable.RowCount())
+	if app.prices.table.RowCount() != 3 {
+		t.Fatalf("expected 3 rows, got %d", app.prices.table.RowCount())
 	}
 }
 
@@ -204,11 +204,11 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			prices:           []*price.Price{p1, p2},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -216,16 +216,16 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handlePriceViewKeys(downKey)
 
-	if app.priceTable.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 after down", app.priceTable.Cursor())
+	if app.prices.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 after down", app.prices.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handlePriceViewKeys(upKey)
 
-	if app.priceTable.Cursor() != 0 {
-		t.Errorf("cursor = %d, want 0 after up", app.priceTable.Cursor())
+	if app.prices.table.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 after up", app.prices.table.Cursor())
 	}
 }
 
@@ -236,12 +236,12 @@ func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -268,12 +268,12 @@ func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -301,12 +301,12 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 		height:    24,
 		keys:      defaultKeyMap(),
 		statusbar: widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -325,12 +325,12 @@ func TestHandlePriceViewKeys_ImportOpensDialog(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -349,11 +349,11 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -361,7 +361,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	slashKey := tea.KeyPressMsg{Code: '/', Text: "/"}
 	app.handlePriceViewKeys(slashKey)
 
-	if !app.priceView.searching {
+	if !app.prices.data.searching {
 		t.Error("should be in search mode after pressing '/'")
 	}
 
@@ -369,15 +369,15 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	app.handlePriceSearchKey(aKey)
 
-	if app.priceView.searchQuery != "a" {
-		t.Errorf("searchQuery = %q, want %q", app.priceView.searchQuery, "a")
+	if app.prices.data.searchQuery != "a" {
+		t.Errorf("searchQuery = %q, want %q", app.prices.data.searchQuery, "a")
 	}
 
 	// Escape exits search
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
 	app.handlePriceSearchKey(escKey)
 
-	if app.priceView.searching {
+	if app.prices.data.searching {
 		t.Error("should exit search mode after Escape")
 	}
 }
@@ -516,12 +516,12 @@ func TestRenderPriceView_NoPrices(t *testing.T) {
 		width:  80,
 		height: 24,
 		styles: widget.NewStyles(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.styles.Resize(80, 24)
 
@@ -542,12 +542,12 @@ func TestRenderPriceView_WithData(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildPriceTable()
@@ -568,12 +568,12 @@ func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 
@@ -602,10 +602,10 @@ func TestPriceViewDataLoadedMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.priceView == nil {
+	if updatedApp.prices.data == nil {
 		t.Fatal("price view data should be set")
 	}
-	if updatedApp.priceTable == nil {
+	if updatedApp.prices.table == nil {
 		t.Error("detail-mode price table should be built")
 	}
 }
@@ -626,7 +626,7 @@ func TestPriceViewDataLoadedMsg_ListMode(t *testing.T) {
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.priceListTable == nil {
+	if updatedApp.prices.listTable == nil {
 		t.Error("list-mode price list table should be built")
 	}
 }
@@ -637,11 +637,11 @@ func TestPriceViewUpdate_PriceAddedMsg(t *testing.T) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 
 	msg := priceAddedMsg{}
@@ -666,11 +666,11 @@ func TestPriceViewUpdate_PriceUpdatedMsg(t *testing.T) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 
 	msg := priceUpdatedMsg{}
@@ -692,11 +692,11 @@ func TestPriceViewUpdate_PriceDeletedMsg(t *testing.T) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 
 	msg := priceDeletedMsg{}
@@ -718,11 +718,11 @@ func TestPriceViewUpdate_PriceImportedMsg(t *testing.T) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 
 	msg := priceImportedMsg{total: 10, imported: 8, skipped: 2}
@@ -766,13 +766,13 @@ func pc015TestApp(t *testing.T) (app *App, selectedID, otherID types.ID) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: selectedSec,
 			securities:       []*security.Security{selectedSec, otherSec},
 			prices:           []*price.Price{},
 			historyCache:     cache,
-		},
+		}},
 	}
 	return app, selectedSec.ID, otherSec.ID
 }
@@ -782,10 +782,10 @@ func TestPriceViewUpdate_PriceAddedMsg_EvictsSelectedSecurityFromCache(t *testin
 
 	app.Update(priceAddedMsg{})
 
-	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+	if _, ok := app.prices.data.historyCache.Lookup(selectedID); ok {
 		t.Errorf("priceAddedMsg should evict cache entry for selected security %v", selectedID)
 	}
-	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+	if _, ok := app.prices.data.historyCache.Lookup(otherID); !ok {
 		t.Errorf("priceAddedMsg must not evict unrelated cache entry for security %v", otherID)
 	}
 }
@@ -795,10 +795,10 @@ func TestPriceViewUpdate_PriceUpdatedMsg_EvictsSelectedSecurityFromCache(t *test
 
 	app.Update(priceUpdatedMsg{})
 
-	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+	if _, ok := app.prices.data.historyCache.Lookup(selectedID); ok {
 		t.Errorf("priceUpdatedMsg should evict cache entry for selected security %v", selectedID)
 	}
-	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+	if _, ok := app.prices.data.historyCache.Lookup(otherID); !ok {
 		t.Errorf("priceUpdatedMsg must not evict unrelated cache entry for security %v", otherID)
 	}
 }
@@ -808,10 +808,10 @@ func TestPriceViewUpdate_PriceDeletedMsg_EvictsSelectedSecurityFromCache(t *test
 
 	app.Update(priceDeletedMsg{})
 
-	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+	if _, ok := app.prices.data.historyCache.Lookup(selectedID); ok {
 		t.Errorf("priceDeletedMsg should evict cache entry for selected security %v", selectedID)
 	}
-	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+	if _, ok := app.prices.data.historyCache.Lookup(otherID); !ok {
 		t.Errorf("priceDeletedMsg must not evict unrelated cache entry for security %v", otherID)
 	}
 }
@@ -821,10 +821,10 @@ func TestPriceViewUpdate_PriceImportedMsg_EvictsSelectedSecurityFromCache(t *tes
 
 	app.Update(priceImportedMsg{total: 5, imported: 3, skipped: 2})
 
-	if _, ok := app.priceView.historyCache.Lookup(selectedID); ok {
+	if _, ok := app.prices.data.historyCache.Lookup(selectedID); ok {
 		t.Errorf("priceImportedMsg should evict cache entry for selected security %v", selectedID)
 	}
-	if _, ok := app.priceView.historyCache.Lookup(otherID); !ok {
+	if _, ok := app.prices.data.historyCache.Lookup(otherID); !ok {
 		t.Errorf("priceImportedMsg must not evict unrelated cache entry for security %v", otherID)
 	}
 }
@@ -833,7 +833,7 @@ func TestPriceViewUpdate_PriceImportedMsg_EvictsSelectedSecurityFromCache(t *tes
 // by these CRUD handlers preserves the existing cache rather than
 // replacing it with a fresh empty one — otherwise the surgical Evict is
 // immediately overridden by a Clear-equivalent. This test pins that
-// contract: when the priceView already has a cache, a subsequent
+// contract: when the price data already has a cache, a subsequent
 // priceViewDataLoadedMsg must keep its entries.
 func TestPriceViewDataLoadedMsg_PreservesExistingHistoryCache(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
@@ -846,11 +846,11 @@ func TestPriceViewDataLoadedMsg_PreservesExistingHistoryCache(t *testing.T) {
 		currentView: ViewPrices,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:         pricesViewList,
 			latestPrices: []*price.LatestPrice{},
 			historyCache: cache,
-		},
+		}},
 	}
 
 	// Reload yields fresh data with its own (empty) historyCache; the
@@ -862,10 +862,10 @@ func TestPriceViewDataLoadedMsg_PreservesExistingHistoryCache(t *testing.T) {
 	}
 	app.Update(priceViewDataLoadedMsg{data: freshData})
 
-	if app.priceView.historyCache == nil {
+	if app.prices.data.historyCache == nil {
 		t.Fatal("historyCache should not be nil after reload")
 	}
-	if _, ok := app.priceView.historyCache.Lookup(sec.ID); !ok {
+	if _, ok := app.prices.data.historyCache.Lookup(sec.ID); !ok {
 		t.Errorf("reload dropped cached entry for %v; PC-015 requires preserving the cache across reload", sec.ID)
 	}
 }
@@ -991,7 +991,7 @@ func TestMenuBarHasPrices(t *testing.T) {
 func TestPriceViewKeyHints_DetailMode(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
-		priceView:   &priceViewData{mode: pricesViewDetail},
+		prices:      priceViewState{data: &priceViewData{mode: pricesViewDetail}},
 	}
 
 	hints := app.getKeyHints()
@@ -1009,7 +1009,7 @@ func TestPriceViewKeyHints_DetailMode(t *testing.T) {
 func TestPriceViewKeyHints_ListMode(t *testing.T) {
 	app := &App{
 		currentView: ViewPrices,
-		priceView:   &priceViewData{mode: pricesViewList},
+		prices:      priceViewState{data: &priceViewData{mode: pricesViewList}},
 	}
 
 	hints := app.getKeyHints()
@@ -1036,10 +1036,10 @@ func TestSelectedPrice(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			prices:           []*price.Price{p1, p2},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -1049,7 +1049,7 @@ func TestSelectedPrice(t *testing.T) {
 	}
 
 	// Move down
-	app.priceTable.MoveDown()
+	app.prices.table.MoveDown()
 	selected = app.selectedPrice()
 	if selected == nil {
 		t.Fatal("selectedPrice() returned nil after MoveDown")
@@ -1084,11 +1084,11 @@ func TestPriceView_FullScreenRender(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{p},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -1141,20 +1141,20 @@ func TestBuildPriceListTable(t *testing.T) {
 	m, _ := types.NewMoney("185.50")
 
 	app := &App{
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode: pricesViewList,
 			latestPrices: []*price.LatestPrice{
 				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
 			},
-		},
+		}},
 	}
 	app.buildPriceListTable()
 
-	if app.priceListTable == nil {
-		t.Fatal("priceListTable should be built")
+	if app.prices.listTable == nil {
+		t.Fatal("prices.listTable should be built")
 	}
-	if app.priceListTable.RowCount() != 1 {
-		t.Errorf("row count = %d, want 1", app.priceListTable.RowCount())
+	if app.prices.listTable.RowCount() != 1 {
+		t.Errorf("row count = %d, want 1", app.prices.listTable.RowCount())
 	}
 }
 
@@ -1167,12 +1167,12 @@ func TestRenderPriceView_ListMode_ShowsLatestPrices(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode: pricesViewList,
 			latestPrices: []*price.LatestPrice{
 				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
 			},
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildPriceListTable()
@@ -1215,7 +1215,7 @@ func TestRenderPriceView_ListMode_NarrowOmitsChartPanel(t *testing.T) {
 		t.Fatalf("AddPrice: %v", err)
 	}
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1254,7 +1254,7 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	hp1 := price.NewPrice(secs[0].ID, d1, m1, price.SourceManual)
 	hp2 := price.NewPrice(secs[0].ID, d2, m2, price.SourceManual)
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1263,9 +1263,9 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 		historyCache: newHistoryCache(),
 	}
 	// Under PC-013 the chart-render path no longer calls priceSvc; it
-	// reads only from priceView.historyCache. Pre-populate the cache so
+	// reads only from prices.data.historyCache. Pre-populate the cache so
 	// renderPriceView has data to draw.
-	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp2, hp1})
+	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp2, hp1})
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1297,7 +1297,7 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 	// secs[0]. Under PC-013 the cache is the chart's source of truth.
 	d := types.MustParseDate("2026-04-22")
 	placeholder, _ := types.NewMoney("0.00")
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1305,7 +1305,7 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 		},
 		historyCache: newHistoryCache(),
 	}
-	a.priceView.historyCache.Put(secs[0].ID, nil)
+	a.prices.data.historyCache.Put(secs[0].ID, nil)
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1340,7 +1340,7 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 	m, _ := types.NewMoney("185.50")
 	hp := price.NewPrice(secs[0].ID, d, m, price.SourceManual)
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1348,7 +1348,7 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 		},
 		historyCache: newHistoryCache(),
 	}
-	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp})
+	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp})
 	a.buildPriceListTable()
 
 	output := a.renderPriceView()
@@ -1398,7 +1398,7 @@ func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T)
 	}
 
 	latestDate := types.MustParseDate("2026-04-15")
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1406,7 +1406,7 @@ func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T)
 		},
 		historyCache: newHistoryCache(),
 	}
-	a.priceView.historyCache.Put(secs[0].ID, flatPrices)
+	a.prices.data.historyCache.Put(secs[0].ID, flatPrices)
 	a.buildPriceListTable()
 
 	defer func() {
@@ -1436,10 +1436,10 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 		width:  80,
 		height: 24,
 		styles: widget.NewStyles(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:         pricesViewList,
 			latestPrices: nil,
-		},
+		}},
 	}
 	app.styles.Resize(80, 24)
 
@@ -1465,7 +1465,7 @@ func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 			chartPanelMinContentWidth, a.styles.ContentWidth())
 	}
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:         pricesViewList,
 		securities:   secs,
 		latestPrices: nil,
@@ -1484,7 +1484,7 @@ func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 	}
 }
 
-// PC-010: when the priceListTable cursor is past the end of latestPrices
+// PC-010: when the prices.listTable cursor is past the end of latestPrices
 // (a transient inconsistency that can happen if the data slice shrinks
 // between rebuilds), buildPriceListChartPanel must return "" so no chart
 // panel renders. The render falls back to just the table.
@@ -1509,7 +1509,7 @@ func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) 
 	// cursor to slot 1, then shrink latestPrices to one row without
 	// rebuilding the table. The table cursor (1) is now >= len(latestPrices) (1),
 	// which is the out-of-range case PC-010 guards against.
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1518,11 +1518,11 @@ func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) 
 		},
 	}
 	a.buildPriceListTable()
-	a.priceListTable.MoveDown()
-	if a.priceListTable.Cursor() != 1 {
-		t.Fatalf("test premise: expected cursor=1 after MoveDown, got %d", a.priceListTable.Cursor())
+	a.prices.listTable.MoveDown()
+	if a.prices.listTable.Cursor() != 1 {
+		t.Fatalf("test premise: expected cursor=1 after MoveDown, got %d", a.prices.listTable.Cursor())
 	}
-	a.priceView.latestPrices = a.priceView.latestPrices[:1]
+	a.prices.data.latestPrices = a.prices.data.latestPrices[:1]
 
 	output := a.renderPriceView()
 	if strings.Contains(output, "AAPL — AAPL Inc.") {
@@ -1545,13 +1545,13 @@ func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
 			securities: []*security.Security{sec},
 			latestPrices: []*price.LatestPrice{
 				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
 			},
-		},
+		}},
 	}
 	app.buildPriceListTable()
 
@@ -1561,10 +1561,10 @@ func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Enter in list mode should return a command to load detail")
 	}
-	if app.priceView.mode != pricesViewDetail {
-		t.Errorf("mode = %v, want pricesViewDetail after Enter", app.priceView.mode)
+	if app.prices.data.mode != pricesViewDetail {
+		t.Errorf("mode = %v, want pricesViewDetail after Enter", app.prices.data.mode)
 	}
-	if app.priceView.selectedSecurity == nil || app.priceView.selectedSecurity.ID != secID {
+	if app.prices.data.selectedSecurity == nil || app.prices.data.selectedSecurity.ID != secID {
 		t.Error("selectedSecurity should be set to the row's security")
 	}
 }
@@ -1576,12 +1576,12 @@ func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -1591,8 +1591,8 @@ func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Esc in detail mode should return a command to reload list")
 	}
-	if app.priceView.mode != pricesViewList {
-		t.Errorf("mode = %v, want pricesViewList after Esc", app.priceView.mode)
+	if app.prices.data.mode != pricesViewList {
+		t.Errorf("mode = %v, want pricesViewList after Esc", app.prices.data.mode)
 	}
 }
 
@@ -1613,12 +1613,12 @@ func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
 		keys:         defaultKeyMap(),
 		menubar:      widget.NewMenuBar(),
 		statusbar:    widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:             pricesViewDetail,
 			selectedSecurity: sec,
 			securities:       []*security.Security{sec},
 			prices:           []*price.Price{},
-		},
+		}},
 	}
 	app.buildPriceTable()
 
@@ -1628,8 +1628,8 @@ func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
 	if app.currentView != ViewPrices {
 		t.Errorf("currentView = %v, want ViewPrices (Esc in price detail must not switch views)", app.currentView)
 	}
-	if app.priceView.mode != pricesViewList {
-		t.Errorf("mode = %v, want pricesViewList after Esc", app.priceView.mode)
+	if app.prices.data.mode != pricesViewList {
+		t.Errorf("mode = %v, want pricesViewList after Esc", app.prices.data.mode)
 	}
 }
 
@@ -1652,17 +1652,17 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
 			securities: []*security.Security{sec},
 			latestPrices: []*price.LatestPrice{
 				{SecurityID: secID, Ticker: "AAPL", Name: "Apple Inc.", Date: d, Price: m},
 			},
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
-	app.priceListClicks = widget.NewClickTracker(400 * time.Millisecond)
-	app.priceListClicks.SetNowFn(func() time.Time { return now })
+	app.prices.clicks = widget.NewClickTracker(400 * time.Millisecond)
+	app.prices.clicks.SetNowFn(func() time.Time { return now })
 	app.buildPriceListTable()
 
 	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
@@ -1672,7 +1672,7 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	_, cmd := app.Update(click)
 	// The first click selects the row (and schedules a chart-panel fetch,
 	// mirroring keyboard navigation) but must not drill into detail mode.
-	if app.priceView.mode != pricesViewList {
+	if app.prices.data.mode != pricesViewList {
 		t.Fatal("first click should not drill in")
 	}
 	if cmd == nil {
@@ -1684,8 +1684,8 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("double click should return a drill-in command")
 	}
-	if app.priceView.mode != pricesViewDetail {
-		t.Errorf("mode = %v, want pricesViewDetail", app.priceView.mode)
+	if app.prices.data.mode != pricesViewDetail {
+		t.Errorf("mode = %v, want pricesViewDetail", app.prices.data.mode)
 	}
 }
 
@@ -1716,7 +1716,7 @@ func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
 			securities: []*security.Security{sa, sb},
 			latestPrices: []*price.LatestPrice{
@@ -1724,13 +1724,13 @@ func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
 				{SecurityID: secB, Ticker: "MSFT", Name: "Microsoft", Date: d, Price: m},
 			},
 			historyCache: newHistoryCache(),
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildPriceListTable()
 
-	if app.priceListTable.Cursor() != 0 {
-		t.Fatalf("test premise: expected initial cursor 0, got %d", app.priceListTable.Cursor())
+	if app.prices.listTable.Cursor() != 0 {
+		t.Fatalf("test premise: expected initial cursor 0, got %d", app.prices.listTable.Cursor())
 	}
 
 	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
@@ -1740,11 +1740,11 @@ func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
 	model, cmd := app.Update(click)
 	app = model.(*App)
 
-	if app.priceView.mode != pricesViewList {
-		t.Fatalf("single click must not drill in; mode = %v", app.priceView.mode)
+	if app.prices.data.mode != pricesViewList {
+		t.Fatalf("single click must not drill in; mode = %v", app.prices.data.mode)
 	}
-	if app.priceListTable.Cursor() != 1 {
-		t.Fatalf("single click should move cursor to row 1, got %d", app.priceListTable.Cursor())
+	if app.prices.listTable.Cursor() != 1 {
+		t.Fatalf("single click should move cursor to row 1, got %d", app.prices.listTable.Cursor())
 	}
 	if cmd == nil {
 		t.Fatal("single click on a price-list row must schedule a chart fetch, got nil cmd")
@@ -1780,7 +1780,7 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		sidebar:     NewSidebar(),
 		statusbar:   widget.NewStatusBar(),
-		priceView: &priceViewData{
+		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
 			securities: []*security.Security{sa, sb},
 			latestPrices: []*price.LatestPrice{
@@ -1788,7 +1788,7 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 				{SecurityID: secB, Ticker: "MSFT", Name: "Microsoft", Date: d, Price: m},
 			},
 			historyCache: newHistoryCache(),
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildPriceListTable()
@@ -1800,8 +1800,8 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 	model, cmd := app.Update(wheel)
 	app = model.(*App)
 
-	if app.priceListTable.Cursor() != 1 {
-		t.Fatalf("wheel-down should move cursor to row 1, got %d", app.priceListTable.Cursor())
+	if app.prices.listTable.Cursor() != 1 {
+		t.Fatalf("wheel-down should move cursor to row 1, got %d", app.prices.listTable.Cursor())
 	}
 	if cmd == nil {
 		t.Fatal("wheel scroll on the prices list must schedule a chart fetch, got nil cmd")
@@ -1814,7 +1814,7 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 
 // TestRenderPriceView_ListMode_ChartUsesHistoryCache pins PC-012's
 // contract under the PC-013 model: the chart-render path reads ONLY
-// from priceView.historyCache and never queries priceSvc. The test
+// from prices.data.historyCache and never queries priceSvc. The test
 // proves this by mutating the price service between renders — if the
 // chart bypassed the cache, the second render would reflect the
 // mutation; with the cache as the source of truth, it does not.
@@ -1848,7 +1848,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 		t.Fatalf("AddPrice newer: %v", err)
 	}
 
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
@@ -1858,7 +1858,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	}
 	// Mirror what the async fetch path would do: cache the 2-price
 	// slice (newest-first, matching priceSvc.GetPriceHistory contract).
-	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{newer, older})
+	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{newer, older})
 	a.buildPriceListTable()
 
 	// First render — the cache has the 2-price slice, full chart shows.
@@ -1890,7 +1890,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	// Clear the cache. With no fallback (chartDisplayedID is also
 	// dropped because Clear evicts every entry), the chart panel
 	// disappears entirely — proving the cache is the only source.
-	a.priceView.historyCache.Clear()
+	a.prices.data.historyCache.Clear()
 
 	out3 := a.renderPriceView()
 	if strings.Contains(out3, "AAPL — AAPL Inc.") {
@@ -1949,7 +1949,7 @@ func TestHandlePriceListKeys_DownSchedulesDebounceTick(t *testing.T) {
 	a, _, secs := setupAppWithTwoSecurities(t)
 	a.buildPriceListTable()
 
-	startCursor := a.priceListTable.Cursor()
+	startCursor := a.prices.listTable.Cursor()
 	if startCursor != 0 {
 		t.Fatalf("test premise: expected initial cursor 0, got %d", startCursor)
 	}
@@ -1958,16 +1958,16 @@ func TestHandlePriceListKeys_DownSchedulesDebounceTick(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Down keypress on price list must return a debounce-scheduling cmd, got nil")
 	}
-	if a.priceListTable.Cursor() != 1 {
-		t.Fatalf("Down should advance cursor to 1, got %d", a.priceListTable.Cursor())
+	if a.prices.listTable.Cursor() != 1 {
+		t.Fatalf("Down should advance cursor to 1, got %d", a.prices.listTable.Cursor())
 	}
 	tick := runDebounceTick(t, cmd)
 	if tick.secID != secs[1].ID {
 		t.Errorf("tick.secID = %v, want %v (the row Down moved to)", tick.secID, secs[1].ID)
 	}
-	if tick.gen != a.priceView.chartDebounceGen {
+	if tick.gen != a.prices.data.chartDebounceGen {
 		t.Errorf("tick.gen = %d, want current chartDebounceGen %d",
-			tick.gen, a.priceView.chartDebounceGen)
+			tick.gen, a.prices.data.chartDebounceGen)
 	}
 }
 
@@ -1992,21 +1992,21 @@ func TestPriceChartDebounceTick_StaleGenIsDropped(t *testing.T) {
 	if tick1.gen >= tick2.gen {
 		t.Fatalf("expected tick2.gen > tick1.gen, got %d vs %d", tick2.gen, tick1.gen)
 	}
-	if a.priceView.chartDebounceGen != tick2.gen {
-		t.Fatalf("expected chartDebounceGen=%d, got %d", tick2.gen, a.priceView.chartDebounceGen)
+	if a.prices.data.chartDebounceGen != tick2.gen {
+		t.Fatalf("expected chartDebounceGen=%d, got %d", tick2.gen, a.prices.data.chartDebounceGen)
 	}
 
 	// Move cursor onto secs[1] so tick2 (which targets secs[1]) won't
 	// be dropped by the cursor-mismatch guard, isolating the gen check.
-	a.priceListTable.MoveDown()
+	a.prices.listTable.MoveDown()
 
 	// Stale tick1 must be ignored — Update returns no cmd, no state change.
-	prevDisplayed := a.priceView.chartDisplayedID
+	prevDisplayed := a.prices.data.chartDisplayedID
 	_, c1 := a.Update(tick1)
 	if c1 != nil {
 		t.Errorf("stale tick must produce no cmd, got %T", c1)
 	}
-	if a.priceView.chartDisplayedID != prevDisplayed {
+	if a.prices.data.chartDisplayedID != prevDisplayed {
 		t.Errorf("stale tick must not mutate chartDisplayedID")
 	}
 
@@ -2059,7 +2059,7 @@ func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
 func TestPriceChartHistoryLoadedMsg_UpdatesStateAndStops(t *testing.T) {
 	a, _, secs := setupAppWithTwoSecurities(t)
 	a.buildPriceListTable()
-	a.priceView.historyCache = newHistoryCache()
+	a.prices.data.historyCache = newHistoryCache()
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("180.00")
@@ -2074,10 +2074,10 @@ func TestPriceChartHistoryLoadedMsg_UpdatesStateAndStops(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("loaded handler must return no further cmd, got %T", cmd)
 	}
-	if a.priceView.chartDisplayedID != secs[0].ID {
-		t.Errorf("chartDisplayedID = %v, want %v", a.priceView.chartDisplayedID, secs[0].ID)
+	if a.prices.data.chartDisplayedID != secs[0].ID {
+		t.Errorf("chartDisplayedID = %v, want %v", a.prices.data.chartDisplayedID, secs[0].ID)
 	}
-	cached, ok := a.priceView.historyCache.Lookup(secs[0].ID)
+	cached, ok := a.prices.data.historyCache.Lookup(secs[0].ID)
 	if !ok {
 		t.Fatalf("cache must contain entry for %v after loaded msg", secs[0].ID)
 	}
@@ -2099,8 +2099,8 @@ func TestPriceChartDebounceTick_CacheHitSkipsFetch(t *testing.T) {
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("180.00")
 	hp := price.NewPrice(secs[0].ID, d, m, price.SourceManual)
-	a.priceView.historyCache = newHistoryCache()
-	a.priceView.historyCache.Put(secs[0].ID, []*price.Price{hp})
+	a.prices.data.historyCache = newHistoryCache()
+	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp})
 
 	cmd := a.schedulePriceChartFetch(secs[0].ID)
 	tick := runDebounceTick(t, cmd)
@@ -2109,9 +2109,9 @@ func TestPriceChartDebounceTick_CacheHitSkipsFetch(t *testing.T) {
 	if fetchCmd != nil {
 		t.Errorf("cache-hit tick must return no fetch cmd, got %T", fetchCmd)
 	}
-	if a.priceView.chartDisplayedID != secs[0].ID {
+	if a.prices.data.chartDisplayedID != secs[0].ID {
 		t.Errorf("cache-hit tick must promote chartDisplayedID to %v, got %v",
-			secs[0].ID, a.priceView.chartDisplayedID)
+			secs[0].ID, a.prices.data.chartDisplayedID)
 	}
 }
 
@@ -2129,21 +2129,21 @@ func TestPriceChartDebounceTick_CursorMismatchIsDropped(t *testing.T) {
 
 	// Move cursor off secs[0] without scheduling a new tick (test
 	// fixture; in production the move would itself schedule).
-	a.priceListTable.MoveDown()
+	a.prices.listTable.MoveDown()
 	if a.listCursorSecurityID() != secs[1].ID {
 		t.Fatalf("test premise: cursor should be on secs[1] after MoveDown")
 	}
 
-	prevGen := a.priceView.chartDebounceGen
-	prevDisplayed := a.priceView.chartDisplayedID
+	prevGen := a.prices.data.chartDebounceGen
+	prevDisplayed := a.prices.data.chartDisplayedID
 	_, c := a.Update(tick)
 	if c != nil {
 		t.Errorf("cursor-mismatch tick must produce no cmd, got %T", c)
 	}
-	if a.priceView.chartDebounceGen != prevGen {
+	if a.prices.data.chartDebounceGen != prevGen {
 		t.Errorf("cursor-mismatch tick must not bump gen")
 	}
-	if a.priceView.chartDisplayedID != prevDisplayed {
+	if a.prices.data.chartDisplayedID != prevDisplayed {
 		t.Errorf("cursor-mismatch tick must not mutate chartDisplayedID")
 	}
 }
@@ -2173,25 +2173,25 @@ func TestHandlePriceListKeys_CursorMovingKeysScheduleDebounce(t *testing.T) {
 
 			a, _, secs := setupAppWithTwoSecurities(t)
 			a.buildPriceListTable()
-			for a.priceListTable.Cursor() < tc.startCursor {
-				a.priceListTable.MoveDown()
+			for a.prices.listTable.Cursor() < tc.startCursor {
+				a.prices.listTable.MoveDown()
 			}
-			for a.priceListTable.Cursor() > tc.startCursor {
-				a.priceListTable.MoveUp()
+			for a.prices.listTable.Cursor() > tc.startCursor {
+				a.prices.listTable.MoveUp()
 			}
-			if a.priceListTable.Cursor() != tc.startCursor {
+			if a.prices.listTable.Cursor() != tc.startCursor {
 				t.Fatalf("test premise: failed to position cursor at %d, got %d",
-					tc.startCursor, a.priceListTable.Cursor())
+					tc.startCursor, a.prices.listTable.Cursor())
 			}
 
-			beforeGen := a.priceView.chartDebounceGen
+			beforeGen := a.prices.data.chartDebounceGen
 			_, cmd := a.handlePriceListKeys(tc.msg)
 			if cmd == nil {
 				t.Fatalf("%s keypress on price list must return a debounce-scheduling cmd, got nil", tc.name)
 			}
-			if a.priceView.chartDebounceGen <= beforeGen {
+			if a.prices.data.chartDebounceGen <= beforeGen {
 				t.Errorf("%s must bump chartDebounceGen: before=%d after=%d",
-					tc.name, beforeGen, a.priceView.chartDebounceGen)
+					tc.name, beforeGen, a.prices.data.chartDebounceGen)
 			}
 
 			wantID := secs[tc.wantSecIdx].ID
@@ -2203,9 +2203,9 @@ func TestHandlePriceListKeys_CursorMovingKeysScheduleDebounce(t *testing.T) {
 			if tick.secID != wantID {
 				t.Errorf("tick.secID = %v, want %v", tick.secID, wantID)
 			}
-			if tick.gen != a.priceView.chartDebounceGen {
+			if tick.gen != a.prices.data.chartDebounceGen {
 				t.Errorf("tick.gen = %d, want current chartDebounceGen %d",
-					tick.gen, a.priceView.chartDebounceGen)
+					tick.gen, a.prices.data.chartDebounceGen)
 			}
 		})
 	}
@@ -2228,18 +2228,18 @@ func TestHandlePriceListKeys_NonCursorKeysDoNotScheduleDebounce(t *testing.T) {
 
 			a, _, _ := setupAppWithTwoSecurities(t)
 			a.buildPriceListTable()
-			beforeCursor := a.priceListTable.Cursor()
-			beforeGen := a.priceView.chartDebounceGen
+			beforeCursor := a.prices.listTable.Cursor()
+			beforeGen := a.prices.data.chartDebounceGen
 
 			a.handlePriceListKeys(tc.msg)
 
-			if a.priceView.chartDebounceGen != beforeGen {
+			if a.prices.data.chartDebounceGen != beforeGen {
 				t.Errorf("%s must not bump chartDebounceGen: before=%d after=%d",
-					tc.name, beforeGen, a.priceView.chartDebounceGen)
+					tc.name, beforeGen, a.prices.data.chartDebounceGen)
 			}
-			if a.priceListTable.Cursor() != beforeCursor {
+			if a.prices.listTable.Cursor() != beforeCursor {
 				t.Errorf("%s must not move cursor: before=%d after=%d",
-					tc.name, beforeCursor, a.priceListTable.Cursor())
+					tc.name, beforeCursor, a.prices.listTable.Cursor())
 			}
 		})
 	}
@@ -2258,7 +2258,7 @@ func setupAppWithTwoSecurities(t *testing.T) (*App, *fakeRefreshProvider, []*sec
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("100.00")
-	a.priceView = &priceViewData{
+	a.prices.data = &priceViewData{
 		mode:       pricesViewList,
 		securities: secs,
 		latestPrices: []*price.LatestPrice{
