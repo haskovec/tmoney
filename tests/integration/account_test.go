@@ -31,13 +31,13 @@ func TestAccountLifecycle(t *testing.T) {
 	// Step 2: Create a test account
 	t.Run("Create account", func(t *testing.T) {
 		account := account.NewAccount(
-			"Chase Checking",
+			"Cedar Checking",
 			account.TypeChecking,
 			"USD",
 			types.MustNewMoney("1000.00"),
 			types.NewDate(2024, 1, 15),
 		)
-		account.SetInstitution("Chase Bank")
+		account.SetInstitution("Cedar Bank")
 		account.SetAccountNumber("1234")
 
 		err = repo.Create(account)
@@ -59,8 +59,8 @@ func TestAccountLifecycle(t *testing.T) {
 
 		// Verify account data
 		retrieved := accounts[0]
-		if retrieved.Name != "Chase Checking" {
-			t.Errorf("Expected name 'Chase Checking', got %q", retrieved.Name)
+		if retrieved.Name != "Cedar Checking" {
+			t.Errorf("Expected name 'Cedar Checking', got %q", retrieved.Name)
 		}
 		if retrieved.Type != account.TypeChecking {
 			t.Errorf("Expected type 'checking', got %q", retrieved.Type)
@@ -74,8 +74,8 @@ func TestAccountLifecycle(t *testing.T) {
 		if !retrieved.Active {
 			t.Error("Expected account to be active")
 		}
-		if !retrieved.Institution.Valid || retrieved.Institution.String != "Chase Bank" {
-			t.Errorf("Expected institution 'Chase Bank', got %v", retrieved.Institution)
+		if !retrieved.Institution.Valid || retrieved.Institution.String != "Cedar Bank" {
+			t.Errorf("Expected institution 'Cedar Bank', got %v", retrieved.Institution)
 		}
 		if !retrieved.AccountNumber.Valid || retrieved.AccountNumber.String != "1234" {
 			t.Errorf("Expected account number '1234', got %v", retrieved.AccountNumber)
@@ -85,12 +85,12 @@ func TestAccountLifecycle(t *testing.T) {
 	// Step 4: Retrieve by ID and by name
 	t.Run("Get account by ID and name", func(t *testing.T) {
 		// Get by name
-		account, err := repo.GetByName("Chase Checking")
+		account, err := repo.GetByName("Cedar Checking")
 		if err != nil {
 			t.Fatalf("Failed to get account by name: %v", err)
 		}
-		if account.Name != "Chase Checking" {
-			t.Errorf("Expected name 'Chase Checking', got %q", account.Name)
+		if account.Name != "Cedar Checking" {
+			t.Errorf("Expected name 'Cedar Checking', got %q", account.Name)
 		}
 
 		// Get by ID
@@ -105,13 +105,13 @@ func TestAccountLifecycle(t *testing.T) {
 
 	// Step 5: Update the account
 	t.Run("Update account", func(t *testing.T) {
-		account, err := repo.GetByName("Chase Checking")
+		account, err := repo.GetByName("Cedar Checking")
 		if err != nil {
 			t.Fatalf("Failed to get account: %v", err)
 		}
 
 		// Update the account
-		account.Name = "Chase Primary Checking"
+		account.Name = "Cedar Primary Checking"
 		account.SetNotes("Main checking account")
 
 		err = repo.Update(account)
@@ -124,8 +124,8 @@ func TestAccountLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get updated account: %v", err)
 		}
-		if updated.Name != "Chase Primary Checking" {
-			t.Errorf("Expected name 'Chase Primary Checking', got %q", updated.Name)
+		if updated.Name != "Cedar Primary Checking" {
+			t.Errorf("Expected name 'Cedar Primary Checking', got %q", updated.Name)
 		}
 		if !updated.Notes.Valid || updated.Notes.String != "Main checking account" {
 			t.Errorf("Expected notes 'Main checking account', got %v", updated.Notes)
@@ -134,7 +134,7 @@ func TestAccountLifecycle(t *testing.T) {
 
 	// Step 6: Delete the account
 	t.Run("Delete account", func(t *testing.T) {
-		account, err := repo.GetByName("Chase Primary Checking")
+		account, err := repo.GetByName("Cedar Primary Checking")
 		if err != nil {
 			t.Fatalf("Failed to get account: %v", err)
 		}

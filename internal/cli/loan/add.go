@@ -66,7 +66,7 @@ func newLoanAddCmd() *cobra.Command {
 		Example: "  tmoney loan add --name Mortgage --current-balance 312450.22 --rate 6.5 \\\n" +
 			"    --payment 2401.86 --next-payment-date 2026-08-01 --from-account Checking \\\n" +
 			"    --escrow \"Housing:Property Tax=650\" --escrow \"Housing:Home Insurance=120\" \\\n" +
-			"    --payee \"Wells Fargo\" --asset-name \"123 Main St\" --asset-value 450000\n" +
+			"    --payee \"Fabrikam Mortgage\" --asset-name \"123 Main St\" --asset-value 450000\n" +
 			"  tmoney loan add --name \"Car Loan\" --principal 32000 --rate 5.9 \\\n" +
 			"    --term-months 60 --open-date 2026-07-01 --next-payment-date 2026-08-01 \\\n" +
 			"    --from-account Checking",

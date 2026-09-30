@@ -398,12 +398,12 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
 	s := NewSidebar()
 	accounts := []*account.Account{
-		testAccount("Discover Checking", account.TypeChecking),
-		testAccount("Discover Savings", account.TypeSavings),
+		testAccount("Contoso Checking", account.TypeChecking),
+		testAccount("Contoso Savings", account.TypeSavings),
 		// Long enough to exactly fill the sidebar width when the
 		// selection indicator is present.
-		testAccount("Wealthfront Joint Checking", account.TypeChecking),
-		testAccount("Wealthfront IRA", account.TypeInvestment),
+		testAccount("Northwind Primary Checking", account.TypeChecking),
+		testAccount("Northwind IRA", account.TypeInvestment),
 	}
 	s.SetAccounts(accounts)
 
@@ -418,7 +418,7 @@ func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
 
 	// Select the long-named account so its row carries a "◀" at the
 	// right edge.
-	s.SetCursor(3) // Bank Accounts header (0), Discover Checking (1), Savings (2), Joint (3)
+	s.SetCursor(3) // Bank Accounts header (0), Contoso Checking (1), Savings (2), Joint (3)
 	s.Select()
 
 	got := strings.Count(s.Render(styles, sidebarWidth, height), "\n") + 1

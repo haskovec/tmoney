@@ -70,7 +70,7 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: ids.account},
-				Name:      "Fidelity 401k",
+				Name:      "Acme 401k",
 				Type:      account.TypeInvestment,
 				Active:    true,
 			},

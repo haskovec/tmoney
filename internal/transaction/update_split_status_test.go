@@ -31,7 +31,7 @@ func TestRepositoryUpdate_SplitTransactionStatusChange(t *testing.T) {
 	txnSvc := NewService(txnRepo, splitRepo, payeeRepo, accountRepo, nil, database)
 	accountSvc := accountpkg.NewService(accountpkg.NewRepository(database), database)
 
-	account := accountpkg.NewAccount("Wealthfront Checking", accountpkg.TypeChecking, "USD",
+	account := accountpkg.NewAccount("Northwind Checking", accountpkg.TypeChecking, "USD",
 		types.MustNewMoney("0.00"), types.NewDate(2024, 1, 1))
 	if err := accountSvc.Create(account); err != nil {
 		t.Fatalf("Failed to create account: %v", err)

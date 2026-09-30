@@ -1064,7 +1064,7 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 		investmentRegister: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Wealthfront IRA",
+				Name:      "Northwind IRA",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},

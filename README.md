@@ -1567,7 +1567,7 @@ tmoney -f personal.tdb loan add --name "Mortgage" \
   --next-payment-date 2026-08-01 --from-account "Checking" \
   --escrow "Housing:Property Tax=650" --escrow "Housing:Home Insurance=120" \
   --principal-category "Housing:Principal" \
-  --payee "Wells Fargo" --asset-name "123 Main St" --asset-value 450000
+  --payee "Fabrikam Mortgage" --asset-name "123 Main St" --asset-value 450000
 
 # New loan at origination: give the original terms and let the payment compute.
 tmoney -f personal.tdb loan add --name "Car Loan" \

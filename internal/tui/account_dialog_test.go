@@ -310,7 +310,7 @@ func TestBuildEditAccountDialog_AlphanumericAccountNumber(t *testing.T) {
 		types.ZeroMoney,
 		types.Today(),
 	)
-	acct.SetInstitution("Fidelity")
+	acct.SetInstitution("Maple Invest")
 	acct.SetAccountNumber("Z12-345ABC")
 
 	d := buildEditAccountDialog(acct)

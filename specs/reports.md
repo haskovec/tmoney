@@ -48,7 +48,7 @@ As of: January 15, 2024
 
 ASSETS
 ──────────────────────────────────────
-  Chase Checking              $5,234.56
+  Cedar Checking              $5,234.56
   Savings Account            $12,000.00
   Investment Account         $45,678.90
   ────────────────────────────────────
@@ -78,7 +78,7 @@ As of: 2024-01-15
 
 ASSETS
 ------
-Chase Checking:     $5,234.56
+Cedar Checking:     $5,234.56
 Savings:           $12,000.00
 Investment:        $45,678.90
 ------------------------

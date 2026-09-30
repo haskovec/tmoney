@@ -2360,7 +2360,7 @@ func TestGetAccountValuation_ClosedPositionsContributeToTotals(t *testing.T) {
 // shortcut.
 func TestGetAccountValuation_FullyClosedLotTrackedPosition_RealizesLoss(t *testing.T) {
 	env := createFullTestService(t)
-	acct := createLotTrackingAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createLotTrackingAccount(t, env.accountRepo, "Northwind IRA")
 	schf := createSec(t, env.secRepo, "SCHF")
 	other := createSec(t, env.secRepo, "VTI")
 	d1 := types.NewDate(2019, time.August, 8)
@@ -2415,7 +2415,7 @@ func TestGetAccountValuation_FullyClosedLotTrackedPosition_RealizesLoss(t *testi
 // account level. The unavailable gate must be scoped to *this* security.
 func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t *testing.T) {
 	env := createFullTestService(t)
-	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createInvAccount(t, env.accountRepo, "Northwind IRA")
 	schf := createSec(t, env.secRepo, "SCHF")
 	aapl := createSec(t, env.secRepo, "AAPL") // gets a corp action; unrelated to SCHF
 	d1 := types.NewDate(2019, time.August, 8)
@@ -2462,7 +2462,7 @@ func TestRealizedGain_NonLot_CorporateActionOnUnrelatedSecurity_StillComputed(t 
 // partial sum and AnyRealizedUnavailable=true flags the UI to mark it.
 func TestGetAccountValuation_PartialRealized_WhenAnyHoldingUnavailable(t *testing.T) {
 	env := createFullTestService(t)
-	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createInvAccount(t, env.accountRepo, "Northwind IRA")
 	schf := createSec(t, env.secRepo, "SCHF") // no corp action — replays fine
 	aapl := createSec(t, env.secRepo, "AAPL") // gets a spin-off — unavailable
 	spinco := createSec(t, env.secRepo, "SPIN")
@@ -2556,7 +2556,7 @@ func TestGetAccountValuation_AnyRealizedUnavailable_FalseWhenAllAvailable(t *tes
 // same -0.29 realized loss.
 func TestGetAccountValuation_FullyClosedNonLotPosition_RealizesLoss(t *testing.T) {
 	env := createFullTestService(t)
-	acct := createInvAccount(t, env.accountRepo, "Wealthfront IRA")
+	acct := createInvAccount(t, env.accountRepo, "Northwind IRA")
 	schf := createSec(t, env.secRepo, "SCHF")
 	other := createSec(t, env.secRepo, "VTI")
 	d1 := types.NewDate(2019, time.August, 8)

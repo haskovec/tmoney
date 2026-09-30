@@ -153,7 +153,7 @@ func TestApp_KeyHints_RegisterIncludesVoid(t *testing.T) {
 }
 
 func TestApp_View_ComponentWidths(t *testing.T) {
-	checking := testAccount("Discover Checking", account.TypeChecking)
+	checking := testAccount("Contoso Checking", account.TypeChecking)
 
 	for _, termWidth := range []int{100, 120, 160, 200} {
 		t.Run(fmt.Sprintf("width=%d", termWidth), func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 }
 
 func TestApp_View_RegisterLoadedWidths(t *testing.T) {
-	checking := testAccount("Discover Checking", account.TypeChecking)
+	checking := testAccount("Contoso Checking", account.TypeChecking)
 
 	for _, termWidth := range []int{100, 120, 160, 200} {
 		t.Run(fmt.Sprintf("width=%d", termWidth), func(t *testing.T) {
@@ -288,7 +288,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 }
 
 func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
-	checking := testAccount("Discover Checking", account.TypeChecking)
+	checking := testAccount("Contoso Checking", account.TypeChecking)
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
