@@ -18,7 +18,7 @@ import (
 // inbound paycheck split line from Checking. It returns the ids the
 // assertions need.
 type cashOnlySeed struct {
-	depositID, withdrawalID, interestID, feeID types.ID
+	depositID, withdrawalID, interestID, feeID   types.ID
 	inTransferID, outTransferID, splitTransferID types.ID
 }
 
