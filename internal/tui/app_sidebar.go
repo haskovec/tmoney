@@ -49,7 +49,7 @@ func (a *App) handleSidebarKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			accountID := a.sidebar.SelectedAccountID()
 			acct := a.sidebar.SelectedAccount()
 			if acct != nil && acct.Type.IsInvestmentType() {
-				a.portfolioData = nil // Clear old data while loading
+				a.portfolio.data = nil // Clear old data while loading
 				a.switchView(ViewPortfolio)
 				return a, a.loadPortfolioData(accountID)
 			}

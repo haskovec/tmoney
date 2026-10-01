@@ -157,8 +157,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Decision (2026-09-30): `editTxnID` and `newTxnSecurityID` were in this list, but they stay on `App` as `investmentEditTxnID` and `investmentNewTxnSecurityID`. More than one surface writes each, which is the design's rule for what stays (§2.2). The type selector sets both. Every investment dialog reads the edit ID, and `afterInvestmentSave` and `afterTransferSave` clear it. `takeInvestmentDialogSeed` reads and clears the preselect ID as each dialog is built.
   - Done: `a.investmentRegister` is now the state struct, so `a.investmentRegister` became `a.investmentRegister.data`. `leave` is `(*App).resetInvestmentRegisterFilter`; `switchView` calls the leaving view's `leave` when it is not nil. `TestSwitchView_LeavingTheInvestmentRegisterClearsItsFilter` checks all three filter fields, and that a switch to the view on screen keeps them. Without the hook, it fails, as does the older `TestInvestmentFilter_ClearedOnLeavingView`.
 
-- [ ] **VL-306 — `portfolioViewState`**
+- [x] **VL-306 — `portfolioViewState`**
   - Fields: `data`, `holdingsTable`, `lotsTable`, `mode`. Update the VL-107 `table` func.
+  - Done: `App` holds it as `portfolio`, so `a.portfolioData` became `a.portfolio.data` and `a.portfolioMode` became `a.portfolio.mode`. The `table` func calls `activePortfolioTable`, which picks by `a.portfolio.mode`; the VL-107 test still checks both modes. Code outside the view clears `data` (a sidebar click, `p` in the investment register, a reversed corporate action, a database switch). That drops a cache; it is not a handoff, so the field moves.
 
 - [ ] **VL-307 — `scheduledViewState`**
   - Fields: `data`, `table`.

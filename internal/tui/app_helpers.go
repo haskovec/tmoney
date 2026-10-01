@@ -46,10 +46,10 @@ func (a *App) tableContentRowOffset() int {
 		}
 	case ViewPortfolio:
 		offset := baseOffset
-		if a.portfolioData != nil && a.portfolioData.valuation != nil {
+		if a.portfolio.data != nil && a.portfolio.data.valuation != nil {
 			offset += 2 // summary line 1 (snapshot) + line 2 (TR breakdown)
 		}
-		if a.portfolioMode == portfolioViewLots {
+		if a.portfolio.mode == portfolioViewLots {
 			offset++ // "Lots for <ticker>" sub-header
 		}
 		return offset
@@ -174,8 +174,8 @@ func (a *App) reloadCurrentView() tea.Cmd {
 func (a *App) refreshAfterCorporateAction() tea.Cmd {
 	switch a.currentView {
 	case ViewPortfolio:
-		if a.portfolioData != nil && a.portfolioData.account != nil {
-			return a.loadPortfolioData(a.portfolioData.account.ID)
+		if a.portfolio.data != nil && a.portfolio.data.account != nil {
+			return a.loadPortfolioData(a.portfolio.data.account.ID)
 		}
 	case ViewInvestmentRegister:
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {

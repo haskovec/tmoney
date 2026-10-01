@@ -279,7 +279,7 @@ func (a *App) modalMouseAction(m Modal, msg tea.MouseMsg) dialog.DialogAction {
 func (a *App) openAccountFromMouse(accountID types.ID) tea.Cmd {
 	acct := a.sidebar.SelectedAccount()
 	if acct != nil && acct.Type.IsInvestmentType() {
-		a.portfolioData = nil
+		a.portfolio.data = nil
 		a.switchView(ViewPortfolio)
 		return a.loadPortfolioData(accountID)
 	}

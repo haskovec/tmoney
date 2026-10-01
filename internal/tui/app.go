@@ -235,10 +235,7 @@ type App struct {
 	transferShares transferSharesSurface
 
 	// Portfolio view state
-	portfolioData          *portfolioViewData
-	portfolioHoldingsTable *widget.Table
-	portfolioLotsTable     *widget.Table
-	portfolioMode          portfolioViewMode
+	portfolio portfolioViewState
 
 	// Stock split dialog state
 	stockSplit stockSplitSurface
