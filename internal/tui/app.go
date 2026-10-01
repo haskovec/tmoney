@@ -157,10 +157,9 @@ type App struct {
 	// Reports view state
 	reports reportsViewState
 
-	// Reconciliation view state
-	reconciliation      *reconciliationViewData
-	reconciliationTable *widget.Table
-	reconDialog         *dialog.Dialog
+	// Reconciliation view state, and its start dialog (a modal)
+	reconciliation reconciliationViewState
+	reconDialog    *dialog.Dialog
 	// reconDialogLastStatementDate is the statement date used by the most
 	// recent Start Reconciliation in this process. The Start Reconciliation
 	// dialog seeds its Statement Date field from this on subsequent opens so

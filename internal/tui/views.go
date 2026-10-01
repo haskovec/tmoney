@@ -149,11 +149,11 @@ func init() {
 			onKey:      (*App).handleReconciliationKeys,
 			hints:      func(*App) string { return "space toggle  enter finish  esc cancel  a check all  u uncheck all  ? help" },
 			shortcuts:  reconciliationShortcuts,
-			table:      func(a *App) *widget.Table { return a.reconciliationTable },
+			table:      func(a *App) *widget.Table { return a.reconciliation.table },
 			reload: func(a *App) []tea.Cmd {
 				// No session on screen yet means its first load is still in flight;
 				// that load fills the table. Never start a session from here.
-				if r := a.reconciliation; r != nil && r.session != nil && r.account != nil {
+				if r := a.reconciliation.data; r != nil && r.session != nil && r.account != nil {
 					return []tea.Cmd{a.reloadReconciliationData(r)}
 				}
 				return nil
@@ -161,8 +161,8 @@ func init() {
 			focus: func(a *App) {
 				// Reconciliation is full-screen, no sidebar
 				a.sidebar.SetFocused(false)
-				if a.reconciliationTable != nil {
-					a.reconciliationTable.SetFocused(true)
+				if a.reconciliation.table != nil {
+					a.reconciliation.table.SetFocused(true)
 				}
 			},
 		},

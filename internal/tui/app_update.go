@@ -301,13 +301,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.reload {
 			return a, a.applyReconciliationReload(msg.data)
 		}
-		a.reconciliation = msg.data
+		a.reconciliation.data = msg.data
 		a.buildReconciliationTable()
 		return a, nil
 
 	case reconciliationClearedTotalMsg:
-		if a.reconciliation != nil {
-			a.reconciliation.clearedTotal = msg.clearedTotal
+		if a.reconciliation.data != nil {
+			a.reconciliation.data.clearedTotal = msg.clearedTotal
 		}
 		return a, nil
 

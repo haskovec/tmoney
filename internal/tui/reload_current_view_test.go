@@ -46,15 +46,15 @@ func newReconReloadEnv(t *testing.T) reconReloadEnv {
 	}
 	a.switchView(ViewReconciliation)
 	runCmd(t, a, a.loadReconciliationData(session, acct), 1)
-	if a.reconciliation == nil || len(a.reconciliation.candidates) != 2 {
+	if a.reconciliation.data == nil || len(a.reconciliation.data.candidates) != 2 {
 		t.Fatal("setup: expected two candidates on screen")
 	}
 	return reconReloadEnv{a: a, acct: acct, rent: rent, power: power}
 }
 
 func (e reconReloadEnv) checkBoth() {
-	e.a.reconciliation.checkedIDs[e.rent.ID] = true
-	e.a.reconciliation.checkedIDs[e.power.ID] = true
+	e.a.reconciliation.data.checkedIDs[e.rent.ID] = true
+	e.a.reconciliation.data.checkedIDs[e.power.ID] = true
 }
 
 // A reload on the Reconciliation view re-reads the candidates and keeps the
@@ -69,7 +69,7 @@ func TestReloadCurrentView_Reconciliation_KeepsSurvivingChecks(t *testing.T) {
 	}
 	runCmd(t, e.a, e.a.reloadCurrentView(), 2)
 
-	r := e.a.reconciliation
+	r := e.a.reconciliation.data
 	if len(r.candidates) != 1 || r.candidates[0].ID != e.power.ID {
 		t.Fatalf("candidates = %d rows, want only the surviving one", len(r.candidates))
 	}
@@ -96,13 +96,13 @@ func TestReloadCurrentView_Reconciliation_UndoRefreshesCandidates(t *testing.T) 
 		t.Fatal(err)
 	}
 	runCmd(t, e.a, e.a.reloadCurrentView(), 2)
-	if len(e.a.reconciliation.candidates) != 3 {
-		t.Fatalf("setup: candidates = %d, want 3", len(e.a.reconciliation.candidates))
+	if len(e.a.reconciliation.data.candidates) != 3 {
+		t.Fatalf("setup: candidates = %d, want 3", len(e.a.reconciliation.data.candidates))
 	}
 
 	runCmd(t, e.a, e.a.performUndo(), 4)
 
-	r := e.a.reconciliation
+	r := e.a.reconciliation.data
 	if len(r.candidates) != 2 {
 		t.Errorf("after undo, candidates = %d, want 2", len(r.candidates))
 	}
@@ -118,10 +118,10 @@ func TestReloadCurrentView_Reconciliation_KeepsToggleMadeDuringLoad(t *testing.T
 	e := newReconReloadEnv(t)
 
 	cmd := e.a.reloadCurrentView()
-	e.a.reconciliation.checkedIDs[e.power.ID] = true
+	e.a.reconciliation.data.checkedIDs[e.power.ID] = true
 	runCmd(t, e.a, cmd, 2)
 
-	r := e.a.reconciliation
+	r := e.a.reconciliation.data
 	if !r.checkedIDs[e.power.ID] {
 		t.Error("a mark made while the reload was in flight was lost")
 	}
@@ -143,7 +143,7 @@ func TestReloadCurrentView_Reconciliation_DropsReloadForClosedSession(t *testing
 	e.a.afterReconciliationCancelled()
 	runCmd(t, e.a, cmd, 2)
 
-	if e.a.reconciliation != nil {
+	if e.a.reconciliation.data != nil {
 		t.Error("a late reload put a cancelled session back on screen")
 	}
 }
@@ -161,7 +161,7 @@ func TestReloadCurrentView_Reconciliation_NoSessionStartsNothing(t *testing.T) {
 
 	runCmd(t, a, a.reloadCurrentView(), 1)
 
-	if a.reconciliation != nil {
+	if a.reconciliation.data != nil {
 		t.Error("reload filled the view with no session on screen")
 	}
 	if s, err := a.services.Reconciliation.GetActiveSession(acct.ID); err != nil || s != nil {

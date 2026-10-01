@@ -136,13 +136,13 @@ func TestGetCheckedTransactionIDs(t *testing.T) {
 	id3 := types.NewID()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			checkedIDs: map[types.ID]bool{
 				id1: true,
 				id2: true,
 				id3: false, // unchecked
 			},
-		},
+		}},
 	}
 
 	ids := app.getCheckedTransactionIDs()
@@ -177,7 +177,7 @@ func TestFormatReconciliationRow(t *testing.T) {
 	categoryID := types.NewID()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			checkedIDs: make(map[types.ID]bool),
 			payeeNames: map[types.ID]string{
 				payeeID: "Coffee Shop",
@@ -186,7 +186,7 @@ func TestFormatReconciliationRow(t *testing.T) {
 				categoryID: "Food",
 			},
 			accountNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	txn := &transaction.Transaction{
@@ -233,12 +233,12 @@ func TestFormatReconciliationRow_Checked(t *testing.T) {
 	txnID := types.NewID()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			checkedIDs:    map[types.ID]bool{txnID: true},
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	txn := &transaction.Transaction{
@@ -265,14 +265,14 @@ func TestFormatReconciliationRow_Transfer(t *testing.T) {
 	transferAcctID := types.NewID()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			checkedIDs:    make(map[types.ID]bool),
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames: map[types.ID]string{
 				transferAcctID: "Savings",
 			},
-		},
+		}},
 	}
 
 	txn := &transaction.Transaction{
@@ -309,22 +309,22 @@ func TestBuildReconciliationTable(t *testing.T) {
 	txn2.Date = types.Today()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			candidates:    []*transaction.Transaction{txn1, txn2},
 			checkedIDs:    make(map[types.ID]bool),
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildReconciliationTable()
 
-	if app.reconciliationTable == nil {
-		t.Fatal("reconciliationTable should not be nil after build")
+	if app.reconciliation.table == nil {
+		t.Fatal("reconciliation.table should not be nil after build")
 	}
-	if app.reconciliationTable.RowCount() != 2 {
-		t.Errorf("expected 2 rows, got %d", app.reconciliationTable.RowCount())
+	if app.reconciliation.table.RowCount() != 2 {
+		t.Errorf("expected 2 rows, got %d", app.reconciliation.table.RowCount())
 	}
 }
 
@@ -337,7 +337,7 @@ func TestToggleReconciliationCheck(t *testing.T) {
 	txn.Date = types.Today()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -346,19 +346,19 @@ func TestToggleReconciliationCheck(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
 	// Toggle on
 	app.toggleReconciliationCheck()
-	if !app.reconciliation.checkedIDs[txn.ID] {
+	if !app.reconciliation.data.checkedIDs[txn.ID] {
 		t.Error("transaction should be checked after toggle")
 	}
 
 	// Toggle off
 	app.toggleReconciliationCheck()
-	if app.reconciliation.checkedIDs[txn.ID] {
+	if app.reconciliation.data.checkedIDs[txn.ID] {
 		t.Error("transaction should be unchecked after second toggle")
 	}
 }
@@ -385,7 +385,7 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID:        types.NewID(),
 				StatementDate:    types.Today(),
@@ -397,7 +397,7 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.styles.Resize(100, 24)
 	app.buildReconciliationTable()
@@ -408,10 +408,10 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if !updatedApp.reconciliation.checkedIDs[txn1.ID] {
-		t.Errorf("clicking row 0 should toggle txn1 checked; got checkedIDs=%v", updatedApp.reconciliation.checkedIDs)
+	if !updatedApp.reconciliation.data.checkedIDs[txn1.ID] {
+		t.Errorf("clicking row 0 should toggle txn1 checked; got checkedIDs=%v", updatedApp.reconciliation.data.checkedIDs)
 	}
-	if updatedApp.reconciliation.checkedIDs[txn2.ID] {
+	if updatedApp.reconciliation.data.checkedIDs[txn2.ID] {
 		t.Error("clicking row 0 should not affect txn2")
 	}
 
@@ -419,8 +419,8 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 	model, _ = updatedApp.Update(msg)
 	updatedApp = model.(*App)
 
-	if updatedApp.reconciliation.checkedIDs[txn1.ID] {
-		t.Errorf("clicking row 0 a second time should uncheck txn1; got checkedIDs=%v", updatedApp.reconciliation.checkedIDs)
+	if updatedApp.reconciliation.data.checkedIDs[txn1.ID] {
+		t.Errorf("clicking row 0 a second time should uncheck txn1; got checkedIDs=%v", updatedApp.reconciliation.data.checkedIDs)
 	}
 }
 
@@ -436,7 +436,7 @@ func TestCheckAllReconciliation(t *testing.T) {
 	txn2.Date = types.Today()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -445,16 +445,16 @@ func TestCheckAllReconciliation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
 	app.checkAllReconciliation()
 
-	if !app.reconciliation.checkedIDs[txn1.ID] {
+	if !app.reconciliation.data.checkedIDs[txn1.ID] {
 		t.Error("txn1 should be checked after check all")
 	}
-	if !app.reconciliation.checkedIDs[txn2.ID] {
+	if !app.reconciliation.data.checkedIDs[txn2.ID] {
 		t.Error("txn2 should be checked after check all")
 	}
 }
@@ -466,7 +466,7 @@ func TestUncheckAllReconciliation(t *testing.T) {
 	txn1.Date = types.Today()
 
 	app := &App{
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -475,17 +475,17 @@ func TestUncheckAllReconciliation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
 	app.uncheckAllReconciliation()
 
-	if app.reconciliation.checkedIDs[txn1.ID] {
+	if app.reconciliation.data.checkedIDs[txn1.ID] {
 		t.Error("txn1 should be unchecked after uncheck all")
 	}
-	if len(app.reconciliation.checkedIDs) != 0 {
-		t.Errorf("expected 0 checked, got %d", len(app.reconciliation.checkedIDs))
+	if len(app.reconciliation.data.checkedIDs) != 0 {
+		t.Errorf("expected 0 checked, got %d", len(app.reconciliation.data.checkedIDs))
 	}
 }
 
@@ -512,13 +512,13 @@ func TestRenderReconciliation_NoCandidates(t *testing.T) {
 		width:  80,
 		height: 24,
 		styles: widget.NewStyles(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session:      session,
 			account:      &account.Account{Name: "Checking"},
 			candidates:   []*transaction.Transaction{},
 			checkedIDs:   make(map[types.ID]bool),
 			clearedTotal: types.ZeroMoney,
-		},
+		}},
 	}
 	app.styles.Resize(80, 24)
 
@@ -550,7 +550,7 @@ func TestRenderReconciliation_WithData(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session:       session,
 			account:       &account.Account{Name: "Checking"},
 			candidates:    []*transaction.Transaction{txn},
@@ -559,7 +559,7 @@ func TestRenderReconciliation_WithData(t *testing.T) {
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			clearedTotal:  clrTotal,
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildReconciliationTable()
@@ -599,7 +599,7 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -608,7 +608,7 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
@@ -616,16 +616,16 @@ func TestHandleReconciliationKeys_Navigation(t *testing.T) {
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleReconciliationKeys(downKey)
 
-	if app.reconciliationTable.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 after down", app.reconciliationTable.Cursor())
+	if app.reconciliation.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 after down", app.reconciliation.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleReconciliationKeys(upKey)
 
-	if app.reconciliationTable.Cursor() != 0 {
-		t.Errorf("cursor = %d, want 0 after up", app.reconciliationTable.Cursor())
+	if app.reconciliation.table.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 after up", app.reconciliation.table.Cursor())
 	}
 }
 
@@ -639,7 +639,7 @@ func TestHandleReconciliationKeys_Space(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -648,7 +648,7 @@ func TestHandleReconciliationKeys_Space(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
@@ -656,7 +656,7 @@ func TestHandleReconciliationKeys_Space(t *testing.T) {
 	spaceKey := tea.KeyPressMsg{Code: tea.KeySpace}
 	app.handleReconciliationKeys(spaceKey)
 
-	if !app.reconciliation.checkedIDs[txn.ID] {
+	if !app.reconciliation.data.checkedIDs[txn.ID] {
 		t.Error("transaction should be checked after space")
 	}
 }
@@ -676,7 +676,7 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session: &reconciliation.Session{
 				AccountID: types.NewID(),
 			},
@@ -685,7 +685,7 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
@@ -693,10 +693,10 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	app.handleReconciliationKeys(aKey)
 
-	if !app.reconciliation.checkedIDs[txn1.ID] {
+	if !app.reconciliation.data.checkedIDs[txn1.ID] {
 		t.Error("txn1 should be checked after 'a'")
 	}
-	if !app.reconciliation.checkedIDs[txn2.ID] {
+	if !app.reconciliation.data.checkedIDs[txn2.ID] {
 		t.Error("txn2 should be checked after 'a'")
 	}
 
@@ -704,10 +704,10 @@ func TestHandleReconciliationKeys_CheckAll(t *testing.T) {
 	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	app.handleReconciliationKeys(uKey)
 
-	if app.reconciliation.checkedIDs[txn1.ID] {
+	if app.reconciliation.data.checkedIDs[txn1.ID] {
 		t.Error("txn1 should be unchecked after 'u'")
 	}
-	if app.reconciliation.checkedIDs[txn2.ID] {
+	if app.reconciliation.data.checkedIDs[txn2.ID] {
 		t.Error("txn2 should be unchecked after 'u'")
 	}
 }
@@ -724,7 +724,7 @@ func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
 		height:    24,
 		keys:      defaultKeyMap(),
 		statusbar: widget.NewStatusBar(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session:       session,
 			candidates:    []*transaction.Transaction{},
 			checkedIDs:    make(map[types.ID]bool),
@@ -732,7 +732,7 @@ func TestHandleReconciliationKeys_FinishWithDifference(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
@@ -843,10 +843,10 @@ func TestReconciliationUpdate_LoadedMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.reconciliation == nil {
+	if updatedApp.reconciliation.data == nil {
 		t.Fatal("reconciliation data should be set")
 	}
-	if updatedApp.reconciliationTable == nil {
+	if updatedApp.reconciliation.table == nil {
 		t.Error("reconciliation table should be built")
 	}
 }
@@ -857,17 +857,17 @@ func TestReconciliationUpdate_ClearedTotalMsg(t *testing.T) {
 	app := &App{
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			clearedTotal: types.ZeroMoney,
-		},
+		}},
 	}
 
 	msg := reconciliationClearedTotalMsg{clearedTotal: total}
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.reconciliation.clearedTotal.String() != total.String() {
-		t.Errorf("clearedTotal = %s, want %s", updatedApp.reconciliation.clearedTotal.String(), total.String())
+	if updatedApp.reconciliation.data.clearedTotal.String() != total.String() {
+		t.Errorf("clearedTotal = %s, want %s", updatedApp.reconciliation.data.clearedTotal.String(), total.String())
 	}
 }
 
@@ -877,9 +877,9 @@ func TestReconciliationUpdate_FinishedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
-		},
+		}},
 	}
 
 	msg := reconciliationFinishedMsg{}
@@ -889,8 +889,8 @@ func TestReconciliationUpdate_FinishedMsg(t *testing.T) {
 	if updatedApp.currentView != ViewRegister {
 		t.Errorf("currentView = %v, want ViewRegister", updatedApp.currentView)
 	}
-	if updatedApp.reconciliation != nil {
-		t.Error("reconciliation should be nil after finish")
+	if updatedApp.reconciliation.data != nil {
+		t.Error("reconciliation.data should be nil after finish")
 	}
 	if cmd == nil {
 		t.Error("should return commands to reload data")
@@ -913,9 +913,9 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 		keys:         defaultKeyMap(),
 		statusbar:    widget.NewStatusBar(),
 		sidebar:      NewSidebar(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
-		},
+		}},
 	}
 
 	msg := reconciliationCancelledMsg{}
@@ -925,8 +925,8 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 	if updatedApp.currentView != ViewRegister {
 		t.Errorf("currentView = %v, want ViewRegister", updatedApp.currentView)
 	}
-	if updatedApp.reconciliation != nil {
-		t.Error("reconciliation should be nil after cancel")
+	if updatedApp.reconciliation.data != nil {
+		t.Error("reconciliation.data should be nil after cancel")
 	}
 
 	notifications := updatedApp.statusbar.Notifications()
@@ -956,13 +956,13 @@ func TestReconciliationFullScreen(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session:      session,
 			account:      &account.Account{Name: "Test Account"},
 			candidates:   []*transaction.Transaction{},
 			checkedIDs:   make(map[types.ID]bool),
 			clearedTotal: types.ZeroMoney,
-		},
+		}},
 	}
 
 	content := app.renderContent(28)
@@ -979,11 +979,11 @@ func TestReconciliationBlocksViewSwitching(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		reconciliation: &reconciliationViewData{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			session:    &reconciliation.Session{AccountID: types.NewID()},
 			candidates: []*transaction.Transaction{},
 			checkedIDs: make(map[types.ID]bool),
-		},
+		}},
 	}
 	app.buildReconciliationTable()
 
