@@ -23,10 +23,7 @@ const (
 )
 
 // priceViewState is everything the Prices view owns. Its zero value is the
-// view before its first load. The price add/edit dialog and the import dialog
-// are NOT here: they are modal surfaces, registered in modals(), and a view's
-// state must not hold a sibling surface. Nor is the bulk-refresh flag: `u`
-// starts a refresh from the Securities view too.
+// view before its first load.
 type priceViewState struct {
 	data      *priceViewData
 	table     *widget.Table        // detail mode: history for one security

@@ -15,8 +15,7 @@ import (
 )
 
 // registerViewState is everything the account register view owns. Its zero
-// value is the view before its first load. pendingRegisterSelectID is NOT
-// here: dialog save paths set it, so it stays on App as a handoff.
+// value is the view before its first load.
 type registerViewState struct {
 	data  *registerData
 	table *widget.Table
