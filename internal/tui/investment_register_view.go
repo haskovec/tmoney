@@ -17,12 +17,6 @@ import (
 
 // investmentRegisterViewState is everything the investment register view
 // owns. Its zero value is the view before its first load, with no filter.
-//
-// Two investment fields stay on App because more than this view writes them:
-// investmentEditTxnID (set by the type selector, read by every investment
-// dialog, cleared by the save paths) and investmentNewTxnSecurityID (set by
-// the type selector, consumed as each dialog is built). The type selector
-// itself is a modal surface.
 type investmentRegisterViewState struct {
 	data  *investmentRegisterData
 	table *widget.Table

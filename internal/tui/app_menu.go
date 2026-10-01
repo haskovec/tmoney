@@ -298,7 +298,6 @@ func (a *App) toggleMenu(index int) {
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
-		// The view being left forgets what its entry's leave hook names.
 		if e, ok := viewFor(a.currentView); ok && e.leave != nil {
 			e.leave(a)
 		}
