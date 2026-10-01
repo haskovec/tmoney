@@ -49,11 +49,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case dashboardLoadedMsg:
-		a.dashboard = msg.data
+		a.dashboard.data = msg.data
 		// Investment accounts start collapsed on the dashboard; the user
 		// expands the ones they care about with the ←/→ toggle or a mouse
 		// click (setDashboardAccountExpanded / handleMouseDashboard). Those
-		// choices live in a.dashboardExpandedAccounts and are deliberately
+		// choices live in a.dashboard.expandedAccounts and are deliberately
 		// left untouched here, so an expand/collapse survives a dashboard
 		// reload (e.g. after posting a transaction) within the session.
 		return a, nil

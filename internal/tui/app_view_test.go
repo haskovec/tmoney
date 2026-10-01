@@ -385,25 +385,27 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 	styles := widget.NewStyles()
 	styles.Resize(termWidth, termHeight)
 	app := &App{
-		currentView:               ViewDashboard,
-		keys:                      defaultKeyMap(),
-		menubar:                   widget.NewMenuBar(),
-		sidebar:                   NewSidebar(),
-		statusbar:                 widget.NewStatusBar(),
-		width:                     termWidth,
-		height:                    termHeight,
-		ready:                     true,
-		styles:                    styles,
-		dashboardExpandedAccounts: expanded,
-		dashboard: &dashboardData{
-			netWorth: &report.NetWorth{
-				Assets: assets,
-				Totals: usdTotals(types.MustNewMoney("200000.00"), types.ZeroMoney, types.MustNewMoney("200000.00")),
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		width:       termWidth,
+		height:      termHeight,
+		ready:       true,
+		styles:      styles,
+		dashboard: dashboardViewState{
+			expandedAccounts: expanded,
+			data: &dashboardData{
+				netWorth: &report.NetWorth{
+					Assets: assets,
+					Totals: usdTotals(types.MustNewMoney("200000.00"), types.ZeroMoney, types.MustNewMoney("200000.00")),
+				},
+				investmentHoldings: holdings,
+				securityTickers:    tickers,
+				payeeNames:         make(map[types.ID]string),
+				accountNames:       make(map[types.ID]string),
 			},
-			investmentHoldings: holdings,
-			securityTickers:    tickers,
-			payeeNames:         make(map[types.ID]string),
-			accountNames:       make(map[types.ID]string),
 		},
 	}
 	app.statusbar.SetContext("Dashboard")

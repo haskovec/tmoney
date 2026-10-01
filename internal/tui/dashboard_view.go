@@ -17,6 +17,20 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// dashboardViewState is everything the Dashboard view owns. Its zero value is
+// the view before its first load.
+type dashboardViewState struct {
+	data *dashboardData
+	// expandedAccounts tracks which investment accounts show their holdings.
+	expandedAccounts map[types.ID]bool
+	// accountRows maps a content-pane row (0-based, as seen by a mouse click's
+	// contentY) to the investment account whose expandable ▸/▾ header renders
+	// on that row. Rebuilt every renderDashboard; used by handleMouseDashboard
+	// to toggle expand/collapse on click. The render must run before the click
+	// is read; Bubble Tea renders after every Update, so it does.
+	accountRows map[int]types.ID
+}
+
 // dashboardData holds the loaded data for the dashboard view.
 type dashboardData struct {
 	netWorth           *report.NetWorth
@@ -166,7 +180,7 @@ func (a *App) setDashboardAccountExpanded(expanded bool) {
 	if !acct.Type.IsInvestmentType() {
 		return
 	}
-	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+	if a.dashboard.data == nil || a.dashboard.data.investmentHoldings == nil {
 		return
 	}
 	// An investment account is expandable exactly when it renders the ▸/▾
@@ -174,22 +188,22 @@ func (a *App) setDashboardAccountExpanded(expanded bool) {
 	// loaded valuation entry — cash-only accounts included (they expand to a
 	// single "cash only" line). An account whose valuation failed to load has
 	// no entry and no affordance, so the toggle is a no-op.
-	if _, ok := a.dashboard.investmentHoldings[acct.ID]; !ok {
+	if _, ok := a.dashboard.data.investmentHoldings[acct.ID]; !ok {
 		return
 	}
-	if a.dashboardExpandedAccounts == nil {
-		a.dashboardExpandedAccounts = make(map[types.ID]bool)
+	if a.dashboard.expandedAccounts == nil {
+		a.dashboard.expandedAccounts = make(map[types.ID]bool)
 	}
-	a.dashboardExpandedAccounts[acct.ID] = expanded
+	a.dashboard.expandedAccounts[acct.ID] = expanded
 }
 
 // renderDashboard renders the dashboard view.
 func (a *App) renderDashboard() string {
 	// Discard any hit-test rows recorded on a previous render; they are
 	// rebuilt below for the current data/expand state.
-	a.dashboardAccountRows = nil
+	a.dashboard.accountRows = nil
 
-	if a.dashboard == nil {
+	if a.dashboard.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading dashboard...")
@@ -210,8 +224,8 @@ func (a *App) renderDashboard() string {
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// Net worth display
-	if a.dashboard.netWorth != nil {
-		nw := a.dashboard.netWorth
+	if a.dashboard.data.netWorth != nil {
+		nw := a.dashboard.data.netWorth
 		sections = append(sections, "")
 		sections = append(sections, a.renderNetWorthSummary(nw)...)
 		sections = append(sections, "")
@@ -225,9 +239,9 @@ func (a *App) renderDashboard() string {
 		blockStart := dashboardLineCount(sections)
 		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth, expandableRows))
 		if len(expandableRows) > 0 {
-			a.dashboardAccountRows = make(map[int]types.ID, len(expandableRows))
+			a.dashboard.accountRows = make(map[int]types.ID, len(expandableRows))
 			for relRow, id := range expandableRows {
-				a.dashboardAccountRows[blockStart+relRow+1] = id
+				a.dashboard.accountRows[blockStart+relRow+1] = id
 			}
 		}
 	} else {
@@ -286,10 +300,10 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
 			expandable := false
-			if account.Type(acct.Type).IsInvestmentType() && a.dashboard != nil && a.dashboard.investmentHoldings != nil {
-				if _, hasHoldings := a.dashboard.investmentHoldings[acct.AccountID]; hasHoldings {
+			if account.Type(acct.Type).IsInvestmentType() && a.dashboard.data != nil && a.dashboard.data.investmentHoldings != nil {
+				if _, hasHoldings := a.dashboard.data.investmentHoldings[acct.AccountID]; hasHoldings {
 					expandable = true
-					if a.dashboardExpandedAccounts[acct.AccountID] {
+					if a.dashboard.expandedAccounts[acct.AccountID] {
 						prefix = "▾ "
 					} else {
 						prefix = "▸ "
@@ -321,7 +335,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			}
 
 			// Show top holdings if investment account is expanded
-			if account.Type(acct.Type).IsInvestmentType() && a.dashboardExpandedAccounts[acct.AccountID] {
+			if account.Type(acct.Type).IsInvestmentType() && a.dashboard.expandedAccounts[acct.AccountID] {
 				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, acct.Currency, colWidth)...)
 			}
 		}
@@ -465,10 +479,10 @@ func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
 // A nil TotalReturnPct (denominator zero — no buys ever) renders as the
 // "—" placeholder so the row shape stays stable across accounts.
 func (a *App) renderDashboardTRLine(accountID types.ID, currency string, colWidth int) string {
-	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+	if a.dashboard.data == nil || a.dashboard.data.investmentHoldings == nil {
 		return ""
 	}
-	val, ok := a.dashboard.investmentHoldings[accountID]
+	val, ok := a.dashboard.data.investmentHoldings[accountID]
 	if !ok || val == nil {
 		return ""
 	}
@@ -495,11 +509,11 @@ func (a *App) renderDashboardTRLine(accountID types.ID, currency string, colWidt
 
 // renderDashboardHoldings renders the top holdings for an investment account on the dashboard.
 func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWidth int) []string {
-	if a.dashboard == nil || a.dashboard.investmentHoldings == nil {
+	if a.dashboard.data == nil || a.dashboard.data.investmentHoldings == nil {
 		return nil
 	}
 
-	val, ok := a.dashboard.investmentHoldings[accountID]
+	val, ok := a.dashboard.data.investmentHoldings[accountID]
 	if !ok {
 		return nil
 	}
@@ -524,8 +538,8 @@ func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWi
 
 	for _, h := range sorted[:displayCount] {
 		ticker := "???"
-		if a.dashboard.securityTickers != nil {
-			if t, ok := a.dashboard.securityTickers[h.SecurityID]; ok {
+		if a.dashboard.data.securityTickers != nil {
+			if t, ok := a.dashboard.data.securityTickers[h.SecurityID]; ok {
 				ticker = t
 			}
 		}
@@ -547,12 +561,12 @@ func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWi
 
 // renderDashboardScheduled renders the scheduled transactions section of the dashboard.
 func (a *App) renderDashboardScheduled() string {
-	if a.dashboard == nil {
+	if a.dashboard.data == nil {
 		return ""
 	}
 
-	due := a.dashboard.dueTxns
-	upcoming := a.dashboard.upcomingTxns
+	due := a.dashboard.data.dueTxns
+	upcoming := a.dashboard.data.upcomingTxns
 	total := len(due) + len(upcoming)
 
 	var lines []string
@@ -595,7 +609,7 @@ func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string 
 	// Payee name (cap at 20 chars to prevent overflow)
 	payee := "Unknown"
 	if st.HasPayee() {
-		if name, ok := a.dashboard.payeeNames[st.PayeeID.ID]; ok {
+		if name, ok := a.dashboard.data.payeeNames[st.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
