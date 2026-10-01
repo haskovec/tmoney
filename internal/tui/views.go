@@ -176,13 +176,13 @@ func init() {
 				return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + commonKeyHints
 			},
 			shortcuts: securitiesShortcuts,
-			table:     func(a *App) *widget.Table { return a.securityTable },
+			table:     func(a *App) *widget.Table { return a.securities.table },
 			reload:    func(a *App) []tea.Cmd { return []tea.Cmd{a.loadSecurityViewData()} },
 			focus: func(a *App) {
 				// Securities is full-screen, no sidebar
 				a.sidebar.SetFocused(false)
-				if a.securityTable != nil {
-					a.securityTable.SetFocused(true)
+				if a.securities.table != nil {
+					a.securities.table.SetFocused(true)
 				}
 			},
 		},

@@ -14,6 +14,20 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// securityViewState is everything the Securities view owns. Its zero value is
+// the view before its first load.
+type securityViewState struct {
+	data  *securityViewData
+	table *widget.Table
+
+	// After adding a security, the table build step moves the cursor onto the
+	// row whose security ID matches, so a freshly added ticker scrolls into
+	// view rather than leaving the cursor wherever it was. Selecting by ID
+	// (not position) lands on the row even though the list is sorted by ticker.
+	// NilID means "no pending selection"; the build step clears it after use.
+	pendingSelectID types.ID
+}
+
 // securityViewData holds the loaded data for the security management view.
 type securityViewData struct {
 	securities  []*security.Security
@@ -89,8 +103,8 @@ func (a *App) loadSecurityViewData() tea.Cmd {
 		}
 
 		showHidden := false
-		if a.securityView != nil {
-			showHidden = a.securityView.showHidden
+		if a.securities.data != nil {
+			showHidden = a.securities.data.showHidden
 		}
 
 		data := &securityViewData{
@@ -104,7 +118,7 @@ func (a *App) loadSecurityViewData() tea.Cmd {
 
 // buildSecurityTable creates and populates the table for the security view.
 func (a *App) buildSecurityTable() {
-	if a.securityView == nil {
+	if a.securities.data == nil {
 		return
 	}
 
@@ -117,19 +131,19 @@ func (a *App) buildSecurityTable() {
 		{Header: "Status", Width: 8, Align: widget.AlignCenter},
 	}
 
-	if a.securityTable == nil {
-		a.securityTable = widget.NewTable(columns)
+	if a.securities.table == nil {
+		a.securities.table = widget.NewTable(columns)
 	} else {
-		a.securityTable.SetColumns(columns)
+		a.securities.table.SetColumns(columns)
 	}
 
-	filtered := a.securityView.filteredSecurities()
+	filtered := a.securities.data.filteredSecurities()
 	rows := make([][]string, len(filtered))
 	for i, sec := range filtered {
 		rows[i] = a.formatSecurityRow(sec)
 	}
-	a.securityTable.SetRows(rows)
-	a.securityTable.SetFocused(true)
+	a.securities.table.SetRows(rows)
+	a.securities.table.SetFocused(true)
 
 	// After adding a security, move the cursor onto the just-added row by
 	// matching its ID. Selecting by ID (not position) lands on the row even
@@ -140,11 +154,11 @@ func (a *App) buildSecurityTable() {
 	// brief window before the post-add reload lands. Clearing only on a match
 	// lets such a stale rebuild pass without consuming the request, so the
 	// reload that actually contains the new security still selects it.
-	if !a.pendingSecuritySelectID.IsNil() {
+	if !a.securities.pendingSelectID.IsNil() {
 		for i, sec := range filtered {
-			if sec.ID == a.pendingSecuritySelectID {
-				a.securityTable.SetCursor(i)
-				a.pendingSecuritySelectID = types.NilID
+			if sec.ID == a.securities.pendingSelectID {
+				a.securities.table.SetCursor(i)
+				a.securities.pendingSelectID = types.NilID
 				break
 			}
 		}
@@ -170,12 +184,12 @@ func (a *App) formatSecurityRow(sec *security.Security) []string {
 
 // selectedSecurity returns the currently selected security based on table cursor.
 func (a *App) selectedSecurity() *security.Security {
-	if a.securityView == nil || a.securityTable == nil {
+	if a.securities.data == nil || a.securities.table == nil {
 		return nil
 	}
 
-	filtered := a.securityView.filteredSecurities()
-	cursor := a.securityTable.Cursor()
+	filtered := a.securities.data.filteredSecurities()
+	cursor := a.securities.table.Cursor()
 	if cursor < 0 || cursor >= len(filtered) {
 		return nil
 	}
@@ -184,7 +198,7 @@ func (a *App) selectedSecurity() *security.Security {
 
 // renderSecurityView renders the security management view.
 func (a *App) renderSecurityView() string {
-	if a.securityView == nil {
+	if a.securities.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading securities...")
@@ -197,11 +211,11 @@ func (a *App) renderSecurityView() string {
 	// Header: SECURITIES + filter status
 	titleText := "SECURITIES"
 	hiddenStatus := "Hidden: off"
-	if a.securityView.showHidden {
+	if a.securities.data.showHidden {
 		hiddenStatus = "Hidden: on"
 	}
-	if a.securityView.searchQuery != "" {
-		hiddenStatus += "  Search: " + a.securityView.searchQuery
+	if a.securities.data.searchQuery != "" {
+		hiddenStatus += "  Search: " + a.securities.data.searchQuery
 	}
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(hiddenStatus)-4, 1)
 	headerRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(hiddenStatus)
@@ -219,11 +233,11 @@ func (a *App) renderSecurityView() string {
 	paddingHeight := 2
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-	filtered := a.securityView.filteredSecurities()
-	if a.securityTable != nil && len(filtered) > 0 {
+	filtered := a.securities.data.filteredSecurities()
+	if a.securities.table != nil && len(filtered) > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.securityTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.securityTable.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.securities.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.securities.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else {
@@ -238,50 +252,50 @@ func (a *App) renderSecurityView() string {
 
 // handleSecurityViewKeys handles key presses in the securities view.
 func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.securityView == nil {
+	if a.securities.data == nil {
 		return a, nil
 	}
 
 	// Handle search mode
-	if a.securityView.searching {
+	if a.securities.data.searching {
 		return a.handleSecuritySearchKey(msg)
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		if a.securityTable != nil {
-			a.securityTable.MoveUp()
+		if a.securities.table != nil {
+			a.securities.table.MoveUp()
 		}
 	case key.Matches(msg, a.keys.Down):
-		if a.securityTable != nil {
-			a.securityTable.MoveDown()
+		if a.securities.table != nil {
+			a.securities.table.MoveDown()
 		}
 	case msg.String() == "home" || msg.String() == "g":
-		if a.securityTable != nil {
-			a.securityTable.MoveToTop()
+		if a.securities.table != nil {
+			a.securities.table.MoveToTop()
 		}
 	case msg.String() == "end" || msg.String() == "G":
-		if a.securityTable != nil {
-			a.securityTable.MoveToBottom()
+		if a.securities.table != nil {
+			a.securities.table.MoveToBottom()
 		}
 	case msg.String() == "pgup":
-		if a.securityTable != nil {
+		if a.securities.table != nil {
 			tableHeight := max(a.height-10, 1)
-			a.securityTable.PageUp(tableHeight)
+			a.securities.table.PageUp(tableHeight)
 		}
 	case msg.String() == "pgdown":
-		if a.securityTable != nil {
+		if a.securities.table != nil {
 			tableHeight := max(a.height-10, 1)
-			a.securityTable.PageDown(tableHeight)
+			a.securities.table.PageDown(tableHeight)
 		}
 	case msg.String() == "f":
 		// Toggle hidden filter
-		a.securityView.showHidden = !a.securityView.showHidden
+		a.securities.data.showHidden = !a.securities.data.showHidden
 		a.buildSecurityTable()
 	case key.Matches(msg, a.keys.Search):
 		// Enter search mode
-		a.securityView.searching = true
-		a.securityView.searchQuery = ""
+		a.securities.data.searching = true
+		a.securities.data.searchQuery = ""
 	case key.Matches(msg, a.keys.New):
 		// Open add security dialog
 		d := buildAddSecurityDialog()
@@ -383,19 +397,19 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (a *App) handleSecuritySearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, a.keys.Escape):
-		a.securityView.searching = false
-		a.securityView.searchQuery = ""
+		a.securities.data.searching = false
+		a.securities.data.searchQuery = ""
 		a.buildSecurityTable()
 	case key.Matches(msg, a.keys.Enter):
-		a.securityView.searching = false
+		a.securities.data.searching = false
 		// Keep the search query active
 	case msg.String() == "backspace":
-		if len(a.securityView.searchQuery) > 0 {
-			a.securityView.searchQuery = a.securityView.searchQuery[:len(a.securityView.searchQuery)-1]
+		if len(a.securities.data.searchQuery) > 0 {
+			a.securities.data.searchQuery = a.securities.data.searchQuery[:len(a.securities.data.searchQuery)-1]
 			a.buildSecurityTable()
 		}
 	case msg.Text != "":
-		a.securityView.searchQuery += msg.Text
+		a.securities.data.searchQuery += msg.Text
 		a.buildSecurityTable()
 	}
 	return a, nil

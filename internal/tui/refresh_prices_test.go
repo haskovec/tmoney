@@ -139,7 +139,7 @@ func TestHandleSecurityViewKeys_UTriggersRefresh(t *testing.T) {
 	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
 
 	// Wire up the security view so the handler can run.
-	a.securityView = &securityViewData{
+	a.securities.data = &securityViewData{
 		securities: []*security.Security{},
 		showHidden: false,
 	}
