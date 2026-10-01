@@ -18,8 +18,8 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 		setup func(a *App)
 		want  *widget.Table
 	}{
-		{"prices list", ViewPrices, func(a *App) { a.priceView = &priceViewData{mode: pricesViewList} }, list},
-		{"prices detail", ViewPrices, func(a *App) { a.priceView = &priceViewData{mode: pricesViewDetail} }, detail},
+		{"prices list", ViewPrices, func(a *App) { a.prices.data = &priceViewData{mode: pricesViewList} }, list},
+		{"prices detail", ViewPrices, func(a *App) { a.prices.data = &priceViewData{mode: pricesViewDetail} }, detail},
 		{"prices before load", ViewPrices, func(a *App) {}, detail},
 		{"portfolio holdings", ViewPortfolio, func(a *App) {
 			a.portfolioData = &portfolioViewData{}
@@ -35,9 +35,11 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a := &App{
-				currentView:            tc.view,
-				priceListTable:         list,
-				priceTable:             detail,
+				currentView: tc.view,
+				prices: priceViewState{
+					listTable: list,
+					table:     detail,
+				},
 				portfolioHoldingsTable: holdings,
 				portfolioLotsTable:     lots,
 			}

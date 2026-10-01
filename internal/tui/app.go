@@ -191,10 +191,8 @@ type App struct {
 	// NilID means "no pending selection"; the build step clears it after use.
 	pendingSecuritySelectID types.ID
 
-	// Price view state
-	priceView         *priceViewData
-	priceTable        *widget.Table // detail-mode: history for one security
-	priceListTable    *widget.Table // list-mode: latest price per ticker
+	// Price view state, and its two modal dialogs
+	prices            priceViewState
 	price             priceSurface
 	priceImportDialog *dialog.Dialog
 
@@ -308,10 +306,9 @@ type App struct {
 	// Key bindings
 	keys keyMap
 
-	// Mouse double-click trackers (lazy-initialized on first click). The file
-	// dialog's lives on its surface.
-	sidebarClicks   *widget.ClickTracker
-	priceListClicks *widget.ClickTracker
+	// Mouse double-click tracker (lazy-initialized on first click). The file
+	// dialog's lives on its surface, and the Prices list's on its view state.
+	sidebarClicks *widget.ClickTracker
 }
 
 // newTUIServices constructs an *app.Services for use inside the TUI and
@@ -534,7 +531,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Escape):
 		// In prices detail mode, Esc returns to the prices list within the
 		// view; let the view-specific handler claim the key.
-		if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewDetail {
+		if a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.mode == pricesViewDetail {
 			return a.handlePriceViewKeys(msg)
 		}
 		// With the investment register filter active, Esc clears the filter

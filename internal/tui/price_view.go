@@ -22,6 +22,18 @@ const (
 	pricesViewDetail                       // price history for one security
 )
 
+// priceViewState is everything the Prices view owns. Its zero value is the
+// view before its first load. The price add/edit dialog and the import dialog
+// are NOT here: they are modal surfaces, registered in modals(), and a view's
+// state must not hold a sibling surface. Nor is the bulk-refresh flag: `u`
+// starts a refresh from the Securities view too.
+type priceViewState struct {
+	data      *priceViewData
+	table     *widget.Table        // detail mode: history for one security
+	listTable *widget.Table        // list mode: latest price per ticker
+	clicks    *widget.ClickTracker // list-mode double-click; lazy-initialized on first click
+}
+
 // priceViewData holds the loaded data for the price management view.
 // Both list and detail modes share this struct; mode tells which slice
 // is the source of truth.
@@ -143,13 +155,13 @@ func (a *App) loadPriceViewData() tea.Cmd {
 // doesn't panic. Other entries are intentionally left alone — only the
 // modified ticker needs to re-fetch.
 func (a *App) evictSelectedSecurityFromHistoryCache() {
-	if a.priceView == nil || a.priceView.historyCache == nil {
+	if a.prices.data == nil || a.prices.data.historyCache == nil {
 		return
 	}
-	if a.priceView.selectedSecurity == nil {
+	if a.prices.data.selectedSecurity == nil {
 		return
 	}
-	a.priceView.historyCache.Evict(a.priceView.selectedSecurity.ID)
+	a.prices.data.historyCache.Evict(a.prices.data.selectedSecurity.ID)
 }
 
 // reloadPriceViewKeepingMode refreshes the prices view in whichever mode
@@ -157,8 +169,8 @@ func (a *App) evictSelectedSecurityFromHistoryCache() {
 // in detail mode (instead of being kicked back to the landing list) when
 // they add/edit/delete a price for a specific ticker.
 func (a *App) reloadPriceViewKeepingMode() tea.Cmd {
-	if a.priceView != nil && a.priceView.mode == pricesViewDetail && a.priceView.selectedSecurity != nil {
-		return a.loadPriceViewDataForSecurity(a.priceView.selectedSecurity)
+	if a.prices.data != nil && a.prices.data.mode == pricesViewDetail && a.prices.data.selectedSecurity != nil {
+		return a.loadPriceViewDataForSecurity(a.prices.data.selectedSecurity)
 	}
 	return a.loadPriceViewData()
 }
@@ -207,10 +219,10 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 // clear bulk refresh performs (PC-016) would be silently undone by the fresh
 // empty cache loadPriceViewData constructs.
 func (a *App) applyPriceViewData(data *priceViewData) tea.Cmd {
-	if a.priceView != nil && a.priceView.historyCache != nil {
-		data.historyCache = a.priceView.historyCache
+	if a.prices.data != nil && a.prices.data.historyCache != nil {
+		data.historyCache = a.prices.data.historyCache
 	}
-	a.priceView = data
+	a.prices.data = data
 	switch data.mode {
 	case pricesViewList:
 		a.buildPriceListTable()

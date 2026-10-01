@@ -133,13 +133,15 @@ Move functions between files. Rename nothing. Change no signature. Zero test lin
 
 One struct per view, in the view's own file. Move the test literals with the same perl-and-compile motion the services collapse used. No assertion changes. Each item is one view, so each PR is one struct and its literal churn.
 
-Fields that stay on `App` in every item: `currentView`, `previousView`, `pendingRegisterSelectID`, `pendingInvestmentSelectID`, `refreshingPrices`, `refreshNotifID`, `corporateActionViewFilter`, and the modal fields `priceSurface`, `priceImportDialog`, `investmentTypeSelector`, `security`.
+Fields that stay on `App` in every item: `currentView`, `previousView`, `pendingRegisterSelectID`, `pendingInvestmentSelectID`, `refreshingPrices`, `refreshNotifID`, `corporateActionViewFilter`, and the modal fields `price` (a `priceSurface`), `priceImportDialog`, `investmentTypeSelector`, `security`.
 
-- [ ] **VL-301 — `priceViewState` (first, smallest with two tables)**
+- [x] **VL-301 — `priceViewState` (first, smallest with two tables)**
   - Fields: `data`, `table`, `listTable`, `clicks`. `a.priceView` becomes `a.prices.data` and so on. The two dialogs are not in it. Update the VL-107 `table` func.
+  - Done: a throwaway `go/ast` tool in the scratchpad (`regroup`) made the move. It rewrites each selector and gathers the keys of each `App{...}` literal into one `prices: priceViewState{...}` element. It refuses a file where a removed key has a comment. No assertion changed; two failure messages now name the new paths. `switchDatabase` and `reloadAfterRestore` still clear only `data` and `table`, not `listTable`, as before.
 
-- [ ] **VL-302 — No-service guard for view structs**
+- [x] **VL-302 — No-service guard for view structs**
   - RED then GREEN in `views_guard_test.go`: walk `App`'s fields for struct types declared in this package whose pointer does **not** implement `Modal`; fail if that set is empty; fail if any holds a pointer in `servicePointerTypes()`. No hand list.
+  - Done: `TestGuard_NoViewStateHoldsAService`. The rule also finds `App`'s other non-modal structs (`Sidebar`, `keyMap`, `backupDialogState`, `mergerConfirmSurface`), and none may hold a service either. The walk goes down through pointers, slices, arrays, maps and this package's structs, because after VL-301 the view's data struct is one level below `App`. RED: a `*price.Service` put in `priceViewData` for a moment failed the guard at `priceViewState.data.svc`. The self-test runs the finder and the walk over fabricated types.
 
 - [ ] **VL-303 — `dashboardViewState`**
   - Fields: `data`, `expandedAccounts`, `accountRows`. Test (§5.1): a click on a dashboard row without a prior render is a no-op, not a stale account.
@@ -168,7 +170,7 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
 
 - [ ] **VL-311 — `corporateActionViewState` and its `leave()` hook**
   - Fields: `data`, `table`, `detail`, `filterEditing`. `corporateActionViewFilter` stays on `App`.
-  - Move the detail-dropping special case out of `switchView` into this entry's `leave`. The filter is **not** cleared on leave. Test: a round trip keeps the filter and drops the detail.
+  - Move the departure special case out of `switchView` into this entry's `leave`. It does two things today, and `leave` must do both: drop the detail overlay, and end a filter entry (`filterEditing = false`), or the view comes back with every key captured as filter text. The filter is **not** cleared on leave. Test: a round trip keeps the filter, drops the detail, and ends the filter entry.
 
 - [ ] **VL-312 — `amortizationViewState`**
   - Fields: `data`, `table`.

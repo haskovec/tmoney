@@ -111,7 +111,7 @@ type priceLookupResultMsg struct {
 // startPriceLookup reads the dialog's current date + selected security and
 // kicks off an async provider fetch to fill the Price field.
 func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
-	if a.price.dlg == nil || a.priceView.selectedSecurity == nil {
+	if a.price.dlg == nil || a.prices.data.selectedSecurity == nil {
 		return a, nil
 	}
 	fields := a.price.dlg.Fields()
@@ -119,7 +119,7 @@ func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	a.price.dlg.SetErrorMsg("")
-	return a, a.lookupPriceCmd(a.priceView.selectedSecurity.Ticker, strings.TrimSpace(fields[0].Value))
+	return a, a.lookupPriceCmd(a.prices.data.selectedSecurity.Ticker, strings.TrimSpace(fields[0].Value))
 }
 
 // lookupPriceCmd fetches the provider's close on/before the given date for the
@@ -202,7 +202,7 @@ func (a *App) submitPriceDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	secID := a.priceView.selectedSecurity.ID
+	secID := a.prices.data.selectedSecurity.ID
 	mode := a.price.mode
 	editID := a.price.editID
 

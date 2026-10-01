@@ -16,7 +16,7 @@ func TestPriceDialog_LookupFillsPriceAndResolvedDate(t *testing.T) {
 		Currency: "USD",
 	}
 	sec := secs[0]
-	app.priceView = &priceViewData{selectedSecurity: sec}
+	app.prices.data = &priceViewData{selectedSecurity: sec}
 	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	// A weekend date; the fake ignores it but the resolved quote date is 07-31.
 	app.price.dlg.Fields()[0].Value = "2024-08-03"
@@ -47,7 +47,7 @@ func TestPriceDialog_LookupErrorKeepsDialogOpen(t *testing.T) {
 	app, _, secs := setupRefreshTUITest(t, "GBTC")
 	// No quote registered for GBTC → the fake returns an error.
 	sec := secs[0]
-	app.priceView = &priceViewData{selectedSecurity: sec}
+	app.prices.data = &priceViewData{selectedSecurity: sec}
 	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	app.price.dlg.Fields()[0].Value = "2024-07-31"
 
@@ -76,7 +76,7 @@ func TestPriceDialog_LookupPrefill_AnchorsPriceCursor(t *testing.T) {
 		Currency: "USD",
 	}
 	sec := secs[0]
-	app.priceView = &priceViewData{selectedSecurity: sec}
+	app.prices.data = &priceViewData{selectedSecurity: sec}
 	app.price = priceSurface{modalSurface: modalSurface{dlg: buildAddPriceDialog(sec)}}
 	app.price.dlg.Fields()[0].Value = "2024-08-03"
 

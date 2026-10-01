@@ -390,7 +390,7 @@ var priceChartDebounceDelay = 150 * time.Millisecond
 
 // priceChartDebounceTickMsg is delivered when a scheduled debounce timer
 // fires. The handler in app.go's Update verifies (a) gen still matches
-// priceView.chartDebounceGen (i.e. no later schedule has superseded
+// prices.data.chartDebounceGen (i.e. no later schedule has superseded
 // this one), and (b) the cursor is still on secID; if both hold, it
 // dispatches the actual price-history fetch. Otherwise it drops the
 // tick — that's how rapid cursor movement collapses to a single fetch.
@@ -400,7 +400,7 @@ type priceChartDebounceTickMsg struct {
 }
 
 // priceChartHistoryLoadedMsg carries the result of a debounced fetch.
-// Its handler stores prices in priceView.historyCache and sets
+// Its handler stores prices in prices.data.historyCache and sets
 // chartDisplayedID = secID so the next render shows the new ticker.
 type priceChartHistoryLoadedMsg struct {
 	secID  types.ID
@@ -409,15 +409,15 @@ type priceChartHistoryLoadedMsg struct {
 
 // schedulePriceChartFetch returns a debounced tea.Cmd that, after
 // priceChartDebounceDelay elapses, emits a priceChartDebounceTickMsg
-// for secID. Each call bumps priceView.chartDebounceGen so any earlier
+// for secID. Each call bumps prices.data.chartDebounceGen so any earlier
 // in-flight tick becomes stale (the tick handler drops mismatched gen).
-// Returns nil when there is no priceView to schedule against.
+// Returns nil when there is no price data to schedule against.
 func (a *App) schedulePriceChartFetch(secID types.ID) tea.Cmd {
-	if a.priceView == nil {
+	if a.prices.data == nil {
 		return nil
 	}
-	a.priceView.chartDebounceGen++
-	gen := a.priceView.chartDebounceGen
+	a.prices.data.chartDebounceGen++
+	gen := a.prices.data.chartDebounceGen
 	return tea.Tick(priceChartDebounceDelay, func(_ time.Time) tea.Msg {
 		return priceChartDebounceTickMsg{gen: gen, secID: secID}
 	})
@@ -431,7 +431,7 @@ func (a *App) schedulePriceChartFetch(secID types.ID) tea.Cmd {
 // highlight moves but the chart keeps showing the previously fetched
 // ticker via the chartDisplayedID fallback in buildPriceListChartPanel.
 func (a *App) schedulePriceListChartFetchIfActive() tea.Cmd {
-	if a.currentView != ViewPrices || a.priceView == nil || a.priceView.mode != pricesViewList {
+	if a.currentView != ViewPrices || a.prices.data == nil || a.prices.data.mode != pricesViewList {
 		return nil
 	}
 	secID := a.listCursorSecurityID()
@@ -464,12 +464,12 @@ func (a *App) fetchPriceChartHistory(secID types.ID) tea.Cmd {
 // the history is already cached — in which case it only promotes the cached
 // series to displayed.
 func (a *App) handlePriceChartDebounceTick(msg priceChartDebounceTickMsg) tea.Cmd {
-	if a.priceView == nil || msg.gen != a.priceView.chartDebounceGen || a.listCursorSecurityID() != msg.secID {
+	if a.prices.data == nil || msg.gen != a.prices.data.chartDebounceGen || a.listCursorSecurityID() != msg.secID {
 		return nil
 	}
-	if a.priceView.historyCache != nil {
-		if _, ok := a.priceView.historyCache.Lookup(msg.secID); ok {
-			a.priceView.chartDisplayedID = msg.secID
+	if a.prices.data.historyCache != nil {
+		if _, ok := a.prices.data.historyCache.Lookup(msg.secID); ok {
+			a.prices.data.chartDisplayedID = msg.secID
 			return nil
 		}
 	}
@@ -478,11 +478,11 @@ func (a *App) handlePriceChartDebounceTick(msg priceChartDebounceTickMsg) tea.Cm
 
 // applyPriceChartHistory caches a fetched series and shows it.
 func (a *App) applyPriceChartHistory(msg priceChartHistoryLoadedMsg) {
-	if a.priceView == nil {
+	if a.prices.data == nil {
 		return
 	}
-	if a.priceView.historyCache != nil {
-		a.priceView.historyCache.Put(msg.secID, msg.prices)
+	if a.prices.data.historyCache != nil {
+		a.prices.data.historyCache.Put(msg.secID, msg.prices)
 	}
-	a.priceView.chartDisplayedID = msg.secID
+	a.prices.data.chartDisplayedID = msg.secID
 }

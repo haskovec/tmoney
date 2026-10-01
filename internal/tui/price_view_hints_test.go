@@ -42,14 +42,14 @@ func TestPriceView_StatusBarHintsFollowTheMode(t *testing.T) {
 	wantHint("list loaded", listHint)
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if app.priceView.mode != pricesViewDetail {
-		t.Fatalf("Enter on the list did not open the history (mode %v)", app.priceView.mode)
+	if app.prices.data.mode != pricesViewDetail {
+		t.Fatalf("Enter on the list did not open the history (mode %v)", app.prices.data.mode)
 	}
 	wantHint("Enter on the list", detailHint)
 
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if app.priceView.mode != pricesViewList {
-		t.Fatalf("Esc in the history did not go back to the list (mode %v)", app.priceView.mode)
+	if app.prices.data.mode != pricesViewList {
+		t.Fatalf("Esc in the history did not go back to the list (mode %v)", app.prices.data.mode)
 	}
 	wantHint("Esc in the history", listHint)
 

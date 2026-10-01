@@ -1080,7 +1080,7 @@ func TestApp_Update_BuyDialogSavedMsg_InvalidatesChartCache(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		priceView:   &priceViewData{historyCache: cache},
+		prices:      priceViewState{data: &priceViewData{historyCache: cache}},
 	}
 
 	app.Update(buyDialogSavedMsg{savedDate: types.NewDate(2024, time.March, 20)})

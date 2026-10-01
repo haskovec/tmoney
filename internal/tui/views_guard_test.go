@@ -4,10 +4,15 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // The view table in views.go is the one list of views. These guards keep it
@@ -280,4 +285,162 @@ func (a *App) f(other View) bool {
 		t.Errorf("chains = %v, want %v; two constants, a repeated constant, and "+
 			"another variable must not count, and parentheses must not split a chain", lines, want)
 	}
+}
+
+// TestGuard_NoViewStateHoldsAService: a view's state struct holds loaded data
+// and widgets, never a service. It is the surface guard's rule
+// (TestGuard_NoSurfaceStructHoldsAService) for the other half of App: a
+// service pointer captured in view state would survive switchDatabase and be a
+// use-after-close.
+//
+// The structs are found by rule, not by a hand list that a twelfth view would
+// leave stale: every struct type declared in this package that App holds and
+// whose pointer does not implement Modal (the surface guard takes those). That
+// also takes in App's other non-modal structs, such as keyMap and Sidebar; none
+// of them may hold a service either. The walk goes down through pointers and
+// through this package's struct types, because the view's data struct sits one
+// level below App once it moves into the view's state.
+func TestGuard_NoViewStateHoldsAService(t *testing.T) {
+	serviceTypes := servicePointerTypes()
+	if len(serviceTypes) == 0 {
+		t.Fatal("app.Services exposes no pointer fields; this guard would pass vacuously")
+	}
+
+	structs := nonModalStateStructs(reflect.TypeFor[App]())
+	if len(structs) == 0 {
+		t.Fatal("no non-modal state struct found on App, so this guard would pass vacuously. " +
+			"View state structs are declared in this package and do not implement Modal; " +
+			"if that changed, update nonModalStateStructs.")
+	}
+
+	for _, st := range structs {
+		for _, path := range servicesReachableFrom(st, serviceTypes) {
+			t.Errorf("%s is a service — a view state struct must not hold one. "+
+				"switchDatabase re-points services and closes the previous database, "+
+				"so a captured pointer becomes a use-after-close. Keep the service on "+
+				"App and pass it in at call time.", path)
+		}
+	}
+}
+
+// nonModalStateStructs returns every struct type declared in root's package
+// that a field of root holds, by value or by pointer, and whose pointer does
+// not implement Modal.
+func nonModalStateStructs(root reflect.Type) []reflect.Type {
+	modalT := reflect.TypeFor[Modal]()
+	var out []reflect.Type
+	for i := range root.NumField() {
+		ft := root.Field(i).Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() != reflect.Struct || ft.PkgPath() != root.PkgPath() {
+			continue
+		}
+		if !reflect.PointerTo(ft).Implements(modalT) {
+			out = append(out, ft)
+		}
+	}
+	return out
+}
+
+// servicesReachableFrom returns the path, as Type.field.field, of every field
+// reachable from st whose type is a service pointer. It goes down through
+// pointers, slices, arrays and maps, and into struct types declared in st's
+// package; a struct from another package (a widget, say) is not its concern.
+// Each struct type is walked once, so a service is reported at the first path
+// that reaches it; one report is enough to fail the guard.
+func servicesReachableFrom(st reflect.Type, serviceTypes map[reflect.Type]bool) []string {
+	var out []string
+	seen := map[reflect.Type]bool{}
+	var walk func(t reflect.Type, path string)
+	walk = func(t reflect.Type, path string) {
+		if seen[t] {
+			return
+		}
+		seen[t] = true
+		for i := range t.NumField() {
+			f := t.Field(i)
+			p := path + "." + f.Name
+			ft := f.Type
+		unwrap:
+			for {
+				if serviceTypes[ft] {
+					out = append(out, p+" ("+ft.String()+")")
+					break
+				}
+				switch ft.Kind() {
+				case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+					ft = ft.Elem()
+				case reflect.Struct:
+					if ft.PkgPath() == st.PkgPath() {
+						walk(ft, p)
+					}
+					break unwrap
+				default:
+					break unwrap
+				}
+			}
+		}
+	}
+	walk(st, st.Name())
+	return out
+}
+
+// TestGuard_ViewsSelfTest_ViewStateServices proves the finder and the walk
+// fire, over fabricated types rather than over a copy of the rule.
+func TestGuard_ViewsSelfTest_ViewStateServices(t *testing.T) {
+	t.Run("the finder takes view state and skips surfaces and foreign structs", func(t *testing.T) {
+		var names []string
+		for _, st := range nonModalStateStructs(reflect.TypeFor[appWithViewState]()) {
+			names = append(names, st.Name())
+		}
+		want := []string{"viewStateWithAService", "viewDataWithAService"}
+		if !slices.Equal(names, want) {
+			t.Errorf("nonModalStateStructs = %v, want %v", names, want)
+		}
+	})
+
+	t.Run("a service one level down is found", func(t *testing.T) {
+		got := servicesReachableFrom(reflect.TypeFor[viewStateWithAService](), servicePointerTypes())
+		want := []string{
+			"viewStateWithAService.data.accounts (*account.Service)",
+			"viewStateWithAService.byID (*account.Service)",
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("servicesReachableFrom = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a clean view state reports nothing", func(t *testing.T) {
+		if got := servicesReachableFrom(reflect.TypeFor[priceViewState](), servicePointerTypes()); len(got) != 0 {
+			t.Errorf("servicesReachableFrom(priceViewState) = %v, want none", got)
+		}
+	})
+}
+
+// appWithViewState, viewStateWithAService and viewDataWithAService exist only
+// as fixtures for the self-test above. They are never held by App. The fixture
+// literal keeps the linter from reporting their fields as unused.
+type appWithViewState struct {
+	view    viewStateWithAService
+	data    *viewDataWithAService
+	surface surfaceWithAService
+	table   *widget.Table
+}
+
+type viewStateWithAService struct {
+	data *viewDataWithAService
+	byID map[types.ID]*account.Service
+}
+
+type viewDataWithAService struct {
+	accounts *account.Service
+}
+
+var _ = appWithViewState{
+	view:    viewStateWithAService{data: &viewDataWithAService{accounts: nil}, byID: nil},
+	data:    nil,
+	surface: surfaceWithAService{},
+	table:   nil,
 }

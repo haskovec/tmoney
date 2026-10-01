@@ -16,7 +16,7 @@ import (
 // buildPriceListTable creates and populates the list-mode summary table
 // (one row per security with its latest price).
 func (a *App) buildPriceListTable() {
-	if a.priceView == nil {
+	if a.prices.data == nil {
 		return
 	}
 
@@ -27,14 +27,14 @@ func (a *App) buildPriceListTable() {
 		{Header: "Date", Width: 12, Align: widget.AlignLeft},
 	}
 
-	if a.priceListTable == nil {
-		a.priceListTable = widget.NewTable(columns)
+	if a.prices.listTable == nil {
+		a.prices.listTable = widget.NewTable(columns)
 	} else {
-		a.priceListTable.SetColumns(columns)
+		a.prices.listTable.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.priceView.latestPrices))
-	for i, lp := range a.priceView.latestPrices {
+	rows := make([][]string, len(a.prices.data.latestPrices))
+	for i, lp := range a.prices.data.latestPrices {
 		rows[i] = []string{
 			lp.Ticker,
 			lp.Name,
@@ -42,13 +42,13 @@ func (a *App) buildPriceListTable() {
 			lp.Date.Time().Format("2006-01-02"),
 		}
 	}
-	a.priceListTable.SetRows(rows)
-	a.priceListTable.SetFocused(true)
+	a.prices.listTable.SetRows(rows)
+	a.prices.listTable.SetFocused(true)
 }
 
 // buildPriceTable creates and populates the table for the price view.
 func (a *App) buildPriceTable() {
-	if a.priceView == nil {
+	if a.prices.data == nil {
 		return
 	}
 
@@ -58,18 +58,18 @@ func (a *App) buildPriceTable() {
 		{Header: "Source", Width: 12, Align: widget.AlignLeft},
 	}
 
-	if a.priceTable == nil {
-		a.priceTable = widget.NewTable(columns)
+	if a.prices.table == nil {
+		a.prices.table = widget.NewTable(columns)
 	} else {
-		a.priceTable.SetColumns(columns)
+		a.prices.table.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.priceView.prices))
-	for i, p := range a.priceView.prices {
+	rows := make([][]string, len(a.prices.data.prices))
+	for i, p := range a.prices.data.prices {
 		rows[i] = a.formatPriceRow(p)
 	}
-	a.priceTable.SetRows(rows)
-	a.priceTable.SetFocused(true)
+	a.prices.table.SetRows(rows)
+	a.prices.table.SetFocused(true)
 }
 
 // formatPriceRow formats a price into a table row.
@@ -83,26 +83,26 @@ func (a *App) formatPriceRow(p *price.Price) []string {
 
 // selectedPrice returns the currently selected price based on table cursor.
 func (a *App) selectedPrice() *price.Price {
-	if a.priceView == nil || a.priceTable == nil {
+	if a.prices.data == nil || a.prices.table == nil {
 		return nil
 	}
 
-	cursor := a.priceTable.Cursor()
-	if cursor < 0 || cursor >= len(a.priceView.prices) {
+	cursor := a.prices.table.Cursor()
+	if cursor < 0 || cursor >= len(a.prices.data.prices) {
 		return nil
 	}
-	return a.priceView.prices[cursor]
+	return a.prices.data.prices[cursor]
 }
 
 // renderPriceView renders the prices view in either list or detail mode.
 func (a *App) renderPriceView() string {
-	if a.priceView == nil {
+	if a.prices.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading prices...")
 	}
 
-	if a.priceView.mode == pricesViewDetail {
+	if a.prices.data.mode == pricesViewDetail {
 		return a.renderPriceDetail()
 	}
 	return a.renderPriceList()
@@ -131,8 +131,8 @@ func (a *App) renderPriceList() string {
 
 	titleText := "PRICES"
 	hint := "Enter: view history  ·  u: update prices  ·  /: search"
-	if a.priceView.searchQuery != "" {
-		hint += "  Search: " + a.priceView.searchQuery
+	if a.prices.data.searchQuery != "" {
+		hint += "  Search: " + a.prices.data.searchQuery
 	}
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(hint)-4, 1)
 	headerRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(hint)
@@ -141,7 +141,7 @@ func (a *App) renderPriceList() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	if len(a.priceView.latestPrices) == 0 {
+	if len(a.prices.data.latestPrices) == 0 {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No prices on file. Press 'p' on a security to start."))
 		return lipgloss.NewStyle().
@@ -156,10 +156,10 @@ func (a *App) renderPriceList() string {
 	paddingHeight := 2
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-	if a.priceListTable != nil {
+	if a.prices.listTable != nil {
 		body := a.composePriceListBody(contentWidth, tableHeight)
 		sections = append(sections, body)
-		if info := a.priceListTable.ScrollInfo(tableHeight - 2); info != "" {
+		if info := a.prices.listTable.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	}
@@ -175,19 +175,19 @@ func (a *App) renderPriceList() string {
 func (a *App) composePriceListBody(contentWidth, height int) string {
 	if !shouldShowChartPanel(contentWidth) {
 		tableWidth := max(contentWidth-4, 1)
-		return a.priceListTable.Render(a.styles, tableWidth, height)
+		return a.prices.listTable.Render(a.styles, tableWidth, height)
 	}
 
 	tableWidth := priceListNaturalTableWidth
 	if tableWidth >= contentWidth {
 		tableWidth = max(contentWidth-4, 1)
-		return a.priceListTable.Render(a.styles, tableWidth, height)
+		return a.prices.listTable.Render(a.styles, tableWidth, height)
 	}
 	chartWidth := contentWidth - tableWidth
 	chartHeight := height
 
 	chartPanel := a.buildPriceListChartPanel(chartWidth, chartHeight)
-	tableStr := a.priceListTable.Render(a.styles, tableWidth, height)
+	tableStr := a.prices.listTable.Render(a.styles, tableWidth, height)
 	if chartPanel == "" {
 		return tableStr
 	}
@@ -196,13 +196,13 @@ func (a *App) composePriceListBody(contentWidth, height int) string {
 
 // buildPriceListChartPanel renders the chart panel for the highlighted
 // list row. The render path NEVER calls the price service — it only
-// reads from priceView.historyCache, which is populated asynchronously
+// reads from prices.data.historyCache, which is populated asynchronously
 // by the debounce/fetch flow (see schedulePriceChartFetch and the
 // priceChartDebounceTickMsg / priceChartHistoryLoadedMsg handlers).
 //
 // Resolution order for "what ticker to show":
 //  1. Highlighted row's security, if its history is cached.
-//  2. priceView.chartDisplayedID (the most recently fetched ticker), if
+//  2. prices.data.chartDisplayedID (the most recently fetched ticker), if
 //     its history is still cached. This keeps the panel populated during
 //     the 150 ms debounce window after the user moves to a not-yet-fetched
 //     ticker — no `Loading…` placeholder needed.
@@ -211,29 +211,29 @@ func (a *App) composePriceListBody(contentWidth, height int) string {
 // Returns "" if the cursor is out of range or the chart area is too
 // small.
 func (a *App) buildPriceListChartPanel(width, height int) string {
-	if a.priceView == nil || a.priceListTable == nil {
+	if a.prices.data == nil || a.prices.listTable == nil {
 		return ""
 	}
-	cursor := a.priceListTable.Cursor()
-	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
+	cursor := a.prices.listTable.Cursor()
+	if cursor < 0 || cursor >= len(a.prices.data.latestPrices) {
 		return ""
 	}
-	if a.priceView.historyCache == nil {
+	if a.prices.data.historyCache == nil {
 		return ""
 	}
 
-	highlightedID := a.priceView.latestPrices[cursor].SecurityID
+	highlightedID := a.prices.data.latestPrices[cursor].SecurityID
 
 	var (
 		displayID types.ID
 		prices    []*price.Price
 		ok        bool
 	)
-	if prices, ok = a.priceView.historyCache.Lookup(highlightedID); ok {
+	if prices, ok = a.prices.data.historyCache.Lookup(highlightedID); ok {
 		displayID = highlightedID
-	} else if !a.priceView.chartDisplayedID.IsNil() {
-		if prices, ok = a.priceView.historyCache.Lookup(a.priceView.chartDisplayedID); ok {
-			displayID = a.priceView.chartDisplayedID
+	} else if !a.prices.data.chartDisplayedID.IsNil() {
+		if prices, ok = a.prices.data.historyCache.Lookup(a.prices.data.chartDisplayedID); ok {
+			displayID = a.prices.data.chartDisplayedID
 		}
 	}
 	if !ok {
@@ -248,17 +248,17 @@ func (a *App) buildPriceListChartPanel(width, height int) string {
 }
 
 // resolveListPriceSecurity locates the *security.Security for id from
-// priceView.securities, falling back to a synthesized stub built from
+// prices.data.securities, falling back to a synthesized stub built from
 // the matching latestPrices row so the chart-panel title can still
 // render when the security cache and latestPrices are momentarily out
 // of sync.
 func (a *App) resolveListPriceSecurity(id types.ID) *security.Security {
-	for _, s := range a.priceView.securities {
+	for _, s := range a.prices.data.securities {
 		if s.ID == id {
 			return s
 		}
 	}
-	for _, lp := range a.priceView.latestPrices {
+	for _, lp := range a.prices.data.latestPrices {
 		if lp.SecurityID == id {
 			sec := &security.Security{Ticker: lp.Ticker, Name: lp.Name}
 			sec.ID = id
@@ -269,17 +269,17 @@ func (a *App) resolveListPriceSecurity(id types.ID) *security.Security {
 }
 
 // listCursorSecurityID returns the SecurityID of the row currently under
-// the price-list table cursor, or types.NilID if no priceView, no table,
+// the price-list table cursor, or types.NilID if no price data, no table,
 // or the cursor is out of range.
 func (a *App) listCursorSecurityID() types.ID {
-	if a.priceView == nil || a.priceListTable == nil {
+	if a.prices.data == nil || a.prices.listTable == nil {
 		return types.NilID
 	}
-	cursor := a.priceListTable.Cursor()
-	if cursor < 0 || cursor >= len(a.priceView.latestPrices) {
+	cursor := a.prices.listTable.Cursor()
+	if cursor < 0 || cursor >= len(a.prices.data.latestPrices) {
 		return types.NilID
 	}
-	return a.priceView.latestPrices[cursor].SecurityID
+	return a.prices.data.latestPrices[cursor].SecurityID
 }
 
 // renderPriceDetail renders the per-security price history (drill-in).
@@ -291,15 +291,15 @@ func (a *App) renderPriceDetail() string {
 
 	titleText := "PRICES"
 	var secInfo string
-	if sec := a.priceView.selectedSecurity; sec != nil {
+	if sec := a.prices.data.selectedSecurity; sec != nil {
 		if sec.Ticker != "" {
 			secInfo = fmt.Sprintf("%s (%s)", sec.Ticker, sec.Name)
 		} else {
 			secInfo = sec.Name
 		}
 	}
-	if a.priceView.searchQuery != "" {
-		secInfo += "  Search: " + a.priceView.searchQuery
+	if a.prices.data.searchQuery != "" {
+		secInfo += "  Search: " + a.prices.data.searchQuery
 	}
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(secInfo)-4, 1)
 	headerRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(secInfo)
@@ -317,10 +317,10 @@ func (a *App) renderPriceDetail() string {
 	paddingHeight := 2
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-	if a.priceTable != nil && len(a.priceView.prices) > 0 {
+	if a.prices.table != nil && len(a.prices.data.prices) > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.priceTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.priceTable.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.prices.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.prices.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else {

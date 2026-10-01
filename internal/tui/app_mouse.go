@@ -177,11 +177,11 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 	// chart panel for the newly highlighted ticker (mirroring keyboard
 	// navigation); a second click on the same row within the threshold
 	// drills into that ticker's price history.
-	if a.currentView == ViewPrices && a.priceView != nil && a.priceView.mode == pricesViewList {
-		if a.priceListClicks == nil {
-			a.priceListClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
+	if a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.mode == pricesViewList {
+		if a.prices.clicks == nil {
+			a.prices.clicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 		}
-		if a.priceListClicks.Click(rowIdx) {
+		if a.prices.clicks.Click(rowIdx) {
 			return a, a.drillIntoSelectedListRow()
 		}
 		return a, a.schedulePriceListChartFetchIfActive()

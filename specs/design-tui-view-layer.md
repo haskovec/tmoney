@@ -520,14 +520,17 @@ accident:
   documents that callers may pre-populate it. It stays on `App` with the
   pending IDs. `corporateActionViewFilterEditing` is the view's own typing
   mode and moves into its struct. **The filter is not cleared on `leave()`**:
-  `switchView` today drops only `corporateActionDetail` on the way out, and
-  the filter survives a round trip on purpose.
+  `switchView` today drops `corporateActionDetail` and ends a filter entry
+  (`corporateActionViewFilterEditing = false`) on the way out, and the filter
+  itself survives a round trip on purpose. `leave()` must do both of those
+  things and nothing more.
 - **The bulk-refresh flag stays on `App`.** `refreshingPrices` and
   `refreshNotifID` are the in-flight guard for a refresh that `u` starts from
   the Securities view as well as the Prices view. Nesting them in the Prices
   struct would have one view's key handler writing another view's state.
-- **`switchView`'s two departure special cases** (drop the investment filter,
-  drop the corporate-action detail) become a `leave func(*App)` on the two
+- **`switchView`'s two departure special cases** (drop the investment filter;
+  drop the corporate-action detail and end its filter entry) become a
+  `leave func(*App)` on the two
   entries. That puts "what to forget on the way out" beside "what to focus on
   the way in," and removes the last per-view `if` from `switchView`.
 - **The modal surfaces declared in view files stay separate fields.**
