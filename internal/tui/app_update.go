@@ -185,7 +185,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.loadCorporateActionViewData()
 
 	case scheduledViewDataLoadedMsg:
-		a.scheduled = msg.data
+		a.scheduled.data = msg.data
 		a.buildScheduledTable()
 		return a, nil
 

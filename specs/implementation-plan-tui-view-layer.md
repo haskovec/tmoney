@@ -161,8 +161,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `holdingsTable`, `lotsTable`, `mode`. Update the VL-107 `table` func.
   - Done: `App` holds it as `portfolio`, so `a.portfolioData` became `a.portfolio.data` and `a.portfolioMode` became `a.portfolio.mode`. The `table` func calls `activePortfolioTable`, which picks by `a.portfolio.mode`; the VL-107 test still checks both modes. Code outside the view clears `data` (a sidebar click, `p` in the investment register, a reversed corporate action, a database switch). That drops a cache; it is not a handoff, so the field moves.
 
-- [ ] **VL-307 — `scheduledViewState`**
+- [x] **VL-307 — `scheduledViewState`**
   - Fields: `data`, `table`.
+  - Done: `App` holds it as `scheduled`, so `a.scheduled` became `a.scheduled.data` and `a.scheduledTable` became `a.scheduled.table`. Other structs have a `scheduled` field too (the schedule dialog's data, two deps bags), so the tool rewrote only `App` receivers. The two schedule dialogs read the view's selected row; only the view and the database-switch resets write its state.
 
 - [ ] **VL-308 — `reportsViewState`**
   - Field: `data`.

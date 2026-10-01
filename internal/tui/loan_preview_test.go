@@ -142,18 +142,18 @@ func newLoanPreviewEnv(t *testing.T, owed, apr, pi string, nextDate types.Date) 
 			Transaction: txnSvc,
 		},
 		undoManager: undo.NewManager(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{st},
 			dueTxns:       []*scheduled.Transaction{st},
 			dueCount:      1,
 			payeeNames:    map[types.ID]string{servicer.ID: servicer.Name},
 			accountNames:  map[types.ID]string{funding.ID: funding.Name, loanAcct.ID: loanAcct.Name},
 			categoryNames: map[types.ID]string{interestCat.ID: interestCat.Name},
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	return &loanPreviewEnv{
 		app:           app,

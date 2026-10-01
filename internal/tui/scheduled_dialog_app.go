@@ -51,16 +51,16 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 
 // loadEditScheduledDialogData returns a command that loads data for editing a scheduled transaction.
 func (a *App) loadEditScheduledDialogData() tea.Cmd {
-	if a.scheduled == nil || a.scheduledTable == nil {
+	if a.scheduled.data == nil || a.scheduled.table == nil {
 		return nil
 	}
 
-	cursor := a.scheduledTable.Cursor()
-	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+	cursor := a.scheduled.table.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.data.allTxns) {
 		return nil
 	}
 
-	st := a.scheduled.allTxns[cursor]
+	st := a.scheduled.data.allTxns[cursor]
 	return func() tea.Msg {
 		data := &scheduledDialogData{
 			mode:       scheduledDialogModeEdit,

@@ -227,11 +227,11 @@ func TestFormatScheduledRow_Transfer(t *testing.T) {
 	st.SetTransfer(visa)
 
 	app := &App{
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:      []*scheduled.Transaction{st},
 			payeeNames:   map[types.ID]string{},
 			accountNames: map[types.ID]string{checking: "Checking", visa: "Visa"},
-		},
+		}},
 	}
 
 	row := app.formatScheduledRow(st, false)

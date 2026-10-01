@@ -285,8 +285,8 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.dashboard.data = nil
 	a.register.data = nil
 	a.register.table = nil
-	a.scheduled = nil
-	a.scheduledTable = nil
+	a.scheduled.data = nil
+	a.scheduled.table = nil
 	a.reports = nil
 	a.securityView = nil
 	a.securityTable = nil

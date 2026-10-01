@@ -28,14 +28,14 @@ import (
 // If the cursor is out of range or the required state is missing the
 // returned command is nil and Enter is a no-op.
 func (a *App) loadSchedulePreviewData() tea.Cmd {
-	if a.scheduled == nil || a.scheduledTable == nil {
+	if a.scheduled.data == nil || a.scheduled.table == nil {
 		return nil
 	}
-	cursor := a.scheduledTable.Cursor()
-	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+	cursor := a.scheduled.table.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.data.allTxns) {
 		return nil
 	}
-	template := a.scheduled.allTxns[cursor]
+	template := a.scheduled.data.allTxns[cursor]
 	if template == nil {
 		return nil
 	}

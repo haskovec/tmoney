@@ -152,8 +152,7 @@ type App struct {
 	loan loanSurface
 
 	// Scheduled view state
-	scheduled      *scheduledViewData
-	scheduledTable *widget.Table
+	scheduled scheduledViewState
 
 	// Reports view state
 	reports *reportsViewData

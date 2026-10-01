@@ -332,18 +332,18 @@ func newSchedulePreviewTestEnv(t *testing.T) *schedulePreviewTestEnv {
 			Transaction: txnSvc,
 		},
 		undoManager: undo.NewManager(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{dueTxn},
 			dueTxns:       []*scheduled.Transaction{dueTxn},
 			dueCount:      1,
 			payeeNames:    map[types.ID]string{landlord.ID: landlord.Name},
 			accountNames:  map[types.ID]string{acct.ID: acct.Name},
 			categoryNames: map[types.ID]string{rentCat.ID: rentCat.Name},
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Open the preview dialog directly so tests can manipulate field
 	// values without going through the async data load.
@@ -690,18 +690,18 @@ func newSchedulePreviewMultiLineEnv(t *testing.T) *schedulePreviewMultiLineEnv {
 			Transaction: txnSvc,
 		},
 		undoManager: undo.NewManager(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{dueTxn},
 			dueTxns:       []*scheduled.Transaction{dueTxn},
 			dueCount:      1,
 			payeeNames:    map[types.ID]string{employer.ID: employer.Name},
 			accountNames:  map[types.ID]string{acct.ID: acct.Name},
 			categoryNames: map[types.ID]string{incomeCat.ID: incomeCat.Name, taxCat.ID: taxCat.Name},
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	categoryOptions, categoryIDs := buildCategoryOptions([]*category.Category{incomeCat, taxCat})
 	app.schedPreviewDialog = NewSchedulePreviewDialog(
