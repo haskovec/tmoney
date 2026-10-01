@@ -249,14 +249,14 @@ func init() {
 			hints:     func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
 			shortcuts: portfolioShortcuts,
 			table: func(a *App) *widget.Table {
-				if a.portfolioData != nil {
+				if a.portfolio.data != nil {
 					return a.activePortfolioTable()
 				}
 				return nil
 			},
 			reload: func(a *App) []tea.Cmd {
-				if a.portfolioData != nil && a.portfolioData.account != nil {
-					return []tea.Cmd{a.loadPortfolioData(a.portfolioData.account.ID)}
+				if a.portfolio.data != nil && a.portfolio.data.account != nil {
+					return []tea.Cmd{a.loadPortfolioData(a.portfolio.data.account.ID)}
 				}
 				return nil
 			},

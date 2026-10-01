@@ -279,8 +279,8 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)
 		}
 	case ViewPortfolio:
-		if a.portfolioData != nil && a.portfolioData.account != nil {
-			return a, a.loadPortfolioData(a.portfolioData.account.ID)
+		if a.portfolio.data != nil && a.portfolio.data.account != nil {
+			return a, a.loadPortfolioData(a.portfolio.data.account.ID)
 		}
 	}
 	return a, nil

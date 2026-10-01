@@ -220,7 +220,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	case msg.String() == "p":
 		// Switch to portfolio view
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
-			a.portfolioData = nil // Clear old data while loading
+			a.portfolio.data = nil // Clear old data while loading
 			a.switchView(ViewPortfolio)
 			return a, a.loadPortfolioData(a.investmentRegister.data.account.ID)
 		}

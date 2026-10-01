@@ -104,9 +104,9 @@ func TestFormatHoldingRow(t *testing.T) {
 	}
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	row := app.formatHoldingRow(holding)
@@ -185,9 +185,9 @@ func TestFormatHoldingRow_NoPricing(t *testing.T) {
 	}
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			securityNames: map[types.ID]string{secID: "MSFT"},
-		},
+		}},
 	}
 
 	row := app.formatHoldingRow(holding)
@@ -223,9 +223,9 @@ func TestFormatHoldingRow_NegativeGainLoss(t *testing.T) {
 	}
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			securityNames: map[types.ID]string{secID: "GOOG"},
-		},
+		}},
 	}
 
 	row := app.formatHoldingRow(holding)
@@ -258,9 +258,9 @@ func TestFormatHoldingRow_TotalReturnColumns(t *testing.T) {
 	}
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			securityNames: map[types.ID]string{secID: "DIV"},
-		},
+		}},
 	}
 
 	row := app.formatHoldingRow(holding)
@@ -299,9 +299,9 @@ func TestFormatHoldingRow_RealizedUnavailable(t *testing.T) {
 	}
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			securityNames: map[types.ID]string{secID: "MRG"},
-		},
+		}},
 	}
 
 	row := app.formatHoldingRow(holding)
@@ -387,7 +387,7 @@ func TestPortfolioSummaryBar(t *testing.T) {
 
 	app := &App{
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				AccountID:         acctID,
 				CashBalance:       types.MustNewMoney("5000.00"),
@@ -403,7 +403,7 @@ func TestPortfolioSummaryBar(t *testing.T) {
 				TotalReturn:       types.MustNewMoney("3600.00"),
 				TotalReturnPct:    &trPct,
 			},
-		},
+		}},
 	}
 
 	summary := app.renderPortfolioSummary(100)
@@ -450,7 +450,7 @@ func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
 
 	app := &App{
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				AccountID:      acctID,
 				CashBalance:    types.MustNewMoney("0"),
@@ -462,7 +462,7 @@ func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
 				TotalReturn:    types.MustNewMoney("0"),
 				TotalReturnPct: nil,
 			},
-		},
+		}},
 	}
 
 	summary := app.renderPortfolioSummary(100)
@@ -478,7 +478,7 @@ func TestPortfolioSummaryBar_PartialRealizedMarker(t *testing.T) {
 
 	app := &App{
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				AccountID:              acctID,
 				CashBalance:            types.MustNewMoney("100"),
@@ -492,7 +492,7 @@ func TestPortfolioSummaryBar_PartialRealizedMarker(t *testing.T) {
 				TotalReturnPct:         &trPct,
 				AnyRealizedUnavailable: true,
 			},
-		},
+		}},
 	}
 
 	summary := app.renderPortfolioSummary(100)
@@ -508,7 +508,7 @@ func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
 
 	app := &App{
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				AccountID:              acctID,
 				CashBalance:            types.MustNewMoney("100"),
@@ -522,7 +522,7 @@ func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
 				TotalReturnPct:         &trPct,
 				AnyRealizedUnavailable: false,
 			},
-		},
+		}},
 	}
 
 	summary := app.renderPortfolioSummary(100)
@@ -534,8 +534,8 @@ func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
 
 func TestPortfolioSummaryBar_NilValuation(t *testing.T) {
 	app := &App{
-		styles:        testStyles(),
-		portfolioData: nil,
+		styles:    testStyles(),
+		portfolio: portfolioViewState{data: nil},
 	}
 
 	summary := app.renderPortfolioSummary(100)
@@ -548,7 +548,7 @@ func TestBuildPortfolioHoldingsTable(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				Holdings: []investment.Holding{
 					{
@@ -566,16 +566,16 @@ func TestBuildPortfolioHoldingsTable(t *testing.T) {
 				},
 			},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	app.buildPortfolioHoldingsTable()
 
-	if app.portfolioHoldingsTable == nil {
+	if app.portfolio.holdingsTable == nil {
 		t.Fatal("holdings table should be created")
 	}
 
-	rows := app.portfolioHoldingsTable.Rows()
+	rows := app.portfolio.holdingsTable.Rows()
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 row, got %d", len(rows))
 	}
@@ -590,7 +590,7 @@ func TestBuildPortfolioHoldingsTable_MultipleHoldings(t *testing.T) {
 	sec2 := types.NewID()
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				Holdings: []investment.Holding{
 					{
@@ -618,16 +618,16 @@ func TestBuildPortfolioHoldingsTable_MultipleHoldings(t *testing.T) {
 				},
 			},
 			securityNames: map[types.ID]string{sec1: "AAPL", sec2: "MSFT"},
-		},
+		}},
 	}
 
 	app.buildPortfolioHoldingsTable()
 
-	if app.portfolioHoldingsTable == nil {
+	if app.portfolio.holdingsTable == nil {
 		t.Fatal("holdings table should be created")
 	}
 
-	rows := app.portfolioHoldingsTable.Rows()
+	rows := app.portfolio.holdingsTable.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
@@ -635,20 +635,20 @@ func TestBuildPortfolioHoldingsTable_MultipleHoldings(t *testing.T) {
 
 func TestBuildPortfolioHoldingsTable_NilData(t *testing.T) {
 	app := &App{
-		portfolioData: nil,
+		portfolio: portfolioViewState{data: nil},
 	}
 
 	// Should not panic
 	app.buildPortfolioHoldingsTable()
 
-	if app.portfolioHoldingsTable != nil {
+	if app.portfolio.holdingsTable != nil {
 		t.Error("holdings table should be nil for nil data")
 	}
 }
 
 func TestBuildPortfolioLotsTable(t *testing.T) {
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			lotDetails: []investment.LotDetail{
 				{
 					LotID:        types.NewID(),
@@ -671,16 +671,16 @@ func TestBuildPortfolioLotsTable(t *testing.T) {
 					GainPct:      15.38,
 				},
 			},
-		},
+		}},
 	}
 
 	app.buildPortfolioLotsTable()
 
-	if app.portfolioLotsTable == nil {
+	if app.portfolio.lotsTable == nil {
 		t.Fatal("lots table should be created")
 	}
 
-	rows := app.portfolioLotsTable.Rows()
+	rows := app.portfolio.lotsTable.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(rows))
 	}
@@ -692,13 +692,13 @@ func TestBuildPortfolioLotsTable(t *testing.T) {
 
 func TestBuildPortfolioLotsTable_NilData(t *testing.T) {
 	app := &App{
-		portfolioData: nil,
+		portfolio: portfolioViewState{data: nil},
 	}
 
 	// Should not panic
 	app.buildPortfolioLotsTable()
 
-	if app.portfolioLotsTable != nil {
+	if app.portfolio.lotsTable != nil {
 		t.Error("lots table should be nil for nil data")
 	}
 }
@@ -714,8 +714,8 @@ func TestPortfolioViewMode(t *testing.T) {
 
 func TestRenderPortfolioView_Loading(t *testing.T) {
 	app := &App{
-		styles:        testStyles(),
-		portfolioData: nil,
+		styles:    testStyles(),
+		portfolio: portfolioViewState{data: nil},
 	}
 
 	rendered := app.renderPortfolioView()
@@ -729,7 +729,7 @@ func TestRenderPortfolioView_NoHoldings(t *testing.T) {
 		width:  120,
 		height: 40,
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -745,7 +745,7 @@ func TestRenderPortfolioView_NoHoldings(t *testing.T) {
 				Holdings:       []investment.Holding{},
 			},
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 
 	rendered := app.renderPortfolioView()
@@ -764,37 +764,39 @@ func TestRenderPortfolioView_WithHoldings(t *testing.T) {
 		width:  120,
 		height: 40,
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Investment",
-				Type:      account.TypeInvestment,
-			},
-			valuation: &investment.AccountValuation{
-				CashBalance:    types.MustNewMoney("5000.00"),
-				MarketValue:    types.MustNewMoney("15000.00"),
-				TotalValue:     types.MustNewMoney("20000.00"),
-				TotalCostBasis: types.MustNewMoney("12000.00"),
-				TotalGainLoss:  types.MustNewMoney("3000.00"),
-				TotalGainPct:   25.0,
-				Holdings: []investment.Holding{
-					{
-						SecurityID:   secID,
-						Shares:       types.MustNewQuantity("100"),
-						AvgCost:      types.MustNewMoney("120.00"),
-						CurrentPrice: types.MustNewMoney("150.00"),
-						PriceDate:    types.NewDate(2024, time.March, 15),
-						MarketValue:  types.MustNewMoney("15000.00"),
-						CostBasis:    types.MustNewMoney("12000.00"),
-						GainLoss:     types.MustNewMoney("3000.00"),
-						GainPct:      25.0,
-						HasPricing:   true,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Investment",
+					Type:      account.TypeInvestment,
+				},
+				valuation: &investment.AccountValuation{
+					CashBalance:    types.MustNewMoney("5000.00"),
+					MarketValue:    types.MustNewMoney("15000.00"),
+					TotalValue:     types.MustNewMoney("20000.00"),
+					TotalCostBasis: types.MustNewMoney("12000.00"),
+					TotalGainLoss:  types.MustNewMoney("3000.00"),
+					TotalGainPct:   25.0,
+					Holdings: []investment.Holding{
+						{
+							SecurityID:   secID,
+							Shares:       types.MustNewQuantity("100"),
+							AvgCost:      types.MustNewMoney("120.00"),
+							CurrentPrice: types.MustNewMoney("150.00"),
+							PriceDate:    types.NewDate(2024, time.March, 15),
+							MarketValue:  types.MustNewMoney("15000.00"),
+							CostBasis:    types.MustNewMoney("12000.00"),
+							GainLoss:     types.MustNewMoney("3000.00"),
+							GainPct:      25.0,
+							HasPricing:   true,
+						},
 					},
 				},
+				securityNames: map[types.ID]string{secID: "AAPL"},
 			},
-			securityNames: map[types.ID]string{secID: "AAPL"},
+			mode: portfolioViewHoldings,
 		},
-		portfolioMode: portfolioViewHoldings,
 	}
 
 	// Build the holdings table first
@@ -817,32 +819,34 @@ func TestRenderPortfolioView_LotMode(t *testing.T) {
 		width:  120,
 		height: 40,
 		styles: testStyles(),
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Investment",
-				Type:      account.TypeInvestment,
-			},
-			valuation: &investment.AccountValuation{
-				CashBalance: types.MustNewMoney("5000.00"),
-				Holdings:    []investment.Holding{},
-			},
-			securityNames: map[types.ID]string{secID: "AAPL"},
-			lotDetails: []investment.LotDetail{
-				{
-					LotID:        types.NewID(),
-					PurchaseDate: types.NewDate(2024, time.January, 15),
-					Shares:       types.MustNewQuantity("50"),
-					CostPerShare: types.MustNewMoney("100.00"),
-					CostBasis:    types.MustNewMoney("5000.00"),
-					CurrentValue: types.MustNewMoney("7500.00"),
-					GainLoss:     types.MustNewMoney("2500.00"),
-					GainPct:      50.0,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Investment",
+					Type:      account.TypeInvestment,
 				},
+				valuation: &investment.AccountValuation{
+					CashBalance: types.MustNewMoney("5000.00"),
+					Holdings:    []investment.Holding{},
+				},
+				securityNames: map[types.ID]string{secID: "AAPL"},
+				lotDetails: []investment.LotDetail{
+					{
+						LotID:        types.NewID(),
+						PurchaseDate: types.NewDate(2024, time.January, 15),
+						Shares:       types.MustNewQuantity("50"),
+						CostPerShare: types.MustNewMoney("100.00"),
+						CostBasis:    types.MustNewMoney("5000.00"),
+						CurrentValue: types.MustNewMoney("7500.00"),
+						GainLoss:     types.MustNewMoney("2500.00"),
+						GainPct:      50.0,
+					},
+				},
+				lotSecurityID: secID,
 			},
-			lotSecurityID: secID,
+			mode: portfolioViewLots,
 		},
-		portfolioMode: portfolioViewLots,
 	}
 
 	// Build the lots table
@@ -882,7 +886,7 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 	if app.currentView != ViewPortfolio {
 		t.Errorf("view = %v, want ViewPortfolio", app.currentView)
 	}
-	if app.portfolioData != nil {
+	if app.portfolio.data != nil {
 		t.Error("portfolio data should be nil (cleared for loading)")
 	}
 	// Command should be non-nil (loading portfolio data)
@@ -901,15 +905,17 @@ func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.BaseModel{ID: acctID},
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+				},
 			},
+			mode:          portfolioViewHoldings,
+			holdingsTable: widget.NewTable(nil),
 		},
-		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: widget.NewTable(nil),
 	}
 
 	// Simulate pressing 'r' to switch to register
@@ -937,43 +943,45 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
-				TrackLots: true,
-			},
-			valuation: &investment.AccountValuation{
-				Holdings: []investment.Holding{
-					{
-						SecurityID:   secID,
-						Shares:       types.MustNewQuantity("100"),
-						AvgCost:      types.MustNewMoney("120.00"),
-						CurrentPrice: types.MustNewMoney("150.00"),
-						MarketValue:  types.MustNewMoney("15000.00"),
-						CostBasis:    types.MustNewMoney("12000.00"),
-						GainLoss:     types.MustNewMoney("3000.00"),
-						GainPct:      25.0,
-						HasPricing:   true,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.BaseModel{ID: acctID},
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+					TrackLots: true,
+				},
+				valuation: &investment.AccountValuation{
+					Holdings: []investment.Holding{
+						{
+							SecurityID:   secID,
+							Shares:       types.MustNewQuantity("100"),
+							AvgCost:      types.MustNewMoney("120.00"),
+							CurrentPrice: types.MustNewMoney("150.00"),
+							MarketValue:  types.MustNewMoney("15000.00"),
+							CostBasis:    types.MustNewMoney("12000.00"),
+							GainLoss:     types.MustNewMoney("3000.00"),
+							GainPct:      25.0,
+							HasPricing:   true,
+						},
 					},
 				},
+				securityNames: map[types.ID]string{secID: "AAPL"},
 			},
-			securityNames: map[types.ID]string{secID: "AAPL"},
+			mode: portfolioViewHoldings,
 		},
-		portfolioMode: portfolioViewHoldings,
 	}
 
 	// Build holdings table and set cursor to first row
 	app.buildPortfolioHoldingsTable()
-	app.portfolioHoldingsTable.SetFocused(true)
+	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Press Enter to drill down
 	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePortfolioKeys(msg)
 
-	if app.portfolioMode != portfolioViewLots {
-		t.Errorf("mode = %v, want portfolioViewLots", app.portfolioMode)
+	if app.portfolio.mode != portfolioViewLots {
+		t.Errorf("mode = %v, want portfolioViewLots", app.portfolio.mode)
 	}
 	if cmd == nil {
 		t.Error("should return a command to load lot detail")
@@ -993,35 +1001,37 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
-				TrackLots: false,
-			},
-			valuation: &investment.AccountValuation{
-				Holdings: []investment.Holding{
-					{
-						SecurityID: secID,
-						Shares:     types.MustNewQuantity("100"),
-						HasPricing: true,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.BaseModel{ID: acctID},
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+					TrackLots: false,
+				},
+				valuation: &investment.AccountValuation{
+					Holdings: []investment.Holding{
+						{
+							SecurityID: secID,
+							Shares:     types.MustNewQuantity("100"),
+							HasPricing: true,
+						},
 					},
 				},
+				securityNames: map[types.ID]string{secID: "AAPL"},
 			},
-			securityNames: map[types.ID]string{secID: "AAPL"},
+			mode: portfolioViewHoldings,
 		},
-		portfolioMode: portfolioViewHoldings,
 	}
 
 	app.buildPortfolioHoldingsTable()
-	app.portfolioHoldingsTable.SetFocused(true)
+	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Press Enter - should NOT drill down for non-lot-tracking
 	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePortfolioKeys(msg)
 
-	if app.portfolioMode != portfolioViewHoldings {
+	if app.portfolio.mode != portfolioViewHoldings {
 		t.Errorf("mode should remain portfolioViewHoldings for non-lot-tracking")
 	}
 	if cmd != nil {
@@ -1039,28 +1049,30 @@ func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+				},
+				lotDetails:    []investment.LotDetail{},
+				lotSecurityID: secID,
 			},
-			lotDetails:    []investment.LotDetail{},
-			lotSecurityID: secID,
+			mode:          portfolioViewLots,
+			holdingsTable: widget.NewTable(nil),
+			lotsTable:     widget.NewTable(nil),
 		},
-		portfolioMode:          portfolioViewLots,
-		portfolioHoldingsTable: widget.NewTable(nil),
-		portfolioLotsTable:     widget.NewTable(nil),
 	}
 
 	// Press Escape from lot view - should go back to holdings
 	msg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, _ = app.handlePortfolioKeys(msg)
 
-	if app.portfolioMode != portfolioViewHoldings {
-		t.Errorf("mode = %v, want portfolioViewHoldings after Esc from lots", app.portfolioMode)
+	if app.portfolio.mode != portfolioViewHoldings {
+		t.Errorf("mode = %v, want portfolioViewHoldings after Esc from lots", app.portfolio.mode)
 	}
-	if app.portfolioData.lotDetails != nil {
+	if app.portfolio.data.lotDetails != nil {
 		t.Error("lot details should be cleared")
 	}
 }
@@ -1075,15 +1087,17 @@ func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.BaseModel{ID: acctID},
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.BaseModel{ID: acctID},
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+				},
 			},
+			mode:          portfolioViewHoldings,
+			holdingsTable: widget.NewTable(nil),
 		},
-		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: widget.NewTable(nil),
 	}
 
 	// Press Escape from holdings - should go to investment register
@@ -1110,38 +1124,40 @@ func TestPortfolioKeys_Navigation(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Test",
-				Type:      account.TypeInvestment,
-			},
-			valuation: &investment.AccountValuation{
-				Holdings: []investment.Holding{
-					{SecurityID: secID, Shares: types.MustNewQuantity("10"), HasPricing: true},
-					{SecurityID: types.NewID(), Shares: types.MustNewQuantity("20"), HasPricing: true},
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Test",
+					Type:      account.TypeInvestment,
 				},
+				valuation: &investment.AccountValuation{
+					Holdings: []investment.Holding{
+						{SecurityID: secID, Shares: types.MustNewQuantity("10"), HasPricing: true},
+						{SecurityID: types.NewID(), Shares: types.MustNewQuantity("20"), HasPricing: true},
+					},
+				},
+				securityNames: map[types.ID]string{},
 			},
-			securityNames: map[types.ID]string{},
+			mode: portfolioViewHoldings,
 		},
-		portfolioMode: portfolioViewHoldings,
 	}
 
 	app.buildPortfolioHoldingsTable()
-	app.portfolioHoldingsTable.SetFocused(true)
+	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Move down
 	downMsg := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handlePortfolioKeys(downMsg)
-	if app.portfolioHoldingsTable.Cursor() != 1 {
-		t.Errorf("cursor = %d after down, want 1", app.portfolioHoldingsTable.Cursor())
+	if app.portfolio.holdingsTable.Cursor() != 1 {
+		t.Errorf("cursor = %d after down, want 1", app.portfolio.holdingsTable.Cursor())
 	}
 
 	// Move up
 	upMsg := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handlePortfolioKeys(upMsg)
-	if app.portfolioHoldingsTable.Cursor() != 0 {
-		t.Errorf("cursor = %d after up, want 0", app.portfolioHoldingsTable.Cursor())
+	if app.portfolio.holdingsTable.Cursor() != 0 {
+		t.Errorf("cursor = %d after up, want 0", app.portfolio.holdingsTable.Cursor())
 	}
 }
 
@@ -1173,13 +1189,13 @@ func TestPortfolioLoadedMsg_Handler(t *testing.T) {
 
 	app.Update(msg)
 
-	if app.portfolioData == nil {
+	if app.portfolio.data == nil {
 		t.Fatal("portfolio data should be set after loaded msg")
 	}
-	if app.portfolioMode != portfolioViewHoldings {
-		t.Errorf("mode = %v, want portfolioViewHoldings", app.portfolioMode)
+	if app.portfolio.mode != portfolioViewHoldings {
+		t.Errorf("mode = %v, want portfolioViewHoldings", app.portfolio.mode)
 	}
-	if app.portfolioHoldingsTable == nil {
+	if app.portfolio.holdingsTable == nil {
 		t.Error("holdings table should be built after loaded msg")
 	}
 }
@@ -1192,18 +1208,20 @@ func TestPortfolioLotDetailMsg_Handler(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		styles:      testStyles(),
-		portfolioData: &portfolioViewData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Test",
-				Type:      account.TypeInvestment,
+		portfolio: portfolioViewState{
+			data: &portfolioViewData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Test",
+					Type:      account.TypeInvestment,
+				},
+				valuation: &investment.AccountValuation{
+					Holdings: []investment.Holding{},
+				},
+				securityNames: map[types.ID]string{secID: "AAPL"},
 			},
-			valuation: &investment.AccountValuation{
-				Holdings: []investment.Holding{},
-			},
-			securityNames: map[types.ID]string{secID: "AAPL"},
+			mode: portfolioViewLots,
 		},
-		portfolioMode: portfolioViewLots,
 	}
 
 	lots := []investment.LotDetail{
@@ -1222,16 +1240,16 @@ func TestPortfolioLotDetailMsg_Handler(t *testing.T) {
 	msg := portfolioLotDetailMsg{lots: lots, securityID: secID}
 	app.Update(msg)
 
-	if app.portfolioData.lotDetails == nil {
+	if app.portfolio.data.lotDetails == nil {
 		t.Fatal("lot details should be set after lot detail msg")
 	}
-	if len(app.portfolioData.lotDetails) != 1 {
-		t.Errorf("expected 1 lot detail, got %d", len(app.portfolioData.lotDetails))
+	if len(app.portfolio.data.lotDetails) != 1 {
+		t.Errorf("expected 1 lot detail, got %d", len(app.portfolio.data.lotDetails))
 	}
-	if app.portfolioData.lotSecurityID != secID {
+	if app.portfolio.data.lotSecurityID != secID {
 		t.Error("lot security ID should be set")
 	}
-	if app.portfolioLotsTable == nil {
+	if app.portfolio.lotsTable == nil {
 		t.Error("lots table should be built after lot detail msg")
 	}
 }
@@ -1240,14 +1258,14 @@ func TestSelectedHolding(t *testing.T) {
 	secID := types.NewID()
 
 	app := &App{
-		portfolioData: &portfolioViewData{
+		portfolio: portfolioViewState{data: &portfolioViewData{
 			valuation: &investment.AccountValuation{
 				Holdings: []investment.Holding{
 					{SecurityID: secID, Shares: types.MustNewQuantity("100"), HasPricing: true},
 				},
 			},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	app.buildPortfolioHoldingsTable()
@@ -1263,7 +1281,7 @@ func TestSelectedHolding(t *testing.T) {
 
 func TestSelectedHolding_NilData(t *testing.T) {
 	app := &App{
-		portfolioData: nil,
+		portfolio: portfolioViewState{data: nil},
 	}
 
 	h := app.selectedHolding()
@@ -1290,33 +1308,37 @@ func TestViewPortfolioString(t *testing.T) {
 
 func TestActivePortfolioTable_HoldingsMode(t *testing.T) {
 	app := &App{
-		portfolioMode:          portfolioViewHoldings,
-		portfolioHoldingsTable: widget.NewTable(nil),
-		portfolioLotsTable:     widget.NewTable(nil),
+		portfolio: portfolioViewState{
+			mode:          portfolioViewHoldings,
+			holdingsTable: widget.NewTable(nil),
+			lotsTable:     widget.NewTable(nil),
+		},
 	}
 
 	tbl := app.activePortfolioTable()
-	if tbl != app.portfolioHoldingsTable {
+	if tbl != app.portfolio.holdingsTable {
 		t.Error("should return holdings table in holdings mode")
 	}
 }
 
 func TestActivePortfolioTable_LotsMode(t *testing.T) {
 	app := &App{
-		portfolioMode:          portfolioViewLots,
-		portfolioHoldingsTable: widget.NewTable(nil),
-		portfolioLotsTable:     widget.NewTable(nil),
+		portfolio: portfolioViewState{
+			mode:          portfolioViewLots,
+			holdingsTable: widget.NewTable(nil),
+			lotsTable:     widget.NewTable(nil),
+		},
 	}
 
 	tbl := app.activePortfolioTable()
-	if tbl != app.portfolioLotsTable {
+	if tbl != app.portfolio.lotsTable {
 		t.Error("should return lots table in lots mode")
 	}
 }
 
 func TestActivePortfolioTable_NilTables(t *testing.T) {
 	app := &App{
-		portfolioMode: portfolioViewHoldings,
+		portfolio: portfolioViewState{mode: portfolioViewHoldings},
 	}
 
 	// Should not panic, returns a placeholder

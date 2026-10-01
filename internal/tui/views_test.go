@@ -23,12 +23,12 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 		{"prices detail", ViewPrices, func(a *App) { a.prices.data = &priceViewData{mode: pricesViewDetail} }, detail},
 		{"prices before load", ViewPrices, func(a *App) {}, detail},
 		{"portfolio holdings", ViewPortfolio, func(a *App) {
-			a.portfolioData = &portfolioViewData{}
-			a.portfolioMode = portfolioViewHoldings
+			a.portfolio.data = &portfolioViewData{}
+			a.portfolio.mode = portfolioViewHoldings
 		}, holdings},
 		{"portfolio lots", ViewPortfolio, func(a *App) {
-			a.portfolioData = &portfolioViewData{}
-			a.portfolioMode = portfolioViewLots
+			a.portfolio.data = &portfolioViewData{}
+			a.portfolio.mode = portfolioViewLots
 		}, lots},
 		{"portfolio before load", ViewPortfolio, func(a *App) {}, nil},
 		{"dashboard has none", ViewDashboard, func(a *App) {}, nil},
@@ -41,8 +41,10 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 					listTable: list,
 					table:     detail,
 				},
-				portfolioHoldingsTable: holdings,
-				portfolioLotsTable:     lots,
+				portfolio: portfolioViewState{
+					holdingsTable: holdings,
+					lotsTable:     lots,
+				},
 			}
 			tc.setup(a)
 			if got := a.activeTable(); got != tc.want {

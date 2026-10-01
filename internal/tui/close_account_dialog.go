@@ -176,8 +176,8 @@ func (a *App) afterAccountClosed() tea.Cmd {
 	case ViewInvestmentRegister:
 		cmds = append(cmds, a.loadInvestmentRegisterData(a.sidebar.SelectedAccountID()))
 	case ViewPortfolio:
-		if a.portfolioData != nil && a.portfolioData.account != nil {
-			cmds = append(cmds, a.loadPortfolioData(a.portfolioData.account.ID))
+		if a.portfolio.data != nil && a.portfolio.data.account != nil {
+			cmds = append(cmds, a.loadPortfolioData(a.portfolio.data.account.ID))
 		}
 	}
 	return tea.Batch(cmds...)

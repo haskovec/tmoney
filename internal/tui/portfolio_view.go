@@ -15,6 +15,15 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// portfolioViewState is everything the Portfolio view owns. Its zero value is
+// the view before its first load, in holdings mode.
+type portfolioViewState struct {
+	data          *portfolioViewData
+	holdingsTable *widget.Table
+	lotsTable     *widget.Table
+	mode          portfolioViewMode // which table is on screen
+}
+
 // portfolioViewData holds the loaded data for the portfolio view.
 type portfolioViewData struct {
 	account       *account.Account
@@ -102,7 +111,7 @@ func (a *App) loadLotDetail(accountID, securityID types.ID) tea.Cmd {
 
 // buildPortfolioHoldingsTable creates and populates the holdings table.
 func (a *App) buildPortfolioHoldingsTable() {
-	if a.portfolioData == nil || a.portfolioData.valuation == nil {
+	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
 		return
 	}
 
@@ -122,13 +131,13 @@ func (a *App) buildPortfolioHoldingsTable() {
 		{Header: "Ret %", Width: 8, Align: widget.AlignRight},
 	}
 
-	if a.portfolioHoldingsTable == nil {
-		a.portfolioHoldingsTable = widget.NewTable(columns)
+	if a.portfolio.holdingsTable == nil {
+		a.portfolio.holdingsTable = widget.NewTable(columns)
 	} else {
-		a.portfolioHoldingsTable.SetColumns(columns)
+		a.portfolio.holdingsTable.SetColumns(columns)
 	}
 
-	holdings := a.portfolioData.valuation.Holdings
+	holdings := a.portfolio.data.valuation.Holdings
 	sort.SliceStable(holdings, func(i, j int) bool {
 		return holdings[i].MarketValue.Cmp(holdings[j].MarketValue) > 0
 	})
@@ -136,14 +145,14 @@ func (a *App) buildPortfolioHoldingsTable() {
 	for i, h := range holdings {
 		rows[i] = a.formatHoldingRow(&h)
 	}
-	a.portfolioHoldingsTable.SetRows(rows)
+	a.portfolio.holdingsTable.SetRows(rows)
 }
 
 // formatHoldingRow formats a holding into table row strings.
 func (a *App) formatHoldingRow(h *investment.Holding) []string {
 	// Ticker
 	ticker := ""
-	if name, ok := a.portfolioData.securityNames[h.SecurityID]; ok {
+	if name, ok := a.portfolio.data.securityNames[h.SecurityID]; ok {
 		ticker = name
 	}
 	if !h.HasPricing {
@@ -213,7 +222,7 @@ func (a *App) formatHoldingRow(h *investment.Holding) []string {
 
 // buildPortfolioLotsTable creates and populates the lot detail table.
 func (a *App) buildPortfolioLotsTable() {
-	if a.portfolioData == nil || a.portfolioData.lotDetails == nil {
+	if a.portfolio.data == nil || a.portfolio.data.lotDetails == nil {
 		return
 	}
 
@@ -227,18 +236,18 @@ func (a *App) buildPortfolioLotsTable() {
 		{Header: "G/L %", Width: 8, Align: widget.AlignRight},
 	}
 
-	if a.portfolioLotsTable == nil {
-		a.portfolioLotsTable = widget.NewTable(columns)
+	if a.portfolio.lotsTable == nil {
+		a.portfolio.lotsTable = widget.NewTable(columns)
 	} else {
-		a.portfolioLotsTable.SetColumns(columns)
+		a.portfolio.lotsTable.SetColumns(columns)
 	}
 
-	lots := a.portfolioData.lotDetails
+	lots := a.portfolio.data.lotDetails
 	rows := make([][]string, len(lots))
 	for i, lot := range lots {
 		rows[i] = formatLotDetailRow(&lot)
 	}
-	a.portfolioLotsTable.SetRows(rows)
+	a.portfolio.lotsTable.SetRows(rows)
 }
 
 // formatLotDetailRow formats a lot detail into table row strings.
@@ -260,11 +269,11 @@ func formatLotDetailRow(lot *investment.LotDetail) []string {
 // register's TR row — so the user can see how realized gain, dividends,
 // interest, and fees combine into the account-level total return.
 func (a *App) renderPortfolioSummary(contentWidth int) string {
-	if a.portfolioData == nil || a.portfolioData.valuation == nil {
+	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
 		return ""
 	}
 
-	v := a.portfolioData.valuation
+	v := a.portfolio.data.valuation
 
 	type metric struct {
 		label string
@@ -309,10 +318,10 @@ func (a *App) renderPortfolioSummary(contentWidth int) string {
 // as a positive magnitude on the valuation per the total-return spec; we
 // negate it before formatting so the subtraction reads naturally.
 func (a *App) renderPortfolioTotalReturnLine() string {
-	if a.portfolioData == nil || a.portfolioData.valuation == nil {
+	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
 		return ""
 	}
-	v := a.portfolioData.valuation
+	v := a.portfolio.data.valuation
 
 	money := func(m types.Money) string {
 		s := formatDashboardMoney(m)
@@ -358,7 +367,7 @@ func (a *App) renderPortfolioTotalReturnLine() string {
 
 // renderPortfolioView renders the portfolio view.
 func (a *App) renderPortfolioView() string {
-	if a.portfolioData == nil {
+	if a.portfolio.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading portfolio...")
@@ -368,7 +377,7 @@ func (a *App) renderPortfolioView() string {
 	var sections []string
 
 	// Title row: account name + "PORTFOLIO"
-	acctName := strings.ToUpper(a.portfolioData.account.Name)
+	acctName := strings.ToUpper(a.portfolio.data.account.Name)
 	titleSuffix := " PORTFOLIO"
 	maxNameWidth := max(contentWidth-lipgloss.Width(titleSuffix)-4, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
@@ -395,18 +404,18 @@ func (a *App) renderPortfolioView() string {
 	hintHeight := 1
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-summaryHeight-separatorHeight-paddingHeight-hintHeight, 1)
 
-	if a.portfolioMode == portfolioViewLots {
+	if a.portfolio.mode == portfolioViewLots {
 		// Show lot detail
 		secTicker := ""
-		if name, ok := a.portfolioData.securityNames[a.portfolioData.lotSecurityID]; ok {
+		if name, ok := a.portfolio.data.securityNames[a.portfolio.data.lotSecurityID]; ok {
 			secTicker = name
 		}
 		sections = append(sections, a.styles.Bold.Render("  Lots for "+secTicker))
 
-		if a.portfolioLotsTable != nil && len(a.portfolioData.lotDetails) > 0 {
+		if a.portfolio.lotsTable != nil && len(a.portfolio.data.lotDetails) > 0 {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.portfolioLotsTable.Render(a.styles, tableWidth, tableHeight-1))
-			if info := a.portfolioLotsTable.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, a.portfolio.lotsTable.Render(a.styles, tableWidth, tableHeight-1))
+			if info := a.portfolio.lotsTable.ScrollInfo(tableHeight - 2); info != "" {
 				sections = append(sections, a.styles.Muted.Render("  "+info))
 			}
 		} else {
@@ -414,10 +423,10 @@ func (a *App) renderPortfolioView() string {
 		}
 	} else {
 		// Show holdings table
-		if a.portfolioHoldingsTable != nil && len(a.portfolioData.valuation.Holdings) > 0 {
+		if a.portfolio.holdingsTable != nil && len(a.portfolio.data.valuation.Holdings) > 0 {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.portfolioHoldingsTable.Render(a.styles, tableWidth, tableHeight))
-			if info := a.portfolioHoldingsTable.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, a.portfolio.holdingsTable.Render(a.styles, tableWidth, tableHeight))
+			if info := a.portfolio.holdingsTable.ScrollInfo(tableHeight - 2); info != "" {
 				sections = append(sections, a.styles.Muted.Render("  "+info))
 			}
 		} else {
@@ -435,12 +444,12 @@ func (a *App) renderPortfolioView() string {
 
 // selectedHolding returns the currently selected holding based on the table cursor.
 func (a *App) selectedHolding() *investment.Holding {
-	if a.portfolioData == nil || a.portfolioData.valuation == nil || a.portfolioHoldingsTable == nil {
+	if a.portfolio.data == nil || a.portfolio.data.valuation == nil || a.portfolio.holdingsTable == nil {
 		return nil
 	}
 
-	cursor := a.portfolioHoldingsTable.Cursor()
-	holdings := a.portfolioData.valuation.Holdings
+	cursor := a.portfolio.holdingsTable.Cursor()
+	holdings := a.portfolio.data.valuation.Holdings
 	if cursor < 0 || cursor >= len(holdings) {
 		return nil
 	}
@@ -467,7 +476,7 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// widget.Table-focused key handling
-	if a.portfolioData == nil {
+	if a.portfolio.data == nil {
 		return a, nil
 	}
 
@@ -488,37 +497,37 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.activePortfolioTable().PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Enter):
 		// Drill down into lot detail for lot-tracking accounts
-		if a.portfolioMode == portfolioViewHoldings {
+		if a.portfolio.mode == portfolioViewHoldings {
 			h := a.selectedHolding()
-			if h != nil && a.portfolioData.account.TrackLots {
-				a.portfolioMode = portfolioViewLots
-				return a, a.loadLotDetail(a.portfolioData.account.ID, h.SecurityID)
+			if h != nil && a.portfolio.data.account.TrackLots {
+				a.portfolio.mode = portfolioViewLots
+				return a, a.loadLotDetail(a.portfolio.data.account.ID, h.SecurityID)
 			}
 		}
 	case key.Matches(msg, a.keys.Escape):
-		if a.portfolioMode == portfolioViewLots {
+		if a.portfolio.mode == portfolioViewLots {
 			// Go back to holdings
-			a.portfolioMode = portfolioViewHoldings
-			a.portfolioData.lotDetails = nil
-			a.portfolioData.lotSecurityID = types.NilID
-			if a.portfolioHoldingsTable != nil {
-				a.portfolioHoldingsTable.SetFocused(true)
+			a.portfolio.mode = portfolioViewHoldings
+			a.portfolio.data.lotDetails = nil
+			a.portfolio.data.lotSecurityID = types.NilID
+			if a.portfolio.holdingsTable != nil {
+				a.portfolio.holdingsTable.SetFocused(true)
 			}
-			if a.portfolioLotsTable != nil {
-				a.portfolioLotsTable.SetFocused(false)
+			if a.portfolio.lotsTable != nil {
+				a.portfolio.lotsTable.SetFocused(false)
 			}
 			return a, nil
 		}
 		// Escape from holdings goes back to investment register
 		a.switchView(ViewInvestmentRegister)
-		return a, a.loadInvestmentRegisterData(a.portfolioData.account.ID)
+		return a, a.loadInvestmentRegisterData(a.portfolio.data.account.ID)
 	case msg.String() == "r":
 		// Switch to register view
 		a.switchView(ViewInvestmentRegister)
-		return a, a.loadInvestmentRegisterData(a.portfolioData.account.ID)
+		return a, a.loadInvestmentRegisterData(a.portfolio.data.account.ID)
 	case msg.String() == "s":
 		// Open stock split dialog pre-selected to the highlighted holding's security
-		if a.portfolioMode == portfolioViewHoldings {
+		if a.portfolio.mode == portfolioViewHoldings {
 			if h := a.selectedHolding(); h != nil {
 				secID := h.SecurityID
 				a.stockSplit.preSelectedID = &secID
@@ -532,11 +541,11 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // activePortfolioTable returns whichever portfolio table is currently active.
 func (a *App) activePortfolioTable() *widget.Table {
-	if a.portfolioMode == portfolioViewLots && a.portfolioLotsTable != nil {
-		return a.portfolioLotsTable
+	if a.portfolio.mode == portfolioViewLots && a.portfolio.lotsTable != nil {
+		return a.portfolio.lotsTable
 	}
-	if a.portfolioHoldingsTable != nil {
-		return a.portfolioHoldingsTable
+	if a.portfolio.holdingsTable != nil {
+		return a.portfolio.holdingsTable
 	}
 	// Return a placeholder to avoid nil panics
 	return widget.NewTable(nil)
@@ -544,13 +553,13 @@ func (a *App) activePortfolioTable() *widget.Table {
 
 // setPortfolioTableFocused sets focus on the appropriate portfolio table.
 func (a *App) setPortfolioTableFocused(focused bool) {
-	if a.portfolioMode == portfolioViewLots {
-		if a.portfolioLotsTable != nil {
-			a.portfolioLotsTable.SetFocused(focused)
+	if a.portfolio.mode == portfolioViewLots {
+		if a.portfolio.lotsTable != nil {
+			a.portfolio.lotsTable.SetFocused(focused)
 		}
 	} else {
-		if a.portfolioHoldingsTable != nil {
-			a.portfolioHoldingsTable.SetFocused(focused)
+		if a.portfolio.holdingsTable != nil {
+			a.portfolio.holdingsTable.SetFocused(focused)
 		}
 	}
 }
@@ -573,16 +582,16 @@ func portfolioShortcuts() shortcutSection {
 // focus from the holdings table to the lots table. A portfolio unloaded while
 // the lots were in flight drops them.
 func (a *App) applyPortfolioLotDetail(securityID types.ID, lots []investment.LotDetail) {
-	if a.portfolioData == nil {
+	if a.portfolio.data == nil {
 		return
 	}
-	a.portfolioData.lotDetails = lots
-	a.portfolioData.lotSecurityID = securityID
+	a.portfolio.data.lotDetails = lots
+	a.portfolio.data.lotSecurityID = securityID
 	a.buildPortfolioLotsTable()
-	if a.portfolioLotsTable != nil {
-		a.portfolioLotsTable.SetFocused(true)
+	if a.portfolio.lotsTable != nil {
+		a.portfolio.lotsTable.SetFocused(true)
 	}
-	if a.portfolioHoldingsTable != nil {
-		a.portfolioHoldingsTable.SetFocused(false)
+	if a.portfolio.holdingsTable != nil {
+		a.portfolio.holdingsTable.SetFocused(false)
 	}
 }

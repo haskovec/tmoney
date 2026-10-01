@@ -69,8 +69,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case portfolioLoadedMsg:
-		a.portfolioData = msg.data
-		a.portfolioMode = portfolioViewHoldings
+		a.portfolio.data = msg.data
+		a.portfolio.mode = portfolioViewHoldings
 		a.buildPortfolioHoldingsTable()
 		return a, nil
 
@@ -181,7 +181,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case corporateActionDeletedMsg:
 		a.statusbar.AddNotification("Corporate action reversed", widget.NotificationInfo)
 		// Invalidate downstream view caches so re-entering them refetches.
-		a.portfolioData = nil
+		a.portfolio.data = nil
 		return a, a.loadCorporateActionViewData()
 
 	case scheduledViewDataLoadedMsg:
