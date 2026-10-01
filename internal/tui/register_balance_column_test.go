@@ -22,7 +22,7 @@ func registerAppWide(width int) *App {
 		width:       width,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
 				Name:      "Checking",
@@ -36,7 +36,7 @@ func registerAppWide(width int) *App {
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 }
 
@@ -44,7 +44,7 @@ func TestApp_BuildRegisterTable_ShowsBalanceColumn(t *testing.T) {
 	app := registerAppWide(120) // tableWidth ~92 >= 72 -> Balance shown
 	app.buildRegisterTable()
 
-	rows := app.table.Rows()
+	rows := app.register.table.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("row count = %d, want 2", len(rows))
 	}
@@ -78,14 +78,14 @@ func TestApp_BuildRegisterTable_LargeBalanceNotTruncated(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		register: &registerData{
+		register: registerViewState{data: &registerData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Brokerage", Active: true},
 			transactions:  []*transaction.Transaction{{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-10000000"), Status: transaction.StatusUncleared}},
 			balance:       &account.Balance{AccountID: accountID, CurrentBalance: types.MustNewMoney("-10000000")},
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildRegisterTable()
 	view := app.renderRegister()
@@ -115,13 +115,13 @@ func TestApp_WindowResize_PreservesPendingSelectionAgainstStaleLedger(t *testing
 	}
 
 	// The real reload arrives with a ledger that DOES contain the saved row.
-	accountID := app.register.account.ID
-	app.register.transactions = append([]*transaction.Transaction{
+	accountID := app.register.data.account.ID
+	app.register.data.transactions = append([]*transaction.Transaction{
 		{BaseModel: types.BaseModel{ID: savedID}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-7"), Status: transaction.StatusUncleared},
-	}, app.register.transactions...)
+	}, app.register.data.transactions...)
 	app.buildRegisterTable()
-	if app.table.Cursor() != 0 {
-		t.Errorf("cursor = %d, want 0 (the just-saved row)", app.table.Cursor())
+	if app.register.table.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 (the just-saved row)", app.register.table.Cursor())
 	}
 	if !app.pendingRegisterSelectID.IsNil() {
 		t.Errorf("pending selection should be cleared after the match, got %v", app.pendingRegisterSelectID)
@@ -132,7 +132,7 @@ func TestApp_BuildRegisterTable_HidesBalanceWhenNarrow(t *testing.T) {
 	app := registerAppWide(80) // tableWidth ~56 < 72 -> Balance hidden
 	app.buildRegisterTable()
 
-	rows := app.table.Rows()
+	rows := app.register.table.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("row count = %d, want 2", len(rows))
 	}
@@ -144,19 +144,19 @@ func TestApp_BuildRegisterTable_HidesBalanceWhenNarrow(t *testing.T) {
 func TestApp_WindowResize_TogglesBalanceColumn(t *testing.T) {
 	app := registerAppWide(80) // start narrow: Balance hidden
 	app.buildRegisterTable()
-	if got := len(app.table.Rows()[0]); got != 5 {
+	if got := len(app.register.table.Rows()[0]); got != 5 {
 		t.Fatalf("narrow row cells = %d, want 5", got)
 	}
 
 	// Resizing wide must rebuild the table and reveal the Balance column.
 	app.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	if got := len(app.table.Rows()[0]); got != 6 {
+	if got := len(app.register.table.Rows()[0]); got != 6 {
 		t.Errorf("after widen: row cells = %d, want 6 (Balance revealed)", got)
 	}
 
 	// Resizing back narrow must drop it again.
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
-	if got := len(app.table.Rows()[0]); got != 5 {
+	if got := len(app.register.table.Rows()[0]); got != 5 {
 		t.Errorf("after narrow: row cells = %d, want 5 (Balance hidden)", got)
 	}
 }

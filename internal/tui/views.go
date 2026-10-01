@@ -63,8 +63,8 @@ func init() {
 			focus: func(a *App) {
 				// Dashboard uses sidebar navigation
 				a.sidebar.SetFocused(true)
-				if a.table != nil {
-					a.table.SetFocused(false)
+				if a.register.table != nil {
+					a.register.table.SetFocused(false)
 				}
 			},
 		},
@@ -77,7 +77,7 @@ func init() {
 				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: registerShortcuts,
-			table:     func(a *App) *widget.Table { return a.table },
+			table:     func(a *App) *widget.Table { return a.register.table },
 			reload: func(a *App) []tea.Cmd {
 				accountID := a.sidebar.SelectedAccountID()
 				return []tea.Cmd{a.loadRegisterData(accountID)}
@@ -85,8 +85,8 @@ func init() {
 			focus: func(a *App) {
 				// Start with table focused when entering register
 				a.sidebar.SetFocused(false)
-				if a.table != nil {
-					a.table.SetFocused(true)
+				if a.register.table != nil {
+					a.register.table.SetFocused(true)
 				}
 			},
 		},
@@ -131,8 +131,8 @@ func init() {
 			focus: func(a *App) {
 				// Reports view doesn't use sidebar focus
 				a.sidebar.SetFocused(false)
-				if a.table != nil {
-					a.table.SetFocused(false)
+				if a.register.table != nil {
+					a.register.table.SetFocused(false)
 				}
 			},
 		},

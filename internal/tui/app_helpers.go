@@ -86,8 +86,8 @@ func (a *App) activeTable() *widget.Table {
 func (a *App) currentRegisterAccountID() types.ID {
 	switch a.currentView {
 	case ViewRegister:
-		if a.register != nil && a.register.account != nil {
-			return a.register.account.ID
+		if a.register.data != nil && a.register.data.account != nil {
+			return a.register.data.account.ID
 		}
 	case ViewInvestmentRegister:
 		if a.investmentRegister != nil && a.investmentRegister.account != nil {
@@ -286,8 +286,8 @@ func (a *App) afterRegisterSave(savedID types.ID) tea.Cmd {
 // linking — which can change any account's balance at once.
 func (a *App) reloadAfterBulkWrite() tea.Cmd {
 	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
-	if a.currentView == ViewRegister && a.register != nil {
-		cmds = append(cmds, a.loadRegisterData(a.register.account.ID))
+	if a.currentView == ViewRegister && a.register.data != nil {
+		cmds = append(cmds, a.loadRegisterData(a.register.data.account.ID))
 	}
 	return tea.Batch(cmds...)
 }

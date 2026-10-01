@@ -59,7 +59,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case registerLoadedMsg:
-		a.register = msg.data
+		a.register.data = msg.data
 		a.buildRegisterTable()
 		return a, nil
 

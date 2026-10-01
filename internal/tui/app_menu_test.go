@@ -196,18 +196,18 @@ func TestApp_SwitchView_Register_SetsFocus(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
+		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
 	app.sidebar.SetFocused(true)
-	app.table.SetFocused(false)
+	app.register.table.SetFocused(false)
 
 	app.switchView(ViewRegister)
 
 	if app.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused in register view")
 	}
-	if !app.table.IsFocused() {
+	if !app.register.table.IsFocused() {
 		t.Error("table should be focused in register view")
 	}
 }
@@ -218,18 +218,18 @@ func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
+		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
 	app.sidebar.SetFocused(false)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	app.switchView(ViewDashboard)
 
 	if !app.sidebar.IsFocused() {
 		t.Error("sidebar should be focused in dashboard view")
 	}
-	if app.table.IsFocused() {
+	if app.register.table.IsFocused() {
 		t.Error("table should not be focused in dashboard view")
 	}
 }
@@ -262,18 +262,18 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		table:       widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
+		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
 	app.sidebar.SetFocused(true)
-	app.table.SetFocused(true)
+	app.register.table.SetFocused(true)
 
 	app.switchView(ViewReports)
 
 	if app.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused in reports view")
 	}
-	if app.table.IsFocused() {
+	if app.register.table.IsFocused() {
 		t.Error("table should not be focused in reports view")
 	}
 }

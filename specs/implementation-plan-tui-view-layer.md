@@ -147,8 +147,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `expandedAccounts`, `accountRows`. Test (§5.1): a click on a dashboard row without a prior render is a no-op, not a stale account.
   - Done: `a.dashboard` is now the state struct, so `a.dashboard` became `a.dashboard.data`. The test is `TestApp_Dashboard_MouseClickBeforeRenderIsNoOp`; with stale rows put in the map, it fails. A stale row cannot occur in the running program: Bubble Tea renders after every `Update` (`tea.go`, `eventLoop`), so a click always reads the rows of the latest render. `switchDatabase` and `reloadAfterRestore` still clear only `data`, as before.
 
-- [ ] **VL-304 — `registerViewState`**
+- [x] **VL-304 — `registerViewState`**
   - Fields: `data`, `table`. `pendingRegisterSelectID` stays on `App`.
+  - Done: `a.register` is now the state struct, so `a.register` became `a.register.data` and `a.table` became `a.register.table`. Other structs also have a field named `table` (the view entry, `priceViewState`), so the tool rewrote only the selectors whose receiver is an `App` (`a`, `app`, `updatedApp`, `env.app`), and the compiler checked the rest.
 
 - [ ] **VL-305 — `investmentRegisterViewState` and its `leave()` hook**
   - Fields: `data`, `table`, `editTxnID`, `filterSearching`, `filterQuery`, `filterLockedSec`, `newTxnSecurityID`. `pendingInvestmentSelectID` stays on `App`.
