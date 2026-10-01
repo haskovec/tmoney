@@ -170,18 +170,18 @@ func TestApp_BuildInvestmentRegisterTable_ShowsCashColumn(t *testing.T) {
 		width:       140,
 		height:      30,
 		styles:      styles,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Brokerage", Active: true},
 			securityNames: make(map[types.ID]string),
 			transactions: []*investment.Transaction{
 				invTxn(investment.TransactionTypeDividend, "50"),  // newest: +cash
 				invTxn(investment.TransactionTypeDeposit, "1000"), // oldest: +cash
 			},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
-	rows := app.investmentTable.Rows()
+	rows := app.investmentRegister.table.Rows()
 	if len(rows) != 2 {
 		t.Fatalf("row count = %d, want 2", len(rows))
 	}
@@ -206,17 +206,17 @@ func TestApp_BuildInvestmentRegisterTable_HidesCashWhenNarrow(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: accountID}, Name: "Brokerage", Active: true},
 			securityNames: make(map[types.ID]string),
 			transactions: []*investment.Transaction{
 				invTxn(investment.TransactionTypeDeposit, "1000"),
 			},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
-	rows := app.investmentTable.Rows()
+	rows := app.investmentRegister.table.Rows()
 	if len(rows[0]) != 7 {
 		t.Errorf("row[0] cells = %d, want 7 (Balance hidden on 120-col terminal)", len(rows[0]))
 	}

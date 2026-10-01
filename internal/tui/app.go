@@ -197,22 +197,12 @@ type App struct {
 	refreshingPrices bool
 	refreshNotifID   int
 
-	// Investment register state
-	investmentRegister     *investmentRegisterData
-	investmentTable        *widget.Table
+	// Investment register view state, and its type selector (a modal)
+	investmentRegister     investmentRegisterViewState
 	investmentTypeSelector *dialog.Dialog
-	investmentEditTxnID    types.ID // set when editing an existing transaction
-
-	// Investment register security filter (the `/` key). While searching is
-	// true the user is typing a substring query that live-narrows the register
-	// by security ticker/name; pressing Enter on a query matching exactly one
-	// security locks the filter (searching=false, query cleared) to
-	// investmentFilterLockedSec. NilID means no security is locked; the filter
-	// is active when either searching or a security is locked. Cleared when the
-	// user leaves the register (see switchView) or presses Esc.
-	investmentFilterSearching bool
-	investmentFilterQuery     string
-	investmentFilterLockedSec types.ID
+	// Set when editing an existing transaction: by the type selector, read by
+	// every investment dialog, cleared by their save paths.
+	investmentEditTxnID types.ID
 	// One-shot: the security to pre-select in the next NEW security-bearing
 	// investment dialog, seeded from the locked filter when `n` is pressed and
 	// consumed (then reset) as each dialog is built. NilID means no preselect.
@@ -417,7 +407,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// While typing the investment register's security filter, capture every
 	// key so global bindings (view-switch digits, Esc, Alt+menu) don't steal
 	// keystrokes from the query.
-	if a.currentView == ViewInvestmentRegister && a.investmentFilterSearching {
+	if a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching {
 		return a.handleInvestmentRegisterKeys(msg)
 	}
 

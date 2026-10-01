@@ -40,10 +40,10 @@ func newReplaceEnv(t *testing.T, row func(svc *app.Services, brokerageID types.I
 		sidebar:     NewSidebar(),
 		services:    *svc,
 		undoManager: undo.NewManager(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:      brokerage,
 			transactions: []*investment.Transaction{r},
-		},
+		}},
 		investmentEditTxnID: r.ID,
 	}
 	return a, svc, brokerage, checking, r

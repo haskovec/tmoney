@@ -152,8 +152,8 @@ func (a *App) handleWindowSize(width, height int) {
 	// The effective decision also suppresses the balance column while a
 	// security filter is active, so mirror that here to avoid a needless
 	// rebuild (and scroll/cursor reset) on every resize tick while filtered.
-	if a.investmentRegister != nil &&
-		tableHasBalanceColumn(a.investmentTable) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
+	if a.investmentRegister.data != nil &&
+		tableHasBalanceColumn(a.investmentRegister.table) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
 		a.buildInvestmentRegisterTable()
 	}
 }

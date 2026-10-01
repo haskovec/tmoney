@@ -37,6 +37,11 @@ type viewEntry struct {
 	// which pane takes the cursor. Each guards the tables that are built only
 	// when data arrives.
 	focus func(*App)
+
+	// leave is what switchView does on departure: the view state to forget
+	// on the way out. It is nil for a view that keeps everything, and
+	// switchView checks for that.
+	leave func(*App)
 }
 
 // allViews is the one list of views. It holds only constants, method values,
@@ -218,20 +223,23 @@ func init() {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
 			},
 			shortcuts: investmentRegisterShortcuts,
-			table:     func(a *App) *widget.Table { return a.investmentTable },
+			table:     func(a *App) *widget.Table { return a.investmentRegister.table },
 			reload: func(a *App) []tea.Cmd {
-				if a.investmentRegister != nil && a.investmentRegister.account != nil {
-					return []tea.Cmd{a.loadInvestmentRegisterData(a.investmentRegister.account.ID)}
+				if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+					return []tea.Cmd{a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)}
 				}
 				return nil
 			},
 			focus: func(a *App) {
 				// Start with investment table focused
 				a.sidebar.SetFocused(false)
-				if a.investmentTable != nil {
-					a.investmentTable.SetFocused(true)
+				if a.investmentRegister.table != nil {
+					a.investmentRegister.table.SetFocused(true)
 				}
 			},
+			// Leaving the investment register drops its (transient) security
+			// filter, so reopening the account later shows the full register.
+			leave: (*App).resetInvestmentRegisterFilter,
 		},
 		{
 			id:        ViewPortfolio,

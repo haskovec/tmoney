@@ -15,6 +15,24 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// investmentRegisterViewState is everything the investment register view
+// owns. Its zero value is the view before its first load, with no filter.
+type investmentRegisterViewState struct {
+	data  *investmentRegisterData
+	table *widget.Table
+
+	// The security filter (the `/` key). While filterSearching is true the
+	// user is typing a substring query that live-narrows the register by
+	// security ticker/name; pressing Enter on a query matching exactly one
+	// security locks the filter (searching=false, query cleared) to
+	// filterLockedSec. NilID means no security is locked; the filter is active
+	// when either searching or a security is locked. Cleared when the user
+	// leaves the register (the view's leave hook) or presses Esc.
+	filterSearching bool
+	filterQuery     string
+	filterLockedSec types.ID
+}
+
 // investmentRegisterData holds the loaded data for the investment account register view.
 type investmentRegisterData struct {
 	account       *account.Account
@@ -92,12 +110,12 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 
 // selectedInvestmentTransaction returns the currently selected investment transaction based on table cursor.
 func (a *App) selectedInvestmentTransaction() *investment.Transaction {
-	if a.investmentRegister == nil || a.investmentTable == nil {
+	if a.investmentRegister.data == nil || a.investmentRegister.table == nil {
 		return nil
 	}
 
 	txns := a.visibleInvestmentTransactions()
-	cursor := a.investmentTable.Cursor()
+	cursor := a.investmentRegister.table.Cursor()
 	if cursor < 0 || cursor >= len(txns) {
 		return nil
 	}
@@ -109,7 +127,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	// While typing a security filter query, every key drives the filter
 	// (see handleInvestmentRegisterSearchKey). handleKeyPress routes here
 	// with an early guard so global bindings don't steal keystrokes.
-	if a.investmentFilterSearching {
+	if a.investmentRegister.filterSearching {
 		return a.handleInvestmentRegisterSearchKey(msg)
 	}
 
@@ -127,13 +145,13 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
 			a.sidebar.SetFocused(false)
-			if a.investmentTable != nil {
-				a.investmentTable.SetFocused(true)
+			if a.investmentRegister.table != nil {
+				a.investmentRegister.table.SetFocused(true)
 			}
 		} else {
 			a.sidebar.SetFocused(true)
-			if a.investmentTable != nil {
-				a.investmentTable.SetFocused(false)
+			if a.investmentRegister.table != nil {
+				a.investmentRegister.table.SetFocused(false)
 			}
 		}
 		return a, nil
@@ -145,36 +163,36 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	}
 
 	// widget.Table-focused key handling
-	if a.investmentTable == nil || a.investmentRegister == nil {
+	if a.investmentRegister.table == nil || a.investmentRegister.data == nil {
 		return a, nil
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.investmentTable.MoveUp()
+		a.investmentRegister.table.MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.investmentTable.MoveDown()
+		a.investmentRegister.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.investmentTable.MoveToTop()
+		a.investmentRegister.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.investmentTable.MoveToBottom()
+		a.investmentRegister.table.MoveToBottom()
 	case msg.String() == "pgup":
 		tableHeight := max(a.height-6, 1)
-		a.investmentTable.PageUp(tableHeight)
+		a.investmentRegister.table.PageUp(tableHeight)
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
-		a.investmentTable.PageDown(tableHeight)
+		a.investmentRegister.table.PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Search):
 		// Enter the security filter. Starting a new query drops any locked
 		// security so the user types fresh.
-		a.investmentFilterSearching = true
-		a.investmentFilterQuery = ""
-		a.investmentFilterLockedSec = types.NilID
+		a.investmentRegister.filterSearching = true
+		a.investmentRegister.filterQuery = ""
+		a.investmentRegister.filterLockedSec = types.NilID
 		a.buildInvestmentRegisterTable()
-		if a.investmentTable != nil {
-			a.investmentTable.SetCursor(0)
+		if a.investmentRegister.table != nil {
+			a.investmentRegister.table.SetCursor(0)
 		}
-	case a.investmentRegister.account != nil && a.investmentRegister.account.IsClosed() &&
+	case a.investmentRegister.data.account != nil && a.investmentRegister.data.account.IsClosed() &&
 		(msg.String() == "c" || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter) || key.Matches(msg, a.keys.Delete)):
 		// A closed account is frozen: navigation and `p` (portfolio) still
 		// work, but mutating actions are a no-op with an explanatory toast.
@@ -195,10 +213,10 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		return a.toggleInvestmentTransactionStatus()
 	case msg.String() == "p":
 		// Switch to portfolio view
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
 			a.portfolioData = nil // Clear old data while loading
 			a.switchView(ViewPortfolio)
-			return a, a.loadPortfolioData(a.investmentRegister.account.ID)
+			return a, a.loadPortfolioData(a.investmentRegister.data.account.ID)
 		}
 	case key.Matches(msg, a.keys.Delete):
 		txn := a.selectedInvestmentTransaction()

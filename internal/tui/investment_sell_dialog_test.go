@@ -289,13 +289,13 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 			},
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	// Set invalid values
@@ -373,13 +373,13 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -415,13 +415,13 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -454,12 +454,12 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 			data:        &sellDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -494,12 +494,12 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 			data:        &sellDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -534,12 +534,12 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 			data:        &sellDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -575,13 +575,13 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 			data:        &sellDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -617,12 +617,12 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 			data:        &sellDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -680,14 +680,14 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -739,14 +739,14 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -794,14 +794,14 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -849,14 +849,14 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.sell.dlg.Fields()
@@ -1061,14 +1061,14 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Northwind IRA",
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 		services: app.Services{
 			InvestmentValuation: nil, // guarded: with no read model wired, the FIFO branch is skipped
 		},

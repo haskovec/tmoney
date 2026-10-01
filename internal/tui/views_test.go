@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // Prices and Portfolio each have two tables, and the one the mouse and the
@@ -54,7 +55,8 @@ func TestActiveTable_PicksByMode(t *testing.T) {
 // Each view's lookup calls these funcs without a nil check, so a missing one
 // is a panic on first use. reload matters most: W2 gave Reconciliation and
 // Corporate Actions the reload they lacked, and a nil one would undo that.
-// table is not here, because a view with no table leaves it nil.
+// table is not here, because a view with no table leaves it nil, and nor is
+// leave, because a view that keeps all its state on departure has none.
 func TestViews_EveryEntryHasItsFuncs(t *testing.T) {
 	for _, e := range views() {
 		for field, missing := range map[string]bool{
@@ -93,5 +95,38 @@ func TestSwitchView_AllTablesNil(t *testing.T) {
 				t.Errorf("currentView = %s, want %s", a.currentView, vc.Value)
 			}
 		})
+	}
+}
+
+// The investment register's leave hook resets all three filter fields when
+// switchView moves to another view. A switchView to the view already on
+// screen is not a departure and keeps them.
+func TestSwitchView_LeavingTheInvestmentRegisterClearsItsFilter(t *testing.T) {
+	locked := types.NewID()
+	filtered := func() *App {
+		a := &App{
+			sidebar:     NewSidebar(),
+			statusbar:   widget.NewStatusBar(),
+			styles:      widget.NewStyles(),
+			currentView: ViewInvestmentRegister,
+		}
+		a.investmentRegister.filterSearching = true
+		a.investmentRegister.filterQuery = "fx"
+		a.investmentRegister.filterLockedSec = locked
+		return a
+	}
+
+	a := filtered()
+	a.switchView(ViewInvestmentRegister)
+	if got := a.investmentRegister; !got.filterSearching || got.filterQuery != "fx" || got.filterLockedSec != locked {
+		t.Errorf("switchView to the view on screen changed the filter: searching=%v query=%q locked=%v",
+			got.filterSearching, got.filterQuery, got.filterLockedSec)
+	}
+
+	a = filtered()
+	a.switchView(ViewDashboard)
+	if got := a.investmentRegister; got.filterSearching || got.filterQuery != "" || got.filterLockedSec != types.NilID {
+		t.Errorf("leaving the investment register kept its filter: searching=%v query=%q locked=%v",
+			got.filterSearching, got.filterQuery, got.filterLockedSec)
 	}
 }

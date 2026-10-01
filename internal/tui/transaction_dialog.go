@@ -81,10 +81,10 @@ func openingDateFieldError(acct *account.Account, d types.Date) string {
 // backing the active investment register (the account every investment entry
 // dialog operates on).
 func (a *App) investmentDialogOpeningDateError(d types.Date) string {
-	if a.investmentRegister == nil || a.investmentRegister.account == nil {
+	if a.investmentRegister.data == nil || a.investmentRegister.data.account == nil {
 		return ""
 	}
-	return openingDateFieldError(a.investmentRegister.account, d)
+	return openingDateFieldError(a.investmentRegister.data.account, d)
 }
 
 // parseAmountInput parses a money string, stripping "$" and handling negatives.

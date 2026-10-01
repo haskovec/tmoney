@@ -19,13 +19,13 @@ import (
 func shareTransferRegister(t *testing.T, a *App, acct *account.Account, leg *investment.Transaction) {
 	t.Helper()
 	a.currentView = ViewInvestmentRegister
-	a.investmentRegister = &investmentRegisterData{
+	a.investmentRegister.data = &investmentRegisterData{
 		account:      acct,
 		transactions: []*investment.Transaction{leg},
 	}
 	a.buildInvestmentRegisterTable()
 	a.sidebar.SetFocused(false)
-	a.investmentTable.SetFocused(true)
+	a.investmentRegister.table.SetFocused(true)
 }
 
 // The edit dialog sends from the register's account, so Enter on the

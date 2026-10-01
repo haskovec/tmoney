@@ -47,11 +47,11 @@ func TestInvestmentTypeSelector_SpinOffDispatch(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: NewSidebar(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:       &account.Account{BaseModel: types.NewBaseModel(), Name: "Brokerage", Type: account.TypeInvestment},
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "GBTC"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 

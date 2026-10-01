@@ -250,8 +250,8 @@ func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
 	memo := strings.TrimSpace(fields[6].Value)
 
 	accountID := types.NilID
-	if a.investmentRegister != nil && a.investmentRegister.account != nil {
-		accountID = a.investmentRegister.account.ID
+	if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+		accountID = a.investmentRegister.data.account.ID
 	}
 	editTxnID := a.investmentEditTxnID
 

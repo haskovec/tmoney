@@ -291,8 +291,8 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 
 	// Get account ID
 	accountID := types.NilID
-	if a.investmentRegister != nil && a.investmentRegister.account != nil {
-		accountID = a.investmentRegister.account.ID
+	if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+		accountID = a.investmentRegister.data.account.ID
 	}
 
 	editTxnID := a.investmentEditTxnID
@@ -395,8 +395,8 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 
 	// Get account ID
 	accountID := types.NilID
-	if a.investmentRegister != nil && a.investmentRegister.account != nil {
-		accountID = a.investmentRegister.account.ID
+	if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+		accountID = a.investmentRegister.data.account.ID
 	}
 
 	editTxnID := a.investmentEditTxnID

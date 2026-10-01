@@ -133,7 +133,7 @@ Move functions between files. Rename nothing. Change no signature. Zero test lin
 
 One struct per view, in the view's own file. Move the test literals with the same perl-and-compile motion the services collapse used. No assertion changes. Each item is one view, so each PR is one struct and its literal churn.
 
-Fields that stay on `App` in every item: `currentView`, `previousView`, `pendingRegisterSelectID`, `pendingInvestmentSelectID`, `refreshingPrices`, `refreshNotifID`, `corporateActionViewFilter`, and the modal fields `price` (a `priceSurface`), `priceImportDialog`, `investmentTypeSelector`, `security`.
+Fields that stay on `App` in every item: `currentView`, `previousView`, `pendingRegisterSelectID`, `pendingInvestmentSelectID`, `investmentEditTxnID`, `investmentNewTxnSecurityID`, `refreshingPrices`, `refreshNotifID`, `corporateActionViewFilter`, and the modal fields `price` (a `priceSurface`), `priceImportDialog`, `investmentTypeSelector`, `security`.
 
 - [x] **VL-301 — `priceViewState` (first, smallest with two tables)**
   - Fields: `data`, `table`, `listTable`, `clicks`. `a.priceView` becomes `a.prices.data` and so on. The two dialogs are not in it. Update the VL-107 `table` func.
@@ -151,9 +151,11 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`. `pendingRegisterSelectID` stays on `App`.
   - Done: `a.register` is now the state struct, so `a.register` became `a.register.data` and `a.table` became `a.register.table`. Other structs also have a field named `table` (the view entry, `priceViewState`), so the tool rewrote only the selectors whose receiver is an `App` (`a`, `app`, `updatedApp`, `env.app`), and the compiler checked the rest.
 
-- [ ] **VL-305 — `investmentRegisterViewState` and its `leave()` hook**
-  - Fields: `data`, `table`, `editTxnID`, `filterSearching`, `filterQuery`, `filterLockedSec`, `newTxnSecurityID`. `pendingInvestmentSelectID` stays on `App`.
+- [x] **VL-305 — `investmentRegisterViewState` and its `leave()` hook**
+  - Fields: `data`, `table`, `filterSearching`, `filterQuery`, `filterLockedSec`. `pendingInvestmentSelectID` stays on `App`.
   - Add `leave func(*App)` to `viewEntry`. Move the filter-clearing special case out of `switchView` (`app_menu.go:300`) into this entry's `leave`. Test: leaving the view clears the filter fields.
+  - Decision (2026-09-30): `editTxnID` and `newTxnSecurityID` were in this list, but they stay on `App` as `investmentEditTxnID` and `investmentNewTxnSecurityID`. More than one surface writes each, which is the design's rule for what stays (§2.2). The type selector sets both. Every investment dialog reads the edit ID, and `afterInvestmentSave` and `afterTransferSave` clear it. `takeInvestmentDialogSeed` reads and clears the preselect ID as each dialog is built.
+  - Done: `a.investmentRegister` is now the state struct, so `a.investmentRegister` became `a.investmentRegister.data`. `leave` is `(*App).resetInvestmentRegisterFilter`; `switchView` calls the leaving view's `leave` when it is not nil. `TestSwitchView_LeavingTheInvestmentRegisterClearsItsFilter` checks all three filter fields, and that a switch to the view on screen keeps them. Without the hook, it fails, as does the older `TestInvestmentFilter_ClearedOnLeavingView`.
 
 - [ ] **VL-306 — `portfolioViewState`**
   - Fields: `data`, `holdingsTable`, `lotsTable`, `mode`. Update the VL-107 `table` func.
@@ -178,7 +180,7 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`.
 
 - [ ] **VL-313 — Exit check**
-  - Confirm: `switchView` has no per-view `if`; `App` is under about 60 fields; each view's state is one field; the five recorded decisions applied as written; no assertion changed. Set the design document's phase 2 status to built.
+  - Confirm: `switchView` has no per-view `if`; `App` is under about 60 fields; each view's state is one field; the six recorded decisions applied as written (the sixth is in VL-305); no assertion changed. Set the design document's phase 2 status to built.
 
 ## Phase 4: View Controllers (priced, not committed)
 

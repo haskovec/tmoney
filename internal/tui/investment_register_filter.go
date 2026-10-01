@@ -18,15 +18,15 @@ import (
 // locked. While active, the running-balance column and total-return header are
 // suppressed (they are account-wide and can't be meaningfully sliced).
 func (a *App) investmentRegisterFilterActive() bool {
-	return a.investmentFilterSearching || !a.investmentFilterLockedSec.IsNil()
+	return a.investmentRegister.filterSearching || !a.investmentRegister.filterLockedSec.IsNil()
 }
 
 // resetInvestmentRegisterFilter clears all filter state, returning the register
 // to its full unfiltered view.
 func (a *App) resetInvestmentRegisterFilter() {
-	a.investmentFilterSearching = false
-	a.investmentFilterQuery = ""
-	a.investmentFilterLockedSec = types.NilID
+	a.investmentRegister.filterSearching = false
+	a.investmentRegister.filterQuery = ""
+	a.investmentRegister.filterLockedSec = types.NilID
 }
 
 // visibleInvestmentTransactions returns the transactions the register should
@@ -35,23 +35,23 @@ func (a *App) resetInvestmentRegisterFilter() {
 // ticker or name contains the query show (rows with no security are excluded);
 // otherwise the full ledger is returned.
 func (a *App) visibleInvestmentTransactions() []*investment.Transaction {
-	if a.investmentRegister == nil {
+	if a.investmentRegister.data == nil {
 		return nil
 	}
-	all := a.investmentRegister.transactions
+	all := a.investmentRegister.data.transactions
 
-	if !a.investmentFilterLockedSec.IsNil() {
+	if !a.investmentRegister.filterLockedSec.IsNil() {
 		out := make([]*investment.Transaction, 0, len(all))
 		for _, txn := range all {
-			if txn.SecurityID.Valid && txn.SecurityID.ID == a.investmentFilterLockedSec {
+			if txn.SecurityID.Valid && txn.SecurityID.ID == a.investmentRegister.filterLockedSec {
 				out = append(out, txn)
 			}
 		}
 		return out
 	}
 
-	if a.investmentFilterSearching {
-		q := strings.ToLower(strings.TrimSpace(a.investmentFilterQuery))
+	if a.investmentRegister.filterSearching {
+		q := strings.ToLower(strings.TrimSpace(a.investmentRegister.filterQuery))
 		if q == "" {
 			return all
 		}
@@ -75,10 +75,10 @@ func (a *App) txnSecurityMatchesQuery(txn *investment.Transaction, lowerQuery st
 		return false
 	}
 	id := txn.SecurityID.ID
-	if strings.Contains(strings.ToLower(a.investmentRegister.securityNames[id]), lowerQuery) {
+	if strings.Contains(strings.ToLower(a.investmentRegister.data.securityNames[id]), lowerQuery) {
 		return true
 	}
-	return strings.Contains(strings.ToLower(a.investmentRegister.securityFullNames[id]), lowerQuery)
+	return strings.Contains(strings.ToLower(a.investmentRegister.data.securityFullNames[id]), lowerQuery)
 }
 
 // investmentFilterMatchedSecurities returns the distinct securities among the
@@ -101,11 +101,11 @@ func (a *App) investmentFilterMatchedSecurities() []types.ID {
 // just the name for a tickerless holding (where the label already equals the
 // name).
 func (a *App) securityDisplayName(id types.ID) string {
-	if a.investmentRegister == nil {
+	if a.investmentRegister.data == nil {
 		return ""
 	}
-	label := a.investmentRegister.securityNames[id]
-	full := a.investmentRegister.securityFullNames[id]
+	label := a.investmentRegister.data.securityNames[id]
+	full := a.investmentRegister.data.securityFullNames[id]
 	switch {
 	case label != "" && full != "" && label != full:
 		return label + " — " + full
@@ -119,17 +119,17 @@ func (a *App) securityDisplayName(id types.ID) string {
 // investmentFilterStatusLine builds the one-line filter indicator shown under
 // the register title while a filter is active.
 func (a *App) investmentFilterStatusLine() string {
-	if a.investmentRegister == nil {
+	if a.investmentRegister.data == nil {
 		return ""
 	}
-	total := len(a.investmentRegister.transactions)
+	total := len(a.investmentRegister.data.transactions)
 	n := len(a.visibleInvestmentTransactions())
 
-	if !a.investmentFilterLockedSec.IsNil() {
-		return fmt.Sprintf("Filter: %s  (%d of %d)", a.securityDisplayName(a.investmentFilterLockedSec), n, total)
+	if !a.investmentRegister.filterLockedSec.IsNil() {
+		return fmt.Sprintf("Filter: %s  (%d of %d)", a.securityDisplayName(a.investmentRegister.filterLockedSec), n, total)
 	}
 
-	q := strings.TrimSpace(a.investmentFilterQuery)
+	q := strings.TrimSpace(a.investmentRegister.filterQuery)
 	if q == "" {
 		return "Filter: (type a ticker or name — Enter locks · Esc clears)"
 	}
@@ -150,13 +150,13 @@ func (a *App) investmentFilterStatusLine() string {
 // preview-scroll matches; Enter locks the filter when the query resolves to
 // exactly one security; Esc clears the filter entirely.
 func (a *App) handleInvestmentRegisterSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.investmentTable == nil {
+	if a.investmentRegister.table == nil {
 		return a, nil
 	}
 
 	rebuildTop := func() {
 		a.buildInvestmentRegisterTable()
-		a.investmentTable.SetCursor(0)
+		a.investmentRegister.table.SetCursor(0)
 	}
 
 	switch {
@@ -167,9 +167,9 @@ func (a *App) handleInvestmentRegisterSearchKey(msg tea.KeyPressMsg) (tea.Model,
 		// Lock only when the query resolves to a single security; an ambiguous
 		// or empty match keeps the user in typing mode.
 		if matched := a.investmentFilterMatchedSecurities(); len(matched) == 1 {
-			a.investmentFilterLockedSec = matched[0]
-			a.investmentFilterSearching = false
-			a.investmentFilterQuery = ""
+			a.investmentRegister.filterLockedSec = matched[0]
+			a.investmentRegister.filterSearching = false
+			a.investmentRegister.filterQuery = ""
 			rebuildTop()
 		}
 	// Navigation is matched on the physical arrow keys via msg.Code — NOT via
@@ -177,24 +177,24 @@ func (a *App) handleInvestmentRegisterSearchKey(msg tea.KeyPressMsg) (tea.Model,
 	// letters instead of appending them to the query. Page/Home/End match on
 	// msg.String() (no letter alias, so they are safe for typing).
 	case msg.Code == tea.KeyUp:
-		a.investmentTable.MoveUp()
+		a.investmentRegister.table.MoveUp()
 	case msg.Code == tea.KeyDown:
-		a.investmentTable.MoveDown()
+		a.investmentRegister.table.MoveDown()
 	case msg.String() == "pgup":
-		a.investmentTable.PageUp(max(a.height-6, 1))
+		a.investmentRegister.table.PageUp(max(a.height-6, 1))
 	case msg.String() == "pgdown":
-		a.investmentTable.PageDown(max(a.height-6, 1))
+		a.investmentRegister.table.PageDown(max(a.height-6, 1))
 	case msg.String() == "home":
-		a.investmentTable.MoveToTop()
+		a.investmentRegister.table.MoveToTop()
 	case msg.String() == "end":
-		a.investmentTable.MoveToBottom()
+		a.investmentRegister.table.MoveToBottom()
 	case msg.Code == tea.KeyBackspace:
-		if r := []rune(a.investmentFilterQuery); len(r) > 0 {
-			a.investmentFilterQuery = string(r[:len(r)-1])
+		if r := []rune(a.investmentRegister.filterQuery); len(r) > 0 {
+			a.investmentRegister.filterQuery = string(r[:len(r)-1])
 			rebuildTop()
 		}
 	case msg.Text != "":
-		a.investmentFilterQuery += msg.Text
+		a.investmentRegister.filterQuery += msg.Text
 		rebuildTop()
 	}
 	return a, nil

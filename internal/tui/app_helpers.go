@@ -41,7 +41,7 @@ func (a *App) tableContentRowOffset() int {
 	const baseOffset = 3
 	switch a.currentView {
 	case ViewInvestmentRegister:
-		if a.investmentRegister != nil && a.investmentRegister.valuation != nil {
+		if a.investmentRegister.data != nil && a.investmentRegister.data.valuation != nil {
 			return baseOffset + 2 // total-return breakdown (components + total)
 		}
 	case ViewPortfolio:
@@ -90,8 +90,8 @@ func (a *App) currentRegisterAccountID() types.ID {
 			return a.register.data.account.ID
 		}
 	case ViewInvestmentRegister:
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a.investmentRegister.account.ID
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+			return a.investmentRegister.data.account.ID
 		}
 	}
 	return types.NilID
@@ -178,8 +178,8 @@ func (a *App) refreshAfterCorporateAction() tea.Cmd {
 			return a.loadPortfolioData(a.portfolioData.account.ID)
 		}
 	case ViewInvestmentRegister:
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+			return a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)
 		}
 	case ViewCorporateActions:
 		return a.loadCorporateActionViewData()
@@ -201,10 +201,10 @@ func (a *App) rememberSavedDate(d types.Date) {
 // investmentRegisterAccountID is the account whose investment register is
 // loaded, or NilID when no register is loaded.
 func (a *App) investmentRegisterAccountID() types.ID {
-	if a.investmentRegister == nil || a.investmentRegister.account == nil {
+	if a.investmentRegister.data == nil || a.investmentRegister.data.account == nil {
 		return types.NilID
 	}
-	return a.investmentRegister.account.ID
+	return a.investmentRegister.data.account.ID
 }
 
 // reloadInvestmentRegisterCmd re-fetches the loaded investment register, or

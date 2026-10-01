@@ -101,14 +101,14 @@ func feeLiqApp(t *testing.T, secID, acctID types.ID) *App {
 			data:        &feeLiquidationDialogData{securities: []*security.Security{}},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Acme 401k",
 				Type:      account.TypeInvestment,
 				// TrackLots false → non-lot path, nil allocations, no lotRepo needed.
 			},
-		},
+		}},
 	}
 }
 
