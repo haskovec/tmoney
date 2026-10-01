@@ -132,18 +132,18 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 			Transfer:   svc.Transfer,
 		},
 		undoManager: undo.NewManager(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:      brokerage,
 			transactions: []*investment.Transaction{invLeg},
-		},
+		}},
 	}
 	a.buildInvestmentRegisterTable()
 	// A fresh sidebar starts focused, and handleInvestmentRegisterKeys delegates
 	// every key to it while it is. Move focus to the register table, which is the
 	// state a user is in when they press "d" on a row.
 	a.sidebar.SetFocused(false)
-	if a.investmentTable != nil {
-		a.investmentTable.SetFocused(true)
+	if a.investmentRegister.table != nil {
+		a.investmentRegister.table.SetFocused(true)
 	}
 
 	return &invRegTransferEnv{

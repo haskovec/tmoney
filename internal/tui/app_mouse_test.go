@@ -261,22 +261,24 @@ func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testin
 	// rendered, the table starts 2 rows lower than a plain register. A
 	// click on data row N must still land on N, not N+2.
 	app := &App{
-		currentView:     ViewInvestmentRegister,
-		keys:            defaultKeyMap(),
-		menubar:         widget.NewMenuBar(),
-		sidebar:         NewSidebar(),
-		statusbar:       widget.NewStatusBar(),
-		investmentTable: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
-		investmentRegister: &investmentRegisterData{
-			account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment},
-			valuation: &investment.AccountValuation{}, // non-nil triggers TR breakdown
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		investmentRegister: investmentRegisterViewState{
+			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
+			data: &investmentRegisterData{
+				account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment},
+				valuation: &investment.AccountValuation{}, // non-nil triggers TR breakdown
+			},
 		},
 		width:  100,
 		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
-	app.investmentTable.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}, {"r4"}})
+	app.investmentRegister.table.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}, {"r4"}})
 
 	sidebarWidth := app.styles.SidebarWidth()
 
@@ -295,7 +297,7 @@ func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testin
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if got := updatedApp.investmentTable.Cursor(); got != 1 {
+	if got := updatedApp.investmentRegister.table.Cursor(); got != 1 {
 		t.Errorf("investment table cursor = %d, want 1", got)
 	}
 }
@@ -304,19 +306,21 @@ func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) 
 	// Before the valuation loads, the TR breakdown is not rendered, so
 	// the table sits at the base offset like a plain register.
 	app := &App{
-		currentView:        ViewInvestmentRegister,
-		keys:               defaultKeyMap(),
-		menubar:            widget.NewMenuBar(),
-		sidebar:            NewSidebar(),
-		statusbar:          widget.NewStatusBar(),
-		investmentTable:    widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
-		investmentRegister: &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment}},
-		width:              100,
-		height:             24,
+		currentView: ViewInvestmentRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		investmentRegister: investmentRegisterViewState{
+			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
+			data:  &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment}},
+		},
+		width:  100,
+		height: 24,
 	}
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
-	app.investmentTable.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}})
+	app.investmentRegister.table.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}})
 
 	sidebarWidth := app.styles.SidebarWidth()
 
@@ -325,7 +329,7 @@ func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) 
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if got := updatedApp.investmentTable.Cursor(); got != 1 {
+	if got := updatedApp.investmentRegister.table.Cursor(); got != 1 {
 		t.Errorf("investment table cursor = %d, want 1", got)
 	}
 }

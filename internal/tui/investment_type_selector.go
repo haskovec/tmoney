@@ -91,7 +91,7 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 		a.investmentEditTxnID = types.NilID
 		// A new transaction opened while the register is locked to a security
 		// pre-selects that security in the security-bearing dialogs.
-		a.investmentNewTxnSecurityID = a.investmentFilterLockedSec
+		a.investmentNewTxnSecurityID = a.investmentRegister.filterLockedSec
 		// Spin-Off is a corporate action, not a transaction type; offer it as a
 		// convenience entry on the New selector (handled by index on submit).
 		options = append(options, "Spin-Off…")

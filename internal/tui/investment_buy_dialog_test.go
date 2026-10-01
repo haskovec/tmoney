@@ -496,13 +496,13 @@ func TestSubmitBuyDialog_ValidationErrors(t *testing.T) {
 			},
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	// Set invalid values
@@ -546,14 +546,14 @@ func TestSubmitBuyDialog_RejectsDateBeforeAccountOpening(t *testing.T) {
 			data:        &buyDialogData{securities: []*security.Security{}},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel:   types.NewBaseModel(),
 				Name:        "Brokerage",
 				Type:        account.TypeInvestment,
 				OpeningDate: types.NewDate(2020, time.January, 1),
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -614,13 +614,13 @@ func TestSubmitBuyDialog_ValidWithPricePerShare(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -656,13 +656,13 @@ func TestSubmitBuyDialog_ValidWithTotal(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -721,12 +721,12 @@ func TestSubmitBuyDialog_InvalidCommission(t *testing.T) {
 			data:        &buyDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -863,12 +863,12 @@ func TestSubmitBuyDialog_InvalidPrice(t *testing.T) {
 			data:        &buyDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -902,12 +902,12 @@ func TestSubmitBuyDialog_InvalidTotal(t *testing.T) {
 			data:        &buyDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -942,13 +942,13 @@ func TestSubmitBuyDialog_WithCommissionAndMemo(t *testing.T) {
 			data:        &buyDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()
@@ -983,12 +983,12 @@ func TestSubmitBuyDialog_DollarSignInCommission(t *testing.T) {
 			data:        &buyDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.buy.dlg.Fields()

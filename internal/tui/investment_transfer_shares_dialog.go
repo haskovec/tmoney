@@ -148,8 +148,8 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 				return errMsg{err: err}
 			}
 			excludeID := types.NilID
-			if a.investmentRegister != nil && a.investmentRegister.account != nil {
-				excludeID = a.investmentRegister.account.ID
+			if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+				excludeID = a.investmentRegister.data.account.ID
 			}
 			data.investmentAccounts = accounts
 			_, ids := buildInvestmentAccountOptions(accounts, excludeID)
@@ -157,10 +157,10 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 		}
 
 		// Load lots if source account is lot-tracking
-		if a.investmentRegister != nil && a.investmentRegister.account != nil &&
-			a.investmentRegister.account.TrackLots && a.services.InvestmentValuation != nil {
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil &&
+			a.investmentRegister.data.account.TrackLots && a.services.InvestmentValuation != nil {
 
-			acctID := a.investmentRegister.account.ID
+			acctID := a.investmentRegister.data.account.ID
 
 			if a.investmentEditTxnID != types.NilID && a.services.InvestmentValuation != nil {
 				editTxn, err := a.services.InvestmentValuation.GetTransaction(a.investmentEditTxnID)
@@ -352,8 +352,8 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 
 	// Get source account ID
 	sourceAccountID := types.NilID
-	if a.investmentRegister != nil && a.investmentRegister.account != nil {
-		sourceAccountID = a.investmentRegister.account.ID
+	if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+		sourceAccountID = a.investmentRegister.data.account.ID
 	}
 
 	editTxnID := a.investmentEditTxnID

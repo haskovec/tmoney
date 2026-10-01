@@ -863,14 +863,16 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     sidebar,
-		investmentRegister: &investmentRegisterData{
-			account: &account.Account{
-				BaseModel: types.NewBaseModel(),
-				Name:      "Brokerage",
-				Type:      account.TypeInvestment,
+		investmentRegister: investmentRegisterViewState{
+			data: &investmentRegisterData{
+				account: &account.Account{
+					BaseModel: types.NewBaseModel(),
+					Name:      "Brokerage",
+					Type:      account.TypeInvestment,
+				},
 			},
+			table: widget.NewTable(nil),
 		},
-		investmentTable: widget.NewTable(nil),
 	}
 
 	// Simulate pressing 'p' to switch to portfolio

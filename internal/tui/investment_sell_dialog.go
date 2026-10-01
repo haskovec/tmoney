@@ -135,10 +135,10 @@ func (a *App) loadSellDialogData() tea.Cmd {
 		}
 
 		// Load lots if the account is lot-tracking
-		if a.investmentRegister != nil && a.investmentRegister.account != nil &&
-			a.investmentRegister.account.TrackLots && a.services.InvestmentValuation != nil {
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil &&
+			a.investmentRegister.data.account.TrackLots && a.services.InvestmentValuation != nil {
 
-			acctID := a.investmentRegister.account.ID
+			acctID := a.investmentRegister.data.account.ID
 
 			// If editing, get the security from the existing transaction
 			// For new transactions, lots will be loaded after security selection
@@ -350,9 +350,9 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	// we default to FIFO (matching the lot-backfill default) so the sale isn't
 	// blocked with "lot allocations required".
 	if !hasErrors && numLots == 0 && a.services.InvestmentValuation != nil &&
-		a.investmentRegister != nil && a.investmentRegister.account != nil &&
-		a.investmentRegister.account.TrackLots {
-		openLots, lerr := a.services.InvestmentValuation.ListOpenLots(a.investmentRegister.account.ID, securityID)
+		a.investmentRegister.data != nil && a.investmentRegister.data.account != nil &&
+		a.investmentRegister.data.account.TrackLots {
+		openLots, lerr := a.services.InvestmentValuation.ListOpenLots(a.investmentRegister.data.account.ID, securityID)
 		if lerr != nil {
 			fields[2].Error = "Could not load lots for allocation"
 			hasErrors = true
@@ -374,8 +374,8 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 
 	// Get account ID
 	accountID := types.NilID
-	if a.investmentRegister != nil && a.investmentRegister.account != nil {
-		accountID = a.investmentRegister.account.ID
+	if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+		accountID = a.investmentRegister.data.account.ID
 	}
 
 	editTxnID := a.investmentEditTxnID

@@ -29,14 +29,14 @@ func TestReopenAccount_UnfreezesInvestmentRegister(t *testing.T) {
 	}
 	a.switchView(ViewInvestmentRegister)
 	runCmd(t, a, a.loadInvestmentRegisterData(acct.ID), 1)
-	if !a.investmentRegister.account.IsClosed() {
+	if !a.investmentRegister.data.account.IsClosed() {
 		t.Fatal("setup: register should show the account as closed")
 	}
 
 	_, cmd := a.handleMenuAction(widget.MenuActionReopenAccount, "")
 	runCmd(t, a, cmd, 3)
 
-	if a.investmentRegister.account.IsClosed() {
+	if a.investmentRegister.data.account.IsClosed() {
 		t.Error("register still holds the account as closed after reopen")
 	}
 }

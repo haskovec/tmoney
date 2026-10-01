@@ -67,7 +67,7 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 		sidebar:     sidebar,
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: ids.account},
 				Name:      "Acme 401k",
@@ -98,7 +98,7 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 				FeesPaid:          zero,
 				TotalReturn:       types.MustNewMoney("100.00"),
 			},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 	return app, ids
@@ -126,14 +126,14 @@ func TestInvestmentFilter_SlashEntersSearchMode(t *testing.T) {
 	}
 	app.handleInvestmentRegisterKeys(slashKey())
 
-	if !app.investmentFilterSearching {
-		t.Error("expected investmentFilterSearching=true after /")
+	if !app.investmentRegister.filterSearching {
+		t.Error("expected investmentRegister.filterSearching=true after /")
 	}
 	if !app.investmentRegisterFilterActive() {
 		t.Error("expected filter active after /")
 	}
 	// Empty query shows every row (including the cash deposit).
-	if got := app.investmentTable.RowCount(); got != 7 {
+	if got := app.investmentRegister.table.RowCount(); got != 7 {
 		t.Errorf("empty-query filter: RowCount = %d, want 7", got)
 	}
 }
@@ -152,7 +152,7 @@ func TestInvestmentFilter_LiveNarrowSingleSecurity(t *testing.T) {
 			t.Errorf("query 'fx': got a non-FXAIX row %v", txn.Type)
 		}
 	}
-	if got := app.investmentTable.RowCount(); got != 3 {
+	if got := app.investmentRegister.table.RowCount(); got != 3 {
 		t.Errorf("table RowCount = %d, want 3", got)
 	}
 }
@@ -189,14 +189,14 @@ func TestInvestmentFilter_EnterLocksSingleMatch(t *testing.T) {
 	typeFilter(app, "fx")
 	app.handleInvestmentRegisterKeys(enterKey())
 
-	if app.investmentFilterSearching {
+	if app.investmentRegister.filterSearching {
 		t.Error("Enter should exit searching mode when locking")
 	}
-	if app.investmentFilterLockedSec != ids.fxaix {
-		t.Errorf("locked security = %v, want FXAIX", app.investmentFilterLockedSec)
+	if app.investmentRegister.filterLockedSec != ids.fxaix {
+		t.Errorf("locked security = %v, want FXAIX", app.investmentRegister.filterLockedSec)
 	}
-	if app.investmentFilterQuery != "" {
-		t.Errorf("query should be cleared on lock, got %q", app.investmentFilterQuery)
+	if app.investmentRegister.filterQuery != "" {
+		t.Errorf("query should be cleared on lock, got %q", app.investmentRegister.filterQuery)
 	}
 	if len(app.visibleInvestmentTransactions()) != 3 {
 		t.Errorf("locked FXAIX: visible = %d, want 3", len(app.visibleInvestmentTransactions()))
@@ -216,10 +216,10 @@ func TestInvestmentFilter_EnterDoesNotLockAmbiguousMatch(t *testing.T) {
 	typeFilter(app, "fi") // 2 securities
 	app.handleInvestmentRegisterKeys(enterKey())
 
-	if !app.investmentFilterSearching {
+	if !app.investmentRegister.filterSearching {
 		t.Error("Enter on an ambiguous (multi-security) query should stay in searching mode")
 	}
-	if !app.investmentFilterLockedSec.IsNil() {
+	if !app.investmentRegister.filterLockedSec.IsNil() {
 		t.Error("Enter on an ambiguous query should not lock a security")
 	}
 }
@@ -231,8 +231,8 @@ func TestInvestmentFilter_VimLetterKeysAppendNotNavigate(t *testing.T) {
 	// Market Index" contains 'k'/... — these letters must append to the query,
 	// not be consumed as cursor navigation.
 	typeFilter(app, "fsk")
-	if app.investmentFilterQuery != "fsk" {
-		t.Fatalf("query = %q, want \"fsk\" (j/k must append to the query, not navigate)", app.investmentFilterQuery)
+	if app.investmentRegister.filterQuery != "fsk" {
+		t.Fatalf("query = %q, want \"fsk\" (j/k must append to the query, not navigate)", app.investmentRegister.filterQuery)
 	}
 	vis := app.visibleInvestmentTransactions()
 	if len(vis) != 2 {
@@ -248,8 +248,8 @@ func TestInvestmentFilter_VimLetterKeysAppendNotNavigate(t *testing.T) {
 	app2, _ := newFilterTestApp(t, 0)
 	app2.handleInvestmentRegisterKeys(slashKey())
 	app2.handleInvestmentRegisterKeys(letterKey('j'))
-	if app2.investmentFilterQuery != "j" {
-		t.Errorf("bare 'j' should append, query = %q, want \"j\"", app2.investmentFilterQuery)
+	if app2.investmentRegister.filterQuery != "j" {
+		t.Errorf("bare 'j' should append, query = %q, want \"j\"", app2.investmentRegister.filterQuery)
 	}
 }
 
@@ -258,11 +258,11 @@ func TestInvestmentFilter_ArrowKeysNavigateWhileTyping(t *testing.T) {
 
 	app.handleInvestmentRegisterKeys(slashKey()) // empty query -> all rows shown
 	app.handleInvestmentRegisterKeys(tea.KeyPressMsg{Code: tea.KeyDown})
-	if app.investmentTable.Cursor() != 1 {
-		t.Errorf("real Down arrow while typing should navigate: cursor = %d, want 1", app.investmentTable.Cursor())
+	if app.investmentRegister.table.Cursor() != 1 {
+		t.Errorf("real Down arrow while typing should navigate: cursor = %d, want 1", app.investmentRegister.table.Cursor())
 	}
-	if app.investmentFilterQuery != "" {
-		t.Errorf("arrow key must not append to the query, got %q", app.investmentFilterQuery)
+	if app.investmentRegister.filterQuery != "" {
+		t.Errorf("arrow key must not append to the query, got %q", app.investmentRegister.filterQuery)
 	}
 }
 
@@ -314,8 +314,8 @@ func TestInvestmentFilter_BackspaceEditsQuery(t *testing.T) {
 	typeFilter(app, "fx")
 	app.handleInvestmentRegisterKeys(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
-	if app.investmentFilterQuery != "f" {
-		t.Errorf("after backspace query = %q, want \"f\"", app.investmentFilterQuery)
+	if app.investmentRegister.filterQuery != "f" {
+		t.Errorf("after backspace query = %q, want \"f\"", app.investmentRegister.filterQuery)
 	}
 }
 
@@ -327,8 +327,8 @@ func TestInvestmentFilter_TickerlessSecurity(t *testing.T) {
 		t.Fatalf("query 'mid cap': visible = %d, want 1", len(app.visibleInvestmentTransactions()))
 	}
 	app.handleInvestmentRegisterKeys(enterKey())
-	if app.investmentFilterLockedSec != ids.mfs {
-		t.Errorf("locked security = %v, want MFS", app.investmentFilterLockedSec)
+	if app.investmentRegister.filterLockedSec != ids.mfs {
+		t.Errorf("locked security = %v, want MFS", app.investmentRegister.filterLockedSec)
 	}
 	// Tickerless: display name is the plain name with no " — ticker" prefix.
 	if name := app.securityDisplayName(ids.mfs); name != "MFS Mid Cap Value CT" {
@@ -349,7 +349,7 @@ func TestInvestmentFilter_SelectedTransactionIndexesFilteredSlice(t *testing.T) 
 	typeFilter(app, "fx")
 	app.handleInvestmentRegisterKeys(enterKey()) // lock FXAIX, cursor at 0
 
-	app.investmentTable.MoveDown() // to filtered row index 1
+	app.investmentRegister.table.MoveDown() // to filtered row index 1
 	sel := app.selectedInvestmentTransaction()
 	if sel == nil {
 		t.Fatal("selectedInvestmentTransaction returned nil")
@@ -367,13 +367,13 @@ func TestInvestmentFilter_BalanceColumnHiddenWhileFiltered(t *testing.T) {
 	app, _ := newFilterTestApp(t, 200) // wide enough for the Balance column
 
 	// Sanity: unfiltered, the Balance column is present.
-	cols := app.investmentTable.Columns()
+	cols := app.investmentRegister.table.Columns()
 	if cols[len(cols)-1].Header != "Balance" {
 		t.Fatalf("precondition: unfiltered register should show Balance column, got %q", cols[len(cols)-1].Header)
 	}
 
 	app.handleInvestmentRegisterKeys(slashKey())
-	cols = app.investmentTable.Columns()
+	cols = app.investmentRegister.table.Columns()
 	for _, c := range cols {
 		if c.Header == "Balance" {
 			t.Error("Balance column should be hidden while filtering")
@@ -471,8 +471,8 @@ func TestInvestmentFilter_EarlyGuardCapturesGlobalKeys(t *testing.T) {
 	if app.currentView != ViewInvestmentRegister {
 		t.Errorf("global digit key switched views while searching: view = %v", app.currentView)
 	}
-	if app.investmentFilterQuery != "5" {
-		t.Errorf("digit should append to query, got %q", app.investmentFilterQuery)
+	if app.investmentRegister.filterQuery != "5" {
+		t.Errorf("digit should append to query, got %q", app.investmentRegister.filterQuery)
 	}
 }
 
@@ -487,15 +487,15 @@ func TestInvestmentFilter_ResizeWhileFilteredDoesNotRebuild(t *testing.T) {
 	// rebuild the table — which is the whole point of the filter-aware resize
 	// check (an unfiltered-only check would rebuild on every resize while
 	// filtered because the balance column is hidden).
-	app.investmentTable.SetRowStyle(0, widget.RowStyleVoid)
+	app.investmentRegister.table.SetRowStyle(0, widget.RowStyleVoid)
 
 	app.Update(tea.WindowSizeMsg{Width: 200, Height: 40})
 
-	if _, ok := app.investmentTable.RowStyles()[0]; !ok {
+	if _, ok := app.investmentRegister.table.RowStyles()[0]; !ok {
 		t.Error("resize while filtered rebuilt the table (row style was cleared) — the resize check is not filter-aware")
 	}
 	// And the balance column stays hidden regardless of width while filtered.
-	cols := app.investmentTable.Columns()
+	cols := app.investmentRegister.table.Columns()
 	for _, c := range cols {
 		if c.Header == "Balance" {
 			t.Error("Balance column should remain hidden while filtered after resize")

@@ -506,7 +506,7 @@ literal move under the new struct, across roughly thirty test files. The
 literal shape changes; no assertion does.
 
 Five decisions to make in the phase, recorded here so they are not made by
-accident:
+accident (VL-305 in the plan added a sixth, the last bullet):
 
 - **The `pending*SelectID` trio.** `pendingRegisterSelectID` and
   `pendingInvestmentSelectID` are written by dialog save paths (`afterTransferSave`
@@ -537,6 +537,11 @@ accident:
   `priceSurface`, `priceImportDialog`, `investmentTypeSelector` and
   `security` are in `modals()`; guard 2 of the earlier design walks `App` for
   them by type, and they must stay directly on `App` for it to see them.
+- **The investment edit and preselect IDs stay on `App`.**
+  `investmentEditTxnID` and `investmentNewTxnSecurityID` are set by the type
+  selector and read or cleared by the investment dialogs and their save
+  paths, so they are cross-surface handoffs like the pending IDs. Only the
+  register's data, table and three filter fields move into its struct.
 
 The phase-3 guards of the earlier design (`TestGuard_NoSurfaceStructHoldsAService`
 and the nil-safety guard) are keyed to `Modal`; view structs do not implement
@@ -681,7 +686,7 @@ is doing phase 4's job in phase 1's clothes; the guard is that `views()` and
 |---|---|
 | 0 | `?` on the Corporate Actions view lists its keys; a test renders the overlay for every `View` value and requires a view-specific section |
 | 1 | Seven switches gone, the five-view list gone from both predicates (their `SidebarWidth() == 0` halves and the Dashboard mouse branch kept), `View.String()` reads the table and still returns `"Unknown"` for a miss; the pre-switch `handleKeyPress` branches untouched; guards 1–3 land with self-tests; the tables-nil `switchView` walk (§5.2) passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back** |
-| 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the five recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the 335 test literals moved and no assertion changed |
+| 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the six recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the 335 test literals moved and no assertion changed |
 | 3 | `price_view.go` ≤ 450 and `investment_register_view.go` ≤ 500, each split by the declaration comparer with zero problems and zero orphaned comments; the two price dialogs in files of their own; the chart's `*App` methods in `price_chart.go` |
 | 4 | Not an exit; a table of per-view decisions with the measured count of what moved and what stayed, appended to this document as the 4c notes were to the earlier one |
 

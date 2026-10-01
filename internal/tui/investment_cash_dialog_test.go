@@ -164,13 +164,13 @@ func TestSubmitCashOperationDialog_ValidationErrors(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
 			opType: investment.TransactionTypeDeposit},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	// Set invalid values
@@ -204,12 +204,12 @@ func TestSubmitCashOperationDialog_InvalidAmount(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
 			opType: investment.TransactionTypeDeposit},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.cashOperation.dlg.Fields()
@@ -235,13 +235,13 @@ func TestSubmitCashOperationDialog_ValidDeposit(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Deposit", nil)},
 			opType: investment.TransactionTypeDeposit},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.cashOperation.dlg.Fields()
@@ -266,12 +266,12 @@ func TestSubmitCashOperationDialog_ValidWithMemo(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Withdrawal", nil)},
 			opType: investment.TransactionTypeWithdrawal},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.cashOperation.dlg.Fields()
@@ -297,12 +297,12 @@ func TestSubmitCashOperationDialog_DollarSignInAmount(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Fee", nil)},
 			opType: investment.TransactionTypeFee},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.cashOperation.dlg.Fields()
@@ -327,12 +327,12 @@ func TestSubmitCashOperationDialog_ValidInterest(t *testing.T) {
 		cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog("Interest", nil)},
 			opType: investment.TransactionTypeInterest},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.cashOperation.dlg.Fields()
@@ -464,12 +464,12 @@ func TestCashOperationType_AllTypes(t *testing.T) {
 			cashOperation: cashOperationSurface{modalSurface: modalSurface{dlg: buildCashOperationDialog(txnType.DisplayName(), nil)},
 				opType: txnType},
 
-			investmentRegister: &investmentRegisterData{
+			investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 				account: &account.Account{
 					BaseModel: types.BaseModel{ID: acctID},
 					Type:      account.TypeInvestment,
 				},
-			},
+			}},
 		}
 
 		fields := app.cashOperation.dlg.Fields()

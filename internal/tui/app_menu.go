@@ -275,8 +275,8 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 	case ViewDashboard:
 		return a, a.loadDashboardData()
 	case ViewInvestmentRegister:
-		if a.investmentRegister != nil && a.investmentRegister.account != nil {
-			return a, a.loadInvestmentRegisterData(a.investmentRegister.account.ID)
+		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
+			return a, a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)
 		}
 	case ViewPortfolio:
 		if a.portfolioData != nil && a.portfolioData.account != nil {
@@ -298,10 +298,9 @@ func (a *App) toggleMenu(index int) {
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
-		// Leaving the investment register drops its (transient) security
-		// filter, so reopening the account later shows the full register.
-		if a.currentView == ViewInvestmentRegister {
-			a.resetInvestmentRegisterFilter()
+		// The view being left forgets what its entry's leave hook names.
+		if e, ok := viewFor(a.currentView); ok && e.leave != nil {
+			e.leave(a)
 		}
 		// Leaving the corporate-action register drops its details overlay.
 		// Without this the overlay stays counted by isDialogVisible after a

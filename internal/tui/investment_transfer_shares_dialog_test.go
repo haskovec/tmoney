@@ -263,12 +263,12 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 			accountIDs:  destAcctIDs,
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	// Set invalid values
@@ -308,12 +308,12 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 			accountIDs:  nil,
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -346,12 +346,12 @@ func TestSubmitTransferSharesDialog_NoSecurities(t *testing.T) {
 			accountIDs:  destAcctIDs,
 			securityIDs: nil},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -385,12 +385,12 @@ func TestSubmitTransferSharesDialog_ValidTransfer(t *testing.T) {
 			accountIDs:  destAcctIDs,
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -424,12 +424,12 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 			accountIDs:  destAcctIDs,
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -480,13 +480,13 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 			securityIDs: secIDs,
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -533,13 +533,13 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 			securityIDs: secIDs,
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()
@@ -589,13 +589,13 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 			securityIDs: secIDs,
 			lots:        lots},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 				TrackLots: true,
 			},
-		},
+		}},
 	}
 
 	fields := app.transferShares.dlg.Fields()

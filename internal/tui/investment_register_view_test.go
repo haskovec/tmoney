@@ -19,7 +19,7 @@ func TestRenderInvestmentTotalReturnLines_PartialMarker(t *testing.T) {
 	trPct := 30.0
 	app := &App{
 		styles: testStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			valuation: &investment.AccountValuation{
 				AccountID:              types.NewID(),
 				TotalGainLoss:          types.MustNewMoney("200"),
@@ -31,7 +31,7 @@ func TestRenderInvestmentTotalReturnLines_PartialMarker(t *testing.T) {
 				TotalReturnPct:         &trPct,
 				AnyRealizedUnavailable: true,
 			},
-		},
+		}},
 	}
 
 	breakdown, total := app.renderInvestmentTotalReturnLines()
@@ -47,7 +47,7 @@ func TestRenderInvestmentTotalReturnLines_NoPartialMarker(t *testing.T) {
 	trPct := 30.0
 	app := &App{
 		styles: testStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			valuation: &investment.AccountValuation{
 				AccountID:              types.NewID(),
 				TotalGainLoss:          types.MustNewMoney("200"),
@@ -59,7 +59,7 @@ func TestRenderInvestmentTotalReturnLines_NoPartialMarker(t *testing.T) {
 				TotalReturnPct:         &trPct,
 				AnyRealizedUnavailable: false,
 			},
-		},
+		}},
 	}
 
 	breakdown, total := app.renderInvestmentTotalReturnLines()
@@ -107,18 +107,18 @@ func TestApp_BuildInvestmentRegisterTable_SelectsPendingByID(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:       &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment, Active: true},
 			transactions:  txns,
 			securityNames: map[types.ID]string{},
-		},
+		}},
 		pendingInvestmentSelectID: newID,
 	}
 
 	app.buildInvestmentRegisterTable()
 
-	if app.investmentTable.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 (the just-saved transaction)", app.investmentTable.Cursor())
+	if app.investmentRegister.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (the just-saved transaction)", app.investmentRegister.table.Cursor())
 	}
 	if !app.pendingInvestmentSelectID.IsNil() {
 		t.Error("pendingInvestmentSelectID should be cleared after selection")
@@ -167,9 +167,9 @@ func TestFormatInvestmentRegisterRow(t *testing.T) {
 	txn.Status = investment.TransactionStatusCleared
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	row := app.formatInvestmentRegisterRow(txn)
@@ -217,9 +217,9 @@ func TestFormatInvestmentRegisterRow_PendingStatus(t *testing.T) {
 	txn.Status = investment.TransactionStatusPending
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 
 	row := app.formatInvestmentRegisterRow(txn)
@@ -255,9 +255,9 @@ func TestFormatInvestmentRegisterRow_ReconciledStatus(t *testing.T) {
 	txn.Status = investment.TransactionStatusReconciled
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{secID: "MSFT"},
-		},
+		}},
 	}
 
 	row := app.formatInvestmentRegisterRow(txn)
@@ -285,9 +285,9 @@ func TestFormatInvestmentRegisterRow_SellTransaction(t *testing.T) {
 	txn.PricePerShare = types.NullableMoney{Money: types.MustNewMoney("400.00"), Valid: true}
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{secID: "GOOG"},
-		},
+		}},
 	}
 
 	row := app.formatInvestmentRegisterRow(txn)
@@ -314,9 +314,9 @@ func TestFormatInvestmentRegisterRow_NoSecurity(t *testing.T) {
 	txn := investment.NewTransaction(acctID, date, investment.TransactionTypeFee, amount)
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 
 	row := app.formatInvestmentRegisterRow(txn)
@@ -343,7 +343,7 @@ func TestBuildInvestmentRegisterTable(t *testing.T) {
 	txn2 := investment.NewTransaction(acctID, date, investment.TransactionTypeDeposit, types.MustNewMoney("5000.00"))
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -352,22 +352,22 @@ func TestBuildInvestmentRegisterTable(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn1, txn2},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	app.buildInvestmentRegisterTable()
 
-	if app.investmentTable == nil {
-		t.Fatal("investmentTable should not be nil after build")
+	if app.investmentRegister.table == nil {
+		t.Fatal("investmentRegister.table should not be nil after build")
 	}
-	if app.investmentTable.RowCount() != 2 {
-		t.Errorf("expected 2 rows, got %d", app.investmentTable.RowCount())
+	if app.investmentRegister.table.RowCount() != 2 {
+		t.Errorf("expected 2 rows, got %d", app.investmentRegister.table.RowCount())
 	}
 }
 
 func TestBuildInvestmentRegisterTable_Empty(t *testing.T) {
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -376,24 +376,24 @@ func TestBuildInvestmentRegisterTable_Empty(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{},
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 
 	app.buildInvestmentRegisterTable()
 
-	if app.investmentTable == nil {
-		t.Fatal("investmentTable should not be nil after build even with no transactions")
+	if app.investmentRegister.table == nil {
+		t.Fatal("investmentRegister.table should not be nil after build even with no transactions")
 	}
-	if app.investmentTable.RowCount() != 0 {
-		t.Errorf("expected 0 rows, got %d", app.investmentTable.RowCount())
+	if app.investmentRegister.table.RowCount() != 0 {
+		t.Errorf("expected 0 rows, got %d", app.investmentRegister.table.RowCount())
 	}
 }
 
 func TestBuildInvestmentRegisterTable_NilData(t *testing.T) {
 	app := &App{}
 	app.buildInvestmentRegisterTable() // should not panic
-	if app.investmentTable != nil {
-		t.Error("investmentTable should be nil when investmentRegister is nil")
+	if app.investmentRegister.table != nil {
+		t.Error("investmentRegister.table should be nil when investmentRegister.data is nil")
 	}
 }
 
@@ -414,7 +414,7 @@ func TestRenderInvestmentRegister_NoTransactions(t *testing.T) {
 		width:  80,
 		height: 24,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -424,7 +424,7 @@ func TestRenderInvestmentRegister_NoTransactions(t *testing.T) {
 			transactions:  []*investment.Transaction{},
 			securityNames: map[types.ID]string{},
 			cashBalance:   types.ZeroMoney,
-		},
+		}},
 	}
 	app.styles.Resize(80, 24)
 	app.buildInvestmentRegisterTable()
@@ -448,7 +448,7 @@ func TestRenderInvestmentRegister_WithData(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -458,7 +458,7 @@ func TestRenderInvestmentRegister_WithData(t *testing.T) {
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
 			cashBalance:   types.MustNewMoney("3150.00"),
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildInvestmentRegisterTable()
@@ -477,7 +477,7 @@ func TestRenderInvestmentRegister_ShowsCashBalance(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Investment Account",
@@ -487,7 +487,7 @@ func TestRenderInvestmentRegister_ShowsCashBalance(t *testing.T) {
 			transactions:  []*investment.Transaction{},
 			securityNames: map[types.ID]string{},
 			cashBalance:   types.MustNewMoney("5000.00"),
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildInvestmentRegisterTable()
@@ -522,10 +522,10 @@ func TestInvestmentRegisterLoadedMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.investmentRegister == nil {
+	if updatedApp.investmentRegister.data == nil {
 		t.Fatal("investment register data should be set")
 	}
-	if updatedApp.investmentTable == nil {
+	if updatedApp.investmentRegister.table == nil {
 		t.Error("investment table should be built")
 	}
 }
@@ -555,7 +555,7 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -564,7 +564,7 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn1, txn2},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -572,16 +572,16 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleInvestmentRegisterKeys(downKey)
 
-	if app.investmentTable.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 after down", app.investmentTable.Cursor())
+	if app.investmentRegister.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 after down", app.investmentRegister.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleInvestmentRegisterKeys(upKey)
 
-	if app.investmentTable.Cursor() != 0 {
-		t.Errorf("cursor = %d, want 0 after up", app.investmentTable.Cursor())
+	if app.investmentRegister.table.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 after up", app.investmentRegister.table.Cursor())
 	}
 }
 
@@ -603,7 +603,7 @@ func TestHandleInvestmentRegisterKeys_ToggleClear(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -612,7 +612,7 @@ func TestHandleInvestmentRegisterKeys_ToggleClear(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -636,7 +636,7 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 	txn2 := investment.NewTransaction(acctID, date, investment.TransactionTypeDeposit, types.MustNewMoney("5000.00"))
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -645,7 +645,7 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn1, txn2},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -658,7 +658,7 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 	}
 
 	// Move to second
-	app.investmentTable.MoveDown()
+	app.investmentRegister.table.MoveDown()
 	selected = app.selectedInvestmentTransaction()
 	if selected == nil {
 		t.Fatal("selectedInvestmentTransaction() returned nil after MoveDown")
@@ -678,7 +678,7 @@ func TestSelectedInvestmentTransaction_NilData(t *testing.T) {
 
 func TestInvestmentRegisterColumns(t *testing.T) {
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -687,15 +687,15 @@ func TestInvestmentRegisterColumns(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{},
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
-	if app.investmentTable == nil {
-		t.Fatal("investmentTable should not be nil")
+	if app.investmentRegister.table == nil {
+		t.Fatal("investmentRegister.table should not be nil")
 	}
 
-	cols := app.investmentTable.Columns()
+	cols := app.investmentRegister.table.Columns()
 	expectedHeaders := []string{"Date", "S", "Type", "Security", "Shares", "Price", "Total"}
 	if len(cols) != len(expectedHeaders) {
 		t.Fatalf("expected %d columns, got %d", len(expectedHeaders), len(cols))
@@ -729,7 +729,7 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -739,7 +739,7 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
 			cashBalance:   types.MustNewMoney("3150.00"),
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -766,7 +766,7 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -775,7 +775,7 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -820,7 +820,7 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -829,7 +829,7 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -874,7 +874,7 @@ func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) 
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -883,7 +883,7 @@ func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) 
 			},
 			transactions:  []*investment.Transaction{},
 			securityNames: map[types.ID]string{},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -914,7 +914,7 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 		height:  24,
 		keys:    defaultKeyMap(),
 		sidebar: sidebar,
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -923,7 +923,7 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 			},
 			transactions:  []*investment.Transaction{txn},
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 	app.buildInvestmentRegisterTable()
 
@@ -1053,9 +1053,9 @@ func TestFormatInvestmentRegisterRow_AllTypes(t *testing.T) {
 	date := types.NewDate(2024, time.March, 15)
 
 	app := &App{
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			securityNames: map[types.ID]string{secID: "AAPL"},
-		},
+		}},
 	}
 
 	tests := []struct {
@@ -1138,7 +1138,7 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 		width:  120,
 		height: 30,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -1149,7 +1149,7 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 			securityNames: map[types.ID]string{},
 			cashBalance:   types.MustNewMoney("1200.00"),
 			valuation:     val,
-		},
+		}},
 	}
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()
@@ -1184,13 +1184,13 @@ func TestRenderInvestmentTotalReturnLines_PerformanceFallbacks(t *testing.T) {
 	twrCum, irrCum := 3.2, 2.75
 	app := &App{
 		styles: testStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			valuation: &investment.AccountValuation{
 				AccountID:              types.NewID(),
 				MoneyWeightedReturnPct: &irrCum,
 				TimeWeightedReturnPct:  &twrCum,
 			},
-		},
+		}},
 	}
 	_, totalRaw := app.renderInvestmentTotalReturnLines()
 	total := widget.StripAnsi(totalRaw)
@@ -1217,7 +1217,7 @@ func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
 		width:  120,
 		height: 30,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -1228,7 +1228,7 @@ func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
 			securityNames: map[types.ID]string{},
 			cashBalance:   types.MustNewMoney("100.00"),
 			valuation:     val,
-		},
+		}},
 	}
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()
@@ -1247,7 +1247,7 @@ func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
 		width:  120,
 		height: 30,
 		styles: widget.NewStyles(),
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
@@ -1258,7 +1258,7 @@ func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
 			securityNames: map[types.ID]string{},
 			cashBalance:   types.MustNewMoney("100.00"),
 			valuation:     nil,
-		},
+		}},
 	}
 	app.styles.Resize(120, 30)
 	app.buildInvestmentRegisterTable()

@@ -256,13 +256,13 @@ func TestSubmitDividendDialog_ValidationErrors(t *testing.T) {
 			},
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	// Set invalid values
@@ -299,12 +299,12 @@ func TestSubmitDividendDialog_InvalidAmount(t *testing.T) {
 			},
 			securityIDs: secIDs},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -339,13 +339,13 @@ func TestSubmitDividendDialog_Valid(t *testing.T) {
 			},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Name:      "Brokerage",
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -377,12 +377,12 @@ func TestSubmitDividendDialog_ValidWithMemo(t *testing.T) {
 			data:        &dividendDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -437,12 +437,12 @@ func TestSubmitReinvestDividendDialog_ValidationErrors(t *testing.T) {
 			securityIDs: secIDs,
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -493,12 +493,12 @@ func TestSubmitReinvestDividendDialog_ValidWithPrice(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -534,12 +534,12 @@ func TestSubmitReinvestDividendDialog_ValidWithTotal(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -599,12 +599,12 @@ func TestSubmitReinvestDividendDialog_InvalidPrice(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -762,12 +762,12 @@ func TestHandleDividendDialogKey_RoutesToDividendSubmit(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    false},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -801,12 +801,12 @@ func TestHandleDividendDialogKey_RoutesToReinvestSubmit(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -839,12 +839,12 @@ func TestSubmitDividendDialog_DollarSignInAmount(t *testing.T) {
 			data:        &dividendDialogData{},
 			securityIDs: []types.ID{secID}},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: acctID},
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -904,12 +904,12 @@ func TestDividendDialogMouse_SaveRoutesToReinvestSubmit(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()
@@ -950,12 +950,12 @@ func TestDividendDialogMouse_SaveValidReinvest(t *testing.T) {
 			securityIDs: []types.ID{secID},
 			reinvest:    true},
 
-		investmentRegister: &investmentRegisterData{
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
 				Type:      account.TypeInvestment,
 			},
-		},
+		}},
 	}
 
 	fields := app.dividend.dlg.Fields()

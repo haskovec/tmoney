@@ -44,7 +44,7 @@ func (a *App) shouldShowInvestmentBalance() bool {
 
 // buildInvestmentRegisterTable creates and populates the table for the investment register view.
 func (a *App) buildInvestmentRegisterTable() {
-	if a.investmentRegister == nil {
+	if a.investmentRegister.data == nil {
 		return
 	}
 
@@ -58,16 +58,16 @@ func (a *App) buildInvestmentRegisterTable() {
 	var cash []types.Money
 	if showBalance {
 		opening := types.ZeroMoney
-		if a.investmentRegister.account != nil {
-			opening = a.investmentRegister.account.OpeningBalance
+		if a.investmentRegister.data.account != nil {
+			opening = a.investmentRegister.data.account.OpeningBalance
 		}
 		cash = runningCash(txns, opening)
 	}
 
-	if a.investmentTable == nil {
-		a.investmentTable = widget.NewTable(columns)
+	if a.investmentRegister.table == nil {
+		a.investmentRegister.table = widget.NewTable(columns)
 	} else {
-		a.investmentTable.SetColumns(columns)
+		a.investmentRegister.table.SetColumns(columns)
 	}
 
 	rows := make([][]string, len(txns))
@@ -78,7 +78,7 @@ func (a *App) buildInvestmentRegisterTable() {
 		}
 		rows[i] = row
 	}
-	a.investmentTable.SetRows(rows)
+	a.investmentRegister.table.SetRows(rows)
 
 	// After a save, move the cursor onto the just-saved row by matching its
 	// transaction ID. Selecting by ID (not position) keeps the cursor on the
@@ -89,7 +89,7 @@ func (a *App) buildInvestmentRegisterTable() {
 	if !a.pendingInvestmentSelectID.IsNil() {
 		for i, txn := range txns {
 			if txn.ID == a.pendingInvestmentSelectID {
-				a.investmentTable.SetCursor(i)
+				a.investmentRegister.table.SetCursor(i)
 				a.pendingInvestmentSelectID = types.NilID
 				break
 			}
@@ -118,7 +118,7 @@ func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string 
 	// Security (ticker from lookup map)
 	sec := ""
 	if txn.SecurityID.Valid {
-		if name, ok := a.investmentRegister.securityNames[txn.SecurityID.ID]; ok {
+		if name, ok := a.investmentRegister.data.securityNames[txn.SecurityID.ID]; ok {
 			sec = name
 		}
 	}
@@ -143,7 +143,7 @@ func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string 
 
 // renderInvestmentRegister renders the investment account register view.
 func (a *App) renderInvestmentRegister() string {
-	if a.investmentRegister == nil {
+	if a.investmentRegister.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading investment register...")
@@ -154,15 +154,15 @@ func (a *App) renderInvestmentRegister() string {
 	var sections []string
 
 	// Title row: account name + cash balance
-	acctName := strings.ToUpper(a.investmentRegister.account.Name)
-	cashStr := "Cash: " + formatDashboardMoney(a.investmentRegister.cashBalance)
+	acctName := strings.ToUpper(a.investmentRegister.data.account.Name)
+	cashStr := "Cash: " + formatDashboardMoney(a.investmentRegister.data.cashBalance)
 
 	maxNameWidth := max(contentWidth-lipgloss.Width(cashStr)-6, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
 	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(cashStr)-4, 1)
 
 	cashStyle := a.styles.Positive
-	if a.investmentRegister.cashBalance.IsNegative() {
+	if a.investmentRegister.data.cashBalance.IsNegative() {
 		cashStyle = a.styles.Negative
 	}
 	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + cashStyle.Render(cashStr)
@@ -170,11 +170,11 @@ func (a *App) renderInvestmentRegister() string {
 
 	// Closed-account banner: a closed account's register is read-only.
 	closedBanner := 0
-	if a.investmentRegister.account != nil && a.investmentRegister.account.IsClosed() {
+	if a.investmentRegister.data.account != nil && a.investmentRegister.data.account.IsClosed() {
 		closedBanner = 1
 		label := "Closed · read-only"
-		if a.investmentRegister.account.ClosedDate.Valid {
-			label = "Closed " + a.investmentRegister.account.ClosedDate.Date.String() + " · read-only"
+		if a.investmentRegister.data.account.ClosedDate.Valid {
+			label = "Closed " + a.investmentRegister.data.account.ClosedDate.Date.String() + " · read-only"
 		}
 		sections = append(sections, a.styles.Muted.Render(label))
 	}
@@ -214,10 +214,10 @@ func (a *App) renderInvestmentRegister() string {
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	visibleCount := len(a.visibleInvestmentTransactions())
-	if a.investmentTable != nil && visibleCount > 0 {
+	if a.investmentRegister.table != nil && visibleCount > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.investmentTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.investmentTable.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.investmentRegister.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.investmentRegister.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else if filterActive {
@@ -251,10 +251,10 @@ func (a *App) renderInvestmentRegister() string {
 // A nil TotalReturnPct (no buys ever — denominator is zero) renders as the
 // "—" placeholder so the line shape stays stable.
 func (a *App) renderInvestmentTotalReturnLines() (string, string) {
-	if a.investmentRegister == nil || a.investmentRegister.valuation == nil {
+	if a.investmentRegister.data == nil || a.investmentRegister.data.valuation == nil {
 		return "", ""
 	}
-	v := a.investmentRegister.valuation
+	v := a.investmentRegister.data.valuation
 
 	money := func(m types.Money) string {
 		s := formatDashboardMoney(m)

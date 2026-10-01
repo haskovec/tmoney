@@ -735,7 +735,7 @@ func TestCurrentRegisterAccountID(t *testing.T) {
 	app := &App{
 		currentView:        ViewRegister,
 		register:           registerViewState{data: &registerData{account: regAcct}},
-		investmentRegister: &investmentRegisterData{account: invAcct},
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{account: invAcct}},
 	}
 	if got := app.currentRegisterAccountID(); got != regAcct.ID {
 		t.Errorf("ViewRegister account = %v, want %v", got, regAcct.ID)
