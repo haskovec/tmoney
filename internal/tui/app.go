@@ -155,7 +155,7 @@ type App struct {
 	scheduled scheduledViewState
 
 	// Reports view state
-	reports *reportsViewData
+	reports reportsViewState
 
 	// Reconciliation view state
 	reconciliation      *reconciliationViewData
@@ -493,7 +493,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Reports):
 		a.switchView(ViewReports)
-		if a.reports == nil {
+		if a.reports.data == nil {
 			now := time.Now()
 			return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()), false)
 		}

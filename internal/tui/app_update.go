@@ -190,7 +190,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case reportsViewDataLoadedMsg:
-		a.reports = msg.data
+		a.reports.data = msg.data
 		return a, nil
 
 	case scheduledPostedMsg:

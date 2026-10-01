@@ -19,7 +19,7 @@ func TestApp_RenderReports_Loading(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports:     nil,
+		reports:     reportsViewState{data: nil},
 	}
 
 	view := app.renderReports()
@@ -37,7 +37,7 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
 				AsOfDate: types.Today().Time(),
@@ -50,7 +50,7 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 				},
 				Totals: usdTotals(types.MustNewMoney("15000.00"), types.MustNewMoney("-1500.00"), types.MustNewMoney("13500.00")),
 			},
-		},
+		}},
 	}
 
 	view := app.renderNetWorthReport()
@@ -92,7 +92,7 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
 				AsOfDate:    types.Today().Time(),
@@ -100,7 +100,7 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 				Liabilities: []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
 				Totals:      usdTotals(types.MustNewMoney("0"), types.MustNewMoney("-5000.00"), types.MustNewMoney("-5000.00")),
 			},
-		},
+		}},
 	}
 
 	view := app.renderNetWorthReport()
@@ -118,10 +118,10 @@ func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype:    reportTypeNetWorth,
 			netWorth: nil,
-		},
+		}},
 	}
 
 	view := app.renderNetWorthReport()
@@ -139,7 +139,7 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 1,
@@ -171,7 +171,7 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	view := app.renderSpendingReport()
@@ -214,7 +214,7 @@ func TestApp_RenderSpendingReport_Empty(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 6,
@@ -223,7 +223,7 @@ func TestApp_RenderSpendingReport_Empty(t *testing.T) {
 				Categories:    nil,
 				TotalSpending: types.ZeroMoney,
 			},
-		},
+		}},
 	}
 
 	view := app.renderSpendingReport()
@@ -241,10 +241,10 @@ func TestApp_RenderSpendingReport_NoData(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype:    reportTypeSpending,
 			spending: nil,
-		},
+		}},
 	}
 
 	view := app.renderSpendingReport()
@@ -292,10 +292,10 @@ func TestRenderSpendingBar(t *testing.T) {
 
 func TestApp_GetAdjacentPeriods_Monthly(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			year:  2024,
 			month: 3, // March
-		},
+		}},
 	}
 
 	prev, next := app.getAdjacentPeriods()
@@ -310,10 +310,10 @@ func TestApp_GetAdjacentPeriods_Monthly(t *testing.T) {
 func TestApp_GetAdjacentPeriods_MonthlyYearWrap(t *testing.T) {
 	// January wraps to December of previous year
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			year:  2024,
 			month: 1,
-		},
+		}},
 	}
 
 	prev, next := app.getAdjacentPeriods()
@@ -325,7 +325,7 @@ func TestApp_GetAdjacentPeriods_MonthlyYearWrap(t *testing.T) {
 	}
 
 	// December wraps to January of next year
-	app.reports.month = 12
+	app.reports.data.month = 12
 	prev, next = app.getAdjacentPeriods()
 	if !contains(prev, "Nov") || !contains(prev, "2024") {
 		t.Errorf("previous period = %q, want Nov 2024", prev)
@@ -337,10 +337,10 @@ func TestApp_GetAdjacentPeriods_MonthlyYearWrap(t *testing.T) {
 
 func TestApp_GetAdjacentPeriods_Yearly(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			year:  2024,
 			month: 0, // yearly
-		},
+		}},
 	}
 
 	prev, next := app.getAdjacentPeriods()
@@ -354,7 +354,7 @@ func TestApp_GetAdjacentPeriods_Yearly(t *testing.T) {
 
 func TestApp_GetAdjacentPeriods_Nil(t *testing.T) {
 	app := &App{
-		reports: nil,
+		reports: reportsViewState{data: nil},
 	}
 
 	prev, next := app.getAdjacentPeriods()
@@ -370,11 +370,11 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			year:  2024,
 			month: 6,
-		},
+		}},
 	}
 
 	// Press 's' to switch to spending
@@ -385,7 +385,7 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 	}
 
 	// Now set to spending and press 'n' to switch to net worth
-	app.reports.rtype = reportTypeSpending
+	app.reports.data.rtype = reportTypeSpending
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd = app.Update(nKey)
 	if cmd == nil {
@@ -400,11 +400,11 @@ func TestApp_HandleReportsKeys_PeriodNavigation(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 6,
-		},
+		}},
 	}
 
 	// Press left to go to previous period
@@ -429,11 +429,11 @@ func TestApp_HandleReportsKeys_PeriodNav_NetWorthIgnored(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			year:  2024,
 			month: 6,
-		},
+		}},
 	}
 
 	// Period navigation should be ignored for net worth reports
@@ -451,11 +451,11 @@ func TestApp_HandleReportsKeys_YearlyToggle(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 6,
-		},
+		}},
 	}
 
 	// Press 'y' to toggle to yearly view
@@ -473,11 +473,11 @@ func TestApp_HandleReportsKeys_MonthlyToggle(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 0, // yearly
-		},
+		}},
 	}
 
 	// Press 'm' to toggle to monthly view
@@ -495,7 +495,7 @@ func TestApp_HandleReportsKeys_NilReports(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports:     nil,
+		reports:     reportsViewState{data: nil},
 	}
 
 	// Should not panic
@@ -528,21 +528,21 @@ func TestApp_Update_ReportsViewDataLoaded(t *testing.T) {
 	if cmd != nil {
 		t.Error("reportsViewDataLoadedMsg should not return a command")
 	}
-	if updatedApp.reports == nil {
+	if updatedApp.reports.data == nil {
 		t.Fatal("reports data should be set")
 	}
-	if updatedApp.reports.rtype != reportTypeNetWorth {
-		t.Errorf("report type = %v, want net worth", updatedApp.reports.rtype)
+	if updatedApp.reports.data.rtype != reportTypeNetWorth {
+		t.Errorf("report type = %v, want net worth", updatedApp.reports.data.rtype)
 	}
 }
 
 func TestApp_ReportsPreviousPeriod_Monthly(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 3,
-		},
+		}},
 	}
 
 	_, cmd := app.reportsPreviousPeriod()
@@ -553,11 +553,11 @@ func TestApp_ReportsPreviousPeriod_Monthly(t *testing.T) {
 
 func TestApp_ReportsPreviousPeriod_MonthlyJanuaryWrap(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 1,
-		},
+		}},
 	}
 
 	_, cmd := app.reportsPreviousPeriod()
@@ -568,11 +568,11 @@ func TestApp_ReportsPreviousPeriod_MonthlyJanuaryWrap(t *testing.T) {
 
 func TestApp_ReportsNextPeriod_Monthly(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 3,
-		},
+		}},
 	}
 
 	_, cmd := app.reportsNextPeriod()
@@ -583,11 +583,11 @@ func TestApp_ReportsNextPeriod_Monthly(t *testing.T) {
 
 func TestApp_ReportsNextPeriod_MonthlyDecemberWrap(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 12,
-		},
+		}},
 	}
 
 	_, cmd := app.reportsNextPeriod()
@@ -598,7 +598,7 @@ func TestApp_ReportsNextPeriod_MonthlyDecemberWrap(t *testing.T) {
 
 func TestApp_ReportsPeriodNav_Nil(t *testing.T) {
 	app := &App{
-		reports: nil,
+		reports: reportsViewState{data: nil},
 	}
 
 	_, cmd := app.reportsPreviousPeriod()
@@ -614,9 +614,9 @@ func TestApp_ReportsPeriodNav_Nil(t *testing.T) {
 
 func TestApp_ReportsPeriodNav_NetWorthIgnored(t *testing.T) {
 	app := &App{
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
-		},
+		}},
 	}
 
 	_, cmd := app.reportsPreviousPeriod()
@@ -640,13 +640,13 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
 				AsOfDate: types.Today().Time(),
 				Totals:   usdTotals(types.MustNewMoney("1000"), types.ZeroMoney, types.MustNewMoney("1000")),
 			},
-		},
+		}},
 	}
 
 	view := app.renderReports()
@@ -655,7 +655,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 	}
 
 	// Test spending dispatch
-	app.reports = &reportsViewData{
+	app.reports.data = &reportsViewData{
 		rtype: reportTypeSpending,
 		year:  2024,
 		month: 1,
@@ -681,10 +681,10 @@ func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype:    reportTypeNetWorth,
 			netWorth: nil,
-		},
+		}},
 	}
 
 	view := app.renderNetWorthReport()
@@ -702,10 +702,10 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype:    reportTypeSpending,
 			spending: nil,
-		},
+		}},
 	}
 
 	view := app.renderSpendingReport()
@@ -721,11 +721,11 @@ func TestApp_HandleReportsKeys_TransferToggle(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
 			month: 6,
-		},
+		}},
 	}
 
 	tKey := tea.KeyPressMsg{Code: 't', Text: "t"}
@@ -739,7 +739,7 @@ func TestApp_HandleReportsKeys_TransferToggle(t *testing.T) {
 	// service wired up (the flag is set before the service is consulted).
 	model, _ := app.Update(cmd())
 	updated := model.(*App)
-	if !updated.reports.includeTransfers {
+	if !updated.reports.data.includeTransfers {
 		t.Errorf("running the reload command should set includeTransfers=true")
 	}
 
@@ -749,12 +749,12 @@ func TestApp_HandleReportsKeys_TransferToggle(t *testing.T) {
 		t.Fatal("pressing 't' again should return a reload command")
 	}
 	model, _ = updated.Update(cmd())
-	if model.(*App).reports.includeTransfers {
+	if model.(*App).reports.data.includeTransfers {
 		t.Errorf("pressing 't' again should clear includeTransfers")
 	}
 
 	// On the net worth report, 't' is ignored.
-	app.reports = &reportsViewData{rtype: reportTypeNetWorth, year: 2024, month: 6}
+	app.reports.data = &reportsViewData{rtype: reportTypeNetWorth, year: 2024, month: 6}
 	if _, cmd = app.Update(tKey); cmd != nil {
 		t.Error("pressing 't' on the net worth report should be ignored")
 	}
@@ -769,7 +769,7 @@ func TestApp_RenderSpendingReport_IncludeTransfersSuffix(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype:            reportTypeSpending,
 			year:             2024,
 			month:            1,
@@ -781,7 +781,7 @@ func TestApp_RenderSpendingReport_IncludeTransfersSuffix(t *testing.T) {
 					{Name: "Card Payment", Amount: types.MustNewMoney("500.00"), Percentage: 100.0},
 				},
 			},
-		},
+		}},
 	}
 
 	view := app.renderSpendingReport()
@@ -793,7 +793,7 @@ func TestApp_RenderSpendingReport_IncludeTransfersSuffix(t *testing.T) {
 	}
 
 	// Without the flag the suffix disappears (the footer hint stays).
-	app.reports.includeTransfers = false
+	app.reports.data.includeTransfers = false
 	view = app.renderSpendingReport()
 	if contains(view, "(incl. transfers)") {
 		t.Errorf("renderSpendingReport() without includeTransfers must not show the suffix; got:\n%s", view)
@@ -814,12 +814,12 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			menubar:     widget.NewMenuBar(),
 			statusbar:   widget.NewStatusBar(),
 			sidebar:     NewSidebar(),
-			reports: &reportsViewData{
+			reports: reportsViewState{data: &reportsViewData{
 				rtype:            reportTypeSpending,
 				year:             2024,
 				month:            6,
 				includeTransfers: true,
-			},
+			}},
 		}
 	}
 
@@ -832,7 +832,7 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			t.Fatalf("key %v should return a reload command", key)
 		}
 		model, _ := app.Update(cmd())
-		return model.(*App).reports
+		return model.(*App).reports.data
 	}
 
 	t.Run("preserved across report-type and period navigation", func(t *testing.T) {
@@ -860,7 +860,7 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			t.Fatal("MenuActionSpendingByCategory should return a reload command")
 		}
 		model, _ := app.Update(cmd())
-		if model.(*App).reports.includeTransfers {
+		if model.(*App).reports.data.includeTransfers {
 			t.Error("a fresh entry via the Spending menu must reset includeTransfers to false")
 		}
 	})
@@ -880,13 +880,13 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		reports: &reportsViewData{
+		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			netWorth: &report.NetWorth{
 				AsOfDate: types.Today().Time(),
 				Totals:   usdTotals(types.MustNewMoney("0.00"), types.ZeroMoney, types.MustNewMoney("0.00")),
 			},
-		},
+		}},
 	}
 
 	var titleLine string
