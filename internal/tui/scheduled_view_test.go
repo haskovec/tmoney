@@ -95,7 +95,7 @@ func TestApp_RenderScheduled_Loading(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		scheduled:   nil,
+		scheduled:   scheduledViewState{data: nil},
 	}
 
 	view := app.renderScheduled()
@@ -112,13 +112,13 @@ func TestApp_RenderScheduled_Empty(t *testing.T) {
 		width:       100,
 		height:      30,
 		styles:      styles,
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       nil,
 			dueCount:      0,
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	view := app.renderScheduled()
@@ -161,7 +161,7 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 		width:       120,
 		height:      30,
 		styles:      styles,
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			dueTxns:       []*scheduled.Transaction{dueTxn},
 			upcomingTxns:  []*scheduled.Transaction{upcomingTxn},
 			allTxns:       []*scheduled.Transaction{dueTxn, upcomingTxn},
@@ -169,7 +169,7 @@ func TestApp_RenderScheduled_WithDueAndUpcoming(t *testing.T) {
 			payeeNames:    map[types.ID]string{payeeID1: "Landlord", payeeID2: "Netflix"},
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildScheduledTable()
@@ -204,7 +204,7 @@ func TestApp_BuildScheduledTable(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -219,19 +219,19 @@ func TestApp_BuildScheduledTable(t *testing.T) {
 			payeeNames:    map[types.ID]string{payeeID: "Electric Co"},
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildScheduledTable()
 
-	if app.scheduledTable == nil {
-		t.Fatal("scheduledTable should be created")
+	if app.scheduled.table == nil {
+		t.Fatal("scheduled.table should be created")
 	}
-	if app.scheduledTable.RowCount() != 1 {
-		t.Errorf("expected 1 row, got %d", app.scheduledTable.RowCount())
+	if app.scheduled.table.RowCount() != 1 {
+		t.Errorf("expected 1 row, got %d", app.scheduled.table.RowCount())
 	}
 
-	row := app.scheduledTable.SelectedRow()
+	row := app.scheduled.table.SelectedRow()
 	if row == nil {
 		t.Fatal("selected row should not be nil")
 	}
@@ -259,7 +259,7 @@ func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -273,12 +273,12 @@ func TestApp_BuildScheduledTable_VariableAmount(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildScheduledTable()
 
-	row := app.scheduledTable.SelectedRow()
+	row := app.scheduled.table.SelectedRow()
 	if row[3] != "~variable" {
 		t.Errorf("amount = %q, want %q for variable amount", row[3], "~variable")
 	}
@@ -290,7 +290,7 @@ func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -304,12 +304,12 @@ func TestApp_BuildScheduledTable_OverdueIndicator(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildScheduledTable()
 
-	row := app.scheduledTable.SelectedRow()
+	row := app.scheduled.table.SelectedRow()
 	if row[0] != "!●" {
 		t.Errorf("status = %q, want %q for overdue", row[0], "!●")
 	}
@@ -321,7 +321,7 @@ func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{
 					BaseModel: types.BaseModel{ID: types.NewID()},
@@ -335,12 +335,12 @@ func TestApp_BuildScheduledTable_UpcomingIndicator(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	app.buildScheduledTable()
 
-	row := app.scheduledTable.SelectedRow()
+	row := app.scheduled.table.SelectedRow()
 	if row[0] != " ○" {
 		t.Errorf("status = %q, want %q for upcoming", row[0], " ○")
 	}
@@ -358,7 +358,7 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyMonthly, NextDate: types.Today()},
 				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyWeekly, NextDate: types.Today()},
@@ -368,32 +368,32 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildScheduledTable()
 
 	// Start with table focused, sidebar not
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Move down
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.Update(downKey)
-	if app.scheduledTable.Cursor() != 1 {
-		t.Errorf("cursor should be 1 after down, got %d", app.scheduledTable.Cursor())
+	if app.scheduled.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after down, got %d", app.scheduled.table.Cursor())
 	}
 
 	// Move down again
 	app.Update(downKey)
-	if app.scheduledTable.Cursor() != 2 {
-		t.Errorf("cursor should be 2 after two downs, got %d", app.scheduledTable.Cursor())
+	if app.scheduled.table.Cursor() != 2 {
+		t.Errorf("cursor should be 2 after two downs, got %d", app.scheduled.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.Update(upKey)
-	if app.scheduledTable.Cursor() != 1 {
-		t.Errorf("cursor should be 1 after up, got %d", app.scheduledTable.Cursor())
+	if app.scheduled.table.Cursor() != 1 {
+		t.Errorf("cursor should be 1 after up, got %d", app.scheduled.table.Cursor())
 	}
 }
 
@@ -409,19 +409,19 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			dueCount:      0,
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  map[types.ID]string{accountID: "Checking"},
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildScheduledTable()
 
 	// Start with table focused
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Tab should switch focus to sidebar
 	tabKey := tea.KeyPressMsg{Code: tea.KeyTab}
@@ -430,7 +430,7 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 	if !app.sidebar.IsFocused() {
 		t.Error("sidebar should be focused after Tab")
 	}
-	if app.scheduledTable.IsFocused() {
+	if app.scheduled.table.IsFocused() {
 		t.Error("scheduled table should not be focused after Tab")
 	}
 
@@ -440,7 +440,7 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 	if app.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused after second Tab")
 	}
-	if !app.scheduledTable.IsFocused() {
+	if !app.scheduled.table.IsFocused() {
 		t.Error("scheduled table should be focused after second Tab")
 	}
 }
@@ -481,17 +481,17 @@ func TestApp_Update_ScheduledViewDataLoaded(t *testing.T) {
 	if cmd != nil {
 		t.Error("scheduledViewDataLoadedMsg should not return a command")
 	}
-	if updatedApp.scheduled == nil {
+	if updatedApp.scheduled.data == nil {
 		t.Fatal("scheduled data should be set")
 	}
-	if len(updatedApp.scheduled.allTxns) != 1 {
-		t.Errorf("expected 1 scheduled txn, got %d", len(updatedApp.scheduled.allTxns))
+	if len(updatedApp.scheduled.data.allTxns) != 1 {
+		t.Errorf("expected 1 scheduled txn, got %d", len(updatedApp.scheduled.data.allTxns))
 	}
-	if updatedApp.scheduledTable == nil {
+	if updatedApp.scheduled.table == nil {
 		t.Fatal("scheduled table should be created")
 	}
-	if updatedApp.scheduledTable.RowCount() != 1 {
-		t.Errorf("scheduled table row count = %d, want 1", updatedApp.scheduledTable.RowCount())
+	if updatedApp.scheduled.table.RowCount() != 1 {
+		t.Errorf("scheduled table row count = %d, want 1", updatedApp.scheduled.table.RowCount())
 	}
 }
 
@@ -515,11 +515,11 @@ func TestApp_FormatScheduledRow_AllFrequencies(t *testing.T) {
 		t.Run(string(tt.freq), func(t *testing.T) {
 			app := &App{
 				styles: widget.NewStyles(),
-				scheduled: &scheduledViewData{
+				scheduled: scheduledViewState{data: &scheduledViewData{
 					payeeNames:    make(map[types.ID]string),
 					accountNames:  map[types.ID]string{accountID: "Checking"},
 					categoryNames: make(map[types.ID]string),
-				},
+				}},
 			}
 
 			st := &scheduled.Transaction{
@@ -611,18 +611,18 @@ func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
 			Transaction: txnSvc,
 		},
 		undoManager: undo.NewManager(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{dueTxn},
 			dueTxns:       []*scheduled.Transaction{dueTxn},
 			dueCount:      1,
 			payeeNames:    map[types.ID]string{payeeID: "Landlord"},
 			accountNames:  map[types.ID]string{acct.ID: acct.Name},
 			categoryNames: map[types.ID]string{rentCat.ID: "Rent"},
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Press Enter on the due item.
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}

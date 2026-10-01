@@ -236,22 +236,22 @@ func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
 
 func TestApp_SwitchView_Scheduled_SetsFocus(t *testing.T) {
 	app := &App{
-		currentView:    ViewDashboard,
-		keys:           defaultKeyMap(),
-		statusbar:      widget.NewStatusBar(),
-		sidebar:        NewSidebar(),
-		scheduledTable: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}}),
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     NewSidebar(),
+		scheduled:   scheduledViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
 	app.sidebar.SetFocused(true)
-	app.scheduledTable.SetFocused(false)
+	app.scheduled.table.SetFocused(false)
 
 	app.switchView(ViewScheduled)
 
 	if app.sidebar.IsFocused() {
 		t.Error("sidebar should not be focused in scheduled view")
 	}
-	if !app.scheduledTable.IsFocused() {
+	if !app.scheduled.table.IsFocused() {
 		t.Error("scheduled table should be focused in scheduled view")
 	}
 }

@@ -18,6 +18,13 @@ type scheduledDueCountMsg struct {
 	count int
 }
 
+// scheduledViewState is everything the Scheduled view owns. Its zero value is
+// the view before its first load.
+type scheduledViewState struct {
+	data  *scheduledViewData
+	table *widget.Table
+}
+
 // scheduledViewData holds the loaded data for the scheduled transactions view.
 type scheduledViewData struct {
 	dueTxns       []*scheduled.Transaction
@@ -169,13 +176,13 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
 			a.sidebar.SetFocused(false)
-			if a.scheduledTable != nil {
-				a.scheduledTable.SetFocused(true)
+			if a.scheduled.table != nil {
+				a.scheduled.table.SetFocused(true)
 			}
 		} else {
 			a.sidebar.SetFocused(true)
-			if a.scheduledTable != nil {
-				a.scheduledTable.SetFocused(false)
+			if a.scheduled.table != nil {
+				a.scheduled.table.SetFocused(false)
 			}
 		}
 		return a, nil
@@ -187,25 +194,25 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// widget.Table-focused key handling
-	if a.scheduledTable == nil || a.scheduled == nil {
+	if a.scheduled.table == nil || a.scheduled.data == nil {
 		return a, nil
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.scheduledTable.MoveUp()
+		a.scheduled.table.MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.scheduledTable.MoveDown()
+		a.scheduled.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.scheduledTable.MoveToTop()
+		a.scheduled.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.scheduledTable.MoveToBottom()
+		a.scheduled.table.MoveToBottom()
 	case msg.String() == "pgup":
 		tableHeight := max(a.height-6, 1)
-		a.scheduledTable.PageUp(tableHeight)
+		a.scheduled.table.PageUp(tableHeight)
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
-		a.scheduledTable.PageDown(tableHeight)
+		a.scheduled.table.PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Enter):
 		// MS-019: Enter opens the preview dialog instead of posting
 		// directly. The save handler (which creates the real
@@ -229,16 +236,16 @@ func (a *App) handleScheduledKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // skipSelectedScheduled skips the currently selected scheduled transaction.
 func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
-	if a.scheduled == nil || a.scheduledTable == nil || a.services.Scheduled == nil {
+	if a.scheduled.data == nil || a.scheduled.table == nil || a.services.Scheduled == nil {
 		return a, nil
 	}
 
-	cursor := a.scheduledTable.Cursor()
-	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+	cursor := a.scheduled.table.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.data.allTxns) {
 		return a, nil
 	}
 
-	st := a.scheduled.allTxns[cursor]
+	st := a.scheduled.data.allTxns[cursor]
 	return a, func() tea.Msg {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
@@ -253,16 +260,16 @@ func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
 
 // deleteSelectedScheduled deletes the currently selected scheduled transaction.
 func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
-	if a.scheduled == nil || a.scheduledTable == nil || a.services.Scheduled == nil {
+	if a.scheduled.data == nil || a.scheduled.table == nil || a.services.Scheduled == nil {
 		return a, nil
 	}
 
-	cursor := a.scheduledTable.Cursor()
-	if cursor < 0 || cursor >= len(a.scheduled.allTxns) {
+	cursor := a.scheduled.table.Cursor()
+	if cursor < 0 || cursor >= len(a.scheduled.data.allTxns) {
 		return a, nil
 	}
 
-	st := a.scheduled.allTxns[cursor]
+	st := a.scheduled.data.allTxns[cursor]
 	return a, func() tea.Msg {
 		if a.undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
@@ -277,7 +284,7 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 
 // renderScheduled renders the scheduled transactions view.
 func (a *App) renderScheduled() string {
-	if a.scheduled == nil {
+	if a.scheduled.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading scheduled transactions...")
@@ -290,8 +297,8 @@ func (a *App) renderScheduled() string {
 	// Title row: SCHEDULED + counts
 	titleText := "SCHEDULED TRANSACTIONS"
 	countText := ""
-	if a.scheduled.dueCount > 0 {
-		countText = fmt.Sprintf("%d due", a.scheduled.dueCount)
+	if a.scheduled.data.dueCount > 0 {
+		countText = fmt.Sprintf("%d due", a.scheduled.data.dueCount)
 	}
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(countText)-4, 1)
 	titleRow := a.styles.Title.Render(titleText)
@@ -304,7 +311,7 @@ func (a *App) renderScheduled() string {
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	if len(a.scheduled.allTxns) == 0 {
+	if len(a.scheduled.data.allTxns) == 0 {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No scheduled transactions"))
 		sections = append(sections, "")
@@ -321,10 +328,10 @@ func (a *App) renderScheduled() string {
 	paddingHeight := 2 // top/bottom padding
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight, 1)
 
-	if a.scheduledTable != nil {
+	if a.scheduled.table != nil {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.scheduledTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.scheduledTable.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.scheduled.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.scheduled.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	}
@@ -336,7 +343,7 @@ func (a *App) renderScheduled() string {
 
 // buildScheduledTable creates and populates the table for the scheduled view.
 func (a *App) buildScheduledTable() {
-	if a.scheduled == nil {
+	if a.scheduled.data == nil {
 		return
 	}
 
@@ -350,17 +357,17 @@ func (a *App) buildScheduledTable() {
 		{Header: "Auto", Width: 10, Align: widget.AlignLeft},
 	}
 
-	if a.scheduledTable == nil {
-		a.scheduledTable = widget.NewTable(columns)
+	if a.scheduled.table == nil {
+		a.scheduled.table = widget.NewTable(columns)
 	} else {
-		a.scheduledTable.SetColumns(columns)
+		a.scheduled.table.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.scheduled.allTxns))
-	for i, st := range a.scheduled.allTxns {
-		rows[i] = a.formatScheduledRow(st, i < a.scheduled.dueCount)
+	rows := make([][]string, len(a.scheduled.data.allTxns))
+	for i, st := range a.scheduled.data.allTxns {
+		rows[i] = a.formatScheduledRow(st, i < a.scheduled.data.dueCount)
 	}
-	a.scheduledTable.SetRows(rows)
+	a.scheduled.table.SetRows(rows)
 }
 
 // formatScheduledRow formats a scheduled transaction into table row strings.
@@ -383,13 +390,13 @@ func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string
 	// destination account as "→ To" in this column instead.
 	payee := ""
 	if st.IsTransfer() {
-		if name, ok := a.scheduled.accountNames[st.TransferAccountID.ID]; ok {
+		if name, ok := a.scheduled.data.accountNames[st.TransferAccountID.ID]; ok {
 			payee = "→ " + name
 		} else {
 			payee = "→ transfer"
 		}
 	} else if st.HasPayee() {
-		if name, ok := a.scheduled.payeeNames[st.PayeeID.ID]; ok {
+		if name, ok := a.scheduled.data.payeeNames[st.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
@@ -405,7 +412,7 @@ func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string
 
 	// Account
 	account := ""
-	if name, ok := a.scheduled.accountNames[st.AccountID]; ok {
+	if name, ok := a.scheduled.data.accountNames[st.AccountID]; ok {
 		account = name
 	}
 

@@ -421,16 +421,16 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Press 'n' for new scheduled
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
@@ -452,17 +452,17 @@ func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{st},
 			dueCount:      0,
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 	app.buildScheduledTable()
 	app.sidebar.SetFocused(false)
-	app.scheduledTable.SetFocused(true)
+	app.scheduled.table.SetFocused(true)
 
 	// Press 'e' for edit scheduled
 	eKey := tea.KeyPressMsg{Code: 'e', Text: "e"}
@@ -1271,12 +1271,12 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog([]string{"Checking"}, []string{"(None)"})
 			return d
@@ -1322,12 +1322,12 @@ func TestApp_RenderScheduled_EmptyState(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		scheduled: &scheduledViewData{
+		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			payeeNames:    make(map[types.ID]string),
 			accountNames:  make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
-		},
+		}},
 	}
 
 	output := app.renderScheduled()
@@ -1498,11 +1498,11 @@ func TestFormatScheduledRow_AutoPostIndicator(t *testing.T) {
 
 			app := &App{
 				styles: styles,
-				scheduled: &scheduledViewData{
+				scheduled: scheduledViewState{data: &scheduledViewData{
 					payeeNames:    make(map[types.ID]string),
 					accountNames:  make(map[types.ID]string),
 					categoryNames: make(map[types.ID]string),
-				},
+				}},
 			}
 
 			row := app.formatScheduledRow(st, false)

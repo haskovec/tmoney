@@ -104,15 +104,15 @@ func init() {
 				return "↑↓ navigate  enter post  s skip  n new  t transfer  e edit  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: scheduledShortcuts,
-			table:     func(a *App) *widget.Table { return a.scheduledTable },
+			table:     func(a *App) *widget.Table { return a.scheduled.table },
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.loadScheduledViewData(), a.loadScheduledDueCount()}
 			},
 			focus: func(a *App) {
 				// Start with scheduled table focused
 				a.sidebar.SetFocused(false)
-				if a.scheduledTable != nil {
-					a.scheduledTable.SetFocused(true)
+				if a.scheduled.table != nil {
+					a.scheduled.table.SetFocused(true)
 				}
 			},
 		},
