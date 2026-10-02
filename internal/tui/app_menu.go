@@ -118,7 +118,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 
 	case widget.MenuActionPrices:
 		a.switchView(ViewPrices)
-		return a, a.loadPriceViewData()
+		return a, a.prices.load(a.priceDeps())
 
 	case widget.MenuActionStockSplit:
 		a.stockSplit.preSelectedID = nil

@@ -139,6 +139,19 @@ var viewControllers = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "prices",
+		surface: reflect.TypeFor[priceViewState](),
+		deps:    reflect.TypeFor[priceDeps](),
+		bind:    func(a *App) any { return a.priceDeps() },
+		probes: func(a *App) []func() any {
+			d := a.priceDeps()
+			return []func() any{
+				func() any { return d.securities() },
+				func() any { return d.prices() },
+			}
+		},
+	},
 }
 
 // allControllers is every row of both tables: the surfaces, then the views.

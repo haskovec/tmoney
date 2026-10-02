@@ -493,7 +493,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Prices):
 		a.switchView(ViewPrices)
-		return a, a.loadPriceViewData()
+		return a, a.prices.load(a.priceDeps())
 
 	case key.Matches(msg, a.keys.Escape):
 		// In prices detail mode, Esc returns to the prices list within the

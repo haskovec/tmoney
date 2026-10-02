@@ -31,6 +31,27 @@ type priceViewState struct {
 	clicks    *widget.ClickTracker // list-mode double-click; lazy-initialized on first click
 }
 
+// priceDeps is what the Prices view needs from outside itself. Every dep is a
+// func, because switchDatabase replaces App's services and closes the previous
+// *db.DB; and deps are passed to each call, never stored in the view state.
+// Both rules are pinned by the guards that run over viewControllers. The name
+// is priceDeps, not pricesDeps, because the table guard finds the view state
+// from it (priceViewState).
+type priceDeps struct {
+	securities func() *security.Service
+	prices     func() *price.Service
+}
+
+// priceDeps binds the Prices view to the services App owns. Every accessor may
+// return nil, because an App built by a test has no services, so each caller
+// keeps its own nil guard.
+func (a *App) priceDeps() priceDeps {
+	return priceDeps{
+		securities: func() *security.Service { return a.services.Security },
+		prices:     func() *price.Service { return a.services.Price },
+	}
+}
+
 // priceViewData holds the loaded data for the price management view.
 // Both list and detail modes share this struct; mode tells which slice
 // is the source of truth.
@@ -53,7 +74,7 @@ type priceViewData struct {
 	// historyCache memoizes per-security price history slices so the
 	// list-mode chart panel doesn't re-query the price service when the
 	// cursor lands on the same row twice. Lifecycle is tied to the
-	// priceViewData instance — full reload (loadPriceViewData) creates
+	// priceViewData instance — full reload (load) creates
 	// a new cache; per-security CRUD invalidations call Evict; bulk
 	// refresh calls Clear (see PC-015 / PC-016).
 	historyCache *historyCache
@@ -115,21 +136,23 @@ type priceImportedMsg struct {
 	skipped  int
 }
 
-// loadPriceViewData returns a command that loads the prices landing page:
-// the list of latest prices per non-hidden security with any prices.
-func (a *App) loadPriceViewData() tea.Cmd {
+// load returns a command that loads the prices landing page: the list of
+// latest prices per non-hidden security with any prices. The services are read
+// through the deps when the command runs.
+func (s *priceViewState) load(d priceDeps) tea.Cmd {
 	return func() tea.Msg {
-		if a.services.Security == nil || a.services.Price == nil {
+		secSvc, priceSvc := d.securities(), d.prices()
+		if secSvc == nil || priceSvc == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		excludeHidden := true
-		securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+		securities, err := secSvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 
-		latest, err := a.services.Price.GetLatestPrices()
+		latest, err := priceSvc.GetLatestPrices()
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load latest prices: %w", err)}
 		}
@@ -151,44 +174,45 @@ func (a *App) loadPriceViewData() tea.Cmd {
 // selectedSecurity is set, but this guards anyway so a stray dispatch
 // doesn't panic. Other entries are intentionally left alone — only the
 // modified ticker needs to re-fetch.
-func (a *App) evictSelectedSecurityFromHistoryCache() {
-	if a.prices.data == nil || a.prices.data.historyCache == nil {
+func (s *priceViewState) evictSelectedSecurityFromHistoryCache() {
+	if s.data == nil || s.data.historyCache == nil {
 		return
 	}
-	if a.prices.data.selectedSecurity == nil {
+	if s.data.selectedSecurity == nil {
 		return
 	}
-	a.prices.data.historyCache.Evict(a.prices.data.selectedSecurity.ID)
+	s.data.historyCache.Evict(s.data.selectedSecurity.ID)
 }
 
-// reloadPriceViewKeepingMode refreshes the prices view in whichever mode
-// it is currently showing. Used after a CRUD operation so the user stays
-// in detail mode (instead of being kicked back to the landing list) when
-// they add/edit/delete a price for a specific ticker.
-func (a *App) reloadPriceViewKeepingMode() tea.Cmd {
-	if a.prices.data != nil && a.prices.data.mode == pricesViewDetail && a.prices.data.selectedSecurity != nil {
-		return a.loadPriceViewDataForSecurity(a.prices.data.selectedSecurity)
+// reloadKeepingMode refreshes the prices view in whichever mode it is
+// currently showing. Used after a CRUD operation so the user stays in detail
+// mode (instead of being kicked back to the landing list) when they
+// add/edit/delete a price for a specific ticker.
+func (s *priceViewState) reloadKeepingMode(d priceDeps) tea.Cmd {
+	if s.data != nil && s.data.mode == pricesViewDetail && s.data.selectedSecurity != nil {
+		return s.loadForSecurity(d, s.data.selectedSecurity)
 	}
-	return a.loadPriceViewData()
+	return s.load(d)
 }
 
-// loadPriceViewDataForSecurity returns a command that drills into a single
-// security's price history (detail mode).
-func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
+// loadForSecurity returns a command that drills into a single security's price
+// history (detail mode).
+func (s *priceViewState) loadForSecurity(d priceDeps, sec *security.Security) tea.Cmd {
 	return func() tea.Msg {
-		if a.services.Security == nil || a.services.Price == nil {
+		secSvc, priceSvc := d.securities(), d.prices()
+		if secSvc == nil || priceSvc == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
 		excludeHidden := true
-		securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+		securities, err := secSvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 
 		var prices []*price.Price
 		if sec != nil {
-			prices, err = a.services.Price.GetPriceHistory(sec.ID, nil, nil)
+			prices, err = priceSvc.GetPriceHistory(sec.ID, nil, nil)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to load prices: %w", err)}
 			}
@@ -206,28 +230,28 @@ func (a *App) loadPriceViewDataForSecurity(sec *security.Security) tea.Cmd {
 	}
 }
 
-// applyPriceViewData installs a freshly loaded price view and builds the table
-// its mode calls for. In list mode it also kicks off the initial debounced
+// applyData installs a freshly loaded price view and builds the table its mode
+// calls for. In list mode it also kicks off the initial debounced
 // chart fetch for the row under the cursor, so the chart panel populates
 // without requiring a keystroke; subsequent cursor movement reschedules.
 //
 // The existing historyCache is carried across the reload. Without that, the
 // per-security evictions the price-CRUD handlers perform (PC-015) and the full
 // clear bulk refresh performs (PC-016) would be silently undone by the fresh
-// empty cache loadPriceViewData constructs.
-func (a *App) applyPriceViewData(data *priceViewData) tea.Cmd {
-	if a.prices.data != nil && a.prices.data.historyCache != nil {
-		data.historyCache = a.prices.data.historyCache
+// empty cache load constructs.
+func (s *priceViewState) applyData(data *priceViewData) tea.Cmd {
+	if s.data != nil && s.data.historyCache != nil {
+		data.historyCache = s.data.historyCache
 	}
-	a.prices.data = data
+	s.data = data
 	switch data.mode {
 	case pricesViewList:
-		a.buildPriceListTable()
-		if secID := a.listCursorSecurityID(); !secID.IsNil() {
-			return a.schedulePriceChartFetch(secID)
+		s.buildListTable()
+		if secID := s.listCursorSecurityID(); !secID.IsNil() {
+			return s.scheduleChartFetch(secID)
 		}
 	case pricesViewDetail:
-		a.buildPriceTable()
+		s.buildTable()
 	}
 	return nil
 }
@@ -237,8 +261,8 @@ func (a *App) applyPriceViewData(data *priceViewData) tea.Cmd {
 // price CRUD result ends this way; only the note differs.
 func (a *App) afterPriceChange(note string) tea.Cmd {
 	a.statusbar.AddNotification(note, widget.NotificationInfo)
-	a.evictSelectedSecurityFromHistoryCache()
-	return a.reloadPriceViewKeepingMode()
+	a.prices.evictSelectedSecurityFromHistoryCache()
+	return a.prices.reloadKeepingMode(a.priceDeps())
 }
 
 // applyPriceRefreshResult ends a bulk refresh. The in-progress notification
@@ -264,7 +288,7 @@ func (a *App) applyPriceRefreshResult(msg priceRefreshCompleteMsg) tea.Cmd {
 		cmds = append(cmds, a.loadSecurityViewData())
 	}
 	if a.currentView == ViewPrices {
-		cmds = append(cmds, a.loadPriceViewData())
+		cmds = append(cmds, a.prices.load(a.priceDeps()))
 	}
 	return tea.Batch(cmds...)
 }

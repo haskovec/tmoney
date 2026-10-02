@@ -6,6 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -448,11 +450,47 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	}
 }
 
+// The wheel's chart-fetch tail tells the Prices view whether it is on screen.
+// The view's data outlives a view switch, so off the Prices view, with a price
+// list still loaded, a wheel scroll must still schedule nothing.
+func TestApp_MouseWheel_OffPricesWithPriceDataReturnsNoCmd(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     NewSidebar(),
+		statusbar:   widget.NewStatusBar(),
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{},
+		},
+		prices: priceViewState{data: &priceViewData{
+			mode:         pricesViewList,
+			securities:   []*security.Security{sec},
+			latestPrices: []*price.LatestPrice{{SecurityID: sec.ID, Ticker: "AAPL", Name: "Apple Inc."}},
+			historyCache: newHistoryCache(),
+		}},
+		width:  100,
+		height: 24,
+	}
+	app.prices.buildListTable()
+	app.styles.Resize(100, 24)
+	app.sidebar.SetFocused(false)
+	app.register.table.SetFocused(true)
+	app.register.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
+
+	_, cmd := app.Update(tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown})
+	if cmd != nil {
+		t.Errorf("wheel scroll off the Prices view must schedule no command, got %T", cmd())
+	}
+}
+
 // TestApp_MouseWheel_NonPricesViewReturnsNoCmd pins the contract that the
 // prices-chart-fetch tail added to handleMouseWheel is a true no-op off the
 // Prices list: scrolling a register table moves the cursor but schedules no
 // command. Without this guard a future change to
-// schedulePriceListChartFetchIfActive's view guard could leak a stray cmd
+// scheduleListChartFetchIfActive's view guard could leak a stray cmd
 // onto other views unnoticed.
 func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 	app := &App{

@@ -190,8 +190,10 @@ func init() {
 			id:         ViewPrices,
 			name:       "Prices",
 			fullScreen: true,
-			render:     (*App).renderPriceView,
-			onKey:      (*App).handlePriceViewKeys,
+			render: func(a *App) string {
+				return a.prices.render(a.styles, a.width, a.height)
+			},
+			onKey: (*App).handlePriceViewKeys,
 			hints: func(a *App) string {
 				if a.prices.data != nil && a.prices.data.mode == pricesViewDetail {
 					return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + commonKeyHints
@@ -205,7 +207,7 @@ func init() {
 				}
 				return a.prices.table
 			},
-			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.loadPriceViewData()} },
+			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.prices.load(a.priceDeps())} },
 			focus: func(a *App) {
 				// Prices is full-screen, no sidebar
 				a.sidebar.SetFocused(false)

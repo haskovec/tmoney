@@ -169,7 +169,7 @@ func TestHandlePriceListKeys_UTriggersRefresh(t *testing.T) {
 	fp.quotes["AAPL"] = quoteUSD("2026-04-22", "271.06")
 
 	a.prices.data = &priceViewData{mode: pricesViewList}
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	_, cmd := a.handlePriceViewKeys(uKey)
@@ -196,7 +196,7 @@ func TestHandlePriceDetailKeys_UTriggersRefresh(t *testing.T) {
 		mode:             pricesViewDetail,
 		selectedSecurity: secs[0],
 	}
-	a.buildPriceTable()
+	a.prices.buildTable()
 
 	uKey := tea.KeyPressMsg{Code: 'u', Text: "u"}
 	_, cmd := a.handlePriceViewKeys(uKey)

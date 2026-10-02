@@ -112,7 +112,7 @@ historyCache map[types.ID][]*price.Price
 | Leave and re-enter prices view | **Keep** cache (it's still valid) |
 | Switch database file | Cache is rebuilt automatically with the new `prices.data` |
 
-The CRUD invalidations hook into the existing message handlers that already trigger `reloadPriceViewKeepingMode()` — they call `evict(id)` before the reload. The bulk-refresh path calls `clear()` because the provider response doesn't tell us per-ticker which rows changed.
+The CRUD invalidations hook into the existing message handlers that already trigger `prices.reloadKeepingMode` — they call `evict(id)` before the reload. The bulk-refresh path calls `clear()` because the provider response doesn't tell us per-ticker which rows changed.
 
 > **Note**: this cache assumes prices change only via TUI-mediated actions (CRUD, import, bulk refresh). If background price refresh is ever introduced (e.g., a daemon), this cache becomes silently stale — invalidate or remove it at that point.
 
@@ -140,7 +140,7 @@ These are pure functions and are unit-tested directly without spinning up an `Ap
 
 Wiring lives in `price_view.go`:
 
-- `renderPriceList` composes the list table and the chart panel side by side using `lipgloss.JoinHorizontal` when `shouldShowChartPanel` returns true.
+- `prices.renderList` composes the list table and the chart panel side by side using `lipgloss.JoinHorizontal` when `shouldShowChartPanel` returns true.
 - A cursor-change hook (in `handlePriceListKeys` after `MoveUp`/`MoveDown`/`MoveToTop`/`MoveToBottom`/`PageUp`/`PageDown`) schedules the debounced fetch.
 - The four CRUD message handlers (`priceAddedMsg`, `priceUpdatedMsg`, `priceDeletedMsg`, `priceImportedMsg`) call `historyCache.evict(secID)` before reload.
 - The `u` refresh path calls `historyCache.clear()` after the bulk-refresh result arrives.
