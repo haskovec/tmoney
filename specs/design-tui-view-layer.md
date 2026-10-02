@@ -916,9 +916,9 @@ loads skipped the valuation when `services.Investment` was nil, but the service
 they call is `services.InvestmentValuation`. It dates from the extraction of
 the valuation service (`ba24049`), when some nil checks were not updated. The
 move kept the behaviour exactly, with a `portfolioDeps.investments` dep that
-existed only for the check. W14 then checked all 21 nil checks of the two
+existed only for the check. W14 then checked all 23 nil checks of the two
 services in the package: four loads were wrong (these two, the Dashboard's and
-the investment register's), and the other 17 guard the service they call. Each
+the investment register's), and the other 19 guard the service they call. Each
 of the four now checks the service it calls, and the Portfolio deps lost
 `investments`.
 

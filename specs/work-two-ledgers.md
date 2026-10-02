@@ -793,7 +793,7 @@ Production always wires both services, so a user cannot hit it. But an `App` wit
 
 Each load checks the service it calls. The investment register's load has two blocks, the cash balance under `Investment` and the valuation under `InvestmentValuation`, as its other loads are already split. The Portfolio deps lose `investments`, which existed only for the wrong check. The lot-detail error now names the valuation service.
 
-The other 17 nil checks of the two services in `internal/tui` guard the service they call, and were left alone. The CLI does not nil-check them.
+There were 23 nil checks of the two services in `internal/tui`: 21 in `App` code and the 2 in the Portfolio deps. Four were wrong. The other 19 guard the service they call, and were left alone. The CLI does not nil-check them.
 
 ### Tests
 
