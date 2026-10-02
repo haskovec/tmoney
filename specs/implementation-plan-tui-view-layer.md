@@ -173,8 +173,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`.
   - Done: `App` holds it as `reconciliation`, so `a.reconciliation` became `a.reconciliation.data` and `a.reconciliationTable` became `a.reconciliation.table`. `reconDialog` (a modal) and `reconDialogLastStatementDate` (the dialog's sticky date) stay on `App`. The Reconciliation branch in `handleKeyPress` reads only `currentView`, so it did not change. The W2 reload tests stay green.
 
-- [ ] **VL-310 — `securityViewState`**
+- [x] **VL-310 — `securityViewState`**
   - Fields: `data`, `table`, `pendingSelectID`. `pendingSecuritySelectID` moves here because only this view reads and writes it.
+  - Done: `App` holds it as `securities` (beside the `security` surface, as `prices` sits beside `price`), so `a.securityView` became `a.securities.data`, `a.securityTable` became `a.securities.table`, and `a.pendingSecuritySelectID` became `a.securities.pendingSelectID`. Checked before the move: the `securityAddedMsg` arm sets the ID after the security dialog saves, which is the shape of the register IDs that stay on `App`. But only the Securities view opens that dialog (`security_view.go`), and the whole add path is in the view's file, so the ID is the view's own.
 
 - [ ] **VL-311 — `corporateActionViewState` and its `leave()` hook**
   - Fields: `data`, `table`, `detail`, `filterEditing`. `corporateActionViewFilter` stays on `App`.

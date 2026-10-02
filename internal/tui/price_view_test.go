@@ -1108,10 +1108,10 @@ func TestSecurityView_PNavigatesToPrices(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		sidebar:     NewSidebar(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: true,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 

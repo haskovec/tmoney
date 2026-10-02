@@ -170,17 +170,9 @@ type App struct {
 	// Close-account dialog state.
 	closeAcct closeAcctSurface
 
-	// Security view state
-	securityView  *securityViewData
-	securityTable *widget.Table
-	security      securitySurface
-
-	// After adding a security, the table build step moves the cursor onto the
-	// row whose security ID matches, so a freshly added ticker scrolls into
-	// view rather than leaving the cursor wherever it was. Selecting by ID
-	// (not position) lands on the row even though the list is sorted by ticker.
-	// NilID means "no pending selection"; the build step clears it after use.
-	pendingSecuritySelectID types.ID
+	// Securities view state, and its add/edit dialog (a modal)
+	securities securityViewState
+	security   securitySurface
 
 	// Price view state, and its two modal dialogs
 	prices            priceViewState

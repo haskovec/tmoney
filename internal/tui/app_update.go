@@ -329,14 +329,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.applyUndoResult(msg)
 
 	case securityViewDataLoadedMsg:
-		a.securityView = msg.data
+		a.securities.data = msg.data
 		a.buildSecurityTable()
 		return a, nil
 
 	case securityAddedMsg:
 		// Select the new security after the reload so it scrolls into view,
 		// even if it sorts off-screen in a long list.
-		a.pendingSecuritySelectID = msg.id
+		a.securities.pendingSelectID = msg.id
 		return a, a.afterSecurityChange("Security added")
 
 	case securityUpdatedMsg:

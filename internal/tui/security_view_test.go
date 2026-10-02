@@ -101,7 +101,7 @@ func TestFormatSecurityRow(t *testing.T) {
 	sec.Currency = "USD"
 
 	app := &App{
-		securityView: &securityViewData{},
+		securities: securityViewState{data: &securityViewData{}},
 	}
 
 	row := app.formatSecurityRow(sec)
@@ -136,7 +136,7 @@ func TestFormatSecurityRow_Hidden(t *testing.T) {
 	sec.Hidden = true
 
 	app := &App{
-		securityView: &securityViewData{},
+		securities: securityViewState{data: &securityViewData{}},
 	}
 
 	row := app.formatSecurityRow(sec)
@@ -151,19 +151,19 @@ func TestBuildSecurityTable(t *testing.T) {
 	sec2 := security.NewSecurity("MSFT", "Microsoft Corp", security.TypeStock)
 
 	app := &App{
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2},
 			showHidden: true,
-		},
+		}},
 	}
 
 	app.buildSecurityTable()
 
-	if app.securityTable == nil {
-		t.Fatal("securityTable should not be nil after build")
+	if app.securities.table == nil {
+		t.Fatal("securities.table should not be nil after build")
 	}
-	if app.securityTable.RowCount() != 2 {
-		t.Errorf("expected 2 rows, got %d", app.securityTable.RowCount())
+	if app.securities.table.RowCount() != 2 {
+		t.Errorf("expected 2 rows, got %d", app.securities.table.RowCount())
 	}
 }
 
@@ -173,16 +173,16 @@ func TestBuildSecurityTable_WithHiddenFilter(t *testing.T) {
 	sec2.Hidden = true
 
 	app := &App{
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2},
 			showHidden: false,
-		},
+		}},
 	}
 
 	app.buildSecurityTable()
 
-	if app.securityTable.RowCount() != 1 {
-		t.Errorf("expected 1 visible row, got %d", app.securityTable.RowCount())
+	if app.securities.table.RowCount() != 1 {
+		t.Errorf("expected 1 visible row, got %d", app.securities.table.RowCount())
 	}
 }
 
@@ -192,17 +192,17 @@ func TestBuildSecurityTable_SortsByTicker(t *testing.T) {
 	sec3 := security.NewSecurity("GDX", "VanEck Gold Miners ETF", security.TypeETF)
 
 	app := &App{
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2, sec3},
 			showHidden: true,
-		},
+		}},
 	}
 
 	app.buildSecurityTable()
 
 	// The table should contain all 3 rows sorted by ticker
-	if app.securityTable.RowCount() != 3 {
-		t.Fatalf("expected 3 rows, got %d", app.securityTable.RowCount())
+	if app.securities.table.RowCount() != 3 {
+		t.Fatalf("expected 3 rows, got %d", app.securities.table.RowCount())
 	}
 }
 
@@ -223,10 +223,10 @@ func TestRenderSecurityView_NoSecurities(t *testing.T) {
 		width:  80,
 		height: 24,
 		styles: widget.NewStyles(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{},
 			showHidden: true,
-		},
+		}},
 	}
 	app.styles.Resize(80, 24)
 
@@ -243,10 +243,10 @@ func TestRenderSecurityView_WithData(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: true,
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildSecurityTable()
@@ -264,10 +264,10 @@ func TestRenderSecurityView_ShowsFilterStatus(t *testing.T) {
 		width:  100,
 		height: 30,
 		styles: widget.NewStyles(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: false,
-		},
+		}},
 	}
 	app.styles.Resize(100, 30)
 	app.buildSecurityTable()
@@ -278,7 +278,7 @@ func TestRenderSecurityView_ShowsFilterStatus(t *testing.T) {
 	}
 
 	// Toggle to show hidden
-	app.securityView.showHidden = true
+	app.securities.data.showHidden = true
 	app.buildSecurityTable()
 	output = app.renderSecurityView()
 	if !strings.Contains(output, "Hidden: on") {
@@ -294,10 +294,10 @@ func TestHandleSecurityViewKeys_Navigation(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2},
 			showHidden: true,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 
@@ -305,16 +305,16 @@ func TestHandleSecurityViewKeys_Navigation(t *testing.T) {
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	app.handleSecurityViewKeys(downKey)
 
-	if app.securityTable.Cursor() != 1 {
-		t.Errorf("cursor = %d, want 1 after down", app.securityTable.Cursor())
+	if app.securities.table.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 after down", app.securities.table.Cursor())
 	}
 
 	// Move up
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	app.handleSecurityViewKeys(upKey)
 
-	if app.securityTable.Cursor() != 0 {
-		t.Errorf("cursor = %d, want 0 after up", app.securityTable.Cursor())
+	if app.securities.table.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 after up", app.securities.table.Cursor())
 	}
 }
 
@@ -327,10 +327,10 @@ func TestHandleSecurityViewKeys_ToggleHidden(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2},
 			showHidden: false,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 
@@ -338,13 +338,13 @@ func TestHandleSecurityViewKeys_ToggleHidden(t *testing.T) {
 	fKey := tea.KeyPressMsg{Code: 'f', Text: "f"}
 	app.handleSecurityViewKeys(fKey)
 
-	if !app.securityView.showHidden {
+	if !app.securities.data.showHidden {
 		t.Error("showHidden should be true after pressing 'f'")
 	}
 
 	// Press 'f' again to toggle back
 	app.handleSecurityViewKeys(fKey)
-	if app.securityView.showHidden {
+	if app.securities.data.showHidden {
 		t.Error("showHidden should be false after pressing 'f' again")
 	}
 }
@@ -366,10 +366,10 @@ func TestSecurityViewDataLoadedMsg(t *testing.T) {
 	model, _ := app.Update(msg)
 
 	updatedApp := model.(*App)
-	if updatedApp.securityView == nil {
+	if updatedApp.securities.data == nil {
 		t.Fatal("security view data should be set")
 	}
-	if updatedApp.securityTable == nil {
+	if updatedApp.securities.table == nil {
 		t.Error("security table should be built")
 	}
 }
@@ -598,10 +598,10 @@ func TestSecuritySelectedSecurity(t *testing.T) {
 		width:  80,
 		height: 24,
 		keys:   defaultKeyMap(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec1, sec2},
 			showHidden: true,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 
@@ -615,7 +615,7 @@ func TestSecuritySelectedSecurity(t *testing.T) {
 	}
 
 	// Move to second security
-	app.securityTable.MoveDown()
+	app.securities.table.MoveDown()
 	selected = app.selectedSecurity()
 	if selected == nil {
 		t.Fatal("selectedSecurity() returned nil after MoveDown")
@@ -635,10 +635,10 @@ func TestSecuritySelectedSecurity_NilData(t *testing.T) {
 
 func TestSecurityViewUpdate_SecurityAddedMsg(t *testing.T) {
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	msg := securityAddedMsg{}
@@ -665,17 +665,17 @@ func TestSecurityViewUpdate_SecurityAddedMsg(t *testing.T) {
 func TestSecurityAddedMsg_StashesPendingSelect(t *testing.T) {
 	newID := types.NewID()
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	model, _ := app.Update(securityAddedMsg{id: newID})
 	updatedApp := model.(*App)
 
-	if updatedApp.pendingSecuritySelectID != newID {
-		t.Errorf("pendingSecuritySelectID = %v, want %v", updatedApp.pendingSecuritySelectID, newID)
+	if updatedApp.securities.pendingSelectID != newID {
+		t.Errorf("securities.pendingSelectID = %v, want %v", updatedApp.securities.pendingSelectID, newID)
 	}
 }
 
@@ -698,22 +698,24 @@ func TestBuildSecurityTable_PendingSelectMovesCursor(t *testing.T) {
 	sec3 := security.NewSecurity("ZZZ", "Zeta Corp", security.TypeStock)
 
 	app := &App{
-		securityView: &securityViewData{
-			securities: []*security.Security{sec1, sec2, sec3},
-			showHidden: true,
+		securities: securityViewState{
+			data: &securityViewData{
+				securities: []*security.Security{sec1, sec2, sec3},
+				showHidden: true,
+			},
+			pendingSelectID: targetID,
 		},
-		pendingSecuritySelectID: targetID,
 	}
 	app.buildSecurityTable()
 
-	if got := app.securityTable.Cursor(); got != 1 {
+	if got := app.securities.table.Cursor(); got != 1 {
 		t.Errorf("cursor = %d, want 1 (MMM after sort)", got)
 	}
 	if sel := app.selectedSecurity(); sel == nil || sel.Ticker != "MMM" {
 		t.Errorf("selectedSecurity() = %v, want MMM", sel)
 	}
-	if !app.pendingSecuritySelectID.IsNil() {
-		t.Error("pendingSecuritySelectID should be cleared after applying")
+	if !app.securities.pendingSelectID.IsNil() {
+		t.Error("securities.pendingSelectID should be cleared after applying")
 	}
 }
 
@@ -729,24 +731,26 @@ func TestBuildSecurityTable_PendingSelectNoMatch(t *testing.T) {
 	pendingID := types.NewID() // not present in the list yet
 
 	app := &App{
-		securityView: &securityViewData{
-			securities: []*security.Security{sec1, sec2},
-			showHidden: true,
+		securities: securityViewState{
+			data: &securityViewData{
+				securities: []*security.Security{sec1, sec2},
+				showHidden: true,
+			},
+			pendingSelectID: pendingID,
 		},
-		pendingSecuritySelectID: pendingID,
 	}
 	app.buildSecurityTable()
 
-	if got := app.securityTable.Cursor(); got != 0 {
+	if got := app.securities.table.Cursor(); got != 0 {
 		t.Errorf("cursor = %d, want 0 (unchanged on no match)", got)
 	}
-	if app.pendingSecuritySelectID != pendingID {
-		t.Error("pendingSecuritySelectID should be preserved when no row matches yet, so a later reload can still select it")
+	if app.securities.pendingSelectID != pendingID {
+		t.Error("securities.pendingSelectID should be preserved when no row matches yet, so a later reload can still select it")
 	}
 
 	// When the security later appears (the real post-add reload), the still-set
 	// pending ID selects it and is then cleared.
-	app.securityView.securities = append(app.securityView.securities, &security.Security{
+	app.securities.data.securities = append(app.securities.data.securities, &security.Security{
 		BaseModel:    types.BaseModel{ID: pendingID},
 		Ticker:       "NVDA",
 		Name:         "NVIDIA Corp",
@@ -759,17 +763,17 @@ func TestBuildSecurityTable_PendingSelectNoMatch(t *testing.T) {
 	if sel := app.selectedSecurity(); sel == nil || sel.Ticker != "NVDA" {
 		t.Errorf("selectedSecurity() = %v, want NVDA after it appears in the reload", sel)
 	}
-	if !app.pendingSecuritySelectID.IsNil() {
-		t.Error("pendingSecuritySelectID should be cleared once the row is matched")
+	if !app.securities.pendingSelectID.IsNil() {
+		t.Error("securities.pendingSelectID should be cleared once the row is matched")
 	}
 }
 
 func TestSecurityViewUpdate_SecurityUpdatedMsg(t *testing.T) {
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	msg := securityUpdatedMsg{}
@@ -787,10 +791,10 @@ func TestSecurityViewUpdate_SecurityUpdatedMsg(t *testing.T) {
 
 func TestSecurityViewUpdate_SecurityDeletedMsg(t *testing.T) {
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	msg := securityDeletedMsg{}
@@ -808,10 +812,10 @@ func TestSecurityViewUpdate_SecurityDeletedMsg(t *testing.T) {
 
 func TestSecurityViewUpdate_SecurityHiddenMsg(t *testing.T) {
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	msg := securityHiddenMsg{hidden: true}
@@ -832,10 +836,10 @@ func TestSecurityViewUpdate_SecurityHiddenMsg(t *testing.T) {
 
 func TestSecurityViewUpdate_SecurityUnhiddenMsg(t *testing.T) {
 	app := &App{
-		currentView:  ViewSecurities,
-		keys:         defaultKeyMap(),
-		statusbar:    widget.NewStatusBar(),
-		securityView: &securityViewData{securities: []*security.Security{}},
+		currentView: ViewSecurities,
+		keys:        defaultKeyMap(),
+		statusbar:   widget.NewStatusBar(),
+		securities:  securityViewState{data: &securityViewData{securities: []*security.Security{}}},
 	}
 
 	msg := securityHiddenMsg{hidden: false}
@@ -892,10 +896,10 @@ func TestSecurityView_FullScreenRender(t *testing.T) {
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: true,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 
@@ -911,7 +915,7 @@ func TestSecurityDialogDeleteConfirm(t *testing.T) {
 		currentView: ViewSecurities,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		securityView: &securityViewData{
+		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{
 				{
 					BaseModel:    types.BaseModel{ID: secID},
@@ -923,7 +927,7 @@ func TestSecurityDialogDeleteConfirm(t *testing.T) {
 				},
 			},
 			showHidden: true,
-		},
+		}},
 	}
 	app.buildSecurityTable()
 

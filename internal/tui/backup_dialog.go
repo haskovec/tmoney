@@ -169,8 +169,8 @@ func (a *App) reloadAfterRestore() (tea.Model, tea.Cmd) {
 	a.scheduled.data = nil
 	a.scheduled.table = nil
 	a.reports.data = nil
-	a.securityView = nil
-	a.securityTable = nil
+	a.securities.data = nil
+	a.securities.table = nil
 	a.prices.data = nil
 	a.prices.table = nil
 	a.investmentRegister.data = nil
