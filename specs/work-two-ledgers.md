@@ -791,7 +791,7 @@ Production always wires both services, so a user cannot hit it. But an `App` wit
 
 ### Fix
 
-Each load checks the service it calls. The investment register's load has two blocks, the cash balance under `Investment` and the valuation under `InvestmentValuation`, as its other loads are already split. The Portfolio deps lose `investments`, which existed only for the wrong check. The lot-detail error now names the valuation service.
+Each load checks the service it calls. The investment register's load has one block per service: the transactions and the valuation under `InvestmentValuation`, and the cash balance under `Investment`. The Portfolio deps lose `investments`, which existed only for the wrong check. The lot-detail error now names the valuation service.
 
 There were 23 nil checks of the two services in `internal/tui`: 21 in `App` code and the 2 in the Portfolio deps. Four were wrong. The other 19 guard the service they call, and were left alone. The CLI does not nil-check them.
 
@@ -801,7 +801,7 @@ There were 23 nil checks of the two services in `internal/tui`: 21 in `App` code
 
 | Case | Assert |
 | --- | --- |
-| Each of the four loads, with no valuation service | No panic. |
+| Each of the four loads, with no valuation service | No panic. The load does what the other services allow (the net worth, the account) and leaves the valuation out; the lot detail, which is all valuation, reports an error. |
 | Each of the four loads, with no investment service | The valuation (or the lot detail) still loads. |
 
 All eight cases fail on the code before the fix.
