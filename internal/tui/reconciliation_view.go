@@ -16,6 +16,13 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
+// reconciliationViewState is everything the Reconciliation view owns. Its zero
+// value is the view with no session on screen.
+type reconciliationViewState struct {
+	data  *reconciliationViewData
+	table *widget.Table
+}
+
 // reconciliationViewData holds the loaded data for the reconciliation view.
 type reconciliationViewData struct {
 	session       *reconciliation.Session
@@ -262,7 +269,7 @@ func (a *App) reloadReconciliationData(r *reconciliationViewData) tea.Cmd {
 // copy taken when the load began, so a toggle made while the load was in
 // flight survives. A reload for a session no longer on screen is dropped.
 func (a *App) applyReconciliationReload(data *reconciliationViewData) tea.Cmd {
-	cur := a.reconciliation
+	cur := a.reconciliation.data
 	if a.currentView != ViewReconciliation || cur == nil || cur.session == nil ||
 		data.session == nil || cur.session.ID != data.session.ID {
 		return nil
@@ -275,18 +282,18 @@ func (a *App) applyReconciliationReload(data *reconciliationViewData) tea.Cmd {
 	// The loader's total counts no marks; show the last total until the
 	// recalculation for the kept marks lands.
 	data.clearedTotal = cur.clearedTotal
-	a.reconciliation = data
+	a.reconciliation.data = data
 	a.buildReconciliationTable()
 	return a.recalculateClearedTotal()
 }
 
 // recalculateClearedTotal recalculates the cleared total based on checked transactions.
 func (a *App) recalculateClearedTotal() tea.Cmd {
-	if a.reconciliation == nil || a.services.Reconciliation == nil {
+	if a.reconciliation.data == nil || a.services.Reconciliation == nil {
 		return nil
 	}
 
-	accountID := a.reconciliation.session.AccountID
+	accountID := a.reconciliation.data.session.AccountID
 	checkedIDs := a.getCheckedTransactionIDs()
 
 	return func() tea.Msg {
@@ -300,11 +307,11 @@ func (a *App) recalculateClearedTotal() tea.Cmd {
 
 // getCheckedTransactionIDs returns a slice of checked transaction IDs.
 func (a *App) getCheckedTransactionIDs() []types.ID {
-	if a.reconciliation == nil {
+	if a.reconciliation.data == nil {
 		return nil
 	}
 	var ids []types.ID
-	for id, checked := range a.reconciliation.checkedIDs {
+	for id, checked := range a.reconciliation.data.checkedIDs {
 		if checked {
 			ids = append(ids, id)
 		}
@@ -314,7 +321,7 @@ func (a *App) getCheckedTransactionIDs() []types.ID {
 
 // buildReconciliationTable creates and populates the table for the reconciliation view.
 func (a *App) buildReconciliationTable() {
-	if a.reconciliation == nil {
+	if a.reconciliation.data == nil {
 		return
 	}
 
@@ -327,25 +334,25 @@ func (a *App) buildReconciliationTable() {
 		{Header: "Amount", Width: 12, Align: widget.AlignRight},
 	}
 
-	if a.reconciliationTable == nil {
-		a.reconciliationTable = widget.NewTable(columns)
+	if a.reconciliation.table == nil {
+		a.reconciliation.table = widget.NewTable(columns)
 	} else {
-		a.reconciliationTable.SetColumns(columns)
+		a.reconciliation.table.SetColumns(columns)
 	}
 
-	rows := make([][]string, len(a.reconciliation.candidates))
-	for i, txn := range a.reconciliation.candidates {
+	rows := make([][]string, len(a.reconciliation.data.candidates))
+	for i, txn := range a.reconciliation.data.candidates {
 		rows[i] = a.formatReconciliationRow(txn)
 	}
-	a.reconciliationTable.SetRows(rows)
-	a.reconciliationTable.SetFocused(true)
+	a.reconciliation.table.SetRows(rows)
+	a.reconciliation.table.SetFocused(true)
 }
 
 // formatReconciliationRow formats a transaction into a reconciliation table row.
 func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 	// Checkbox
 	checkbox := "[ ]"
-	if a.reconciliation.checkedIDs[txn.ID] {
+	if a.reconciliation.data.checkedIDs[txn.ID] {
 		checkbox = "[✓]"
 	}
 
@@ -361,13 +368,13 @@ func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 	// Payee
 	payee := ""
 	if txn.IsTransfer() {
-		if name, ok := a.reconciliation.accountNames[txn.TransferAccountID.ID]; ok {
+		if name, ok := a.reconciliation.data.accountNames[txn.TransferAccountID.ID]; ok {
 			payee = "Transfer: " + name
 		} else {
 			payee = "Transfer"
 		}
 	} else if txn.HasPayee() {
-		if name, ok := a.reconciliation.payeeNames[txn.PayeeID.ID]; ok {
+		if name, ok := a.reconciliation.data.payeeNames[txn.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
@@ -375,7 +382,7 @@ func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 	// Category
 	category := ""
 	if txn.HasCategory() {
-		if name, ok := a.reconciliation.categoryNames[txn.CategoryID.ID]; ok {
+		if name, ok := a.reconciliation.data.categoryNames[txn.CategoryID.ID]; ok {
 			category = name
 		}
 	} else if txn.IsTransfer() {
@@ -390,19 +397,19 @@ func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 
 // updateReconciliationCheckboxes refreshes the table rows to reflect checkbox state.
 func (a *App) updateReconciliationCheckboxes() {
-	if a.reconciliationTable == nil || a.reconciliation == nil {
+	if a.reconciliation.table == nil || a.reconciliation.data == nil {
 		return
 	}
-	rows := make([][]string, len(a.reconciliation.candidates))
-	for i, txn := range a.reconciliation.candidates {
+	rows := make([][]string, len(a.reconciliation.data.candidates))
+	for i, txn := range a.reconciliation.data.candidates {
 		rows[i] = a.formatReconciliationRow(txn)
 	}
-	a.reconciliationTable.SetRows(rows)
+	a.reconciliation.table.SetRows(rows)
 }
 
 // renderReconciliation renders the reconciliation view.
 func (a *App) renderReconciliation() string {
-	if a.reconciliation == nil {
+	if a.reconciliation.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading reconciliation...")
@@ -413,8 +420,8 @@ func (a *App) renderReconciliation() string {
 	var sections []string
 
 	// Header: RECONCILE: <account name>    Statement Date: <date>
-	acctName := a.reconciliation.account.Name
-	stmtDate := a.reconciliation.session.StatementDate.Time().Format("01/02/2006")
+	acctName := a.reconciliation.data.account.Name
+	stmtDate := a.reconciliation.data.session.StatementDate.Time().Format("01/02/2006")
 	leftHeader := "RECONCILE: " + acctName
 	rightHeader := "Statement Date: " + stmtDate
 	padding := max(contentWidth-lipgloss.Width(leftHeader)-lipgloss.Width(rightHeader)-4, 1)
@@ -433,13 +440,13 @@ func (a *App) renderReconciliation() string {
 	paddingHeight := 2 // top/bottom padding
 	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-	if a.reconciliationTable != nil && len(a.reconciliation.candidates) > 0 {
+	if a.reconciliation.table != nil && len(a.reconciliation.data.candidates) > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.reconciliationTable.Render(a.styles, tableWidth, tableHeight))
-		if info := a.reconciliationTable.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.reconciliation.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.reconciliation.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
-	} else if len(a.reconciliation.candidates) == 0 {
+	} else if len(a.reconciliation.data.candidates) == 0 {
 		sections = append(sections, "")
 		sections = append(sections, a.styles.Muted.Render("  No unreconciled transactions found"))
 	}
@@ -447,9 +454,9 @@ func (a *App) renderReconciliation() string {
 	// Sticky footer
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	stmtBal := formatDashboardMoney(a.reconciliation.session.StatementBalance)
-	clrTotal := formatDashboardMoney(a.reconciliation.clearedTotal)
-	difference := a.reconciliation.session.StatementBalance.Sub(a.reconciliation.clearedTotal)
+	stmtBal := formatDashboardMoney(a.reconciliation.data.session.StatementBalance)
+	clrTotal := formatDashboardMoney(a.reconciliation.data.clearedTotal)
+	difference := a.reconciliation.data.session.StatementBalance.Sub(a.reconciliation.data.clearedTotal)
 	diffStr := formatDashboardMoney(difference)
 
 	// Color the difference
@@ -458,9 +465,9 @@ func (a *App) renderReconciliation() string {
 		diffStyle = a.styles.Negative
 	}
 
-	totalCount := len(a.reconciliation.candidates)
+	totalCount := len(a.reconciliation.data.candidates)
 	checkedCount := 0
-	for _, checked := range a.reconciliation.checkedIDs {
+	for _, checked := range a.reconciliation.data.checkedIDs {
 		if checked {
 			checkedCount++
 		}
@@ -481,25 +488,25 @@ func (a *App) renderReconciliation() string {
 
 // handleReconciliationKeys handles key presses in the reconciliation view.
 func (a *App) handleReconciliationKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.reconciliation == nil || a.reconciliationTable == nil {
+	if a.reconciliation.data == nil || a.reconciliation.table == nil {
 		return a, nil
 	}
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.reconciliationTable.MoveUp()
+		a.reconciliation.table.MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.reconciliationTable.MoveDown()
+		a.reconciliation.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.reconciliationTable.MoveToTop()
+		a.reconciliation.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.reconciliationTable.MoveToBottom()
+		a.reconciliation.table.MoveToBottom()
 	case msg.String() == "pgup":
 		tableHeight := max(a.height-10, 1)
-		a.reconciliationTable.PageUp(tableHeight)
+		a.reconciliation.table.PageUp(tableHeight)
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-10, 1)
-		a.reconciliationTable.PageDown(tableHeight)
+		a.reconciliation.table.PageDown(tableHeight)
 	case msg.String() == "space":
 		// Toggle checkbox on selected transaction
 		return a.toggleReconciliationCheck()
@@ -522,15 +529,15 @@ func (a *App) handleReconciliationKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 
 // toggleReconciliationCheck toggles the checked state of the selected transaction.
 func (a *App) toggleReconciliationCheck() (tea.Model, tea.Cmd) {
-	cursor := a.reconciliationTable.Cursor()
-	if cursor < 0 || cursor >= len(a.reconciliation.candidates) {
+	cursor := a.reconciliation.table.Cursor()
+	if cursor < 0 || cursor >= len(a.reconciliation.data.candidates) {
 		return a, nil
 	}
 
-	txn := a.reconciliation.candidates[cursor]
-	a.reconciliation.checkedIDs[txn.ID] = !a.reconciliation.checkedIDs[txn.ID]
-	if !a.reconciliation.checkedIDs[txn.ID] {
-		delete(a.reconciliation.checkedIDs, txn.ID)
+	txn := a.reconciliation.data.candidates[cursor]
+	a.reconciliation.data.checkedIDs[txn.ID] = !a.reconciliation.data.checkedIDs[txn.ID]
+	if !a.reconciliation.data.checkedIDs[txn.ID] {
+		delete(a.reconciliation.data.checkedIDs, txn.ID)
 	}
 
 	a.updateReconciliationCheckboxes()
@@ -539,8 +546,8 @@ func (a *App) toggleReconciliationCheck() (tea.Model, tea.Cmd) {
 
 // checkAllReconciliation checks all candidate transactions.
 func (a *App) checkAllReconciliation() (tea.Model, tea.Cmd) {
-	for _, txn := range a.reconciliation.candidates {
-		a.reconciliation.checkedIDs[txn.ID] = true
+	for _, txn := range a.reconciliation.data.candidates {
+		a.reconciliation.data.checkedIDs[txn.ID] = true
 	}
 	a.updateReconciliationCheckboxes()
 	return a, a.recalculateClearedTotal()
@@ -548,19 +555,19 @@ func (a *App) checkAllReconciliation() (tea.Model, tea.Cmd) {
 
 // uncheckAllReconciliation unchecks all candidate transactions.
 func (a *App) uncheckAllReconciliation() (tea.Model, tea.Cmd) {
-	a.reconciliation.checkedIDs = make(map[types.ID]bool)
+	a.reconciliation.data.checkedIDs = make(map[types.ID]bool)
 	a.updateReconciliationCheckboxes()
 	return a, a.recalculateClearedTotal()
 }
 
 // finishReconciliation attempts to finish the reconciliation session.
 func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
-	if a.reconciliation == nil {
+	if a.reconciliation.data == nil {
 		return a, nil
 	}
 
 	// Check difference first (before needing the service)
-	difference := a.reconciliation.session.StatementBalance.Sub(a.reconciliation.clearedTotal)
+	difference := a.reconciliation.data.session.StatementBalance.Sub(a.reconciliation.data.clearedTotal)
 	if !difference.IsZero() {
 		diffStr := formatDashboardMoney(difference)
 		a.statusbar.AddNotification(
@@ -574,7 +581,7 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	accountID := a.reconciliation.session.AccountID
+	accountID := a.reconciliation.data.session.AccountID
 	txnIDs := a.getCheckedTransactionIDs()
 
 	return a, func() tea.Msg {
@@ -590,11 +597,11 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 
 // cancelReconciliation cancels the current reconciliation session.
 func (a *App) cancelReconciliation() (tea.Model, tea.Cmd) {
-	if a.reconciliation == nil || a.services.Reconciliation == nil {
+	if a.reconciliation.data == nil || a.services.Reconciliation == nil {
 		return a, nil
 	}
 
-	accountID := a.reconciliation.session.AccountID
+	accountID := a.reconciliation.data.session.AccountID
 
 	return a, func() tea.Msg {
 		err := a.services.Reconciliation.CancelReconciliation(accountID)
@@ -609,11 +616,11 @@ func (a *App) cancelReconciliation() (tea.Model, tea.Cmd) {
 // the account was reconciled in, reloading it so the new cleared marks show.
 func (a *App) afterReconciliationFinished() tea.Cmd {
 	acctName := ""
-	if a.reconciliation != nil {
-		acctName = a.reconciliation.account.Name
+	if a.reconciliation.data != nil {
+		acctName = a.reconciliation.data.account.Name
 	}
-	a.reconciliation = nil
-	a.reconciliationTable = nil
+	a.reconciliation.data = nil
+	a.reconciliation.table = nil
 	a.switchView(ViewRegister)
 	a.statusbar.AddNotification(fmt.Sprintf("Reconciliation completed for %s", acctName), widget.NotificationInfo)
 	return tea.Batch(
@@ -625,8 +632,8 @@ func (a *App) afterReconciliationFinished() tea.Cmd {
 // afterReconciliationCancelled drops the session and returns to the register.
 // Nothing is reloaded: a cancelled session wrote nothing.
 func (a *App) afterReconciliationCancelled() {
-	a.reconciliation = nil
-	a.reconciliationTable = nil
+	a.reconciliation.data = nil
+	a.reconciliation.table = nil
 	a.switchView(ViewRegister)
 	a.statusbar.AddNotification("Reconciliation cancelled", widget.NotificationInfo)
 }

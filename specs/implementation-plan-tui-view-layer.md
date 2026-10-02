@@ -169,8 +169,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Field: `data`.
   - Done: `App` holds it as `reports`, so `a.reports` became `a.reports.data`. The field count does not change: one field becomes one field, so every view has the same shape. The tool's receiver filter missed `model.(*App).reports` in three test lines; the compiler found them, and they were fixed by hand.
 
-- [ ] **VL-309 — `reconciliationViewState`**
+- [x] **VL-309 — `reconciliationViewState`**
   - Fields: `data`, `table`.
+  - Done: `App` holds it as `reconciliation`, so `a.reconciliation` became `a.reconciliation.data` and `a.reconciliationTable` became `a.reconciliation.table`. `reconDialog` (a modal) and `reconDialogLastStatementDate` (the dialog's sticky date) stay on `App`. The Reconciliation branch in `handleKeyPress` reads only `currentView`, so it did not change. The W2 reload tests stay green.
 
 - [ ] **VL-310 — `securityViewState`**
   - Fields: `data`, `table`, `pendingSelectID`. `pendingSecuritySelectID` moves here because only this view reads and writes it.
