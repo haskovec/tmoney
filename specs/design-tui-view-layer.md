@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is proposed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
+**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured (VL-401) and not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -654,6 +654,83 @@ candidates, by what §1.5 says they touch:
 **This phase is a table of per-view decisions, not a commitment.** Its result
 is the number the "Methods on `*App`" row above declines to predict. It is
 listed so that phases 1–3 are built in the shape that makes it cheap.
+
+#### Measured (VL-401, 2026-10-02): 112 of 154 view methods could move
+
+A throwaway `go/ast` tool applied the 4c rule to every `*App` method in each
+view's files. The dialog files beside a view (`price_dialog.go`,
+`investment_type_selector.go` and the like) are surfaces, so they are left
+out. §1.5 counted 164 methods before phase 3 moved the price dialogs and the
+type selector into those files.
+
+A method **could move** onto the view's state struct when both of these hold:
+
+- Every `App` field it names is the view's own state, `styles`, `services`
+  (reached through a deps struct, as in the transfer pilot), or a value that it
+  only reads and that the caller can pass in: the key bindings, the screen
+  size, `currentView`, the config, or a handoff such as the ticker filter.
+- Every `App` method it calls could move too and belongs to the same view, or
+  is a helper that touches only those things and would become a free function.
+
+A method is **pinned** when it uses a chrome object (the status bar, the
+sidebar, the undo manager), names a modal surface or another view's state,
+writes a value that the view does not own, or calls a pinned method. The tool
+repeats until nothing changes. Five of the movable methods were read by hand
+to check that the rule is not too generous.
+
+| View | Methods | Could move | Pinned | What pins them |
+|---|---|---|---|---|
+| Dashboard | 13 | 11 | 2 | the key handler and the expand toggle move the sidebar cursor |
+| Register | 10 | 4 | 6 | the key handler and the edit flow open the transfer dialog; clear, void and delete use the status bar, the sidebar and undo; the table build consumes `pendingRegisterSelectID` |
+| Investment register | 18 | 14 | 4 | the key handler (status bar, sidebar, undo, and it clears Portfolio's data); the status toggle (undo); the table build and the search-key handler consume `pendingInvestmentSelectID` |
+| Portfolio | 13 | 12 | 1 | the key handler (sidebar, and it opens the stock-split dialog) |
+| Scheduled | 12 | 6 | 6 | the key handler (sidebar); skip and delete (undo); the three result handlers (status bar, undo) |
+| Reports | 8 | 6 | 2 | both net-worth renders call Dashboard's `renderAssetLiabilityColumns`, which reads Dashboard state |
+| Reconciliation | 23 | 14 | 9 | finish and the two after-hooks (status bar, sidebar, undo); the key handler, through finish; the Start Reconciliation dialog's four methods (a surface, and its sticky date); the refusal for investment accounts |
+| Securities | 14 | 9 | 5 | the key handler opens four dialogs and writes the corporate-action filter; the security dialog's key, action and submit; the after-change note (status bar) |
+| Prices | 28 | 23 | 5 | the key handlers open the two price dialogs and start the bulk refresh; the after-change note and the refresh result (status bar, refresh flag, `a.err`) |
+| Corporate Actions | 10 | 8 | 2 | the key handler writes the ticker filter; delete opens the confirm dialog |
+| Amortization | 5 | 5 | 0 | — |
+| **All** | **154** | **112** | **42** | |
+
+What the table shows:
+
+- **§1.5 said that the view methods are "mostly pinned". They are not.** The
+  pins collect in the key handlers and in the after-save and result handlers,
+  which touch the chrome. The render, table-build, row-format, selection and
+  load methods name only their own view's state.
+- **22 of the 112 need a value passed in** that the view does not own. Most
+  need the screen size or the key bindings. The three valuation loaders need
+  `valuationOptions`, which reads the config. Two Corporate Actions methods
+  read the ticker filter, and two methods read `currentView`.
+- **Three of the 112 are dialog saves** that live in view files
+  (`createSecurity`, `updateSecurity`, `startReconciliation`). They would move
+  onto their dialog's surface, not onto the view.
+- **The cost of a move is the 4c cost.** The table entries that call a moved
+  method become closures that pass the inputs, for example
+  `render: func(a *App) string { return a.prices.render(a.styles, a.width, a.height) }`.
+  Each view whose movable methods reach a service needs one deps binding on
+  `App`, as `transferDeps` is: up to eleven new `*App` methods.
+- **The predictions above were wrong in both directions for Reports.** Its key
+  handler is not pinned: the global Esc arm in `handleKeyPress` returns to the
+  previous view before the view's handler runs, so the handler never calls
+  `switchView`. The same is true for Amortization. But Reports' render is
+  pinned, which the prediction missed. The Dashboard's render writes
+  `accountRows`, which is the Dashboard's own state, so it is not a pin.
+- **A coupling the design did not record.** Reports' net-worth render shows the
+  Dashboard's expand state: expand an account on the Dashboard, and the
+  Reports view shows it expanded too. That may be intended, and no test says
+  otherwise, so it is left alone. A move of Reports' render needs a decision
+  on it first.
+- **Read 112 as the most that could move, not as a forecast.** The earlier
+  design's 4c found coupling that a count over one file does not see: the
+  transfer pilot moved two methods that its count did not predict, and the
+  create-category step moved none of its own. Expect the same here.
+
+So a full phase 4 could take at most about 112 methods off `*App`, which has
+424 today, less up to eleven deps bindings: about 424 → 323. That is the
+number the "Methods on `*App`" row declined to predict. VL-402 decides, view
+by view, whether the move is worth its cost.
 
 ---
 
