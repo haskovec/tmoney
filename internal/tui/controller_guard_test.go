@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
@@ -149,6 +150,22 @@ var viewControllers = []controllerSurface{
 			return []func() any{
 				func() any { return d.securities() },
 				func() any { return d.prices() },
+			}
+		},
+	},
+	{
+		field:   "portfolio",
+		surface: reflect.TypeFor[portfolioViewState](),
+		deps:    reflect.TypeFor[portfolioDeps](),
+		bind:    func(a *App) any { return a.portfolioDeps() },
+		probes: func(a *App) []func() any {
+			d := a.portfolioDeps()
+			return []func() any{
+				func() any { return d.accounts() },
+				func() any { return d.investments() },
+				func() any { return d.valuations() },
+				func() any { return d.securities() },
+				func() any { return d.config() },
 			}
 		},
 	},
@@ -340,7 +357,9 @@ func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
 			// The switch. switchDatabase assigns a.services whole and clears the
 			// undo manager rather than replacing it (file_dialog.go), so the
 			// manager swap here is synthetic: it proves the closure re-reads the
-			// field, which is the property the deps rely on.
+			// field, which is the property the deps rely on. The config does not
+			// change on a switch at all; setting it is synthetic for the same
+			// reason, for the views whose deps read it.
 			svcV := reflect.ValueOf(&app.services).Elem()
 			for i := range svcV.NumField() {
 				if f := svcV.Field(i); f.Kind() == reflect.Pointer {
@@ -348,6 +367,7 @@ func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
 				}
 			}
 			app.undoManager = undo.NewManager()
+			app.cfg = &config.Config{}
 
 			for i, probe := range probes {
 				if isNilPointer(probe()) {

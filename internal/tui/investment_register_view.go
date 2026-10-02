@@ -216,7 +216,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
 			a.portfolio.data = nil // Clear old data while loading
 			a.switchView(ViewPortfolio)
-			return a, a.loadPortfolioData(a.investmentRegister.data.account.ID)
+			return a, a.portfolio.load(a.portfolioDeps(), a.investmentRegister.data.account.ID)
 		}
 	case key.Matches(msg, a.keys.Delete):
 		txn := a.selectedInvestmentTransaction()

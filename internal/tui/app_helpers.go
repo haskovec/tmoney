@@ -175,7 +175,7 @@ func (a *App) refreshAfterCorporateAction() tea.Cmd {
 	switch a.currentView {
 	case ViewPortfolio:
 		if a.portfolio.data != nil && a.portfolio.data.account != nil {
-			return a.loadPortfolioData(a.portfolio.data.account.ID)
+			return a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)
 		}
 	case ViewInvestmentRegister:
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {

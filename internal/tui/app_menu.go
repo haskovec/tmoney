@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -251,10 +252,16 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 // holdings list). A nil cfg falls back to IncludeClosed=false so the
 // helper is safe to call from tests that don't construct a config.
 func (a *App) valuationOptions() investment.ValuationOptions {
-	if a.cfg == nil {
+	return valuationOptionsFor(a.cfg)
+}
+
+// valuationOptionsFor is valuationOptions for a config that a view's deps hand
+// it, so a view state can build the options without App.
+func valuationOptionsFor(cfg *config.Config) investment.ValuationOptions {
+	if cfg == nil {
 		return investment.ValuationOptions{}
 	}
-	return investment.ValuationOptions{IncludeClosed: a.cfg.ShowClosedPositions}
+	return investment.ValuationOptions{IncludeClosed: cfg.ShowClosedPositions}
 }
 
 // toggleClosedPositions flips cfg.ShowClosedPositions, persists the
@@ -280,7 +287,7 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 		}
 	case ViewPortfolio:
 		if a.portfolio.data != nil && a.portfolio.data.account != nil {
-			return a, a.loadPortfolioData(a.portfolio.data.account.ID)
+			return a, a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)
 		}
 	}
 	return a, nil

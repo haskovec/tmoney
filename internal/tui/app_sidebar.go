@@ -51,7 +51,7 @@ func (a *App) handleSidebarKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if acct != nil && acct.Type.IsInvestmentType() {
 				a.portfolio.data = nil // Clear old data while loading
 				a.switchView(ViewPortfolio)
-				return a, a.loadPortfolioData(accountID)
+				return a, a.portfolio.load(a.portfolioDeps(), accountID)
 			}
 			a.register.data = nil // Clear old data while loading
 			a.switchView(ViewRegister)
