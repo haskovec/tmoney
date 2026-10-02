@@ -204,10 +204,11 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
 
 Each item moves the view's movable methods onto its state struct, with the 4c shape: a deps struct for the services, bound by one `App` method, and the inputs passed in at the call. The counts are from VL-401. "Calls" are the call sites that change: production code that stays on `App`, and tests.
 
-- [ ] **VL-403 — Pilot: Amortization**
+- [x] **VL-403 — Pilot: Amortization**
   - Move all 5 methods (`amortizationStatsLine`, `buildAmortizationTable`, `handleAmortizationKeys`, `loadAmortizationData`, `renderAmortizationView`). Deps: services. Inputs: styles, keys, width, height. Calls: 3 production, 5 tests.
   - Settle the guard shape. The proposal: a table for views beside `controllerSurfaces`, with the guard that no method on the view state names `App` and the two deps guards, and without the reach guard (the design says why). Mutation-verify each guard, as the 4c rows were.
   - Record the real cost as the 4c notes did: methods moved, methods added, lines, test churn. It prices the items after this one. If the cost is much higher than the count suggests, stop and re-decide before VL-404.
+  - Done: the design's phase 4 section has the note ("Built (VL-403, the pilot)"). `*App` 424 → 420: five methods moved onto `amortizationViewState`, and one arrived (`amortizationDeps`), as counted. The guard shape is as proposed: `viewControllers` beside `controllerSurfaces`, without the reach guard; one new guard, `TestGuard_NoViewStateHoldsItsDeps`; all mutation-verified. Six lines of existing tests changed. Two tests were added for the entry's closures, because a swapped width and height passed every old test. The cost is what the count predicted, so the stop condition does not apply. Each later item should also test its entry's closures.
 - [ ] **VL-404 — Prices**
   - 23 of 28. Deps: services. Inputs: styles, keys, width, height, `currentView`. Calls: 20 production, 68 tests (the most test churn of the seven). Stays on `App`: the three key handlers (the price dialogs, the bulk refresh), `afterPriceChange`, `applyPriceRefreshResult`.
 - [ ] **VL-405 — Portfolio**
