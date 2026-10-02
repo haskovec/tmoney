@@ -28,9 +28,9 @@ func TestAmortizationView_LoadsProjection(t *testing.T) {
 	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
 	loadAmort(t, env, env.loan.ID)
 
-	d := env.app.amortizationData
+	d := env.app.amortization.data
 	if d == nil {
-		t.Fatal("amortizationData is nil")
+		t.Fatal("amortization.data is nil")
 	}
 	if !d.hasSchedule {
 		t.Fatal("hasSchedule = false; want true")
@@ -62,8 +62,8 @@ func TestAmortizationView_LoadsProjection(t *testing.T) {
 		t.Errorf("row0.BalanceAfter = %s; want %s", row0.BalanceAfter, want)
 	}
 
-	if env.app.amortizationTable == nil {
-		t.Fatal("amortizationTable was not built")
+	if env.app.amortization.table == nil {
+		t.Fatal("amortization.table was not built")
 	}
 
 	out := env.app.renderAmortizationView()
@@ -87,15 +87,15 @@ func TestAmortizationView_NoSchedule(t *testing.T) {
 
 	loadAmort(t, env, carLoan.ID)
 
-	d := env.app.amortizationData
+	d := env.app.amortization.data
 	if d.hasSchedule {
 		t.Error("hasSchedule = true; want false (no schedule targets this loan)")
 	}
 	if want := types.MustNewMoney("20000"); !d.owed.Equal(want) {
 		t.Errorf("owed = %s; want %s", d.owed, want)
 	}
-	if env.app.amortizationTable != nil {
-		t.Error("amortizationTable should be nil with no projection")
+	if env.app.amortization.table != nil {
+		t.Error("amortization.table should be nil with no projection")
 	}
 
 	out := env.app.renderAmortizationView()
@@ -110,7 +110,7 @@ func TestAmortizationView_ClampFinalPayment(t *testing.T) {
 	env := newLoanPreviewEnv(t, "4000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
 	loadAmort(t, env, env.loan.ID)
 
-	d := env.app.amortizationData
+	d := env.app.amortization.data
 	if d.stats.PaymentsRemaining != 2 {
 		t.Fatalf("PaymentsRemaining = %d; want 2", d.stats.PaymentsRemaining)
 	}
@@ -129,7 +129,7 @@ func TestAmortizationView_Truncated(t *testing.T) {
 	env := newLoanPreviewEnv(t, "380000", "6.5", "2058.34", types.NewDate(2026, time.August, 1))
 	loadAmort(t, env, env.loan.ID)
 
-	d := env.app.amortizationData
+	d := env.app.amortization.data
 	if !d.stats.Truncated {
 		t.Fatalf("stats.Truncated = false; want true")
 	}
@@ -159,15 +159,15 @@ func TestAmortizationView_MissingAPR(t *testing.T) {
 
 	loadAmort(t, env, env.loan.ID)
 
-	d := env.app.amortizationData
+	d := env.app.amortization.data
 	if !d.hasSchedule {
 		t.Error("hasSchedule = false; want true (schedule still loan-shaped)")
 	}
 	if d.aprValid {
 		t.Error("aprValid = true; want false after clearing the rate")
 	}
-	if env.app.amortizationTable != nil {
-		t.Error("amortizationTable should be nil without an APR")
+	if env.app.amortization.table != nil {
+		t.Error("amortization.table should be nil without an APR")
 	}
 
 	out := env.app.renderAmortizationView()
@@ -196,7 +196,7 @@ func TestRegisterKey_A_OpensAmortizationForLoan(t *testing.T) {
 	// Drive the returned load command through Update to confirm it wires up.
 	model, _ = env.app.Update(cmd())
 	env.app = model.(*App)
-	if env.app.amortizationData == nil || !env.app.amortizationData.hasSchedule {
+	if env.app.amortization.data == nil || !env.app.amortization.data.hasSchedule {
 		t.Error("amortization data not loaded after opening the view")
 	}
 }

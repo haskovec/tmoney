@@ -307,10 +307,10 @@ func init() {
 			onKey:      (*App).handleAmortizationKeys,
 			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
 			shortcuts:  amortizationShortcuts,
-			table:      func(a *App) *widget.Table { return a.amortizationTable },
+			table:      func(a *App) *widget.Table { return a.amortization.table },
 			reload: func(a *App) []tea.Cmd {
-				if a.amortizationData != nil && a.amortizationData.account != nil {
-					return []tea.Cmd{a.loadAmortizationData(a.amortizationData.account.ID)}
+				if a.amortization.data != nil && a.amortization.data.account != nil {
+					return []tea.Cmd{a.loadAmortizationData(a.amortization.data.account.ID)}
 				}
 				return nil
 			},

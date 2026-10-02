@@ -182,8 +182,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Move the departure special case out of `switchView` into this entry's `leave`. It does two things today, and `leave` must do both: drop the detail overlay, and end a filter entry (`filterEditing = false`), or the view comes back with every key captured as filter text. The filter is **not** cleared on leave. Test: a round trip keeps the filter, drops the detail, and ends the filter entry.
   - Done: `App` holds it as `corporateActions` (the view's name, as `investmentRegister` is; the review of #75 renamed it from `corporateActionView`), so the old data field `a.corporateActionView` became `a.corporateActions.data`, `a.corporateActionDetail` became `a.corporateActions.detail`, and so on. `detail` can move because it is a panel inside the view, not a modal (`modal.go`); `isDialogVisible` checks it on its own. The `leave` hook drops the detail and ends a filter entry, so `switchView` has no per-view `if`. `TestCorporateActions_RoundTripKeepsTheFilter` fails with no hook, and with a hook that also clears the filter; the two older tests (`TestCorporateActionDetail_ViewSwitchClearsOverlay`, `TestCorporateActions_LeavingEndsFilterEntry`) fail with no hook. `App` has 71 fields.
 
-- [ ] **VL-312 — `amortizationViewState`**
+- [x] **VL-312 — `amortizationViewState`**
   - Fields: `data`, `table`.
+  - Done: `App` holds it as `amortization`, so `a.amortizationData` became `a.amortization.data` and `a.amortizationTable` became `a.amortization.table`. The `focus` func did not change: it turns the sidebar off and does not touch the table, as VL-109 requires. `App` has 70 fields.
 
 - [ ] **VL-313 — Exit check**
   - Confirm: `switchView` has no per-view `if`; `App` is under about 60 fields; each view's state is one field; the six recorded decisions applied as written (the sixth is in VL-305); no assertion changed. Set the design document's phase 2 status to built.
