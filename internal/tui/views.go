@@ -303,20 +303,25 @@ func init() {
 			id:         ViewAmortization,
 			name:       "Amortization",
 			fullScreen: true,
-			render:     (*App).renderAmortizationView,
-			onKey:      (*App).handleAmortizationKeys,
-			hints:      func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
-			shortcuts:  amortizationShortcuts,
-			table:      func(a *App) *widget.Table { return a.amortization.table },
+			render: func(a *App) string {
+				return a.amortization.render(a.styles, a.width, a.height)
+			},
+			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+				a.amortization.handleKey(msg, a.keys, a.height)
+				return a, nil
+			},
+			hints:     func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
+			shortcuts: amortizationShortcuts,
+			table:     func(a *App) *widget.Table { return a.amortization.table },
 			reload: func(a *App) []tea.Cmd {
 				if a.amortization.data != nil && a.amortization.data.account != nil {
-					return []tea.Cmd{a.loadAmortizationData(a.amortization.data.account.ID)}
+					return []tea.Cmd{a.amortization.load(a.amortizationDeps(), a.amortization.data.account.ID)}
 				}
 				return nil
 			},
 			focus: func(a *App) {
 				// Amortization is full-screen, no sidebar. The table is built
-				// once its data loads (buildAmortizationTable focuses it then).
+				// once its data loads (buildTable focuses it then).
 				a.sidebar.SetFocused(false)
 			},
 		},

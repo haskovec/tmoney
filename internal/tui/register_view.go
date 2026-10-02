@@ -150,7 +150,7 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// on a closed loan too). A no-op on non-loan accounts.
 		if a.register.data.account != nil && a.register.data.account.Type == account.TypeLoan {
 			a.switchView(ViewAmortization)
-			return a, a.loadAmortizationData(a.register.data.account.ID)
+			return a, a.amortization.load(a.amortizationDeps(), a.register.data.account.ID)
 		}
 		return a, nil
 	case a.register.data.account != nil && a.register.data.account.IsClosed() &&

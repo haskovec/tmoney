@@ -19,8 +19,10 @@ import (
 // *App. These guards pin that claim from both sides: no method on the surface
 // names App, no production code reads a surface field through App, and every
 // dependency the surface is handed is a live func rather than a captured
-// pointer. All three run over controllerSurfaces, which is the only list of
-// controller surfaces; TestGuard_ControllerTableMatchesApp keeps it complete.
+// pointer. They run over controllerSurfaces, which is the only list of
+// controller surfaces, and over viewControllers, its twin for views; the reach
+// guard runs over the surfaces only, and viewControllers says why.
+// TestGuard_ControllerTableMatchesApp keeps both tables complete.
 //
 // They do NOT claim a surface could compile in its own package: each still
 // names package-level helpers such as errMsg and buildCategoryOptions. The
@@ -28,6 +30,8 @@ import (
 
 // controllerSurface is one row of the table: the App field that holds the
 // surface, its struct type, its deps type, and the App method that binds them.
+// A row of viewControllers has the same shape, with the view state's type as
+// its surface.
 type controllerSurface struct {
 	field   string
 	surface reflect.Type
@@ -114,6 +118,34 @@ var controllerSurfaces = []controllerSurface{
 	},
 }
 
+// viewControllers is every view that has been through the 4c motion (phase 4
+// of the view-layer design). A view row runs every guard a surface row does
+// except TestGuard_ControllerStateIsReachedOnlyByMethod. A surface's state can
+// be private because everything outside it reaches it through a method; a
+// view's cannot, because by the design's own rules code that stays on App
+// reads it: the view's message arm in app_update.go, its view table entry, and
+// any pinned methods (most often its key handler).
+var viewControllers = []controllerSurface{
+	{
+		field:   "amortization",
+		surface: reflect.TypeFor[amortizationViewState](),
+		deps:    reflect.TypeFor[amortizationDeps](),
+		bind:    func(a *App) any { return a.amortizationDeps() },
+		probes: func(a *App) []func() any {
+			d := a.amortizationDeps()
+			return []func() any{
+				func() any { return d.accounts() },
+				func() any { return d.scheduled() },
+			}
+		},
+	},
+}
+
+// allControllers is every row of both tables: the surfaces, then the views.
+func allControllers() []controllerSurface {
+	return slices.Concat(controllerSurfaces, viewControllers)
+}
+
 // TestGuard_ControllerTableMatchesApp keeps the table honest from the App side:
 // every row names a real App field of the row's surface type, and every
 // controller surface is in the table. A surface is a controller when it has a
@@ -123,7 +155,7 @@ var controllerSurfaces = []controllerSurface{
 // could be added and never guarded.
 func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 	appT := reflect.TypeFor[App]()
-	for _, row := range controllerSurfaces {
+	for _, row := range allControllers() {
 		f, ok := appT.FieldByName(row.field)
 		if !ok {
 			t.Errorf("controllerSurfaces names App.%s, which does not exist", row.field)
@@ -136,15 +168,16 @@ func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 	// The reverse direction: a surface type with a sibling deps type is a
 	// controller, whether or not someone remembered the table.
 	inTable := map[string]bool{}
-	for _, row := range controllerSurfaces {
+	for _, row := range allControllers() {
 		inTable[row.surface.Name()] = true
 	}
 	for _, path := range productionGoFiles(t) {
 		for _, name := range depsStructNames(t, readSourceFile(t, path)) {
-			surface := strings.TrimSuffix(name, "Deps") + "Surface"
-			if !inTable[surface] {
-				t.Errorf("%s declares %s, so %s is a controller surface, but it is not in "+
-					"controllerSurfaces. Add a row; the guards run over the table only.", path, name, surface)
+			stem := strings.TrimSuffix(name, "Deps")
+			if !inTable[stem+"Surface"] && !inTable[stem+"ViewState"] {
+				t.Errorf("%s declares %s, so %sSurface or %sViewState is a controller, but "+
+					"neither is in controllerSurfaces or viewControllers. Add a row; the guards "+
+					"run over the tables only.", path, name, stem, stem)
 			}
 		}
 		// A surface that owns close() has been through the controller motion,
@@ -164,7 +197,7 @@ func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 // reach the status bar, a sibling surface or a service field, and the guard
 // would prove nothing.
 func TestGuard_ControllerSurfacesNameNoApp(t *testing.T) {
-	for _, row := range controllerSurfaces {
+	for _, row := range allControllers() {
 		t.Run(row.field, func(t *testing.T) {
 			// Every production file, not just the surface's own: Go lets a method
 			// live in any file of the package, so a file-scoped guard would
@@ -190,6 +223,7 @@ func TestGuard_ControllerSurfacesNameNoApp(t *testing.T) {
 // TestGuard_ControllerStateIsReachedOnlyByMethod: no production code may read a
 // controller surface's field through App. Every a.<surface>.X in package tui
 // must be a method call, which is what makes the surface's state its own.
+// It runs over controllerSurfaces only; viewControllers says why.
 //
 // Test files are excluded, and that exclusion is the honest measure rather than
 // a loophole: section 3 of the design counts 2,084 app.<unexported> references
@@ -221,7 +255,7 @@ func TestGuard_ControllerStateIsReachedOnlyByMethod(t *testing.T) {
 // and closes the previous *db.DB. A closure re-reads the field at call time, so
 // it survives the switch by construction.
 func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
-	for _, row := range controllerSurfaces {
+	for _, row := range allControllers() {
 		t.Run(row.field, func(t *testing.T) {
 			if row.deps == nil {
 				t.Skip("surface has no deps")
@@ -267,7 +301,7 @@ func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
 // undo manager; every accessor must now return something. A closure captured
 // at bind time could not.
 func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
-	for _, row := range controllerSurfaces {
+	for _, row := range allControllers() {
 		t.Run(row.field, func(t *testing.T) {
 			if row.deps == nil {
 				t.Skip("surface has no deps")
