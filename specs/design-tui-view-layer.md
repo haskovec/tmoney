@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0, 1 AND 3 BUILT; phases 2 and 4 are proposed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table) and phase 3 (the two file splits) are built; see their status notes below.
+**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is proposed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -36,7 +36,7 @@ Target numbers at the end of phase 3:
 
 | Measure | Now | Target |
 |---|---|---|
-| `App` fields | 91 | ~57 |
+| `App` fields | 91 | ~68 (first written as ~57, a miscount; built: 70 — see the phase 2 status) |
 | Methods on `*App` | 416 | **~416 — unchanged, and stated honestly** — see below |
 | Copies of the view list | 7 full + 2 subsets | 1 |
 | Views with no help section | 1 | 0 |
@@ -336,7 +336,9 @@ type priceViewState struct {
 ```
 
 and `a.priceView` becomes `a.prices.data`, `a.priceTable` becomes
-`a.prices.table`, and so on for the eleven views. `App` sheds ~34 fields.
+`a.prices.table`, and so on for the eleven views. About 34 fields leave
+`App`, and the eleven structs that hold them are fields too, so `App` sheds a
+net ~23.
 What stays on `App` is what more than one surface writes: `currentView` and
 `previousView`; the two register `pending*SelectID` handoffs; the bulk-refresh
 flag and its notification id, which two views start; and the corporate-action
@@ -500,7 +502,9 @@ after every message.
 ### Phase 2 — per-view state structs
 
 One struct per view as §2.2 sketches, eleven of them, in the view's own file.
-`App` goes from 91 fields to ~57. This is the earlier design's phase 3 and
+`App` goes from 91 fields to ~68: ~34 leave, and the eleven new structs are
+fields too. (This text first said ~57, which left the eleven out.) This is the
+earlier design's phase 3 and
 carries the same cost: the 335 test lines that set a view field in an `App`
 literal move under the new struct, across roughly thirty test files. The
 literal shape changes; no assertion does.
@@ -552,6 +556,43 @@ which would go stale the first time a twelfth view landed: walk `App`'s
 fields for struct types declared in this package whose pointer does **not**
 implement `Modal` (the modal guard takes the ones that do), and fail if that
 set is empty, as the modal guard does.
+
+**Status: built** (2026-10-02), in PRs #65 to #76 (#71 trimmed two comments).
+Each of the eleven views holds its state in one struct, which is one field on
+`App`, and `switchView` names no view: the investment register and Corporate
+Actions forget their state through `leave` on their entries. The VL-313 checks:
+
+- `App` has 70 fields, not ~57. The ~57 took the ~34 fields that move away
+  from 91 but did not add back the eleven structs that hold them:
+  91 − 34 + 11 = 68. The sixth decision keeps two more on `App`, so
+  91 − 32 + 11 = 70.
+- No assertion changed. A throwaway `go/ast` comparer read every test function
+  before the phase (`3ca99c4`) and after it, took the condition of each `if`
+  that calls `t.Error` or `t.Fatal`, mapped the new field paths back to the old
+  names, and compared them function by function: 1,596 functions and 4,523
+  assertions, none changed or removed. It reports a condition planted to
+  differ. The phase added five test functions: the guard and its self-test,
+  a test of the dashboard's render-then-click order, and one for each `leave`.
+- The six decisions hold. The fields they keep on `App` are there, and no
+  `leave` clears the corporate-action ticker filter.
+- `TestGuard_NoViewStateHoldsAService` finds all eleven view structs by rule.
+
+Differences from the text above:
+
+- The sixth decision (in the list above): the investment edit and preselect
+  IDs stay on `App`.
+- The guard walks down through pointers, containers and this package's
+  structs, not only a struct's own fields: after the move, each view's data
+  struct is one level below `App`.
+- Names. `prices` and `securities` sit beside their modal surfaces `price` and
+  `security`; the other nine fields are the view's name, so where the old data
+  field had that name, the data is now one level in (`a.dashboard.data`).
+- Twelve tests of the nil or loading state still set `data: nil` explicitly,
+  as they set the old field to `nil` before. The zero value is the same; the
+  explicit nil names the state under test.
+- The test churn is larger than §7 said. The 335 lines were the `App`
+  literals; the field paths in test code and the indent of grouped literals
+  were not counted.
 
 ### Phase 3 — split the two god files (the 4d motion)
 
@@ -686,7 +727,7 @@ is doing phase 4's job in phase 1's clothes; the guard is that `views()` and
 |---|---|
 | 0 | `?` on the Corporate Actions view lists its keys; a test renders the overlay for every `View` value and requires a view-specific section |
 | 1 | Seven switches gone, the five-view list gone from both predicates (their `SidebarWidth() == 0` halves and the Dashboard mouse branch kept), `View.String()` reads the table and still returns `"Unknown"` for a miss; the pre-switch `handleKeyPress` branches untouched; guards 1–3 land with self-tests; the tables-nil `switchView` walk (§5.2) passes for every view; **manual smoke: visit every view from the View menu, press `?`, click a table row, scroll, and drill from Securities into Corporate Actions and back** |
-| 2 | `App` under ~60 fields; each view's state is one field; `switchView` has no per-view `if`; the six recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the 335 test literals moved and no assertion changed |
+| 2 | `App` at ~70 fields (91, less the fields that move, plus the eleven structs; first written as "under ~60", a miscount); each view's state is one field; `switchView` has no per-view `if`; the six recorded decisions applied as written; the no-service guard discovers the view structs without a hand list; the test literals moved and no assertion changed |
 | 3 | `price_view.go` ≤ 450 and `investment_register_view.go` ≤ 500, each split by the declaration comparer with zero problems and zero orphaned comments; the two price dialogs in files of their own; the chart's `*App` methods in `price_chart.go` |
 | 4 | Not an exit; a table of per-view decisions with the measured count of what moved and what stayed, appended to this document as the 4c notes were to the earlier one |
 
@@ -703,7 +744,7 @@ recorded per view rather than promised here.
 |---|---|---|---|
 | 0 | +15 | +40 | bug fix; ships alone |
 | 1 | −120 net (7 switches → 1 table + 11 entries), +100 comments | +250 | guards and self-tests |
-| 2 | +130 (eleven struct declarations with doc) | ~335 literal lines churn, ~30 files | mechanical |
+| 2 | +130 (eleven struct declarations with doc); built: net +81 in 39 files | ~335 literal lines churn, ~30 files; built: +1,833/−1,510 in 42 files | mechanical; the estimate counted only `App` literals, not field paths in test code |
 | 3 | 0 net | 0 | file moves, comparer-verified |
 
 The earlier design's §7 recorded that its +100 estimate landed at +432,

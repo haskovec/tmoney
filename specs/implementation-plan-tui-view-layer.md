@@ -186,8 +186,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`.
   - Done: `App` holds it as `amortization`, so `a.amortizationData` became `a.amortization.data` and `a.amortizationTable` became `a.amortization.table`. The `focus` func did not change: it turns the sidebar off and does not touch the table, as VL-109 requires. `App` has 70 fields.
 
-- [ ] **VL-313 — Exit check**
-  - Confirm: `switchView` has no per-view `if`; `App` is under about 60 fields; each view's state is one field; the six recorded decisions applied as written (the sixth is in VL-305); no assertion changed. Set the design document's phase 2 status to built.
+- [x] **VL-313 — Exit check**
+  - Confirm: `switchView` has no per-view `if`; `App` is at about 70 fields (first written as "under about 60", a miscount: it left out the eleven new struct fields); each view's state is one field; the six recorded decisions applied as written (the sixth is in VL-305); no assertion changed. Set the design document's phase 2 status to built.
+  - Done: all confirmed; the design's phase 2 status note has the details. `App` has 70 fields. A throwaway `go/ast` comparer found no changed or removed assertion in 1,596 test functions (4,523 assertions), and it reports one planted to differ. The no-service guard finds all eleven view structs. The `data: nil` literals were kept: all twelve are in tests of the nil or loading state, where the explicit nil names the state under test.
 
 ## Phase 4: View Controllers (priced, not committed)
 
