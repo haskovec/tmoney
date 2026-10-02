@@ -71,7 +71,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case portfolioLoadedMsg:
 		a.portfolio.data = msg.data
 		a.portfolio.mode = portfolioViewHoldings
-		a.buildPortfolioHoldingsTable()
+		a.portfolio.buildHoldingsTable()
 		return a, nil
 
 	case amortizationLoadedMsg:
@@ -80,7 +80,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case portfolioLotDetailMsg:
-		a.applyPortfolioLotDetail(msg.securityID, msg.lots)
+		a.portfolio.applyLotDetail(msg.securityID, msg.lots)
 		return a, nil
 
 	case investmentTransactionDeletedMsg:

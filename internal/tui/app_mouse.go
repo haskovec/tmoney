@@ -281,7 +281,7 @@ func (a *App) openAccountFromMouse(accountID types.ID) tea.Cmd {
 	if acct != nil && acct.Type.IsInvestmentType() {
 		a.portfolio.data = nil
 		a.switchView(ViewPortfolio)
-		return a.loadPortfolioData(accountID)
+		return a.portfolio.load(a.portfolioDeps(), accountID)
 	}
 	a.register.data = nil
 	a.switchView(ViewRegister)

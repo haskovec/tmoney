@@ -6,7 +6,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -243,20 +242,6 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	return a, nil
 }
 
-// valuationOptions returns the ValuationOptions struct that callers
-// should pass when requesting an investment account valuation. The
-// IncludeClosed flag is sourced from cfg.ShowClosedPositions so the
-// View → Show closed positions toggle plumbs through to every
-// valuation-bearing view (dashboard cards, register header, portfolio
-// holdings list). A nil cfg falls back to IncludeClosed=false so the
-// helper is safe to call from tests that don't construct a config.
-func (a *App) valuationOptions() investment.ValuationOptions {
-	if a.cfg == nil {
-		return investment.ValuationOptions{}
-	}
-	return investment.ValuationOptions{IncludeClosed: a.cfg.ShowClosedPositions}
-}
-
 // toggleClosedPositions flips cfg.ShowClosedPositions, persists the
 // change (best-effort — Save() is a no-op under `go test`), and
 // reloads whichever view is currently displaying a valuation so the
@@ -280,7 +265,7 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 		}
 	case ViewPortfolio:
 		if a.portfolio.data != nil && a.portfolio.data.account != nil {
-			return a, a.loadPortfolioData(a.portfolio.data.account.ID)
+			return a, a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)
 		}
 	}
 	return a, nil

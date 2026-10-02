@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -52,16 +53,47 @@ const (
 	portfolioViewLots
 )
 
-// loadPortfolioData returns a command that loads all data needed for the portfolio view.
-func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
+// portfolioDeps is what the Portfolio view needs from outside itself. Every
+// dep is a func, because switchDatabase replaces App's services and closes the
+// previous *db.DB; and deps are passed to each call, never stored in the view
+// state. Both rules are pinned by the guards that run over viewControllers.
+//
+// investments is only nil-checked: the loads skip the valuation when it is
+// missing, as they did on App, although the service they call is valuations.
+// config is the user's config, for the valuation options; like the services,
+// it is read when the load runs.
+type portfolioDeps struct {
+	accounts    func() *account.Service
+	investments func() *investment.Service
+	valuations  func() *investment.ValuationService
+	securities  func() *security.Service
+	config      func() *config.Config
+}
+
+// portfolioDeps binds the Portfolio view to the services App owns. Every
+// accessor may return nil, because an App built by a test has no services, so
+// each caller keeps its own nil guard.
+func (a *App) portfolioDeps() portfolioDeps {
+	return portfolioDeps{
+		accounts:    func() *account.Service { return a.services.Account },
+		investments: func() *investment.Service { return a.services.Investment },
+		valuations:  func() *investment.ValuationService { return a.services.InvestmentValuation },
+		securities:  func() *security.Service { return a.services.Security },
+		config:      func() *config.Config { return a.cfg },
+	}
+}
+
+// load returns a command that loads all data needed for the portfolio view.
+// The services and the config are read through the deps when the command runs.
+func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
 		data := &portfolioViewData{
 			securityNames: make(map[types.ID]string),
 		}
 
 		// Load account
-		if a.services.Account != nil {
-			acct, err := a.services.Account.GetByID(accountID)
+		if accounts := d.accounts(); accounts != nil {
+			acct, err := accounts.GetByID(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -69,9 +101,9 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account valuation
-		if a.services.Investment != nil {
+		if d.investments() != nil {
 			asOf := types.Today()
-			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, asOf, a.valuationOptions())
+			val, err := d.valuations().GetAccountValuation(accountID, asOf, valuationOptionsFor(d.config()))
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -79,8 +111,8 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load security names for display
-		if a.services.Security != nil {
-			securities, err := a.services.Security.List(security.Filter{})
+		if secSvc := d.securities(); secSvc != nil {
+			securities, err := secSvc.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
 					data.securityNames[sec.ID] = securityLabel(sec)
@@ -93,14 +125,14 @@ func (a *App) loadPortfolioData(accountID types.ID) tea.Cmd {
 }
 
 // loadLotDetail returns a command that loads lot detail for a specific security.
-func (a *App) loadLotDetail(accountID, securityID types.ID) tea.Cmd {
+func (s *portfolioViewState) loadLotDetail(d portfolioDeps, accountID, securityID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if a.services.Investment == nil {
+		if d.investments() == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		asOf := types.Today()
-		lots, err := a.services.InvestmentValuation.GetLotDetail(accountID, securityID, asOf)
+		lots, err := d.valuations().GetLotDetail(accountID, securityID, asOf)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -109,9 +141,9 @@ func (a *App) loadLotDetail(accountID, securityID types.ID) tea.Cmd {
 	}
 }
 
-// buildPortfolioHoldingsTable creates and populates the holdings table.
-func (a *App) buildPortfolioHoldingsTable() {
-	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
+// buildHoldingsTable creates and populates the holdings table.
+func (s *portfolioViewState) buildHoldingsTable() {
+	if s.data == nil || s.data.valuation == nil {
 		return
 	}
 
@@ -131,28 +163,28 @@ func (a *App) buildPortfolioHoldingsTable() {
 		{Header: "Ret %", Width: 8, Align: widget.AlignRight},
 	}
 
-	if a.portfolio.holdingsTable == nil {
-		a.portfolio.holdingsTable = widget.NewTable(columns)
+	if s.holdingsTable == nil {
+		s.holdingsTable = widget.NewTable(columns)
 	} else {
-		a.portfolio.holdingsTable.SetColumns(columns)
+		s.holdingsTable.SetColumns(columns)
 	}
 
-	holdings := a.portfolio.data.valuation.Holdings
+	holdings := s.data.valuation.Holdings
 	sort.SliceStable(holdings, func(i, j int) bool {
 		return holdings[i].MarketValue.Cmp(holdings[j].MarketValue) > 0
 	})
 	rows := make([][]string, len(holdings))
 	for i, h := range holdings {
-		rows[i] = a.formatHoldingRow(&h)
+		rows[i] = s.formatHoldingRow(&h)
 	}
-	a.portfolio.holdingsTable.SetRows(rows)
+	s.holdingsTable.SetRows(rows)
 }
 
 // formatHoldingRow formats a holding into table row strings.
-func (a *App) formatHoldingRow(h *investment.Holding) []string {
+func (s *portfolioViewState) formatHoldingRow(h *investment.Holding) []string {
 	// Ticker
 	ticker := ""
-	if name, ok := a.portfolio.data.securityNames[h.SecurityID]; ok {
+	if name, ok := s.data.securityNames[h.SecurityID]; ok {
 		ticker = name
 	}
 	if !h.HasPricing {
@@ -220,9 +252,9 @@ func (a *App) formatHoldingRow(h *investment.Holding) []string {
 	return []string{ticker, shares, avgCost, price, priceDate, mktValue, costBasis, unreal, div, real, fees, totalRet, retPct}
 }
 
-// buildPortfolioLotsTable creates and populates the lot detail table.
-func (a *App) buildPortfolioLotsTable() {
-	if a.portfolio.data == nil || a.portfolio.data.lotDetails == nil {
+// buildLotsTable creates and populates the lot detail table.
+func (s *portfolioViewState) buildLotsTable() {
+	if s.data == nil || s.data.lotDetails == nil {
 		return
 	}
 
@@ -236,18 +268,18 @@ func (a *App) buildPortfolioLotsTable() {
 		{Header: "G/L %", Width: 8, Align: widget.AlignRight},
 	}
 
-	if a.portfolio.lotsTable == nil {
-		a.portfolio.lotsTable = widget.NewTable(columns)
+	if s.lotsTable == nil {
+		s.lotsTable = widget.NewTable(columns)
 	} else {
-		a.portfolio.lotsTable.SetColumns(columns)
+		s.lotsTable.SetColumns(columns)
 	}
 
-	lots := a.portfolio.data.lotDetails
+	lots := s.data.lotDetails
 	rows := make([][]string, len(lots))
 	for i, lot := range lots {
 		rows[i] = formatLotDetailRow(&lot)
 	}
-	a.portfolio.lotsTable.SetRows(rows)
+	s.lotsTable.SetRows(rows)
 }
 
 // formatLotDetailRow formats a lot detail into table row strings.
@@ -263,17 +295,17 @@ func formatLotDetailRow(lot *investment.LotDetail) []string {
 	return []string{purchaseDate, shares, costPerShare, costBasis, currentValue, gainLoss, glPct}
 }
 
-// renderPortfolioSummary renders the summary bar showing account totals.
+// renderSummary renders the summary bar showing account totals.
 // Line 1 is the position snapshot (cash, value, cost, unrealized). Line 2
 // is the total-return breakdown — the same shape as the investment
 // register's TR row — so the user can see how realized gain, dividends,
 // interest, and fees combine into the account-level total return.
-func (a *App) renderPortfolioSummary(contentWidth int) string {
-	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
+func (s *portfolioViewState) renderSummary(styles widget.Styles, contentWidth int) string {
+	if s.data == nil || s.data.valuation == nil {
 		return ""
 	}
 
-	v := a.portfolio.data.valuation
+	v := s.data.valuation
 
 	type metric struct {
 		label string
@@ -293,106 +325,106 @@ func (a *App) renderPortfolioSummary(contentWidth int) string {
 	// Build summary line: label: value pairs separated by spaces
 	var parts []string
 	for _, m := range metrics {
-		labelStr := a.styles.Muted.Render(m.label + ":")
-		valueStyle := a.styles.Bold
+		labelStr := styles.Muted.Render(m.label + ":")
+		valueStyle := styles.Bold
 		if m.label == "Gain/Loss" || m.label == "G/L %" {
 			if v.TotalGainLoss.IsNegative() {
-				valueStyle = a.styles.Negative
+				valueStyle = styles.Negative
 			} else if !v.TotalGainLoss.IsZero() {
-				valueStyle = a.styles.Positive
+				valueStyle = styles.Positive
 			}
 		}
 		parts = append(parts, labelStr+" "+valueStyle.Render(m.value))
 	}
 
 	line1 := strings.Join(parts, "  ")
-	line2 := a.renderPortfolioTotalReturnLine()
+	line2 := s.renderTotalReturnLine(styles)
 	if line2 == "" {
 		return line1
 	}
 	return line1 + "\n" + line2
 }
 
-// renderPortfolioTotalReturnLine builds the total-return breakdown line:
+// renderTotalReturnLine builds the total-return breakdown line:
 // Realized · Div · Int · Fees · Total return $ (pct%). FeesPaid is stored
 // as a positive magnitude on the valuation per the total-return spec; we
 // negate it before formatting so the subtraction reads naturally.
-func (a *App) renderPortfolioTotalReturnLine() string {
-	if a.portfolio.data == nil || a.portfolio.data.valuation == nil {
+func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles) string {
+	if s.data == nil || s.data.valuation == nil {
 		return ""
 	}
-	v := a.portfolio.data.valuation
+	v := s.data.valuation
 
 	money := func(m types.Money) string {
-		s := formatDashboardMoney(m)
+		str := formatDashboardMoney(m)
 		switch {
 		case m.IsNegative():
-			return a.styles.Negative.Render(s)
+			return styles.Negative.Render(str)
 		case m.IsZero():
-			return a.styles.Bold.Render(s)
+			return styles.Bold.Render(str)
 		default:
-			return a.styles.Positive.Render(s)
+			return styles.Positive.Render(str)
 		}
 	}
 
 	feeStr := formatDashboardMoney(v.FeesPaid)
-	feeRendered := a.styles.Bold.Render(feeStr)
+	feeRendered := styles.Bold.Render(feeStr)
 	if !v.FeesPaid.IsZero() {
 		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
-		feeRendered = a.styles.Negative.Render(feeStr)
+		feeRendered = styles.Negative.Render(feeStr)
 	}
 
-	realizedField := a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain)
+	realizedField := styles.Muted.Render("Realized") + " " + money(v.RealizedGain)
 	if v.AnyRealizedUnavailable {
-		realizedField += " " + a.styles.Muted.Render("(partial)")
+		realizedField += " " + styles.Muted.Render("(partial)")
 	}
 	parts := []string{
 		realizedField,
-		a.styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
-		a.styles.Muted.Render("Int") + " " + money(v.InterestReceived),
-		a.styles.Muted.Render("Fees") + " " + feeRendered,
+		styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
+		styles.Muted.Render("Int") + " " + money(v.InterestReceived),
+		styles.Muted.Render("Fees") + " " + feeRendered,
 	}
 
 	pctStr := "—"
 	if v.TotalReturnPct != nil {
 		pctStr = fmt.Sprintf("%.2f%%", *v.TotalReturnPct)
 	}
-	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
+	total := styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pctStr + ")"
 	if v.AnyRealizedUnavailable {
-		total += " " + a.styles.Muted.Render("(partial)")
+		total += " " + styles.Muted.Render("(partial)")
 	}
 
 	return strings.Join(parts, " · ") + "  " + total
 }
 
-// renderPortfolioView renders the portfolio view.
-func (a *App) renderPortfolioView() string {
-	if a.portfolio.data == nil {
+// render renders the portfolio view.
+func (s *portfolioViewState) render(styles widget.Styles, height int) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading portfolio...")
 	}
 
-	contentWidth := a.styles.ContentWidth()
+	contentWidth := styles.ContentWidth()
 	var sections []string
 
 	// Title row: account name + "PORTFOLIO"
-	acctName := strings.ToUpper(a.portfolio.data.account.Name)
+	acctName := strings.ToUpper(s.data.account.Name)
 	titleSuffix := " PORTFOLIO"
 	maxNameWidth := max(contentWidth-lipgloss.Width(titleSuffix)-4, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
-	titleRow := a.styles.Title.Render(acctName + titleSuffix)
+	titleRow := styles.Title.Render(acctName + titleSuffix)
 	sections = append(sections, titleRow)
 
 	// Summary bar
-	summary := a.renderPortfolioSummary(contentWidth)
+	summary := s.renderSummary(styles, contentWidth)
 	if summary != "" {
 		sections = append(sections, summary)
 	}
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// Calculate table height
 	headerHeight := 1
@@ -402,38 +434,38 @@ func (a *App) renderPortfolioView() string {
 	separatorHeight := 1
 	paddingHeight := 2 // top/bottom padding
 	hintHeight := 1
-	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-summaryHeight-separatorHeight-paddingHeight-hintHeight, 1)
+	tableHeight := max(height-headerHeight-statusBarHeight-titleHeight-summaryHeight-separatorHeight-paddingHeight-hintHeight, 1)
 
-	if a.portfolio.mode == portfolioViewLots {
+	if s.mode == portfolioViewLots {
 		// Show lot detail
 		secTicker := ""
-		if name, ok := a.portfolio.data.securityNames[a.portfolio.data.lotSecurityID]; ok {
+		if name, ok := s.data.securityNames[s.data.lotSecurityID]; ok {
 			secTicker = name
 		}
-		sections = append(sections, a.styles.Bold.Render("  Lots for "+secTicker))
+		sections = append(sections, styles.Bold.Render("  Lots for "+secTicker))
 
-		if a.portfolio.lotsTable != nil && len(a.portfolio.data.lotDetails) > 0 {
+		if s.lotsTable != nil && len(s.data.lotDetails) > 0 {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.portfolio.lotsTable.Render(a.styles, tableWidth, tableHeight-1))
-			if info := a.portfolio.lotsTable.ScrollInfo(tableHeight - 2); info != "" {
-				sections = append(sections, a.styles.Muted.Render("  "+info))
+			sections = append(sections, s.lotsTable.Render(styles, tableWidth, tableHeight-1))
+			if info := s.lotsTable.ScrollInfo(tableHeight - 2); info != "" {
+				sections = append(sections, styles.Muted.Render("  "+info))
 			}
 		} else {
-			sections = append(sections, a.styles.Muted.Render("  No lots"))
+			sections = append(sections, styles.Muted.Render("  No lots"))
 		}
 	} else {
 		// Show holdings table
-		if a.portfolio.holdingsTable != nil && len(a.portfolio.data.valuation.Holdings) > 0 {
+		if s.holdingsTable != nil && len(s.data.valuation.Holdings) > 0 {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.portfolio.holdingsTable.Render(a.styles, tableWidth, tableHeight))
-			if info := a.portfolio.holdingsTable.ScrollInfo(tableHeight - 2); info != "" {
-				sections = append(sections, a.styles.Muted.Render("  "+info))
+			sections = append(sections, s.holdingsTable.Render(styles, tableWidth, tableHeight))
+			if info := s.holdingsTable.ScrollInfo(tableHeight - 2); info != "" {
+				sections = append(sections, styles.Muted.Render("  "+info))
 			}
 		} else {
 			sections = append(sections, "")
-			sections = append(sections, a.styles.Muted.Render("  No holdings"))
+			sections = append(sections, styles.Muted.Render("  No holdings"))
 			sections = append(sections, "")
-			sections = append(sections, a.styles.Muted.Render("  Press 'r' to switch to register view"))
+			sections = append(sections, styles.Muted.Render("  Press 'r' to switch to register view"))
 		}
 	}
 
@@ -443,13 +475,13 @@ func (a *App) renderPortfolioView() string {
 }
 
 // selectedHolding returns the currently selected holding based on the table cursor.
-func (a *App) selectedHolding() *investment.Holding {
-	if a.portfolio.data == nil || a.portfolio.data.valuation == nil || a.portfolio.holdingsTable == nil {
+func (s *portfolioViewState) selectedHolding() *investment.Holding {
+	if s.data == nil || s.data.valuation == nil || s.holdingsTable == nil {
 		return nil
 	}
 
-	cursor := a.portfolio.holdingsTable.Cursor()
-	holdings := a.portfolio.data.valuation.Holdings
+	cursor := s.holdingsTable.Cursor()
+	holdings := s.data.valuation.Holdings
 	if cursor < 0 || cursor >= len(holdings) {
 		return nil
 	}
@@ -462,10 +494,10 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
 			a.sidebar.SetFocused(false)
-			a.setPortfolioTableFocused(true)
+			a.portfolio.setTableFocused(true)
 		} else {
 			a.sidebar.SetFocused(true)
-			a.setPortfolioTableFocused(false)
+			a.portfolio.setTableFocused(false)
 		}
 		return a, nil
 	}
@@ -482,26 +514,26 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.activePortfolioTable().MoveUp()
+		a.portfolio.activeTable().MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.activePortfolioTable().MoveDown()
+		a.portfolio.activeTable().MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.activePortfolioTable().MoveToTop()
+		a.portfolio.activeTable().MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.activePortfolioTable().MoveToBottom()
+		a.portfolio.activeTable().MoveToBottom()
 	case msg.String() == "pgup":
 		tableHeight := max(a.height-6, 1)
-		a.activePortfolioTable().PageUp(tableHeight)
+		a.portfolio.activeTable().PageUp(tableHeight)
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
-		a.activePortfolioTable().PageDown(tableHeight)
+		a.portfolio.activeTable().PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Enter):
 		// Drill down into lot detail for lot-tracking accounts
 		if a.portfolio.mode == portfolioViewHoldings {
-			h := a.selectedHolding()
+			h := a.portfolio.selectedHolding()
 			if h != nil && a.portfolio.data.account.TrackLots {
 				a.portfolio.mode = portfolioViewLots
-				return a, a.loadLotDetail(a.portfolio.data.account.ID, h.SecurityID)
+				return a, a.portfolio.loadLotDetail(a.portfolioDeps(), a.portfolio.data.account.ID, h.SecurityID)
 			}
 		}
 	case key.Matches(msg, a.keys.Escape):
@@ -528,7 +560,7 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "s":
 		// Open stock split dialog pre-selected to the highlighted holding's security
 		if a.portfolio.mode == portfolioViewHoldings {
-			if h := a.selectedHolding(); h != nil {
+			if h := a.portfolio.selectedHolding(); h != nil {
 				secID := h.SecurityID
 				a.stockSplit.preSelectedID = &secID
 				return a, a.loadStockSplitDialogData()
@@ -539,27 +571,27 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// activePortfolioTable returns whichever portfolio table is currently active.
-func (a *App) activePortfolioTable() *widget.Table {
-	if a.portfolio.mode == portfolioViewLots && a.portfolio.lotsTable != nil {
-		return a.portfolio.lotsTable
+// activeTable returns whichever portfolio table is currently active.
+func (s *portfolioViewState) activeTable() *widget.Table {
+	if s.mode == portfolioViewLots && s.lotsTable != nil {
+		return s.lotsTable
 	}
-	if a.portfolio.holdingsTable != nil {
-		return a.portfolio.holdingsTable
+	if s.holdingsTable != nil {
+		return s.holdingsTable
 	}
 	// Return a placeholder to avoid nil panics
 	return widget.NewTable(nil)
 }
 
-// setPortfolioTableFocused sets focus on the appropriate portfolio table.
-func (a *App) setPortfolioTableFocused(focused bool) {
-	if a.portfolio.mode == portfolioViewLots {
-		if a.portfolio.lotsTable != nil {
-			a.portfolio.lotsTable.SetFocused(focused)
+// setTableFocused sets focus on the appropriate portfolio table.
+func (s *portfolioViewState) setTableFocused(focused bool) {
+	if s.mode == portfolioViewLots {
+		if s.lotsTable != nil {
+			s.lotsTable.SetFocused(focused)
 		}
 	} else {
-		if a.portfolio.holdingsTable != nil {
-			a.portfolio.holdingsTable.SetFocused(focused)
+		if s.holdingsTable != nil {
+			s.holdingsTable.SetFocused(focused)
 		}
 	}
 }
@@ -578,20 +610,20 @@ func portfolioShortcuts() shortcutSection {
 	}
 }
 
-// applyPortfolioLotDetail installs the loaded lots for one holding and moves
+// applyLotDetail installs the loaded lots for one holding and moves
 // focus from the holdings table to the lots table. A portfolio unloaded while
 // the lots were in flight drops them.
-func (a *App) applyPortfolioLotDetail(securityID types.ID, lots []investment.LotDetail) {
-	if a.portfolio.data == nil {
+func (s *portfolioViewState) applyLotDetail(securityID types.ID, lots []investment.LotDetail) {
+	if s.data == nil {
 		return
 	}
-	a.portfolio.data.lotDetails = lots
-	a.portfolio.data.lotSecurityID = securityID
-	a.buildPortfolioLotsTable()
-	if a.portfolio.lotsTable != nil {
-		a.portfolio.lotsTable.SetFocused(true)
+	s.data.lotDetails = lots
+	s.data.lotSecurityID = securityID
+	s.buildLotsTable()
+	if s.lotsTable != nil {
+		s.lotsTable.SetFocused(true)
 	}
-	if a.portfolio.holdingsTable != nil {
-		a.portfolio.holdingsTable.SetFocused(false)
+	if s.holdingsTable != nil {
+		s.holdingsTable.SetFocused(false)
 	}
 }

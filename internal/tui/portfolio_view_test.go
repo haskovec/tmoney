@@ -1,16 +1,30 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
+
+// renderPortfolio renders the view through its table entry, as the app does,
+// so the entry's closure that passes styles and the screen height is under
+// test too.
+func renderPortfolio(t *testing.T, app *App) string {
+	t.Helper()
+	e, ok := viewFor(ViewPortfolio)
+	if !ok {
+		t.Fatal("no view table entry for ViewPortfolio")
+	}
+	return e.render(app)
+}
 
 func testStyles() widget.Styles {
 	s := widget.NewStyles()
@@ -109,7 +123,7 @@ func TestFormatHoldingRow(t *testing.T) {
 		}},
 	}
 
-	row := app.formatHoldingRow(holding)
+	row := app.portfolio.formatHoldingRow(holding)
 
 	if len(row) != 13 {
 		t.Fatalf("expected 13 columns, got %d", len(row))
@@ -190,7 +204,7 @@ func TestFormatHoldingRow_NoPricing(t *testing.T) {
 		}},
 	}
 
-	row := app.formatHoldingRow(holding)
+	row := app.portfolio.formatHoldingRow(holding)
 
 	// Ticker should have ~ prefix when no pricing
 	if row[0] != "~MSFT" {
@@ -228,7 +242,7 @@ func TestFormatHoldingRow_NegativeGainLoss(t *testing.T) {
 		}},
 	}
 
-	row := app.formatHoldingRow(holding)
+	row := app.portfolio.formatHoldingRow(holding)
 
 	if row[7] != "-$500.00" {
 		t.Errorf("unreal = %q, want %q", row[7], "-$500.00")
@@ -263,7 +277,7 @@ func TestFormatHoldingRow_TotalReturnColumns(t *testing.T) {
 		}},
 	}
 
-	row := app.formatHoldingRow(holding)
+	row := app.portfolio.formatHoldingRow(holding)
 
 	if row[7] != "-$50.00" {
 		t.Errorf("unreal = %q, want %q", row[7], "-$50.00")
@@ -304,7 +318,7 @@ func TestFormatHoldingRow_RealizedUnavailable(t *testing.T) {
 		}},
 	}
 
-	row := app.formatHoldingRow(holding)
+	row := app.portfolio.formatHoldingRow(holding)
 
 	if row[9] != "n/a" {
 		t.Errorf("real = %q, want %q", row[9], "n/a")
@@ -406,7 +420,7 @@ func TestPortfolioSummaryBar(t *testing.T) {
 		}},
 	}
 
-	summary := app.renderPortfolioSummary(100)
+	summary := app.portfolio.renderSummary(app.styles, 100)
 
 	// Line 1: position snapshot
 	for _, label := range []string{"Cash:", "Mkt Value:", "Total:", "Cost Basis:", "Gain/Loss:", "G/L %:"} {
@@ -465,7 +479,7 @@ func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
 		}},
 	}
 
-	summary := app.renderPortfolioSummary(100)
+	summary := app.portfolio.renderSummary(app.styles, 100)
 
 	if !strings.Contains(summary, "—") {
 		t.Error("nil TotalReturnPct should render as '—' placeholder")
@@ -495,7 +509,7 @@ func TestPortfolioSummaryBar_PartialRealizedMarker(t *testing.T) {
 		}},
 	}
 
-	summary := app.renderPortfolioSummary(100)
+	summary := app.portfolio.renderSummary(app.styles, 100)
 
 	if !strings.Contains(summary, "(partial)") {
 		t.Errorf("expected '(partial)' marker when AnyRealizedUnavailable=true; got %q", summary)
@@ -525,7 +539,7 @@ func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
 		}},
 	}
 
-	summary := app.renderPortfolioSummary(100)
+	summary := app.portfolio.renderSummary(app.styles, 100)
 
 	if strings.Contains(summary, "(partial)") {
 		t.Errorf("expected no '(partial)' marker when AnyRealizedUnavailable=false; got %q", summary)
@@ -538,7 +552,7 @@ func TestPortfolioSummaryBar_NilValuation(t *testing.T) {
 		portfolio: portfolioViewState{data: nil},
 	}
 
-	summary := app.renderPortfolioSummary(100)
+	summary := app.portfolio.renderSummary(app.styles, 100)
 	if summary != "" {
 		t.Errorf("summary should be empty for nil portfolio data, got %q", summary)
 	}
@@ -569,7 +583,7 @@ func TestBuildPortfolioHoldingsTable(t *testing.T) {
 		}},
 	}
 
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 
 	if app.portfolio.holdingsTable == nil {
 		t.Fatal("holdings table should be created")
@@ -621,7 +635,7 @@ func TestBuildPortfolioHoldingsTable_MultipleHoldings(t *testing.T) {
 		}},
 	}
 
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 
 	if app.portfolio.holdingsTable == nil {
 		t.Fatal("holdings table should be created")
@@ -639,7 +653,7 @@ func TestBuildPortfolioHoldingsTable_NilData(t *testing.T) {
 	}
 
 	// Should not panic
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 
 	if app.portfolio.holdingsTable != nil {
 		t.Error("holdings table should be nil for nil data")
@@ -674,7 +688,7 @@ func TestBuildPortfolioLotsTable(t *testing.T) {
 		}},
 	}
 
-	app.buildPortfolioLotsTable()
+	app.portfolio.buildLotsTable()
 
 	if app.portfolio.lotsTable == nil {
 		t.Fatal("lots table should be created")
@@ -696,7 +710,7 @@ func TestBuildPortfolioLotsTable_NilData(t *testing.T) {
 	}
 
 	// Should not panic
-	app.buildPortfolioLotsTable()
+	app.portfolio.buildLotsTable()
 
 	if app.portfolio.lotsTable != nil {
 		t.Error("lots table should be nil for nil data")
@@ -718,7 +732,7 @@ func TestRenderPortfolioView_Loading(t *testing.T) {
 		portfolio: portfolioViewState{data: nil},
 	}
 
-	rendered := app.renderPortfolioView()
+	rendered := renderPortfolio(t, app)
 	if !strings.Contains(rendered, "Loading portfolio...") {
 		t.Error("should show loading message when data is nil")
 	}
@@ -748,7 +762,7 @@ func TestRenderPortfolioView_NoHoldings(t *testing.T) {
 		}},
 	}
 
-	rendered := app.renderPortfolioView()
+	rendered := renderPortfolio(t, app)
 	if !strings.Contains(rendered, "No holdings") {
 		t.Error("should show 'No holdings' when there are no holdings")
 	}
@@ -800,9 +814,9 @@ func TestRenderPortfolioView_WithHoldings(t *testing.T) {
 	}
 
 	// Build the holdings table first
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 
-	rendered := app.renderPortfolioView()
+	rendered := renderPortfolio(t, app)
 	if !strings.Contains(rendered, "INVESTMENT PORTFOLIO") {
 		t.Error("should show account name with PORTFOLIO suffix")
 	}
@@ -850,9 +864,9 @@ func TestRenderPortfolioView_LotMode(t *testing.T) {
 	}
 
 	// Build the lots table
-	app.buildPortfolioLotsTable()
+	app.portfolio.buildLotsTable()
 
-	rendered := app.renderPortfolioView()
+	rendered := renderPortfolio(t, app)
 	if !strings.Contains(rendered, "Lots for AAPL") {
 		t.Error("should show lot detail header with security ticker")
 	}
@@ -973,7 +987,7 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 	}
 
 	// Build holdings table and set cursor to first row
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Press Enter to drill down
@@ -1024,7 +1038,7 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 		},
 	}
 
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Press Enter - should NOT drill down for non-lot-tracking
@@ -1143,7 +1157,7 @@ func TestPortfolioKeys_Navigation(t *testing.T) {
 		},
 	}
 
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 	app.portfolio.holdingsTable.SetFocused(true)
 
 	// Move down
@@ -1268,9 +1282,9 @@ func TestSelectedHolding(t *testing.T) {
 		}},
 	}
 
-	app.buildPortfolioHoldingsTable()
+	app.portfolio.buildHoldingsTable()
 
-	h := app.selectedHolding()
+	h := app.portfolio.selectedHolding()
 	if h == nil {
 		t.Fatal("selected holding should not be nil")
 	}
@@ -1284,7 +1298,7 @@ func TestSelectedHolding_NilData(t *testing.T) {
 		portfolio: portfolioViewState{data: nil},
 	}
 
-	h := app.selectedHolding()
+	h := app.portfolio.selectedHolding()
 	if h != nil {
 		t.Error("selected holding should be nil when data is nil")
 	}
@@ -1315,7 +1329,7 @@ func TestActivePortfolioTable_HoldingsMode(t *testing.T) {
 		},
 	}
 
-	tbl := app.activePortfolioTable()
+	tbl := app.portfolio.activeTable()
 	if tbl != app.portfolio.holdingsTable {
 		t.Error("should return holdings table in holdings mode")
 	}
@@ -1330,7 +1344,7 @@ func TestActivePortfolioTable_LotsMode(t *testing.T) {
 		},
 	}
 
-	tbl := app.activePortfolioTable()
+	tbl := app.portfolio.activeTable()
 	if tbl != app.portfolio.lotsTable {
 		t.Error("should return lots table in lots mode")
 	}
@@ -1342,8 +1356,46 @@ func TestActivePortfolioTable_NilTables(t *testing.T) {
 	}
 
 	// Should not panic, returns a placeholder
-	tbl := app.activePortfolioTable()
+	tbl := app.portfolio.activeTable()
 	if tbl == nil {
 		t.Error("should return a non-nil placeholder table")
+	}
+}
+
+// The render closure hands the view the screen height: a portfolio with many
+// holdings fits the screen it is given. With the width passed in its place,
+// the view would draw 120 lines on a 30-line screen.
+func TestPortfolioView_RenderFitsTheScreen(t *testing.T) {
+	var holdings []investment.Holding
+	names := map[types.ID]string{}
+	for i := range 60 {
+		id := types.NewID()
+		names[id] = fmt.Sprintf("T%02d", i)
+		holdings = append(holdings, investment.Holding{
+			SecurityID:   id,
+			Shares:       types.MustNewQuantity("10"),
+			CurrentPrice: types.MustNewMoney(fmt.Sprintf("%d.00", 100+i)),
+			MarketValue:  types.MustNewMoney(fmt.Sprintf("%d.00", 1000+10*i)),
+			HasPricing:   true,
+		})
+	}
+	app := &App{currentView: ViewPortfolio, width: 120, height: 30, styles: widget.NewStyles()}
+	app.styles.Resize(app.width, app.height)
+	app.portfolio.data = &portfolioViewData{
+		account:       &account.Account{Name: "Brokerage"},
+		valuation:     &investment.AccountValuation{Holdings: holdings},
+		securityNames: names,
+	}
+	app.portfolio.buildHoldingsTable()
+
+	lines := strings.Split(renderPortfolio(t, app), "\n")
+	if len(lines) > app.height {
+		t.Errorf("render is %d lines on a %d-line screen", len(lines), app.height)
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w > app.width {
+			t.Errorf("line %d is %d cells wide on a %d-cell screen", i, w, app.width)
+			break
+		}
 	}
 }

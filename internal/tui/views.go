@@ -244,28 +244,30 @@ func init() {
 			leave: (*App).resetInvestmentRegisterFilter,
 		},
 		{
-			id:        ViewPortfolio,
-			name:      "Portfolio",
-			render:    (*App).renderPortfolioView,
+			id:   ViewPortfolio,
+			name: "Portfolio",
+			render: func(a *App) string {
+				return a.portfolio.render(a.styles, a.height)
+			},
 			onKey:     (*App).handlePortfolioKeys,
 			hints:     func(*App) string { return "↑↓ navigate  enter lot detail  r register  esc back  " + commonKeyHints },
 			shortcuts: portfolioShortcuts,
 			table: func(a *App) *widget.Table {
 				if a.portfolio.data != nil {
-					return a.activePortfolioTable()
+					return a.portfolio.activeTable()
 				}
 				return nil
 			},
 			reload: func(a *App) []tea.Cmd {
 				if a.portfolio.data != nil && a.portfolio.data.account != nil {
-					return []tea.Cmd{a.loadPortfolioData(a.portfolio.data.account.ID)}
+					return []tea.Cmd{a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)}
 				}
 				return nil
 			},
 			focus: func(a *App) {
 				// Start with portfolio table focused
 				a.sidebar.SetFocused(false)
-				a.setPortfolioTableFocused(true)
+				a.portfolio.setTableFocused(true)
 			},
 		},
 		{
