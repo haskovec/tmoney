@@ -42,22 +42,59 @@ func runLoad(t *testing.T, cmd tea.Cmd) (msg tea.Msg) {
 	return cmd()
 }
 
+// With no valuation service, each load does what the other services allow
+// and leaves the valuation out; the lot detail, which is all valuation, fails
+// with an error message.
 func TestInvestmentLoads_WithoutTheValuationService(t *testing.T) {
-	loads := map[string]func(a *App, id types.ID) tea.Cmd{
-		"dashboard":           func(a *App, _ types.ID) tea.Cmd { return a.dashboard.load(a.dashboardDeps()) },
-		"investment register": func(a *App, id types.ID) tea.Cmd { return a.loadInvestmentRegisterData(id) },
-		"portfolio":           func(a *App, id types.ID) tea.Cmd { return a.portfolio.load(a.portfolioDeps(), id) },
-		"portfolio lots": func(a *App, id types.ID) tea.Cmd {
-			return a.portfolio.loadLotDetail(a.portfolioDeps(), id, types.NewID())
-		},
-	}
-	for name, load := range loads {
-		t.Run(name, func(t *testing.T) {
-			a, acct := newOneInvestmentAccountApp(t)
-			a.services.InvestmentValuation = nil
-			runLoad(t, load(a, acct.ID))
-		})
-	}
+	t.Run("dashboard", func(t *testing.T) {
+		a, _ := newOneInvestmentAccountApp(t)
+		a.services.InvestmentValuation = nil
+		msg, ok := runLoad(t, a.dashboard.load(a.dashboardDeps())).(dashboardLoadedMsg)
+		if !ok {
+			t.Fatal("the load did not return dashboard data")
+		}
+		if msg.data.netWorth == nil {
+			t.Error("the dashboard skipped its net worth, which does not need the valuation service")
+		}
+		if msg.data.investmentHoldings != nil {
+			t.Error("the dashboard loaded holdings without a valuation service")
+		}
+	})
+	t.Run("investment register", func(t *testing.T) {
+		a, acct := newOneInvestmentAccountApp(t)
+		a.services.InvestmentValuation = nil
+		msg, ok := runLoad(t, a.loadInvestmentRegisterData(acct.ID)).(investmentRegisterLoadedMsg)
+		if !ok {
+			t.Fatal("the load did not return register data")
+		}
+		if msg.data.account == nil {
+			t.Error("the register skipped its account, which does not need the valuation service")
+		}
+		if msg.data.valuation != nil {
+			t.Error("the register loaded a valuation without a valuation service")
+		}
+	})
+	t.Run("portfolio", func(t *testing.T) {
+		a, acct := newOneInvestmentAccountApp(t)
+		a.services.InvestmentValuation = nil
+		msg, ok := runLoad(t, a.portfolio.load(a.portfolioDeps(), acct.ID)).(portfolioLoadedMsg)
+		if !ok {
+			t.Fatal("the load did not return portfolio data")
+		}
+		if msg.data.account == nil {
+			t.Error("the portfolio skipped its account, which does not need the valuation service")
+		}
+		if msg.data.valuation != nil {
+			t.Error("the portfolio loaded a valuation without a valuation service")
+		}
+	})
+	t.Run("portfolio lots", func(t *testing.T) {
+		a, acct := newOneInvestmentAccountApp(t)
+		a.services.InvestmentValuation = nil
+		if _, ok := runLoad(t, a.portfolio.loadLotDetail(a.portfolioDeps(), acct.ID, types.NewID())).(errMsg); !ok {
+			t.Error("the lot detail load did not report the missing valuation service")
+		}
+	})
 }
 
 func TestInvestmentLoads_WithoutTheInvestmentService(t *testing.T) {
