@@ -238,10 +238,10 @@ type App struct {
 	// Spin-off dialog state
 	spinOff spinOffSurface
 
-	// Corporate Actions view state. The ticker filter is on App, not in the
-	// view state: the Securities view's drill-in and the menu set it before
-	// the view loads.
-	corporateActionView       corporateActionViewState
+	// Corporate Actions view state. The ticker filter stays on App: other
+	// surfaces set it (the Securities drill-in, the menu), so like the
+	// pending select IDs it is a handoff into the view, not view state.
+	corporateActions          corporateActionViewState
 	corporateActionViewFilter string
 
 	// File dialog state (Open / Save As / browse), including its double-click tracker
@@ -398,7 +398,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// The same for the Corporate Actions filter: while it is being typed, a
 	// digit or "?" is filter text, and Esc ends the entry.
-	if a.currentView == ViewCorporateActions && a.corporateActionView.filterEditing {
+	if a.currentView == ViewCorporateActions && a.corporateActions.filterEditing {
 		return a.handleCorporateActionViewKeys(msg)
 	}
 
@@ -511,7 +511,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// With the Corporate Actions details panel open, Esc closes the panel
 		// and stays in the view; let the view handler claim it. (A filter
 		// being typed is already captured by the early guard above.)
-		if a.currentView == ViewCorporateActions && a.corporateActionView.detail != nil {
+		if a.currentView == ViewCorporateActions && a.corporateActions.detail != nil {
 			return a.handleCorporateActionViewKeys(msg)
 		}
 		// Go back to previous view or dashboard, and refresh that view's

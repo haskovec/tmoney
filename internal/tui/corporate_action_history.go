@@ -76,18 +76,18 @@ func (a *App) loadCorporateActionViewData() tea.Cmd {
 // ticker, type, or details match the current filter query
 // (case-insensitive substring).
 func (a *App) filteredCorporateActions() []*investment.CorporateAction {
-	if a.corporateActionView.data == nil {
+	if a.corporateActions.data == nil {
 		return nil
 	}
 	q := strings.ToLower(strings.TrimSpace(a.corporateActionViewFilter))
 	if q == "" {
-		return a.corporateActionView.data.actions
+		return a.corporateActions.data.actions
 	}
-	filtered := make([]*investment.CorporateAction, 0, len(a.corporateActionView.data.actions))
-	for _, ca := range a.corporateActionView.data.actions {
-		ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.data.secMap)
-		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActionView.data.secMap)
-		details := formatCorporateActionDetails(ca, a.corporateActionView.data.secMap)
+	filtered := make([]*investment.CorporateAction, 0, len(a.corporateActions.data.actions))
+	for _, ca := range a.corporateActions.data.actions {
+		ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActions.data.secMap)
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActions.data.secMap)
+		details := formatCorporateActionDetails(ca, a.corporateActions.data.secMap)
 		hay := strings.ToLower(strings.Join([]string{ticker, targetTicker, string(ca.ActionType), details}, " "))
 		if strings.Contains(hay, q) {
 			filtered = append(filtered, ca)
@@ -98,7 +98,7 @@ func (a *App) filteredCorporateActions() []*investment.CorporateAction {
 
 // buildCorporateActionViewTable creates and populates the table.
 func (a *App) buildCorporateActionViewTable() {
-	if a.corporateActionView.data == nil {
+	if a.corporateActions.data == nil {
 		return
 	}
 
@@ -109,29 +109,29 @@ func (a *App) buildCorporateActionViewTable() {
 		{Header: "Details", MinWidth: 24, Align: widget.AlignLeft},
 	}
 
-	if a.corporateActionView.table == nil {
-		a.corporateActionView.table = widget.NewTable(columns)
+	if a.corporateActions.table == nil {
+		a.corporateActions.table = widget.NewTable(columns)
 	} else {
-		a.corporateActionView.table.SetColumns(columns)
+		a.corporateActions.table.SetColumns(columns)
 	}
 
 	visible := a.filteredCorporateActions()
 	rows := make([][]string, len(visible))
 	for i, ca := range visible {
-		rows[i] = formatGlobalCorporateActionRow(ca, a.corporateActionView.data.secMap)
+		rows[i] = formatGlobalCorporateActionRow(ca, a.corporateActions.data.secMap)
 	}
-	a.corporateActionView.table.SetRows(rows)
-	a.corporateActionView.table.SetFocused(true)
+	a.corporateActions.table.SetRows(rows)
+	a.corporateActions.table.SetFocused(true)
 }
 
 // selectedCorporateAction returns the action under the table cursor, or
 // nil if the table is empty or out of range.
 func (a *App) selectedCorporateAction() *investment.CorporateAction {
-	if a.corporateActionView.table == nil {
+	if a.corporateActions.table == nil {
 		return nil
 	}
 	visible := a.filteredCorporateActions()
-	cursor := a.corporateActionView.table.Cursor()
+	cursor := a.corporateActions.table.Cursor()
 	if cursor < 0 || cursor >= len(visible) {
 		return nil
 	}
@@ -199,7 +199,7 @@ func resolveSecurityTicker(id types.NullableID, secMap map[types.ID]*security.Se
 
 // renderCorporateActionView renders the full view (used as content body).
 func (a *App) renderCorporateActionView() string {
-	if a.corporateActionView.data == nil {
+	if a.corporateActions.data == nil {
 		return lipgloss.NewStyle().Padding(1, 2).Render("Loading corporate actions...")
 	}
 
@@ -223,10 +223,10 @@ func (a *App) renderCorporateActionView() string {
 	tableHeight := max(a.height-8, 2)
 
 	visible := a.filteredCorporateActions()
-	if a.corporateActionView.table != nil && len(visible) > 0 {
+	if a.corporateActions.table != nil && len(visible) > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.corporateActionView.table.Render(a.styles, tableWidth, tableHeight))
-		if info := a.corporateActionView.table.ScrollInfo(tableHeight - 2); info != "" {
+		sections = append(sections, a.corporateActions.table.Render(a.styles, tableWidth, tableHeight))
+		if info := a.corporateActions.table.ScrollInfo(tableHeight - 2); info != "" {
 			sections = append(sections, a.styles.Muted.Render("  "+info))
 		}
 	} else {
@@ -248,11 +248,11 @@ func corporateActionDetailWidth(screenWidth int) int {
 
 // renderCorporateActionDetails renders the read-only details overlay.
 func (a *App) renderCorporateActionDetails() string {
-	ca := a.corporateActionView.detail
+	ca := a.corporateActions.detail
 	// This used to be guarded by its caller inside renderCorporateActionView.
 	// It is called from the app-level cascade now, so it carries its own: the
-	// ticker lookups below dereference a.corporateActionView.secMap.
-	if ca == nil || a.corporateActionView.data == nil {
+	// ticker lookups below dereference a.corporateActions.data.secMap.
+	if ca == nil || a.corporateActions.data == nil {
 		return ""
 	}
 	overlayWidth := corporateActionDetailWidth(a.width)
@@ -267,15 +267,15 @@ func (a *App) renderCorporateActionDetails() string {
 	lines = append(lines, title+strings.Repeat(" ", titleGap)+closeBtn)
 	lines = append(lines, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
 
-	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.data.secMap)
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActions.data.secMap)
 	lines = append(lines, fmt.Sprintf("Type:    %s", ca.ActionType.DisplayName()))
 	lines = append(lines, fmt.Sprintf("Date:    %s", ca.ActionDate.Time().Format("2006-01-02")))
 	lines = append(lines, fmt.Sprintf("Ticker:  %s", ticker))
 	if ca.TargetSecurityID.Valid {
-		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActionView.data.secMap)
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActions.data.secMap)
 		lines = append(lines, fmt.Sprintf("Target:  %s", targetTicker))
 	}
-	lines = append(lines, fmt.Sprintf("Details: %s", formatCorporateActionDetails(ca, a.corporateActionView.data.secMap)))
+	lines = append(lines, fmt.Sprintf("Details: %s", formatCorporateActionDetails(ca, a.corporateActions.data.secMap)))
 	lines = append(lines, "", a.styles.Muted.Render("esc close"))
 
 	return a.styles.OverlayBox.Width(overlayWidth).Render(strings.Join(lines, "\n"))
@@ -304,20 +304,20 @@ func corporateActionShortcuts() shortcutSection {
 // handleCorporateActionViewKeys handles key presses in the global register.
 func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Details modal handling takes precedence
-	if a.corporateActionView.detail != nil {
+	if a.corporateActions.detail != nil {
 		if key.Matches(msg, a.keys.Escape) {
-			a.corporateActionView.detail = nil
+			a.corporateActions.detail = nil
 		}
 		return a, nil
 	}
 
 	// Filter-entry mode (when filter is being typed)
-	if a.corporateActionView.filterEditing {
+	if a.corporateActions.filterEditing {
 		switch {
 		case key.Matches(msg, a.keys.Escape):
-			a.corporateActionView.filterEditing = false
+			a.corporateActions.filterEditing = false
 		case key.Matches(msg, a.keys.Enter):
-			a.corporateActionView.filterEditing = false
+			a.corporateActions.filterEditing = false
 		default:
 			if msg.String() == "backspace" {
 				if len(a.corporateActionViewFilter) > 0 {
@@ -338,34 +338,34 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 	// sends every key here while the filter is typed.
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.MoveUp()
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.MoveUp()
 		}
 	case key.Matches(msg, a.keys.Down):
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.MoveDown()
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.MoveDown()
 		}
 	case msg.String() == "home" || msg.String() == "g":
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.MoveToTop()
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.MoveToTop()
 		}
 	case msg.String() == "end" || msg.String() == "G":
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.MoveToBottom()
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.MoveToBottom()
 		}
 	case msg.String() == "pgup":
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.PageUp(a.height - 10)
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.PageUp(a.height - 10)
 		}
 	case msg.String() == "pgdown":
-		if a.corporateActionView.table != nil {
-			a.corporateActionView.table.PageDown(a.height - 10)
+		if a.corporateActions.table != nil {
+			a.corporateActions.table.PageDown(a.height - 10)
 		}
 	case msg.String() == "/":
-		a.corporateActionView.filterEditing = true
+		a.corporateActions.filterEditing = true
 	case key.Matches(msg, a.keys.Enter):
 		if ca := a.selectedCorporateAction(); ca != nil {
-			a.corporateActionView.detail = ca
+			a.corporateActions.detail = ca
 		}
 	case msg.String() == "d":
 		if ca := a.selectedCorporateAction(); ca != nil {
@@ -378,7 +378,7 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 // confirmDeleteCorporateAction shows a confirmation dialog that names
 // the action being reversed. On confirm, dispatches the reversal cmd.
 func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
-	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActionView.data.secMap)
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActions.data.secMap)
 	msg := fmt.Sprintf(
 		"Reverse this %s on %s (%s) and delete the audit row? Lots, positions, and prices will be restored to their pre-action state.",
 		ca.ActionType.DisplayName(), ticker, ca.ActionDate.Time().Format("2006-01-02"),
@@ -442,7 +442,7 @@ func (a *App) handleCorporateActionDetailMouse(msg tea.MouseMsg) (tea.Model, tea
 	}
 	m := msg.Mouse()
 	if a.corporateActionDetailMouseAction(m.X, m.Y) == dialog.DialogActionCancel {
-		a.corporateActionView.detail = nil
+		a.corporateActions.detail = nil
 	}
 	return a, nil
 }

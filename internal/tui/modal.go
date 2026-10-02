@@ -110,7 +110,7 @@ type modalEntry struct {
 // ever between surfaces that cannot be visible at once — see the
 // co-occurrence tests in modal_order_test.go, which pin the pairs that can.
 //
-// corporateActionView.detail is deliberately absent: it is a view-embedded
+// corporateActions.detail is deliberately absent: it is a view-embedded
 // panel, not a modal. See isDialogVisible.
 func (a *App) modals() []modalEntry {
 	return []modalEntry{
