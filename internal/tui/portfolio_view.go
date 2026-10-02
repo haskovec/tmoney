@@ -58,16 +58,13 @@ const (
 // previous *db.DB; and deps are passed to each call, never stored in the view
 // state. Both rules are pinned by the guards that run over viewControllers.
 //
-// investments is only nil-checked: the loads skip the valuation when it is
-// missing, as they did on App, although the service they call is valuations.
 // config is the user's config, for the valuation options; like the services,
 // it is read when the load runs.
 type portfolioDeps struct {
-	accounts    func() *account.Service
-	investments func() *investment.Service
-	valuations  func() *investment.ValuationService
-	securities  func() *security.Service
-	config      func() *config.Config
+	accounts   func() *account.Service
+	valuations func() *investment.ValuationService
+	securities func() *security.Service
+	config     func() *config.Config
 }
 
 // portfolioDeps binds the Portfolio view to the services App owns. Every
@@ -75,11 +72,10 @@ type portfolioDeps struct {
 // each caller keeps its own nil guard.
 func (a *App) portfolioDeps() portfolioDeps {
 	return portfolioDeps{
-		accounts:    func() *account.Service { return a.services.Account },
-		investments: func() *investment.Service { return a.services.Investment },
-		valuations:  func() *investment.ValuationService { return a.services.InvestmentValuation },
-		securities:  func() *security.Service { return a.services.Security },
-		config:      func() *config.Config { return a.cfg },
+		accounts:   func() *account.Service { return a.services.Account },
+		valuations: func() *investment.ValuationService { return a.services.InvestmentValuation },
+		securities: func() *security.Service { return a.services.Security },
+		config:     func() *config.Config { return a.cfg },
 	}
 }
 
@@ -101,9 +97,9 @@ func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 		}
 
 		// Load account valuation
-		if d.investments() != nil {
+		if valuations := d.valuations(); valuations != nil {
 			asOf := types.Today()
-			val, err := d.valuations().GetAccountValuation(accountID, asOf, valuationOptionsFor(d.config()))
+			val, err := valuations.GetAccountValuation(accountID, asOf, valuationOptionsFor(d.config()))
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -127,12 +123,13 @@ func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 // loadLotDetail returns a command that loads lot detail for a specific security.
 func (s *portfolioViewState) loadLotDetail(d portfolioDeps, accountID, securityID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if d.investments() == nil {
-			return errMsg{err: fmt.Errorf("investment service not available")}
+		valuations := d.valuations()
+		if valuations == nil {
+			return errMsg{err: fmt.Errorf("valuation service not available")}
 		}
 
 		asOf := types.Today()
-		lots, err := d.valuations().GetLotDetail(accountID, securityID, asOf)
+		lots, err := valuations.GetLotDetail(accountID, securityID, asOf)
 		if err != nil {
 			return errMsg{err: err}
 		}

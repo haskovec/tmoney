@@ -111,7 +111,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load investment account valuations with holdings for dashboard display
-		if a.services.Investment != nil && data.netWorth != nil {
+		if a.services.InvestmentValuation != nil && data.netWorth != nil {
 			data.investmentHoldings = make(map[types.ID]*investment.AccountValuation)
 			data.securityTickers = make(map[types.ID]string)
 

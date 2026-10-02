@@ -911,15 +911,16 @@ manager: the config does not change on a database switch, and setting it only
 proves that the dep reads the field when called. Dashboard and the investment
 register can use the same dep.
 
-**A finding the move kept, not fixed.** Both loads skip the valuation when
-`services.Investment` is nil, but the service they call is
-`services.InvestmentValuation`. About sixteen places in the package have the
-same pattern; it dates from the extraction of the valuation service
-(`ba24049`), when the nil checks were not all updated. In production both
-services always exist, so a user cannot hit it; a test that sets one without
-the other could panic or skip a load. The move kept the behaviour exactly
-(`portfolioDeps.investments` exists only for the check), and a fix belongs in
-its own change, across all the places at once.
+**A finding the move kept, and fixed after it (W14 in the work list).** Both
+loads skipped the valuation when `services.Investment` was nil, but the service
+they call is `services.InvestmentValuation`. It dates from the extraction of
+the valuation service (`ba24049`), when some nil checks were not updated. The
+move kept the behaviour exactly, with a `portfolioDeps.investments` dep that
+existed only for the check. W14 then checked all 23 nil checks of the two
+services in the package: four loads were wrong (these two, the Dashboard's and
+the investment register's), and the other 19 guard the service they call. Each
+of the four now checks the service it calls, and the Portfolio deps lost
+`investments`.
 
 **The cost.** Production code +150/−124 (net +26), comments +24/−9 (net +15).
 30 test call sites changed. One adapter test: the render fits the screen. Each

@@ -69,13 +69,19 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 			data.account = acct
 		}
 
-		// Load investment transactions via repository
+		// Load the transactions and the valuation through the read model
 		if a.services.InvestmentValuation != nil {
 			txns, err := a.services.InvestmentValuation.ListTransactions(accountID, investment.TransactionFilter{})
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.transactions = txns
+
+			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
+			if err != nil {
+				return errMsg{err: err}
+			}
+			data.valuation = val
 		}
 
 		// Load cash balance via service
@@ -85,12 +91,6 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.cashBalance = cash
-
-			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
-			if err != nil {
-				return errMsg{err: err}
-			}
-			data.valuation = val
 		}
 
 		// Load security names for display
