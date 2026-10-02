@@ -1006,7 +1006,7 @@ the method's path changed. Each planted mistake (an empty filter at each of the
 six call sites, the size swapped, a view-state method that takes `*App`, a
 captured service pointer) failed a test.
 
-#### Built (VL-408, 2026-10-03): Reports, the smallest move
+#### Built (VL-408, 2026-10-02): Reports, the smallest move
 
 `*App` 370 → **365 methods (−5)**, as counted: six methods moved onto
 `reportsViewState` (the load, the key handler, the two period moves, the
