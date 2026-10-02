@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured (VL-401) and not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
+**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured and planned (VL-401, VL-402), and its items are not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -732,6 +732,55 @@ So a full phase 4 could take at most about 112 methods off `*App`, which has
 number the "Methods on `*App`" row declined to predict. VL-402 decides, view
 by view, whether the move is worth its cost.
 
+#### Decided (VL-402, 2026-10-02): seven views, a pilot first, and no reach guard
+
+**The rule: a view is worth the move when at least two thirds of its methods
+could move.** The point of the move is that a view's behaviour sits beside its
+state. When a third or more must stay on `App`, the move splits the view
+between two homes, which is harder to read than one.
+
+| View | Could move | Decision |
+|---|---|---|
+| Amortization | 5 of 5 | **VL-403, the pilot** |
+| Prices | 23 of 28 | VL-404 |
+| Portfolio | 12 of 13 | VL-405 |
+| Dashboard | 11 of 13 | VL-406 |
+| Corporate Actions | 8 of 10 | VL-407 |
+| Reports | 6 of 8 | VL-408 |
+| Investment register | 14 of 18 | VL-409, last: the most coupled view |
+| Securities | 9 of 14 | not opened: below two thirds, and three of the nine are the security dialog's saves; revisit with that dialog's own 4c |
+| Reconciliation | 14 of 23 | not opened: below two thirds |
+| Scheduled | 6 of 12 | not opened: below two thirds |
+| Register | 4 of 10 | not opened: below two thirds |
+
+The seven items move 79 methods at most, against 7 deps bindings: `*App`
+would go from 424 to about 352.
+
+**A pilot first.** The earlier design moved one surface before it priced the
+rest, and the pilot found costs that the count did not show. Amortization is
+the smallest view, and nothing in it is pinned, so it shows the fixed cost of a
+view move with the least else in the way. VL-403 records that cost, and the
+plan says to stop and re-decide before VL-404 if it is much higher than the
+count suggests.
+
+**The guard shape: a table for views, without the reach guard.** A 4c row
+carries three structural guards: no method on the surface names `App`, every
+dep is a live func, and no production code reads the surface's state through
+`App`. The first two fit a view. The third does not. By this design's own
+rules, the message arms in `app_update.go` stay where they are, and the pinned
+methods (most of them key handlers) stay on `App`. Both read the view's state:
+the reach guard would forbid 275 reads in the seven views, from 7 for
+Amortization to 113 for the investment register. Every one would need an accessor method on
+the view state, which adds methods and moves none. So the proposal is a table
+for views, beside `controllerSurfaces`, with the first two guards only. VL-403
+settles it.
+
+**Cost, measured per item.** Every one of the seven needs a deps struct,
+because each view's movable methods include a load that calls a service. Three
+of them (Portfolio, Dashboard, the investment register) also need
+`valuationOptions` in their deps, because it reads the config. The plan items
+give each view's inputs and the call sites that change.
+
 ---
 
 ## 5. Risks the phases must handle
@@ -833,8 +882,14 @@ view table is the document a future reader opens to learn what a view is.
 
 ## 8. Deferred, with a decision
 
-- **View controllers (phase 4).** Priced, not committed. Re-open per view
-  after phase 2, from the measurement, not from this document.
+- **View controllers (phase 4).** Measured and planned (VL-401, VL-402):
+  seven items, a pilot first, none committed.
+- **Reports shows the Dashboard's expand state.** Reports' net-worth render
+  calls the Dashboard's `renderAssetLiabilityColumns`, which reads the
+  Dashboard's holdings and expanded accounts, so an account expanded on the
+  Dashboard shows expanded in Reports too. A product question: should the two
+  views share that state? Until it is answered, the two Reports renders stay
+  on `App` (VL-408).
 - **Reload for Reconciliation and CorporateActions** (§5.4). A product
   question, filed with those views. Phase 1 preserves today's behaviour.
 - **`load*` → `*LoadedMsg` → `build*Table` as a registry entry.** Eleven arms
