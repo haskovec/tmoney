@@ -68,7 +68,7 @@ func (a *App) renderLayout() string {
 	// action view handler and it can only exist while that view is active.
 	// While it is open the view swallows every key, so no registry surface can
 	// be raised over it, and the order between the two is unobservable.
-	if a.corporateActionDetail != nil && a.corporateActionView != nil &&
+	if a.corporateActions.detail != nil && a.corporateActions.data != nil &&
 		a.currentView == ViewCorporateActions {
 		overlay := a.renderCorporateActionDetails()
 		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)

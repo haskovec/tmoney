@@ -9,7 +9,6 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
-	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/theme"
@@ -239,12 +238,11 @@ type App struct {
 	// Spin-off dialog state
 	spinOff spinOffSurface
 
-	// Corporate-action register state
-	corporateActionView              *corporateActionViewData
-	corporateActionViewTable         *widget.Table
-	corporateActionViewFilter        string
-	corporateActionViewFilterEditing bool
-	corporateActionDetail            *investment.CorporateAction
+	// Corporate Actions view state. The ticker filter stays on App: other
+	// surfaces set it (the Securities drill-in, the menu), so like the
+	// pending select IDs it is a handoff into the view, not view state.
+	corporateActions          corporateActionViewState
+	corporateActionViewFilter string
 
 	// File dialog state (Open / Save As / browse), including its double-click tracker
 	file fileSurface
@@ -400,7 +398,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// The same for the Corporate Actions filter: while it is being typed, a
 	// digit or "?" is filter text, and Esc ends the entry.
-	if a.currentView == ViewCorporateActions && a.corporateActionViewFilterEditing {
+	if a.currentView == ViewCorporateActions && a.corporateActions.filterEditing {
 		return a.handleCorporateActionViewKeys(msg)
 	}
 
@@ -513,7 +511,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// With the Corporate Actions details panel open, Esc closes the panel
 		// and stays in the view; let the view handler claim it. (A filter
 		// being typed is already captured by the early guard above.)
-		if a.currentView == ViewCorporateActions && a.corporateActionDetail != nil {
+		if a.currentView == ViewCorporateActions && a.corporateActions.detail != nil {
 			return a.handleCorporateActionViewKeys(msg)
 		}
 		// Go back to previous view or dashboard, and refresh that view's

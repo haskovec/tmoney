@@ -177,9 +177,10 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`, `pendingSelectID`. `pendingSecuritySelectID` moves here because only this view reads and writes it.
   - Done: `App` holds it as `securities` (beside the `security` surface, as `prices` sits beside `price`), so `a.securityView` became `a.securities.data`, `a.securityTable` became `a.securities.table`, and `a.pendingSecuritySelectID` became `a.securities.pendingSelectID`. Checked before the move: the `securityAddedMsg` arm sets the ID after the security dialog saves, which is the shape of the register IDs that stay on `App`. But only the Securities view opens that dialog (`security_view.go`), and the whole add path is in the view's file, so the ID is the view's own.
 
-- [ ] **VL-311 — `corporateActionViewState` and its `leave()` hook**
+- [x] **VL-311 — `corporateActionViewState` and its `leave()` hook**
   - Fields: `data`, `table`, `detail`, `filterEditing`. `corporateActionViewFilter` stays on `App`.
   - Move the departure special case out of `switchView` into this entry's `leave`. It does two things today, and `leave` must do both: drop the detail overlay, and end a filter entry (`filterEditing = false`), or the view comes back with every key captured as filter text. The filter is **not** cleared on leave. Test: a round trip keeps the filter, drops the detail, and ends the filter entry.
+  - Done: `App` holds it as `corporateActions` (the view's name, as `investmentRegister` is; the review of #75 renamed it from `corporateActionView`), so the old data field `a.corporateActionView` became `a.corporateActions.data`, `a.corporateActionDetail` became `a.corporateActions.detail`, and so on. `detail` can move because it is a panel inside the view, not a modal (`modal.go`); `isDialogVisible` checks it on its own. The `leave` hook drops the detail and ends a filter entry, so `switchView` has no per-view `if`. `TestCorporateActions_RoundTripKeepsTheFilter` fails with no hook, and with a hook that also clears the filter; the two older tests (`TestCorporateActionDetail_ViewSwitchClearsOverlay`, `TestCorporateActions_LeavingEndsFilterEntry`) fail with no hook. `App` has 71 fields.
 
 - [ ] **VL-312 — `amortizationViewState`**
   - Fields: `data`, `table`.

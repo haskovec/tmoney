@@ -110,8 +110,8 @@ type modalEntry struct {
 // ever between surfaces that cannot be visible at once — see the
 // co-occurrence tests in modal_order_test.go, which pin the pairs that can.
 //
-// corporateActionDetail is deliberately absent: it is a view-embedded panel,
-// not a modal. See isDialogVisible.
+// corporateActions.detail is deliberately absent: it is a view-embedded
+// panel, not a modal. See isDialogVisible.
 func (a *App) modals() []modalEntry {
 	return []modalEntry{
 		// The help overlay has one clickable target, its [x] close box, so its

@@ -120,7 +120,7 @@ func (a *App) isDialogVisible() bool {
 			return true
 		}
 	}
-	return a.corporateActionDetail != nil
+	return a.corporateActions.detail != nil
 }
 
 // loadInvestmentEditTxn fetches the transaction currently being edited

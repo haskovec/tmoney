@@ -178,7 +178,7 @@ func TestReloadCurrentView_CorporateActions_RefreshesHistory(t *testing.T) {
 	}
 	a.switchView(ViewCorporateActions)
 	runCmd(t, a, a.loadCorporateActionViewData(), 1)
-	if a.corporateActionView == nil || len(a.corporateActionView.actions) != 0 {
+	if a.corporateActions.data == nil || len(a.corporateActions.data.actions) != 0 {
 		t.Fatal("setup: expected an empty history on screen")
 	}
 
@@ -188,7 +188,7 @@ func TestReloadCurrentView_CorporateActions_RefreshesHistory(t *testing.T) {
 	}
 	runCmd(t, a, a.reloadCurrentView(), 1)
 
-	if got := len(a.corporateActionView.actions); got != 1 {
+	if got := len(a.corporateActions.data.actions); got != 1 {
 		t.Errorf("history rows after reload = %d, want 1", got)
 	}
 }

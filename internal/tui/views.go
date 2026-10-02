@@ -276,7 +276,7 @@ func init() {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: corporateActionShortcuts,
-			table:     func(a *App) *widget.Table { return a.corporateActionViewTable },
+			table:     func(a *App) *widget.Table { return a.corporateActions.table },
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.loadCorporateActionViewData()}
 			},
@@ -284,9 +284,19 @@ func init() {
 				// Corporate Actions is full-screen, no sidebar (the table is
 				// (re)built and focused by buildCorporateActionTable).
 				a.sidebar.SetFocused(false)
-				if a.corporateActionViewTable != nil {
-					a.corporateActionViewTable.SetFocused(true)
+				if a.corporateActions.table != nil {
+					a.corporateActions.table.SetFocused(true)
 				}
+			},
+			leave: func(a *App) {
+				// The details panel goes. Left set, isDialogVisible stays
+				// true on the next view, which routes every click into the
+				// dialog cascade — a dead mouse with no modal on screen.
+				a.corporateActions.detail = nil
+				// A filter entry ends with the view, or the view would
+				// return still capturing every key as filter text. The
+				// filter itself is kept: a drill-in from Securities set it.
+				a.corporateActions.filterEditing = false
 			},
 		},
 		{

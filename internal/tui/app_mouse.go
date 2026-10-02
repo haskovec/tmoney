@@ -241,7 +241,7 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// the corporate-action details panel, which has one clickable target,
 		// its [x], and otherwise swallows the click so the table it covers
 		// cannot move.
-		if a.corporateActionDetail != nil {
+		if a.corporateActions.detail != nil {
 			return a.handleCorporateActionDetailMouse(msg)
 		}
 		return a, nil
