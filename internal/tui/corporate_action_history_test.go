@@ -145,7 +145,17 @@ func screenCellOf(t *testing.T, screen, needle string) (x, y int) {
 // the details overlay open, sized to a real screen.
 func corporateActionDetailEnv(t *testing.T, w, h int) (*App, *investment.CorporateAction) {
 	t.Helper()
-	app, split, _ := newTestCorporateActionViewData(t)
+	app, split, _ := corporateActionsEnv(t, w, h, "")
+	app.corporateActions.detail = split
+	return app, split
+}
+
+// corporateActionsEnv is the Corporate Actions view on a w×h screen, with the
+// two fixture actions loaded (an AAPL split, then an MSFT merger) and the
+// table built under the ticker filter.
+func corporateActionsEnv(t *testing.T, w, h int, filter string) (app *App, split, merger *investment.CorporateAction) {
+	t.Helper()
+	app, split, merger = newTestCorporateActionViewData(t)
 	styles := widget.NewStyles()
 	styles.Resize(w, h)
 	app.ready = true
@@ -156,9 +166,9 @@ func corporateActionDetailEnv(t *testing.T, w, h int) (*App, *investment.Corpora
 	app.statusbar = widget.NewStatusBar()
 	app.sidebar = NewSidebar()
 	app.styles = styles
+	app.corporateActionViewFilter = filter
 	app.corporateActions.buildTable(app.corporateActionViewFilter)
-	app.corporateActions.detail = split
-	return app, split
+	return app, split, merger
 }
 
 // TestCorporateActionDetail_OverlaySitsWhereOverlayTopLeftSaysItDoes is the
@@ -250,7 +260,7 @@ func TestCorporateActionDetail_MissesAreInert(t *testing.T) {
 		{"outside the panel", 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := app.corporateActions.detailMouseAction(app.styles, app.width, app.height, tc.x, tc.y); got != dialog.DialogActionNone {
+			if got := app.corporateActions.detailMouseAction(app.styles, app.width, app.height, tea.Mouse{X: tc.x, Y: tc.y}); got != dialog.DialogActionNone {
 				t.Errorf("action = %v, want none", got)
 			}
 		})

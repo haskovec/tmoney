@@ -438,13 +438,13 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 // v-padding (1) on Y reach the content band. Nothing offsets Y — that is the
 // point of moving the render out of the view's render, where the
 // 1-row header added a permanent +1.
-func (s *corporateActionViewState) detailMouseAction(styles widget.Styles, width, height, x, y int) dialog.DialogAction {
+func (s *corporateActionViewState) detailMouseAction(styles widget.Styles, width, height int, click tea.Mouse) dialog.DialogAction {
 	overlay := s.renderDetails(styles, width)
 	if overlay == "" {
 		return dialog.DialogActionNone
 	}
 	startCol, startRow := widget.OverlayTopLeft(overlay, width, height)
-	localX, localY := x-startCol-3, y-startRow-2
+	localX, localY := click.X-startCol-3, click.Y-startRow-2
 	innerWidth := max(corporateActionDetailWidth(width)-dialog.DialogHorizontalOverhead, 10)
 	if localY == 0 && localX >= innerWidth-3 && localX < innerWidth {
 		return dialog.DialogActionCancel
@@ -462,7 +462,7 @@ func (s *corporateActionViewState) handleDetailMouse(styles widget.Styles, width
 		return
 	}
 	m := msg.Mouse()
-	if s.detailMouseAction(styles, width, height, m.X, m.Y) == dialog.DialogActionCancel {
+	if s.detailMouseAction(styles, width, height, m) == dialog.DialogActionCancel {
 		s.detail = nil
 	}
 }

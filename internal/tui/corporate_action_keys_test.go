@@ -132,32 +132,15 @@ func TestCorporateActions_RoundTripKeepsTheFilter(t *testing.T) {
 
 // The ticker filter lives on App, and each call that builds, selects or
 // renders the view's rows passes it in. A wrong value there compiles, so each
-// call site has a test. The fixture lists an AAPL split, then an MSFT merger;
-// under the filter "MSFT" only the merger shows.
-
-// filteredActionsApp is the Corporate Actions view with the two fixture
-// actions loaded and the ticker filter set to filter.
-func filteredActionsApp(t *testing.T, filter string) (*App, *investment.CorporateAction, *investment.CorporateAction) {
-	t.Helper()
-	app, split, merger := newTestCorporateActionViewData(t)
-	app.currentView = ViewCorporateActions
-	app.keys = defaultKeyMap()
-	app.width, app.height = 120, 40
-	app.styles = widget.NewStyles()
-	app.styles.Resize(app.width, app.height)
-	app.statusbar = widget.NewStatusBar()
-	app.menubar = widget.NewMenuBar()
-	app.sidebar = NewSidebar()
-	app.corporateActionViewFilter = filter
-	return app, split, merger
-}
+// call site has a test. The fixture (corporateActionsEnv) lists an AAPL split,
+// then an MSFT merger; under the filter "MSFT" only the merger shows.
 
 // The load arm builds the table under the filter a drill-in from Securities
 // set before the load.
 func TestCorporateActions_LoadBuildsTheTableUnderTheFilter(t *testing.T) {
-	app, _, _ := filteredActionsApp(t, "MSFT")
+	app, _, _ := corporateActionsEnv(t, 120, 40, "MSFT")
 	data := app.corporateActions.data
-	app.corporateActions.data = nil
+	app.corporateActions.data, app.corporateActions.table = nil, nil
 	app.Update(corporateActionViewLoadedMsg{data: data})
 
 	if got := app.corporateActions.table.RowCount(); got != 1 {
@@ -167,8 +150,7 @@ func TestCorporateActions_LoadBuildsTheTableUnderTheFilter(t *testing.T) {
 
 // The render closure hands the view the filter, which the header names.
 func TestCorporateActions_RenderNamesTheFilter(t *testing.T) {
-	app, _, _ := filteredActionsApp(t, "MSFT")
-	app.corporateActions.buildTable(app.corporateActionViewFilter)
+	app, _, _ := corporateActionsEnv(t, 120, 40, "MSFT")
 	e, ok := viewFor(ViewCorporateActions)
 	if !ok {
 		t.Fatal("no view table entry for ViewCorporateActions")
@@ -181,8 +163,7 @@ func TestCorporateActions_RenderNamesTheFilter(t *testing.T) {
 // Typing the filter rebuilds the table under the new text, on each character
 // and on each backspace.
 func TestCorporateActions_TypingRebuildsTheTableUnderTheFilter(t *testing.T) {
-	app, _, _ := filteredActionsApp(t, "")
-	app.corporateActions.buildTable(app.corporateActionViewFilter)
+	app, _, _ := corporateActionsEnv(t, 120, 40, "")
 
 	press(app, typed("/MSFTX")...)
 	if got := app.corporateActions.table.RowCount(); got != 0 {
@@ -198,16 +179,14 @@ func TestCorporateActions_TypingRebuildsTheTableUnderTheFilter(t *testing.T) {
 // the row at the same place in the full list.
 func TestCorporateActions_SelectionFollowsTheFilter(t *testing.T) {
 	t.Run("enter opens the details", func(t *testing.T) {
-		app, _, merger := filteredActionsApp(t, "MSFT")
-		app.corporateActions.buildTable(app.corporateActionViewFilter)
+		app, _, merger := corporateActionsEnv(t, 120, 40, "MSFT")
 		press(app, tea.KeyPressMsg{Code: tea.KeyEnter})
 		if app.corporateActions.detail != merger {
 			t.Error("enter opened the details of an action the filter hides")
 		}
 	})
 	t.Run("d asks to reverse it", func(t *testing.T) {
-		app, _, _ := filteredActionsApp(t, "MSFT")
-		app.corporateActions.buildTable(app.corporateActionViewFilter)
+		app, _, _ := corporateActionsEnv(t, 120, 40, "MSFT")
 		press(app, typed("d")...)
 		if !app.confirm.IsVisible() {
 			t.Fatal("d did not ask to reverse the action")
