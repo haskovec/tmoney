@@ -56,14 +56,14 @@ func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
 	tbl.SetCursor(2)
 
 	app := &App{
-		currentView:              ViewCorporateActions,
-		keys:                     defaultKeyMap(),
-		menubar:                  widget.NewMenuBar(),
-		sidebar:                  sidebar,
-		statusbar:                widget.NewStatusBar(),
-		corporateActionViewTable: tbl,
-		width:                    120,
-		height:                   40,
+		currentView:         ViewCorporateActions,
+		keys:                defaultKeyMap(),
+		menubar:             widget.NewMenuBar(),
+		sidebar:             sidebar,
+		statusbar:           widget.NewStatusBar(),
+		corporateActionView: corporateActionViewState{table: tbl},
+		width:               120,
+		height:              40,
 	}
 	app.styles = widget.NewStyles()
 	app.styles.Resize(120, 40)
@@ -78,7 +78,7 @@ func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
 	model, _ := app.Update(click)
 	app = model.(*App)
 
-	if got := app.corporateActionViewTable.Cursor(); got != 0 {
+	if got := app.corporateActionView.table.Cursor(); got != 0 {
 		t.Errorf("click should move the corporate-action table cursor to row 0, got %d", got)
 	}
 	if app.sidebar.IsFocused() {

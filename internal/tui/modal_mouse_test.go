@@ -234,7 +234,7 @@ func TestMouseGate_CorporateActionDetailSwallowsClicks(t *testing.T) {
 		t.Fatalf("the detail panel must not be a registry surface, got %q", got.name)
 	}
 	_, _ = a.handleDialogMouse(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
-	if a.corporateActionDetail == nil {
+	if a.corporateActionView.detail == nil {
 		t.Error("a click must not dismiss the detail panel")
 	}
 }

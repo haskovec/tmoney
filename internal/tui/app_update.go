@@ -174,7 +174,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleSpinOffPriceLookupResult(msg)
 
 	case corporateActionViewLoadedMsg:
-		a.corporateActionView = msg.data
+		a.corporateActionView.data = msg.data
 		a.buildCorporateActionViewTable()
 		return a, nil
 

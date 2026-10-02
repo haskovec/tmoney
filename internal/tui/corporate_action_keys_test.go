@@ -61,7 +61,7 @@ func TestCorporateActions_EscEndsFilterEntry(t *testing.T) {
 	if a.currentView != ViewCorporateActions {
 		t.Errorf("view = %v, want Corporate Actions", a.currentView)
 	}
-	if a.corporateActionViewFilterEditing {
+	if a.corporateActionView.filterEditing {
 		t.Error("Esc did not end filter entry")
 	}
 }
@@ -69,10 +69,10 @@ func TestCorporateActions_EscEndsFilterEntry(t *testing.T) {
 // Esc with the details panel open closes the panel and stays in the view.
 func TestCorporateActions_EscClosesDetails(t *testing.T) {
 	a := corporateActionsApp(t)
-	a.corporateActionDetail = &investment.CorporateAction{}
+	a.corporateActionView.detail = &investment.CorporateAction{}
 	press(a, escKey)
 
-	if a.corporateActionDetail != nil {
+	if a.corporateActionView.detail != nil {
 		t.Error("Esc did not close the details panel")
 	}
 	if a.currentView != ViewCorporateActions {
@@ -97,7 +97,33 @@ func TestCorporateActions_LeavingEndsFilterEntry(t *testing.T) {
 	press(a, typed("/ab")...)
 	a.switchView(ViewDashboard)
 
-	if a.corporateActionViewFilterEditing {
+	if a.corporateActionView.filterEditing {
 		t.Error("the filter entry outlived the view")
+	}
+}
+
+// A round trip through another view keeps the ticker filter, but closes the
+// details panel and ends a filter entry: the view's leave hook drops only
+// those two.
+func TestCorporateActions_RoundTripKeepsTheFilter(t *testing.T) {
+	a := corporateActionsApp(t)
+	press(a, typed("/ab")...)
+	a.corporateActionView.detail = &investment.CorporateAction{}
+	if !a.corporateActionView.filterEditing || a.corporateActionViewFilter != "ab" {
+		t.Fatalf("setup: filterEditing=%v filter=%q, want true and %q",
+			a.corporateActionView.filterEditing, a.corporateActionViewFilter, "ab")
+	}
+
+	a.switchView(ViewDashboard)
+	a.switchView(ViewCorporateActions)
+
+	if a.corporateActionViewFilter != "ab" {
+		t.Errorf("the round trip changed the filter to %q, want %q", a.corporateActionViewFilter, "ab")
+	}
+	if a.corporateActionView.detail != nil {
+		t.Error("the details panel survived the round trip")
+	}
+	if a.corporateActionView.filterEditing {
+		t.Error("the filter entry survived the round trip")
 	}
 }

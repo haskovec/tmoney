@@ -682,8 +682,8 @@ W1 made the help line say "Back", because that is what Esc does today (`corporat
 
 ### Fix
 
-1. Add an early guard in `handleKeyPress`, next to the investment-register guard: while `currentView == ViewCorporateActions` and `corporateActionViewFilterEditing` is true, send every key to `handleCorporateActionViewKeys`.
-2. In the global Esc arm, add an exception: on Corporate Actions with the details panel open (`corporateActionDetail != nil`), send Esc to the view handler. The handler closes the panel, and the view stays.
+1. Add an early guard in `handleKeyPress`, next to the investment-register guard: while `currentView == ViewCorporateActions` and `corporateActionView.filterEditing` is true, send every key to `handleCorporateActionViewKeys`.
+2. In the global Esc arm, add an exception: on Corporate Actions with the details panel open (`corporateActionView.detail != nil`), send Esc to the view handler. The handler closes the panel, and the view stays.
 3. The Esc arm in the view handler for the list (`closeCorporateActionView`, then `switchView(previousView)`) must give the same result as the global arm. The global arm also returns `reloadCurrentView()`. Keep one path. Do not have two different "back" behaviors.
 4. Change the help Esc line to match the new behavior (close details, end filter entry, or back), and update `TestCorporateActionShortcuts`.
 5. The view-layer plan says that three pre-switch branches in `handleKeyPress` do not move. The new guard is a fourth. Update that rule in `specs/implementation-plan-tui-view-layer.md`.

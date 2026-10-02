@@ -48,10 +48,10 @@ func newTestCorporateActionViewData(t *testing.T) (*App, *investment.CorporateAc
 	mergerAction.SetTargetSecurity(googID)
 
 	app := &App{
-		corporateActionView: &corporateActionViewData{
+		corporateActionView: corporateActionViewState{data: &corporateActionViewData{
 			actions: []*investment.CorporateAction{splitAction, mergerAction},
 			secMap:  secMap,
-		},
+		}},
 	}
 	return app, splitAction, mergerAction
 }
@@ -101,7 +101,7 @@ func TestFilteredCorporateActions_TypeMatch(t *testing.T) {
 
 func TestFormatGlobalCorporateActionRow_IncludesTicker(t *testing.T) {
 	app, split, _ := newTestCorporateActionViewData(t)
-	row := formatGlobalCorporateActionRow(split, app.corporateActionView.secMap)
+	row := formatGlobalCorporateActionRow(split, app.corporateActionView.data.secMap)
 	if len(row) != 4 {
 		t.Fatalf("row length = %d, want 4", len(row))
 	}
@@ -157,7 +157,7 @@ func corporateActionDetailEnv(t *testing.T, w, h int) (*App, *investment.Corpora
 	app.sidebar = NewSidebar()
 	app.styles = styles
 	app.buildCorporateActionViewTable()
-	app.corporateActionDetail = split
+	app.corporateActionView.detail = split
 	return app, split
 }
 
@@ -215,7 +215,7 @@ func TestCorporateActionDetails_ShortTerminalKeepsHint(t *testing.T) {
 // cover it. The ticker lookups dereference corporateActionView.secMap.
 func TestCorporateActionDetails_NilViewRendersNothing(t *testing.T) {
 	app, _ := corporateActionDetailEnv(t, 120, 40)
-	app.corporateActionView = nil
+	app.corporateActionView.data = nil
 	if got := app.renderCorporateActionDetails(); got != "" {
 		t.Errorf("render returned %d bytes, want empty", len(got))
 	}
@@ -228,7 +228,7 @@ func TestCorporateActionDetail_CloseButtonClosesOverlay(t *testing.T) {
 
 	model, _ := app.handleMouseEvent(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
 	app = model.(*App)
-	if app.corporateActionDetail != nil {
+	if app.corporateActionView.detail != nil {
 		t.Error("clicking [x] did not close the details overlay")
 	}
 }
@@ -261,19 +261,19 @@ func TestCorporateActionDetail_MissesAreInert(t *testing.T) {
 // behind the modal.
 func TestCorporateActionDetail_WheelIsSwallowed(t *testing.T) {
 	app, _ := corporateActionDetailEnv(t, 120, 40)
-	if app.corporateActionViewTable == nil {
+	if app.corporateActionView.table == nil {
 		t.Skip("no table built")
 	}
-	app.corporateActionViewTable.SetCursor(1)
-	before := app.corporateActionViewTable.Cursor()
+	app.corporateActionView.table.SetCursor(1)
+	before := app.corporateActionView.table.Cursor()
 
 	model, _ := app.handleMouseEvent(tea.MouseWheelMsg{X: 60, Y: 20, Button: tea.MouseWheelDown})
 	app = model.(*App)
 
-	if app.corporateActionDetail == nil {
+	if app.corporateActionView.detail == nil {
 		t.Error("the wheel closed the overlay")
 	}
-	if got := app.corporateActionViewTable.Cursor(); got != before {
+	if got := app.corporateActionView.table.Cursor(); got != before {
 		t.Errorf("register cursor moved to %d from %d behind the modal", got, before)
 	}
 }
@@ -286,7 +286,7 @@ func TestCorporateActionDetail_ViewSwitchClearsOverlay(t *testing.T) {
 	app, _ := corporateActionDetailEnv(t, 120, 40)
 	app.switchView(ViewDashboard)
 
-	if app.corporateActionDetail != nil {
+	if app.corporateActionView.detail != nil {
 		t.Error("switching view left the details overlay set")
 	}
 	if app.isDialogVisible() {
