@@ -856,6 +856,38 @@ the seven views do not mix two styles):
   formatter, is a **plain function**. `formatAmortizationRow` was one before
   the move and stays one.
 
+#### Built (VL-404, 2026-10-02): Prices, the largest view
+
+`*App` 420 → **398 methods (−22)**, as counted. 22 methods hang off
+`*priceViewState`, and none names `App`. `formatPriceRow` became a plain
+function under the rule above: it never used its receiver. `priceDeps` arrived
+to bind the security and price services. The name has to be `priceDeps`, not
+`pricesDeps`: the table guard finds the view state from the deps name
+(`price` + `ViewState`), and it failed the build's tests until the view's row
+was in `viewControllers`, which is the guard doing its job.
+
+**What stayed on `App`:** the three key handlers (they open the price dialogs
+and start the bulk refresh), `afterPriceChange` and `applyPriceRefreshResult`
+(the status bar, the refresh flag, `a.err`). They call the moved methods with
+`a.priceDeps()`, `a.keys` and the screen size.
+
+**The adapter tests.** Only parameters of the same type can be swapped
+without a compile error, so two tests cover them. The render fits the screen in
+both modes (with the width and height swapped, it draws 160 lines on a 30-line
+screen). And the chart fetch takes `onScreen`, which replaced a read of
+`currentView`: a new test scrolls the wheel off the Prices view with a price
+list still loaded and expects no command. The old wheel test could not catch a
+wrong `onScreen`, because it had no price data, so the fetch returned nothing
+whatever the flag said. The view's data stays loaded after a view switch, so
+the case is real.
+
+**The cost.** Production code +194/−177 (net +17), comments +49/−38 (net +11).
+68 test call sites changed. The assertion comparer found no assertion changed,
+except two conditions in which only the method's path changed
+(`a.prices.listCursorSecurityID()`). Each planted mistake (a swapped size, a
+constant `onScreen`, a view-state method that takes `*App`, a captured service
+pointer) failed its test.
+
 ---
 
 ## 5. Risks the phases must handle
