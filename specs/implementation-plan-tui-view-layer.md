@@ -192,8 +192,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
 
 ## Phase 4: View Controllers (priced, not committed)
 
-- [ ] **VL-401 — Per-view measurement table**
+- [x] **VL-401 — Per-view measurement table**
   - For each of the eleven views, grep its files for `*App` methods that name only the view's own state struct, styles and services. Record per view: count that could move under the 4c rule, count pinned, and why. Append the table to `specs/design-tui-view-layer.md` as the 4c notes were appended to the earlier design. No code moves in this item.
+  - Done: the table is in the design's phase 4 section. 112 of the 154 view methods could move and 42 are pinned. A grep could not follow calls (a method that calls a pinned one is pinned), so a throwaway `go/ast` tool applied the rule until nothing changed. A read-only value that the view does not own (the screen size, the key bindings, `currentView`, the config, the ticker filter) counts as an input that the caller passes in, as styles are; a write pins. Found on the way: Reports' net-worth render reads the Dashboard's expand state, and the Reports and Amortization key handlers are not pinned by Esc, as the design predicted.
 
 - [ ] **VL-402 — Decide per view**
   - From the VL-401 table, open one item per view that is worth the move. Each is its own future plan item; none is committed here.
