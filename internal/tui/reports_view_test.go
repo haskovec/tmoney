@@ -22,9 +22,9 @@ func TestApp_RenderReports_Loading(t *testing.T) {
 		reports:     reportsViewState{data: nil},
 	}
 
-	view := app.renderReports()
+	view := app.reports.render(app.styles, &app.dashboard)
 	if !contains(view, "Loading") {
-		t.Errorf("renderReports() should show loading when data is nil, got: %q", view)
+		t.Errorf("reports.render should show loading when data is nil, got: %q", view)
 	}
 }
 
@@ -53,33 +53,33 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 		}},
 	}
 
-	view := app.renderNetWorthReport()
+	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
 
 	if !contains(view, "NET WORTH REPORT") {
-		t.Error("renderNetWorthReport() should contain 'NET WORTH REPORT'")
+		t.Error("reports.renderNetWorth should contain 'NET WORTH REPORT'")
 	}
 	if !contains(view, "$13500.00") {
-		t.Error("renderNetWorthReport() should contain net worth '$13500.00'")
+		t.Error("reports.renderNetWorth should contain net worth '$13500.00'")
 	}
 	if !contains(view, "ASSETS") {
-		t.Error("renderNetWorthReport() should contain 'ASSETS'")
+		t.Error("reports.renderNetWorth should contain 'ASSETS'")
 	}
 	if !contains(view, "LIABILITIES") {
-		t.Error("renderNetWorthReport() should contain 'LIABILITIES'")
+		t.Error("reports.renderNetWorth should contain 'LIABILITIES'")
 	}
 	if !contains(view, "Checking") {
-		t.Error("renderNetWorthReport() should contain 'Checking'")
+		t.Error("reports.renderNetWorth should contain 'Checking'")
 	}
 	if !contains(view, "Savings") {
-		t.Error("renderNetWorthReport() should contain 'Savings'")
+		t.Error("reports.renderNetWorth should contain 'Savings'")
 	}
 	if !contains(view, "Visa") {
-		t.Error("renderNetWorthReport() should contain 'Visa'")
+		t.Error("reports.renderNetWorth should contain 'Visa'")
 	}
 	// Liabilities render their raw signed balance under the LIABILITIES
 	// heading: the -1500 stored balance (a debt) displays as '-$1500.00'.
 	if !contains(view, "-$1500.00") {
-		t.Error("renderNetWorthReport() should display the signed liability balance '-$1500.00'")
+		t.Error("reports.renderNetWorth should display the signed liability balance '-$1500.00'")
 	}
 }
 
@@ -103,9 +103,9 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 		}},
 	}
 
-	view := app.renderNetWorthReport()
+	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
 	if !contains(view, "-$5000.00") {
-		t.Error("renderNetWorthReport() should show negative net worth")
+		t.Error("reports.renderNetWorth should show negative net worth")
 	}
 }
 
@@ -124,9 +124,9 @@ func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderNetWorthReport()
+	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
 	if !contains(view, "No net worth data") {
-		t.Error("renderNetWorthReport() should show 'No net worth data' when nil")
+		t.Error("reports.renderNetWorth should show 'No net worth data' when nil")
 	}
 }
 
@@ -649,9 +649,9 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		}},
 	}
 
-	view := app.renderReports()
+	view := app.reports.render(app.styles, &app.dashboard)
 	if !contains(view, "NET WORTH REPORT") {
-		t.Error("renderReports() should dispatch to net worth report")
+		t.Error("reports.render should dispatch to net worth report")
 	}
 
 	// Test spending dispatch
@@ -666,9 +666,9 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		},
 	}
 
-	view = app.renderReports()
+	view = app.reports.render(app.styles, &app.dashboard)
 	if !contains(view, "SPENDING BY CATEGORY") {
-		t.Error("renderReports() should dispatch to spending report")
+		t.Error("reports.render should dispatch to spending report")
 	}
 }
 
@@ -687,9 +687,9 @@ func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderNetWorthReport()
+	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
 	if !contains(view, "Add accounts to get started") {
-		t.Error("renderNetWorthReport() should show helpful message when nil")
+		t.Error("reports.renderNetWorth should show helpful message when nil")
 	}
 }
 
@@ -890,7 +890,7 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 	}
 
 	var titleLine string
-	for _, line := range strings.Split(app.renderNetWorthReport(), "\n") {
+	for _, line := range strings.Split(app.reports.renderNetWorth(app.styles, &app.dashboard), "\n") {
 		if strings.Contains(line, "NET WORTH REPORT") {
 			titleLine = line
 			break
@@ -904,5 +904,27 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 	}
 	if w, limit := lipgloss.Width(titleLine), styles.ContentWidth(); w > limit {
 		t.Errorf("title row is %d cells wide, content area is %d: the terminal wraps it", w, limit)
+	}
+}
+
+// Reports' net-worth view shows the Dashboard's expand state: an account
+// expanded on the Dashboard shows its holdings here too, and a collapsed one
+// does not. The design's §8 asks whether it should. This pins today's
+// behaviour through the view table entry, which hands Reports the Dashboard's
+// state, so that a change to it is a decision and not an accident.
+func TestReportsNetWorth_ShowsTheDashboardsExpandState(t *testing.T) {
+	app, _ := dashboardMouseApp(t)
+	app.currentView = ViewReports
+	app.reports.data = &reportsViewData{rtype: reportTypeNetWorth, netWorth: app.dashboard.data.netWorth}
+	e, ok := viewFor(ViewReports)
+	if !ok {
+		t.Fatal("no view table entry for ViewReports")
+	}
+	out := widget.StripAnsi(e.render(app))
+	if !strings.Contains(out, "AAA") {
+		t.Errorf("the account expanded on the Dashboard does not show its holding:\n%s", out)
+	}
+	if strings.Contains(out, "BBB") {
+		t.Errorf("the account collapsed on the Dashboard shows its holding:\n%s", out)
 	}
 }

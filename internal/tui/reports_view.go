@@ -200,19 +200,21 @@ func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
 	return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 }
 
-// renderReports renders the reports view.
-func (a *App) renderReports() string {
-	if a.reports.data == nil {
+// render renders the reports view. dash is the Dashboard's state: the net-worth
+// report's asset and liability columns show its holdings and its expanded
+// accounts (the design's §8 asks whether they should).
+func (s *reportsViewState) render(styles widget.Styles, dash *dashboardViewState) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading reports...")
 	}
 
-	switch a.reports.data.rtype {
+	switch s.data.rtype {
 	case reportTypeNetWorth:
-		return a.renderNetWorthReport()
+		return s.renderNetWorth(styles, dash)
 	case reportTypeSpending:
-		return a.reports.renderSpending(a.styles)
+		return s.renderSpending(styles)
 	default:
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -220,16 +222,16 @@ func (a *App) renderReports() string {
 	}
 }
 
-// renderNetWorthReport renders the net worth report.
-func (a *App) renderNetWorthReport() string {
-	if a.reports.data.netWorth == nil {
+// renderNetWorth renders the net worth report.
+func (s *reportsViewState) renderNetWorth(styles widget.Styles, dash *dashboardViewState) string {
+	if s.data.netWorth == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("No net worth data available. Add accounts to get started.")
 	}
 
-	contentWidth := a.styles.ContentWidth()
-	nw := a.reports.data.netWorth
+	contentWidth := styles.ContentWidth()
+	nw := s.data.netWorth
 
 	var sections []string
 
@@ -240,25 +242,25 @@ func (a *App) renderNetWorthReport() string {
 	// Measure the text that is rendered, prefix included: sizing the gap from the
 	// bare date once left the row seven cells over and wrapped the year.
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(asOf)-4, 1)
-	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(asOf)
+	titleRow := styles.Title.Render(titleText) + strings.Repeat(" ", padding) + styles.Muted.Render(asOf)
 	sections = append(sections, titleRow)
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
 	// Net worth summary, one line per currency
 	sections = append(sections, "")
-	sections = append(sections, renderNetWorthSummary(a.styles, nw)...)
+	sections = append(sections, renderNetWorthSummary(styles, nw)...)
 	sections = append(sections, "")
 
 	// Assets and liabilities columns. nil: the Net Worth report has no
 	// expand/collapse affordance, so no mouse hit-test rows are recorded.
-	sections = append(sections, a.dashboard.renderAssetLiabilityColumns(a.styles, nw, contentWidth, nil))
+	sections = append(sections, dash.renderAssetLiabilityColumns(styles, nw, contentWidth, nil))
 
 	// Navigation hints
 	sections = append(sections, "")
-	sections = append(sections, a.styles.Muted.Render("  n net worth  s spending  esc back"))
+	sections = append(sections, styles.Muted.Render("  n net worth  s spending  esc back"))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).

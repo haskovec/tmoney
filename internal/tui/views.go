@@ -119,7 +119,7 @@ func init() {
 		{
 			id:     ViewReports,
 			name:   "Reports",
-			render: (*App).renderReports,
+			render: func(a *App) string { return a.reports.render(a.styles, &a.dashboard) },
 			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
 			},
