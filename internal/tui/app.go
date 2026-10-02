@@ -97,9 +97,8 @@ type App struct {
 	// Register view state (data loaded when an account is selected)
 	register registerViewState
 
-	// Amortization view data (loan-account drill-in via 'a')
-	amortizationData  *amortizationViewData
-	amortizationTable *widget.Table
+	// Amortization view state (loan-account drill-in via 'a')
+	amortization amortizationViewState
 
 	// Transaction dialog state
 	txn txnSurface

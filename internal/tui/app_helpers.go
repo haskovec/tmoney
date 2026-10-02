@@ -58,9 +58,9 @@ func (a *App) tableContentRowOffset() int {
 		// projection, else 1) plus the "Esc: back" hint between the title and
 		// the separator that baseOffset already covers.
 		offset := baseOffset
-		if a.amortizationData != nil {
+		if a.amortization.data != nil {
 			statsLines := 1
-			d := a.amortizationData
+			d := a.amortization.data
 			if d.hasSchedule && d.aprValid && d.projErr == nil {
 				statsLines = 2
 			}

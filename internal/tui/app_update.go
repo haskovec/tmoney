@@ -75,7 +75,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case amortizationLoadedMsg:
-		a.amortizationData = msg.data
+		a.amortization.data = msg.data
 		a.buildAmortizationTable()
 		return a, nil
 

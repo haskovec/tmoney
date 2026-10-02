@@ -15,6 +15,13 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
+// amortizationViewState is everything the Amortization view owns. Its zero
+// value is the view before its first load.
+type amortizationViewState struct {
+	data  *amortizationViewData
+	table *widget.Table
+}
+
 // amortizationViewData holds the live amortization projection for a loan
 // account's drill-in view (register → 'a'). Everything is derived from the
 // loan's balance, its APR, and its loan-shaped schedule's derived P&I payment;
@@ -118,9 +125,9 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 // there is no projection to show (no schedule, missing APR, or a projection
 // error) so the render path falls through to its hint states.
 func (a *App) buildAmortizationTable() {
-	d := a.amortizationData
+	d := a.amortization.data
 	if d == nil || !d.hasSchedule || !d.aprValid || d.projErr != nil || len(d.projection.Rows) == 0 {
-		a.amortizationTable = nil
+		a.amortization.table = nil
 		return
 	}
 
@@ -133,10 +140,10 @@ func (a *App) buildAmortizationTable() {
 		{Header: "ESCROW", Width: 12, Align: widget.AlignRight},
 		{Header: "BALANCE", Width: 14, Align: widget.AlignRight},
 	}
-	if a.amortizationTable == nil {
-		a.amortizationTable = widget.NewTable(columns)
+	if a.amortization.table == nil {
+		a.amortization.table = widget.NewTable(columns)
 	} else {
-		a.amortizationTable.SetColumns(columns)
+		a.amortization.table.SetColumns(columns)
 	}
 
 	rows := d.projection.Rows
@@ -144,8 +151,8 @@ func (a *App) buildAmortizationTable() {
 	for i := range rows {
 		tableRows[i] = formatAmortizationRow(&rows[i])
 	}
-	a.amortizationTable.SetRows(tableRows)
-	a.amortizationTable.SetFocused(true)
+	a.amortization.table.SetRows(tableRows)
+	a.amortization.table.SetFocused(true)
 }
 
 // formatAmortizationRow formats one projection row into table cells.
@@ -173,7 +180,7 @@ func formatAPR(apr types.Money) string {
 // projection exists. Truncated projections render Payoff and Interest remaining
 // as "100y+" per the spec — never the cap row as if it were payoff.
 func (a *App) amortizationStatsLine() string {
-	d := a.amortizationData
+	d := a.amortization.data
 	pair := func(l, v string) string { return a.styles.Muted.Render(l+":") + " " + a.styles.Bold.Render(v) }
 
 	aprStr := "—"
@@ -221,10 +228,10 @@ func (a *App) amortizationStatsLine() string {
 
 // renderAmortizationView renders the loan amortization drill-in.
 func (a *App) renderAmortizationView() string {
-	if a.amortizationData == nil {
+	if a.amortization.data == nil {
 		return lipgloss.NewStyle().Padding(1, 2).Render("Loading amortization…")
 	}
-	d := a.amortizationData
+	d := a.amortization.data
 	contentWidth := max(a.width-4, 1)
 
 	var sections []string
@@ -269,10 +276,10 @@ func (a *App) renderAmortizationView() string {
 		paddingHeight := 2
 		tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-		if a.amortizationTable != nil {
+		if a.amortization.table != nil {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.amortizationTable.Render(a.styles, tableWidth, tableHeight))
-			if info := a.amortizationTable.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, a.amortization.table.Render(a.styles, tableWidth, tableHeight))
+			if info := a.amortization.table.ScrollInfo(tableHeight - 2); info != "" {
 				sections = append(sections, a.styles.Muted.Render("  "+info))
 			}
 		}
@@ -285,22 +292,22 @@ func (a *App) renderAmortizationView() string {
 // claimed by the global handler (returns to the register and reloads it), so it
 // is intentionally not handled here.
 func (a *App) handleAmortizationKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.amortizationTable == nil {
+	if a.amortization.table == nil {
 		return a, nil
 	}
 	switch {
 	case key.Matches(msg, a.keys.Up):
-		a.amortizationTable.MoveUp()
+		a.amortization.table.MoveUp()
 	case key.Matches(msg, a.keys.Down):
-		a.amortizationTable.MoveDown()
+		a.amortization.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.amortizationTable.MoveToTop()
+		a.amortization.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.amortizationTable.MoveToBottom()
+		a.amortization.table.MoveToBottom()
 	case msg.String() == "pgup":
-		a.amortizationTable.PageUp(max(a.height-10, 1))
+		a.amortization.table.PageUp(max(a.height-10, 1))
 	case msg.String() == "pgdown":
-		a.amortizationTable.PageDown(max(a.height-10, 1))
+		a.amortization.table.PageDown(max(a.height-10, 1))
 	}
 	return a, nil
 }
