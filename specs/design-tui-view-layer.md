@@ -1006,6 +1006,40 @@ the method's path changed. Each planted mistake (an empty filter at each of the
 six call sites, the size swapped, a view-state method that takes `*App`, a
 captured service pointer) failed a test.
 
+#### Built (VL-408, 2026-10-02): Reports, the smallest move
+
+`*App` 370 → **365 methods (−5)**, as counted: six methods moved onto
+`reportsViewState` (the load, the key handler, the two period moves, the
+spending render and the adjacent periods), and `reportsDeps` arrived.
+`renderReports` and `renderNetWorthReport` stay on `App`: the net-worth render
+reads the Dashboard's state through `a.dashboard.renderAssetLiabilityColumns`,
+which §8 records as an open question. `renderReports` calls
+`a.reports.renderSpending` for the spending report.
+
+The key handler and the two period moves now return only a command; the
+entry's `onKey` closure returns the App. The move added only the deps and the
+key bindings as parameters, and each has a type of its own, so a wrong argument
+does not compile and no call-site test was needed. The load's `year` and
+`month` are both `int`, but they were parameters before the move.
+
+**The cost.** Production code +81/−69 (net +12), comments +14/−6 (net +8). 19
+test lines changed, most of them failure messages that named the old methods.
+No assertion changed.
+
+**After the review of #86, the two renders moved too.** They were pinned only
+because the net-worth render reached into the Dashboard's state. Now `render`
+and `renderNetWorth` take that state as a parameter, `dash *dashboardViewState`,
+and only the view table entry passes it in (`&a.dashboard`), so the link
+between the two views is in one place. `*App` 365 → **363**; all eight of the
+view's methods are off `App`. The review proposed a plain function that takes
+the holdings and the expanded set as parameters; passing the Dashboard's state
+gives the same result without turning three Dashboard methods into functions
+of four or five maps. The parameter can be wrong and still compile (an empty
+Dashboard state), and no test covered the link, because it was never visible;
+a new test pins, through the entry, that the net-worth view shows an account
+expanded on the Dashboard and hides a collapsed one. The behaviour itself is
+unchanged, and whether it is right is still the question in §8.
+
 ---
 
 ## 5. Risks the phases must handle
@@ -1113,8 +1147,10 @@ view table is the document a future reader opens to learn what a view is.
   calls the Dashboard's `renderAssetLiabilityColumns`, which reads the
   Dashboard's holdings and expanded accounts, so an account expanded on the
   Dashboard shows expanded in Reports too. A product question: should the two
-  views share that state? Until it is answered, the two Reports renders stay
-  on `App` (VL-408).
+  views share that state? Since VL-408 the Reports renders take the
+  Dashboard's state as a parameter, which only the view table entry passes
+  in, and `TestReportsNetWorth_ShowsTheDashboardsExpandState` pins today's
+  answer, so changing it is a one-place decision.
 - **Reload for Reconciliation and CorporateActions** (§5.4). A product
   question, filed with those views. Phase 1 preserves today's behaviour.
 - **`load*` → `*LoadedMsg` → `build*Table` as a registry entry.** Eleven arms

@@ -44,8 +44,26 @@ type reportsViewDataLoadedMsg struct {
 	data *reportsViewData
 }
 
-// loadReportsViewData returns a command that loads report data for the reports view.
-func (a *App) loadReportsViewData(rt reportType, year, month int, includeTransfers bool) tea.Cmd {
+// reportsDeps is what the Reports view needs from outside itself. Every dep is
+// a func, because switchDatabase replaces App's services and closes the
+// previous *db.DB; and deps are passed to each call, never stored in the view
+// state. Both rules are pinned by the guards that run over viewControllers.
+type reportsDeps struct {
+	reports func() *report.Service
+}
+
+// reportsDeps binds the Reports view to the services App owns. The accessor
+// may return nil, because an App built by a test has no services, so each
+// caller keeps its own nil guard.
+func (a *App) reportsDeps() reportsDeps {
+	return reportsDeps{
+		reports: func() *report.Service { return a.services.Report },
+	}
+}
+
+// load returns a command that loads report data for the reports view. The
+// service is read through the deps when the command runs.
+func (s *reportsViewState) load(d reportsDeps, rt reportType, year, month int, includeTransfers bool) tea.Cmd {
 	return func() tea.Msg {
 		data := &reportsViewData{
 			rtype:            rt,
@@ -56,21 +74,21 @@ func (a *App) loadReportsViewData(rt reportType, year, month int, includeTransfe
 
 		switch rt {
 		case reportTypeNetWorth:
-			if a.services.Report != nil {
-				report, err := a.services.Report.NetWorthReport()
+			if reports := d.reports(); reports != nil {
+				report, err := reports.NetWorthReport()
 				if err != nil {
 					return errMsg{err: err}
 				}
 				data.netWorth = report
 			}
 		case reportTypeSpending:
-			if a.services.Report != nil {
+			if reports := d.reports(); reports != nil {
 				var report *report.Spending
 				var err error
 				if month > 0 {
-					report, err = a.services.Report.SpendingByCategoryMonth(year, month, includeTransfers)
+					report, err = reports.SpendingByCategoryMonth(year, month, includeTransfers)
 				} else {
-					report, err = a.services.Report.SpendingByCategoryYear(year, includeTransfers)
+					report, err = reports.SpendingByCategoryYear(year, includeTransfers)
 				}
 				if err != nil {
 					return errMsg{err: err}
@@ -83,65 +101,65 @@ func (a *App) loadReportsViewData(rt reportType, year, month int, includeTransfe
 	}
 }
 
-// handleReportsKeys handles key presses in the reports view.
-func (a *App) handleReportsKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.reports.data == nil {
-		return a, nil
+// handleKey handles key presses in the reports view.
+func (s *reportsViewState) handleKey(d reportsDeps, msg tea.KeyPressMsg, keys keyMap) tea.Cmd {
+	if s.data == nil {
+		return nil
 	}
 
 	switch {
-	case key.Matches(msg, a.keys.Left):
+	case key.Matches(msg, keys.Left):
 		// Navigate to previous period
-		return a.reportsPreviousPeriod()
+		return s.previousPeriod(d)
 
-	case key.Matches(msg, a.keys.Right):
+	case key.Matches(msg, keys.Right):
 		// Navigate to next period
-		return a.reportsNextPeriod()
+		return s.nextPeriod(d)
 
 	case msg.String() == "n":
 		// Switch to net worth report
 		now := time.Now()
-		return a, a.loadReportsViewData(reportTypeNetWorth, now.Year(), int(now.Month()), a.reports.data.includeTransfers)
+		return s.load(d, reportTypeNetWorth, now.Year(), int(now.Month()), s.data.includeTransfers)
 
 	case msg.String() == "s":
 		// Switch to spending report
-		year := a.reports.data.year
-		month := a.reports.data.month
+		year := s.data.year
+		month := s.data.month
 		if month == 0 {
 			month = int(time.Now().Month())
 		}
-		return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.data.includeTransfers)
+		return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 
 	case msg.String() == "y":
 		// Toggle to yearly spending view (only for spending)
-		if a.reports.data.rtype == reportTypeSpending {
-			return a, a.loadReportsViewData(reportTypeSpending, a.reports.data.year, 0, a.reports.data.includeTransfers)
+		if s.data.rtype == reportTypeSpending {
+			return s.load(d, reportTypeSpending, s.data.year, 0, s.data.includeTransfers)
 		}
 
 	case msg.String() == "m":
 		// Toggle to monthly spending view (only for spending)
-		if a.reports.data.rtype == reportTypeSpending && a.reports.data.month == 0 {
-			return a, a.loadReportsViewData(reportTypeSpending, a.reports.data.year, int(time.Now().Month()), a.reports.data.includeTransfers)
+		if s.data.rtype == reportTypeSpending && s.data.month == 0 {
+			return s.load(d, reportTypeSpending, s.data.year, int(time.Now().Month()), s.data.includeTransfers)
 		}
 
 	case msg.String() == "t":
 		// Toggle folding categorized transfers into the spending report
-		if a.reports.data.rtype == reportTypeSpending {
-			return a, a.loadReportsViewData(reportTypeSpending, a.reports.data.year, a.reports.data.month, !a.reports.data.includeTransfers)
+		if s.data.rtype == reportTypeSpending {
+			return s.load(d, reportTypeSpending, s.data.year, s.data.month, !s.data.includeTransfers)
 		}
 	}
 
-	return a, nil
+	return nil
 }
 
-// reportsPreviousPeriod navigates to the previous time period for reports.
-func (a *App) reportsPreviousPeriod() (tea.Model, tea.Cmd) {
-	if a.reports.data == nil || a.reports.data.rtype != reportTypeSpending {
-		return a, nil
+// previousPeriod navigates to the previous time period for reports.
+func (s *reportsViewState) previousPeriod(d reportsDeps) tea.Cmd {
+	if s.data == nil || s.data.rtype != reportTypeSpending {
+		return nil
 	}
 
-	year := a.reports.data.year
-	month := a.reports.data.month
+	year := s.data.year
+	month := s.data.month
 
 	if month > 0 {
 		// Monthly: go to previous month
@@ -155,17 +173,17 @@ func (a *App) reportsPreviousPeriod() (tea.Model, tea.Cmd) {
 		year--
 	}
 
-	return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.data.includeTransfers)
+	return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 }
 
-// reportsNextPeriod navigates to the next time period for reports.
-func (a *App) reportsNextPeriod() (tea.Model, tea.Cmd) {
-	if a.reports.data == nil || a.reports.data.rtype != reportTypeSpending {
-		return a, nil
+// nextPeriod navigates to the next time period for reports.
+func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
+	if s.data == nil || s.data.rtype != reportTypeSpending {
+		return nil
 	}
 
-	year := a.reports.data.year
-	month := a.reports.data.month
+	year := s.data.year
+	month := s.data.month
 
 	if month > 0 {
 		// Monthly: go to next month
@@ -179,22 +197,24 @@ func (a *App) reportsNextPeriod() (tea.Model, tea.Cmd) {
 		year++
 	}
 
-	return a, a.loadReportsViewData(reportTypeSpending, year, month, a.reports.data.includeTransfers)
+	return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 }
 
-// renderReports renders the reports view.
-func (a *App) renderReports() string {
-	if a.reports.data == nil {
+// render renders the reports view. dash is the Dashboard's state: the net-worth
+// report's asset and liability columns show its holdings and its expanded
+// accounts (the design's §8 asks whether they should).
+func (s *reportsViewState) render(styles widget.Styles, dash *dashboardViewState) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading reports...")
 	}
 
-	switch a.reports.data.rtype {
+	switch s.data.rtype {
 	case reportTypeNetWorth:
-		return a.renderNetWorthReport()
+		return s.renderNetWorth(styles, dash)
 	case reportTypeSpending:
-		return a.renderSpendingReport()
+		return s.renderSpending(styles)
 	default:
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -202,16 +222,16 @@ func (a *App) renderReports() string {
 	}
 }
 
-// renderNetWorthReport renders the net worth report.
-func (a *App) renderNetWorthReport() string {
-	if a.reports.data.netWorth == nil {
+// renderNetWorth renders the net worth report.
+func (s *reportsViewState) renderNetWorth(styles widget.Styles, dash *dashboardViewState) string {
+	if s.data.netWorth == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("No net worth data available. Add accounts to get started.")
 	}
 
-	contentWidth := a.styles.ContentWidth()
-	nw := a.reports.data.netWorth
+	contentWidth := styles.ContentWidth()
+	nw := s.data.netWorth
 
 	var sections []string
 
@@ -222,61 +242,61 @@ func (a *App) renderNetWorthReport() string {
 	// Measure the text that is rendered, prefix included: sizing the gap from the
 	// bare date once left the row seven cells over and wrapped the year.
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(asOf)-4, 1)
-	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(asOf)
+	titleRow := styles.Title.Render(titleText) + strings.Repeat(" ", padding) + styles.Muted.Render(asOf)
 	sections = append(sections, titleRow)
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
 	// Net worth summary, one line per currency
 	sections = append(sections, "")
-	sections = append(sections, renderNetWorthSummary(a.styles, nw)...)
+	sections = append(sections, renderNetWorthSummary(styles, nw)...)
 	sections = append(sections, "")
 
 	// Assets and liabilities columns. nil: the Net Worth report has no
 	// expand/collapse affordance, so no mouse hit-test rows are recorded.
-	sections = append(sections, a.dashboard.renderAssetLiabilityColumns(a.styles, nw, contentWidth, nil))
+	sections = append(sections, dash.renderAssetLiabilityColumns(styles, nw, contentWidth, nil))
 
 	// Navigation hints
 	sections = append(sections, "")
-	sections = append(sections, a.styles.Muted.Render("  n net worth  s spending  esc back"))
+	sections = append(sections, styles.Muted.Render("  n net worth  s spending  esc back"))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
 }
 
-// renderSpendingReport renders the spending by category report.
-func (a *App) renderSpendingReport() string {
-	if a.reports.data.spending == nil {
+// renderSpending renders the spending by category report.
+func (s *reportsViewState) renderSpending(styles widget.Styles) string {
+	if s.data.spending == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("No spending data available. Add transactions to see reports.")
 	}
 
-	contentWidth := a.styles.ContentWidth()
-	sr := a.reports.data.spending
+	contentWidth := styles.ContentWidth()
+	sr := s.data.spending
 
 	var sections []string
 
 	// Title row
 	titleText := "SPENDING BY CATEGORY"
-	if a.reports.data.includeTransfers {
+	if s.data.includeTransfers {
 		titleText += "  (incl. transfers)"
 	}
 	periodText := sr.Period
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(periodText)-4, 1)
-	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Bold.Render(periodText)
+	titleRow := styles.Title.Render(titleText) + strings.Repeat(" ", padding) + styles.Bold.Render(periodText)
 	sections = append(sections, titleRow)
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("═", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("═", sepWidth)))
 
 	if len(sr.Categories) == 0 {
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No spending data for this period"))
+		sections = append(sections, styles.Muted.Render("  No spending data for this period"))
 	} else {
 		// widget.Column header
 		tableWidth := max(contentWidth-4, 1)
@@ -285,7 +305,7 @@ func (a *App) renderSpendingReport() string {
 			tableWidth-42, 4)
 
 		headerLine := fmt.Sprintf("  %-20s %12s %7s  %s", "Category", "Amount", "% Total", "")
-		sections = append(sections, a.styles.TableHeader.Render(headerLine))
+		sections = append(sections, styles.TableHeader.Render(headerLine))
 
 		// Category rows
 		for _, cat := range sr.Categories {
@@ -296,10 +316,10 @@ func (a *App) renderSpendingReport() string {
 			bar := renderSpendingBar(cat.Percentage, barWidth)
 
 			line := fmt.Sprintf("  %-20s %12s %7s  %s",
-				a.styles.Bold.Render(name),
-				a.styles.Negative.Render(amount),
+				styles.Bold.Render(name),
+				styles.Negative.Render(amount),
 				pct,
-				a.styles.Negative.Render(bar))
+				styles.Negative.Render(bar))
 			sections = append(sections, line)
 
 			// Subcategory rows
@@ -307,51 +327,51 @@ func (a *App) renderSpendingReport() string {
 				subName := "  " + widget.Truncate(sub.Name, 18)
 				subAmount := formatDashboardMoney(sub.Amount)
 				subLine := fmt.Sprintf("  %-20s %12s",
-					a.styles.Muted.Render(subName),
-					a.styles.Muted.Render(subAmount))
+					styles.Muted.Render(subName),
+					styles.Muted.Render(subAmount))
 				sections = append(sections, subLine)
 			}
 		}
 
 		// Total row
-		sections = append(sections, a.styles.Muted.Render("  "+strings.Repeat("─", tableWidth-2)))
+		sections = append(sections, styles.Muted.Render("  "+strings.Repeat("─", tableWidth-2)))
 		totalAmount := formatDashboardMoney(sr.TotalSpending)
 		totalLine := fmt.Sprintf("  %-20s %12s %7s",
-			a.styles.Bold.Render("TOTAL"),
-			a.styles.Negative.Bold(true).Render(totalAmount),
+			styles.Bold.Render("TOTAL"),
+			styles.Negative.Bold(true).Render(totalAmount),
 			"100.0%")
 		sections = append(sections, totalLine)
 	}
 
 	// Period navigation
 	sections = append(sections, "")
-	prevPeriod, nextPeriod := a.getAdjacentPeriods()
+	prevPeriod, nextPeriod := s.adjacentPeriods()
 	navLine := fmt.Sprintf("  %s  %s  %s",
-		a.styles.Muted.Render(fmt.Sprintf("< %s", prevPeriod)),
-		a.styles.Bold.Render(periodText),
-		a.styles.Muted.Render(fmt.Sprintf("%s >", nextPeriod)))
+		styles.Muted.Render(fmt.Sprintf("< %s", prevPeriod)),
+		styles.Bold.Render(periodText),
+		styles.Muted.Render(fmt.Sprintf("%s >", nextPeriod)))
 	sections = append(sections, navLine)
 
 	// Navigation hints
 	modeHint := "m monthly"
-	if a.reports.data.month > 0 {
+	if s.data.month > 0 {
 		modeHint = "y yearly"
 	}
-	sections = append(sections, a.styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  esc back", modeHint)))
+	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  esc back", modeHint)))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
 }
 
-// getAdjacentPeriods returns display strings for the previous and next periods.
-func (a *App) getAdjacentPeriods() (string, string) {
-	if a.reports.data == nil {
+// adjacentPeriods returns display strings for the previous and next periods.
+func (s *reportsViewState) adjacentPeriods() (string, string) {
+	if s.data == nil {
 		return "", ""
 	}
 
-	year := a.reports.data.year
-	month := a.reports.data.month
+	year := s.data.year
+	month := s.data.month
 
 	if month > 0 {
 		// Monthly

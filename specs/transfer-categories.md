@@ -261,8 +261,8 @@ Surfaces:
 - **CLI**: `tmoney report spending --include-transfers` (all three period
   forms; `internal/cli/report/spending.go`).
 - **TUI**: `t` toggles it on the Reports view's spending report (`t` is
-  unbound there — `handleReportsKeys`,
-  `internal/tui/reports_view.go:77-119`). Session-only state in
+  unbound there — `reportsViewState.handleKey` in
+  `internal/tui/reports_view.go`). Session-only state in
   `reportsViewData`; the spending header shows an `(incl. transfers)`
   suffix while on; footer hint and help overlay
   (`internal/tui/help_overlay.go:127-139`) list the key.
