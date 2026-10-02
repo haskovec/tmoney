@@ -378,7 +378,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 
 	// Type search query
 	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
-	app.prices.handleSearchKey(aKey, app.keys, app.priceDeps())
+	app.prices.handleSearchKey(app.priceDeps(), aKey, app.keys)
 
 	if app.prices.data.searchQuery != "a" {
 		t.Errorf("searchQuery = %q, want %q", app.prices.data.searchQuery, "a")
@@ -386,7 +386,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 
 	// Escape exits search
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
-	app.prices.handleSearchKey(escKey, app.keys, app.priceDeps())
+	app.prices.handleSearchKey(app.priceDeps(), escKey, app.keys)
 
 	if app.prices.data.searching {
 		t.Error("should exit search mode after Escape")
@@ -2312,8 +2312,11 @@ func TestPriceView_RenderFitsTheScreen(t *testing.T) {
 			}
 			data.historyCache.Put(secs[0].ID, history)
 			app.prices.data = data
-			app.prices.buildListTable()
-			app.prices.buildTable()
+			if tc.mode == pricesViewList {
+				app.prices.buildListTable()
+			} else {
+				app.prices.buildTable()
+			}
 
 			lines := strings.Split(renderPrices(t, app), "\n")
 			if len(lines) > app.height {

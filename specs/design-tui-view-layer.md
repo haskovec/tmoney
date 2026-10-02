@@ -855,6 +855,8 @@ the seven views do not mix two styles):
 - A pure helper that takes neither the state nor the deps, such as a row
   formatter, is a **plain function**. `formatAmortizationRow` was one before
   the move and stays one.
+- A method that takes the deps takes them **first**, before the message, the
+  key bindings or the styles (from the review of #81).
 
 #### Built (VL-404, 2026-10-02): Prices, the largest view
 
@@ -875,11 +877,11 @@ and start the bulk refresh), `afterPriceChange` and `applyPriceRefreshResult`
 without a compile error, so two tests cover them. The render fits the screen in
 both modes (with the width and height swapped, it draws 160 lines on a 30-line
 screen). And the chart fetch takes `onScreen`, which replaced a read of
-`currentView`: a new test scrolls the wheel off the Prices view with a price
-list still loaded and expects no command. The old wheel test could not catch a
-wrong `onScreen`, because it had no price data, so the fetch returned nothing
-whatever the flag said. The view's data stays loaded after a view switch, so
-the case is real.
+`currentView`: the old wheel test, which scrolls the wheel off the Prices view
+and expects no command, now loads a price list. Without it, the fetch returned
+nothing whatever the flag said, so the test could not catch a wrong
+`onScreen`. The view's data stays loaded after a view switch, so the case is
+real. (The review of #81 merged a first, separate test into the old one.)
 
 **The cost.** Production code +194/−177 (net +17), comments +49/−38 (net +11).
 68 test call sites changed. The assertion comparer found no assertion changed,

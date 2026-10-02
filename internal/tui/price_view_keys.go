@@ -17,7 +17,7 @@ func (a *App) handlePriceViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if a.prices.data.searching {
-		return a, a.prices.handleSearchKey(msg, a.keys, a.priceDeps())
+		return a, a.prices.handleSearchKey(a.priceDeps(), msg, a.keys)
 	}
 	if a.prices.data.mode == pricesViewDetail {
 		return a.handlePriceDetailKeys(msg)
@@ -191,7 +191,7 @@ func (s *priceViewState) drillIntoSelectedListRow(d priceDeps) tea.Cmd {
 }
 
 // handleSearchKey handles key presses while in search mode.
-func (s *priceViewState) handleSearchKey(msg tea.KeyPressMsg, keys keyMap, d priceDeps) tea.Cmd {
+func (s *priceViewState) handleSearchKey(d priceDeps, msg tea.KeyPressMsg, keys keyMap) tea.Cmd {
 	switch {
 	case key.Matches(msg, keys.Escape):
 		s.data.searching = false
