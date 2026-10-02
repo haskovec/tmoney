@@ -323,6 +323,28 @@ func TestGuard_NoViewStateHoldsAService(t *testing.T) {
 	}
 }
 
+// TestGuard_NoViewStateHoldsItsDeps: a view's deps are passed to each call,
+// never stored in its state, as TestGuard_NoSurfaceStructHoldsItsDeps requires
+// of a surface. The hazard is the same one: the natural way to clear a view is
+// to assign its zero value, and a stored deps struct would come back with nil
+// funcs, so the next call through it would panic.
+func TestGuard_NoViewStateHoldsItsDeps(t *testing.T) {
+	structs := nonModalStateStructs(reflect.TypeFor[App]())
+	if len(structs) == 0 {
+		t.Fatal("no non-modal state struct found on App; this guard would pass vacuously")
+	}
+	for _, st := range structs {
+		for i := range st.NumField() {
+			f := st.Field(i)
+			if isDependencyBag(f.Type) {
+				t.Errorf("%s.%s is a %s: every field of it is a func, so it is a "+
+					"dependency bag. Pass deps in as a parameter to the methods that "+
+					"need them.", st.Name(), f.Name, f.Type)
+			}
+		}
+	}
+}
+
 // nonModalStateStructs returns every struct type declared in root's package
 // that a field of root holds, by value or by pointer, and whose pointer does
 // not implement Modal.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -15,13 +16,24 @@ import (
 // projection table is built, exactly as the message loop does.
 func loadAmort(t *testing.T, env *loanPreviewEnv, accountID types.ID) {
 	t.Helper()
-	msg := env.app.loadAmortizationData(accountID)()
+	msg := env.app.amortization.load(env.app.amortizationDeps(), accountID)()
 	if _, ok := msg.(errMsg); ok {
-		t.Fatalf("loadAmortizationData returned errMsg: %v", msg.(errMsg).err)
+		t.Fatalf("amortization.load returned errMsg: %v", msg.(errMsg).err)
 	}
 	model, _ := env.app.Update(msg)
 	env.app = model.(*App)
 	env.app.currentView = ViewAmortization
+}
+
+// renderAmort renders the view through its table entry, as the app does, so
+// the entry's closure that passes styles and the screen size is under test too.
+func renderAmort(t *testing.T, app *App) string {
+	t.Helper()
+	e, ok := viewFor(ViewAmortization)
+	if !ok {
+		t.Fatal("no view table entry for ViewAmortization")
+	}
+	return e.render(app)
 }
 
 func TestAmortizationView_LoadsProjection(t *testing.T) {
@@ -66,7 +78,7 @@ func TestAmortizationView_LoadsProjection(t *testing.T) {
 		t.Fatal("amortization.table was not built")
 	}
 
-	out := env.app.renderAmortizationView()
+	out := renderAmort(t, env.app)
 	for _, want := range []string{"AMORTIZATION", "MORTGAGE", "2056-07-01"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render missing %q\n%s", want, out)
@@ -98,7 +110,7 @@ func TestAmortizationView_NoSchedule(t *testing.T) {
 		t.Error("amortization.table should be nil with no projection")
 	}
 
-	out := env.app.renderAmortizationView()
+	out := renderAmort(t, env.app)
 	if !strings.Contains(out, "No loan payment schedule") {
 		t.Errorf("render missing no-schedule hint\n%s", out)
 	}
@@ -137,7 +149,7 @@ func TestAmortizationView_Truncated(t *testing.T) {
 		t.Errorf("truncated PayoffDate = %s; want zero date", d.stats.PayoffDate)
 	}
 
-	out := env.app.renderAmortizationView()
+	out := renderAmort(t, env.app)
 	if !strings.Contains(out, "100y+") {
 		t.Errorf("render missing 100y+ for truncated projection\n%s", out)
 	}
@@ -170,7 +182,7 @@ func TestAmortizationView_MissingAPR(t *testing.T) {
 		t.Error("amortization.table should be nil without an APR")
 	}
 
-	out := env.app.renderAmortizationView()
+	out := renderAmort(t, env.app)
 	if !strings.Contains(out, "no interest rate set") {
 		t.Errorf("render missing missing-APR hint\n%s", out)
 	}
@@ -217,5 +229,46 @@ func TestRegisterKey_A_NoOpForNonLoan(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Error("expected no command for 'a' on a non-loan register")
+	}
+}
+
+// The view table's key closure hands the view the key bindings and the
+// screen height: ↓ moves one row, and PgDn moves a page of height−10 rows.
+func TestAmortizationView_KeysReachTheTable(t *testing.T) {
+	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
+	loadAmort(t, env, env.loan.ID)
+	tbl := env.app.amortization.table
+	if tbl == nil || tbl.RowCount() < 100 {
+		t.Fatal("want a projection table of more than 100 rows")
+	}
+	if env.app.height <= 10 {
+		t.Fatalf("test premise: a page is height−10 rows, so the screen must be taller than 10; got %d", env.app.height)
+	}
+
+	press(env.app, tea.KeyPressMsg{Code: tea.KeyDown})
+	if got := tbl.Cursor(); got != 1 {
+		t.Fatalf("cursor after ↓ = %d, want 1", got)
+	}
+	press(env.app, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if want := 1 + env.app.height - 10; tbl.Cursor() != want {
+		t.Errorf("cursor after PgDn = %d, want %d (a page is height−10 rows)", tbl.Cursor(), want)
+	}
+}
+
+// The render closure hands the view the screen size: the drill-in fits the
+// screen it is given, in both directions.
+func TestAmortizationView_RenderFitsTheScreen(t *testing.T) {
+	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
+	loadAmort(t, env, env.loan.ID)
+
+	lines := strings.Split(renderAmort(t, env.app), "\n")
+	if len(lines) > env.app.height {
+		t.Errorf("render is %d lines on a %d-line screen", len(lines), env.app.height)
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w > env.app.width {
+			t.Errorf("line %d is %d cells wide on a %d-cell screen", i, w, env.app.width)
+			break
+		}
 	}
 }

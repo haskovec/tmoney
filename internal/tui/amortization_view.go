@@ -53,18 +53,42 @@ type amortizationLoadedMsg struct {
 	data *amortizationViewData
 }
 
-// loadAmortizationData computes the live amortization projection for a loan
-// account and delivers it as an amortizationLoadedMsg. It locates the loan's
-// payment schedule by its principal transfer target (FindLoanSchedule), derives
-// the projection inputs, and runs internal/loan.Project. Missing schedule,
-// missing APR, and negative-amortization all resolve to a graceful partial
-// state rather than an error.
-func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
+// amortizationDeps is what the Amortization view needs from outside itself.
+// Every dep is a func, because switchDatabase replaces App's services and
+// closes the previous *db.DB; and deps are passed to each call, never stored
+// in the view state. Both rules are pinned by the guards that run over
+// viewControllers.
+type amortizationDeps struct {
+	accounts  func() *account.Service
+	scheduled func() *scheduled.Service
+}
+
+// amortizationDeps binds the Amortization view to the services App owns. Every
+// accessor may return nil, because an App built by a test has no services, so
+// each caller keeps its own nil guard.
+func (a *App) amortizationDeps() amortizationDeps {
+	return amortizationDeps{
+		accounts:  func() *account.Service { return a.services.Account },
+		scheduled: func() *scheduled.Service { return a.services.Scheduled },
+	}
+}
+
+// load computes the live amortization projection for a loan account and
+// delivers it as an amortizationLoadedMsg. It locates the loan's payment
+// schedule by its principal transfer target (FindLoanSchedule), derives the
+// projection inputs, and runs internal/loan.Project. Missing schedule, missing
+// APR, and negative-amortization all resolve to a graceful partial state rather
+// than an error.
+//
+// The services are read through the deps when the command runs, where the
+// a.services reads were.
+func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
-		if a.services.Account == nil {
+		accounts := d.accounts()
+		if accounts == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
-		acct, err := a.services.Account.GetByID(accountID)
+		acct, err := accounts.GetByID(accountID)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -78,8 +102,8 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 		// account; its own AccountID is the funding account, so it can only be
 		// found by transfer target.
 		var sched *scheduled.Transaction
-		if a.services.Scheduled != nil {
-			sched, err = a.services.Scheduled.FindLoanSchedule(accountID)
+		if schedules := d.scheduled(); schedules != nil {
+			sched, err = schedules.FindLoanSchedule(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -87,7 +111,7 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 
 		if sched == nil {
 			// No schedule: show the current balance owed and APR only.
-			bal, gerr := a.services.Account.GetBalance(accountID)
+			bal, gerr := accounts.GetBalance(accountID)
 			if gerr != nil {
 				return errMsg{err: gerr}
 			}
@@ -102,7 +126,7 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 
 		// owed is the loan balance as of the next payment date — the same as-of
 		// balance the next post will compute against.
-		signedBal, berr := a.services.Account.BalanceAsOf(accountID, sched.NextDate)
+		signedBal, berr := accounts.BalanceAsOf(accountID, sched.NextDate)
 		if berr != nil {
 			return errMsg{err: berr}
 		}
@@ -121,13 +145,13 @@ func (a *App) loadAmortizationData(accountID types.ID) tea.Cmd {
 	}
 }
 
-// buildAmortizationTable (re)builds the projection table. It is cleared when
-// there is no projection to show (no schedule, missing APR, or a projection
-// error) so the render path falls through to its hint states.
-func (a *App) buildAmortizationTable() {
-	d := a.amortization.data
+// buildTable (re)builds the projection table. It is cleared when there is no
+// projection to show (no schedule, missing APR, or a projection error) so the
+// render path falls through to its hint states.
+func (s *amortizationViewState) buildTable() {
+	d := s.data
 	if d == nil || !d.hasSchedule || !d.aprValid || d.projErr != nil || len(d.projection.Rows) == 0 {
-		a.amortization.table = nil
+		s.table = nil
 		return
 	}
 
@@ -140,10 +164,10 @@ func (a *App) buildAmortizationTable() {
 		{Header: "ESCROW", Width: 12, Align: widget.AlignRight},
 		{Header: "BALANCE", Width: 14, Align: widget.AlignRight},
 	}
-	if a.amortization.table == nil {
-		a.amortization.table = widget.NewTable(columns)
+	if s.table == nil {
+		s.table = widget.NewTable(columns)
 	} else {
-		a.amortization.table.SetColumns(columns)
+		s.table.SetColumns(columns)
 	}
 
 	rows := d.projection.Rows
@@ -151,8 +175,8 @@ func (a *App) buildAmortizationTable() {
 	for i := range rows {
 		tableRows[i] = formatAmortizationRow(&rows[i])
 	}
-	a.amortization.table.SetRows(tableRows)
-	a.amortization.table.SetFocused(true)
+	s.table.SetRows(tableRows)
+	s.table.SetFocused(true)
 }
 
 // formatAmortizationRow formats one projection row into table cells.
@@ -174,14 +198,14 @@ func formatAPR(apr types.Money) string {
 	return strconv.FormatFloat(apr.Float64(), 'f', -1, 64) + "%"
 }
 
-// amortizationStatsLine builds the header stats block. It is one line
+// statsLine builds the header stats block. It is one line
 // (Balance / APR / P&I / Escrow) in the partial states and two lines with the
 // projection summary (Payments left / Payoff / Interest remaining) when a full
 // projection exists. Truncated projections render Payoff and Interest remaining
 // as "100y+" per the spec — never the cap row as if it were payoff.
-func (a *App) amortizationStatsLine() string {
-	d := a.amortization.data
-	pair := func(l, v string) string { return a.styles.Muted.Render(l+":") + " " + a.styles.Bold.Render(v) }
+func (s *amortizationViewState) statsLine(styles widget.Styles) string {
+	d := s.data
+	pair := func(l, v string) string { return styles.Muted.Render(l+":") + " " + styles.Bold.Render(v) }
 
 	aprStr := "—"
 	if d.aprValid {
@@ -204,18 +228,18 @@ func (a *App) amortizationStatsLine() string {
 		return line1
 	}
 
-	s := d.stats
-	paymentsLeft := strconv.Itoa(s.PaymentsRemaining)
+	st := d.stats
+	paymentsLeft := strconv.Itoa(st.PaymentsRemaining)
 	payoff := "—"
 	interestRem := "—"
 	switch {
-	case s.Truncated:
+	case st.Truncated:
 		paymentsLeft += "+"
 		payoff = "100y+"
 		interestRem = "100y+"
-	case s.PaymentsRemaining > 0:
-		payoff = s.PayoffDate.String()
-		interestRem = formatDashboardMoney(s.TotalInterestRemaining)
+	case st.PaymentsRemaining > 0:
+		payoff = st.PayoffDate.String()
+		interestRem = formatDashboardMoney(st.TotalInterestRemaining)
 	}
 	line2 := strings.Join([]string{
 		pair("Payments left", paymentsLeft),
@@ -226,13 +250,14 @@ func (a *App) amortizationStatsLine() string {
 	return line1 + "\n" + line2
 }
 
-// renderAmortizationView renders the loan amortization drill-in.
-func (a *App) renderAmortizationView() string {
-	if a.amortization.data == nil {
+// render renders the loan amortization drill-in. width and height are the
+// screen size.
+func (s *amortizationViewState) render(styles widget.Styles, width, height int) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().Padding(1, 2).Render("Loading amortization…")
 	}
-	d := a.amortization.data
-	contentWidth := max(a.width-4, 1)
+	d := s.data
+	contentWidth := max(width-4, 1)
 
 	var sections []string
 
@@ -241,32 +266,32 @@ func (a *App) renderAmortizationView() string {
 	titleSuffix := "  AMORTIZATION"
 	maxNameWidth := max(contentWidth-lipgloss.Width(titleSuffix)-4, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
-	sections = append(sections, a.styles.Title.Render(acctName+titleSuffix))
+	sections = append(sections, styles.Title.Render(acctName+titleSuffix))
 
 	// Stats block (1 or 2 lines).
-	statsBlock := a.amortizationStatsLine()
+	statsBlock := s.statsLine(styles)
 	sections = append(sections, statsBlock)
 
 	// Back hint + separator.
-	sections = append(sections, a.styles.Muted.Render("  Esc: back to register"))
+	sections = append(sections, styles.Muted.Render("  Esc: back to register"))
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	switch {
 	case !d.hasSchedule:
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No loan payment schedule targets this account."))
-		sections = append(sections, a.styles.Muted.Render("  Create one via Accounts → New Loan…, or adopt an existing monthly"))
-		sections = append(sections, a.styles.Muted.Render("  transfer schedule with Edit as loan on the Scheduled view."))
+		sections = append(sections, styles.Muted.Render("  No loan payment schedule targets this account."))
+		sections = append(sections, styles.Muted.Render("  Create one via Accounts → New Loan…, or adopt an existing monthly"))
+		sections = append(sections, styles.Muted.Render("  transfer schedule with Edit as loan on the Scheduled view."))
 	case !d.aprValid:
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  This loan account has no interest rate set — set an APR to project payments."))
+		sections = append(sections, styles.Muted.Render("  This loan account has no interest rate set — set an APR to project payments."))
 	case d.projErr != nil:
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Negative.Render("  Projection unavailable: "+d.projErr.Error()))
+		sections = append(sections, styles.Negative.Render("  Projection unavailable: "+d.projErr.Error()))
 	case len(d.projection.Rows) == 0:
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  Loan is paid off — no remaining payments."))
+		sections = append(sections, styles.Muted.Render("  Loan is paid off — no remaining payments."))
 	default:
 		statsHeight := strings.Count(statsBlock, "\n") + 1
 		headerHeight := 1
@@ -274,13 +299,13 @@ func (a *App) renderAmortizationView() string {
 		titleHeight := 1 + statsHeight + 1 + 1 // title + stats + back hint + separator
 		footerHeight := 1
 		paddingHeight := 2
-		tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
+		tableHeight := max(height-headerHeight-statusBarHeight-titleHeight-footerHeight-paddingHeight, 1)
 
-		if a.amortization.table != nil {
+		if s.table != nil {
 			tableWidth := max(contentWidth-4, 1)
-			sections = append(sections, a.amortization.table.Render(a.styles, tableWidth, tableHeight))
-			if info := a.amortization.table.ScrollInfo(tableHeight - 2); info != "" {
-				sections = append(sections, a.styles.Muted.Render("  "+info))
+			sections = append(sections, s.table.Render(styles, tableWidth, tableHeight))
+			if info := s.table.ScrollInfo(tableHeight - 2); info != "" {
+				sections = append(sections, styles.Muted.Render("  "+info))
 			}
 		}
 	}
@@ -288,28 +313,27 @@ func (a *App) renderAmortizationView() string {
 	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
 }
 
-// handleAmortizationKeys handles navigation in the amortization view. Esc is
-// claimed by the global handler (returns to the register and reloads it), so it
-// is intentionally not handled here.
-func (a *App) handleAmortizationKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if a.amortization.table == nil {
-		return a, nil
+// handleKey handles navigation in the amortization view. height is the screen
+// height, for the page size. Esc is claimed by the global handler (returns to
+// the register and reloads it), so it is intentionally not handled here.
+func (s *amortizationViewState) handleKey(msg tea.KeyPressMsg, keys keyMap, height int) {
+	if s.table == nil {
+		return
 	}
 	switch {
-	case key.Matches(msg, a.keys.Up):
-		a.amortization.table.MoveUp()
-	case key.Matches(msg, a.keys.Down):
-		a.amortization.table.MoveDown()
+	case key.Matches(msg, keys.Up):
+		s.table.MoveUp()
+	case key.Matches(msg, keys.Down):
+		s.table.MoveDown()
 	case msg.String() == "home" || msg.String() == "g":
-		a.amortization.table.MoveToTop()
+		s.table.MoveToTop()
 	case msg.String() == "end" || msg.String() == "G":
-		a.amortization.table.MoveToBottom()
+		s.table.MoveToBottom()
 	case msg.String() == "pgup":
-		a.amortization.table.PageUp(max(a.height-10, 1))
+		s.table.PageUp(max(height-10, 1))
 	case msg.String() == "pgdown":
-		a.amortization.table.PageDown(max(a.height-10, 1))
+		s.table.PageDown(max(height-10, 1))
 	}
-	return a, nil
 }
 
 // amortizationShortcuts returns the shortcut section for the amortization help

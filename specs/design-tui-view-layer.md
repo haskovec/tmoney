@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured and planned (VL-401, VL-402), and its items are not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
+**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured and planned (VL-401, VL-402), and its pilot (Amortization, VL-403) is built. Its other items are not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -780,6 +780,81 @@ because each view's movable methods include a load that calls a service. Three
 of them (Portfolio, Dashboard, the investment register) also need
 `valuationOptions` in their deps, because it reads the config. The plan items
 give each view's inputs and the call sites that change.
+
+#### Built (VL-403, the pilot, 2026-10-02): Amortization, and the guard shape settled
+
+`*App` 424 → **420 methods (−4)**. Five methods left (`loadAmortizationData`,
+`buildAmortizationTable`, `amortizationStatsLine`, `renderAmortizationView`,
+`handleAmortizationKeys`), and one arrived (`amortizationDeps`). That is the
+VL-401 count exactly. **Five methods hang off `*amortizationViewState`**, and
+none names `App`: `load`, `buildTable`, `statsLine`, `render`, `handleKey`.
+Each takes what it needs as parameters: the deps, the styles, the key
+bindings, the screen size. `load` does not use its receiver; it is a method so
+that the view's behaviour sits beside its state.
+
+What `App` still does for the view:
+
+| Where | What | Why |
+|---|---|---|
+| `amortizationDeps` | binds the two services | it reads `App`'s services |
+| the view table entry | `render`, `onKey` and `reload` are closures that pass `App`'s values in | the table's funcs take `*App` |
+| `app_update.go` | the `amortizationLoadedMsg` arm stores the data and calls `buildTable` | the message arms stay where they are |
+| `register_view.go` | the `a` drill-in calls `load` | it is the register's key handler |
+
+**The guard shape is as VL-402 proposed.** `viewControllers` is a table beside
+`controllerSurfaces`, with the same row type. The shared guards run over both:
+no method on the view state names `App`; every dep is a func and the binding
+fills it; the deps follow a database switch; and the tables match `App` (a
+`xDeps` struct now needs an `xSurface` or an `xViewState` row). The reach
+guard runs over the surfaces only. Even this view, with nothing pinned, is
+read by code that stays on `App`: the message arm writes `data`, and the
+entry's `table` and `reload` funcs read it. One guard is new:
+`TestGuard_NoViewStateHoldsItsDeps`, over every view state. The natural way to
+clear a view is to assign its zero value, and a stored deps struct would then
+come back with nil funcs.
+
+**Each guard was mutation-verified.** A method on the view state that takes
+`*App`, the view's row deleted, a dep the binding leaves nil, a binding that
+captures a service pointer, and a deps field in the view state each fail the
+guard for that rule. The nil dep fails both deps guards, because the second
+one calls it.
+
+**The cost.** Production code +80/−63 (net +17), comments +27/−15 (net +12).
+Six lines of existing tests changed: the five call sites and one failure
+message. The assertion comparer found no existing assertion changed except the
+table guard's own check, which now accepts a view row. Two tests were added,
+because the moved code now depends on closures that pass `App`'s values in,
+and no old test covered them: `TestAmortizationView_KeysReachTheTable` (no test
+had sent a key to this view) and `TestAmortizationView_RenderFitsTheScreen`
+(the render tests check text, so a closure with the width and height swapped
+passed all of them). The render tests now go through the view table entry, as
+the app does.
+
+**What the pilot found that the count did not:**
+
+- **The adapter closures are new code with a new failure mode.** Two `int`
+  parameters in the wrong order compile and pass the old tests. Each later item
+  should test its entry's closures, as this pilot does.
+- **The reach guard cannot apply to a view at all,** not even to one with
+  nothing pinned, because the message arm and the entry read the state.
+- **A view state could store its deps,** which no guard checked. One does now.
+
+**Verdict for the items after this one:** the cost is what the count
+predicted (−4 for five methods moved), plus a fixed cost of about two adapter
+tests per view. That is not "much higher than the count suggests", so the
+plan's stop condition does not apply. VL-404 can go ahead when it is wanted.
+
+**One rule for where a moved function goes** (from the review of #80, so that
+the seven views do not mix two styles):
+
+- A function that reads or writes the view state, or that takes the view's
+  deps, is a **method on the view state**. A function that takes the deps is
+  one of the view's commands (a load or a fetch), and it belongs beside the
+  view's state even when it does not read it. That is why `load` is a method
+  although it does not use its receiver.
+- A pure helper that takes neither the state nor the deps, such as a row
+  formatter, is a **plain function**. `formatAmortizationRow` was one before
+  the move and stays one.
 
 ---
 
