@@ -194,7 +194,29 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
 
 - [x] **VL-401 — Per-view measurement table**
   - For each of the eleven views, grep its files for `*App` methods that name only the view's own state struct, styles and services. Record per view: count that could move under the 4c rule, count pinned, and why. Append the table to `specs/design-tui-view-layer.md` as the 4c notes were appended to the earlier design. No code moves in this item.
-  - Done: the table is in the design's phase 4 section. 112 of the 154 view methods could move and 42 are pinned. A grep could not follow calls (a method that calls a pinned one is pinned), so a throwaway `go/ast` tool applied the rule until nothing changed. A read-only value that the view does not own (the screen size, the key bindings, `currentView`, the config, the ticker filter) counts as an input that the caller passes in, as styles are; a write pins. Found on the way: Reports' net-worth render reads the Dashboard's expand state, and the Reports and Amortization key handlers are not pinned by Esc, as the design predicted.
+  - Done: the table is in the design's phase 4 section. 112 of the 154 view methods could move and 42 are pinned. A grep could not follow calls (a method that calls a pinned one is pinned), so a throwaway `go/ast` tool applied the rule until nothing changed. A read-only value that the view does not own (the screen size, the key bindings, `currentView`, the config, the ticker filter) counts as an input that the caller passes in, as styles are; a write pins. Found on the way: Reports' net-worth render reads the Dashboard's expand state, and the Reports and Amortization key handlers are not pinned by Esc, although the design predicted that they would be.
 
-- [ ] **VL-402 — Decide per view**
+- [x] **VL-402 — Decide per view**
   - From the VL-401 table, open one item per view that is worth the move. Each is its own future plan item; none is committed here.
+  - Done: the rule, the seven views it opens and the four it does not, and the proposed guard shape are in the design's phase 4 section ("Decided (VL-402)"). A view is worth the move when at least two thirds of its methods could move. VL-403 to VL-409 below are the seven items. They are not committed.
+
+### Phase 4 items (opened by VL-402, not committed)
+
+Each item moves the view's movable methods onto its state struct, with the 4c shape: a deps struct for the services, bound by one `App` method, and the inputs passed in at the call. The counts are from VL-401. "Calls" are the call sites that change: production code that stays on `App`, and tests.
+
+- [ ] **VL-403 — Pilot: Amortization**
+  - Move all 5 methods (`amortizationStatsLine`, `buildAmortizationTable`, `handleAmortizationKeys`, `loadAmortizationData`, `renderAmortizationView`). Deps: services. Inputs: styles, keys, width, height. Calls: 3 production, 5 tests.
+  - Settle the guard shape. The proposal: a table for views beside `controllerSurfaces`, with the guard that no method on the view state names `App` and the two deps guards, and without the reach guard (the design says why). Mutation-verify each guard, as the 4c rows were.
+  - Record the real cost as the 4c notes did: methods moved, methods added, lines, test churn. It prices the items after this one. If the cost is much higher than the count suggests, stop and re-decide before VL-404.
+- [ ] **VL-404 — Prices**
+  - 23 of 28. Deps: services. Inputs: styles, keys, width, height, `currentView`. Calls: 20 production, 68 tests (the most test churn of the seven). Stays on `App`: the three key handlers (the price dialogs, the bulk refresh), `afterPriceChange`, `applyPriceRefreshResult`.
+- [ ] **VL-405 — Portfolio**
+  - 12 of 13. Deps: services and `valuationOptions`. Inputs: styles, height. Calls: 22 production, 30 tests. Stays: `handlePortfolioKeys` (sidebar, stock-split dialog).
+- [ ] **VL-406 — Dashboard**
+  - 11 of 13. Deps: services and `valuationOptions`. Inputs: styles. Calls: 14 production, 33 tests. Stays: `handleDashboardKeys`, `setDashboardAccountExpanded` (both move the sidebar cursor). Reports' two pinned renders call `renderAssetLiabilityColumns`; after the move they call it through `a.dashboard`.
+- [ ] **VL-407 — Corporate Actions**
+  - 8 of 10. Deps: services. Inputs: styles, width, height, the ticker filter. Calls: 12 production, 11 tests. Stays: `handleCorporateActionViewKeys` (writes the filter), `confirmDeleteCorporateAction` (confirm dialog).
+- [ ] **VL-408 — Reports**
+  - 6 of 8. Deps: services. Inputs: styles, keys. Calls: 5 production, 19 tests. Stays: `renderReports` and `renderNetWorthReport`, which read Dashboard state (an open question in the design's §8).
+- [ ] **VL-409 — Investment register**
+  - 14 of 18. Deps: services and `valuationOptions`. Inputs: styles, height. Calls: 26 production, 49 tests. Last, because it is the most coupled view: 113 reads of its state in 19 files, many from the investment dialogs. Stays: the key handler, the search-key handler, the table build (it consumes `pendingInvestmentSelectID`), the status toggle (undo).
