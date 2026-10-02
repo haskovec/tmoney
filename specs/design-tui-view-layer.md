@@ -888,6 +888,43 @@ except two conditions in which only the method's path changed
 constant `onScreen`, a view-state method that takes `*App`, a captured service
 pointer) failed its test.
 
+#### Built (VL-405, 2026-10-02): Portfolio, and the config as a dep
+
+`*App` 398 → **387 methods (−11)**, as counted: twelve methods moved onto
+`portfolioViewState`, and `portfolioDeps` arrived. `handlePortfolioKeys`
+stays: it moves the sidebar and opens the stock-split dialog. No assertion
+changed.
+
+**The valuation options came close to adding a silent failure.** The load read
+`a.valuationOptions()` (the config) inside its command. The first version of
+the move passed the options as a parameter, read when the load was made. That
+put a value at each of the seven call sites where any `ValuationOptions{}`
+compiles, and a planted wrong value at the closed-positions toggle passed every
+test. So the config is a dep instead: `portfolioDeps.config` returns `a.cfg`,
+and the load reads it when it runs, exactly as before. `valuationOptionsFor(cfg)`
+holds the logic, and `App.valuationOptions()` calls it, so there is one copy.
+The undo manager was already a dep that is not a service, so this is not a new
+kind of dep. The generic deps test now sets a config as it sets the undo
+manager: the config does not change on a database switch, and setting it only
+proves that the dep reads the field when called. Dashboard and the investment
+register can use the same dep.
+
+**A finding the move kept, not fixed.** Both loads skip the valuation when
+`services.Investment` is nil, but the service they call is
+`services.InvestmentValuation`. About sixteen places in the package have the
+same pattern; it dates from the extraction of the valuation service
+(`ba24049`), when the nil checks were not all updated. In production both
+services always exist, so a user cannot hit it; a test that sets one without
+the other could panic or skip a load. The move kept the behaviour exactly
+(`portfolioDeps.investments` exists only for the check), and a fix belongs in
+its own change, across all the places at once.
+
+**The cost.** Production code +150/−124 (net +26), comments +24/−9 (net +15).
+30 test call sites changed. One adapter test: the render fits the screen. Each
+planted mistake (the width in place of the height, a view-state method that
+takes `*App`, a captured service pointer, a captured or missing config dep)
+failed its test.
+
 ---
 
 ## 5. Risks the phases must handle
