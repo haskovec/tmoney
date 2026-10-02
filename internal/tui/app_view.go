@@ -70,7 +70,7 @@ func (a *App) renderLayout() string {
 	// be raised over it, and the order between the two is unobservable.
 	if a.corporateActions.detail != nil && a.corporateActions.data != nil &&
 		a.currentView == ViewCorporateActions {
-		overlay := a.renderCorporateActionDetails()
+		overlay := a.corporateActions.renderDetails(a.styles, a.width)
 		layout = widget.OverlayCenter(layout, overlay, a.width, a.height)
 	}
 

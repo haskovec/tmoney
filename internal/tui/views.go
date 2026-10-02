@@ -274,15 +274,17 @@ func init() {
 			id:         ViewCorporateActions,
 			name:       "Corporate Actions",
 			fullScreen: true,
-			render:     (*App).renderCorporateActionView,
-			onKey:      (*App).handleCorporateActionViewKeys,
+			render: func(a *App) string {
+				return a.corporateActions.render(a.styles, a.height, a.corporateActionViewFilter)
+			},
+			onKey: (*App).handleCorporateActionViewKeys,
 			hints: func(*App) string {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},
 			shortcuts: corporateActionShortcuts,
 			table:     func(a *App) *widget.Table { return a.corporateActions.table },
 			reload: func(a *App) []tea.Cmd {
-				return []tea.Cmd{a.loadCorporateActionViewData()}
+				return []tea.Cmd{a.corporateActions.load(a.corporateActionDeps())}
 			},
 			focus: func(a *App) {
 				// Corporate Actions is full-screen, no sidebar (the table is

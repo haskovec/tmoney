@@ -387,7 +387,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.corporateActionViewFilter = ""
 		}
 		a.switchView(ViewCorporateActions)
-		return a, a.loadCorporateActionViewData()
+		return a, a.corporateActions.load(a.corporateActionDeps())
 	}
 
 	return a, nil

@@ -182,7 +182,7 @@ func (a *App) refreshAfterCorporateAction() tea.Cmd {
 			return a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)
 		}
 	case ViewCorporateActions:
-		return a.loadCorporateActionViewData()
+		return a.corporateActions.load(a.corporateActionDeps())
 	case ViewSecurities:
 		return a.loadSecurityViewData()
 	}
