@@ -206,6 +206,8 @@ Each item moves the view's movable methods onto its state struct, with the 4c sh
 
 Where each moved function goes (the design's VL-403 note): a function that reads or writes the view state, or takes the view's deps, is a method on the state; a pure helper that takes neither is a plain function. Each item also tests the entry closures it adds, as VL-403 does.
 
+How the call sites look (from the review of #84): each one repeats the call, `a.<view>.<method>(a.<view>Deps(), ...)`, with no wrapper on `App`. A deps or styles argument cannot be wrong and still compile, because each has a type of its own, so the repetition hides no mistake; and a wrapper would add an `App` method back for each view. An argument that can be wrong and still compile (an `int`, a `string` or a `bool`, such as the screen size, the ticker filter or `onScreen`) is either bound in one place as a dep, as the config is (VL-405), or tested at each call site that passes it.
+
 - [x] **VL-403 — Pilot: Amortization**
   - Move all 5 methods (`amortizationStatsLine`, `buildAmortizationTable`, `handleAmortizationKeys`, `loadAmortizationData`, `renderAmortizationView`). Deps: services. Inputs: styles, keys, width, height. Calls: 3 production, 5 tests.
   - Settle the guard shape. The proposal: a table for views beside `controllerSurfaces`, with the guard that no method on the view state names `App` and the two deps guards, and without the reach guard (the design says why). Mutation-verify each guard, as the 4c rows were.
@@ -217,8 +219,9 @@ Where each moved function goes (the design's VL-403 note): a function that reads
 - [x] **VL-405 — Portfolio**
   - 12 of 13. Deps: services and `valuationOptions`. Inputs: styles, height. Calls: 22 production, 30 tests. Stays: `handlePortfolioKeys` (sidebar, stock-split dialog).
   - Done: `*App` 398 → 387: twelve methods moved onto `portfolioViewState`, and `portfolioDeps` arrived. The valuation options come through a `config` dep, read when the load runs, as before; `valuationOptionsFor(cfg)` holds the logic, and `App.valuationOptions()` calls it. A first version passed the options as a parameter at each of seven call sites, and a planted wrong value passed every test, so the config became a dep instead. The generic deps test now sets a config, as it sets the undo manager. No assertion changed. One adapter test: the render fits the screen. The loads still checked the investment service and called the valuation service; W14 in the work list fixed that, in this view and three other loads.
-- [ ] **VL-406 — Dashboard**
+- [x] **VL-406 — Dashboard**
   - 11 of 13. Deps: services and the config (for `valuationOptionsFor`, as in VL-405). Inputs: styles. Calls: 14 production, 33 tests. Stays: `handleDashboardKeys`, `setDashboardAccountExpanded` (both move the sidebar cursor). Reports' two pinned renders call `renderAssetLiabilityColumns`; after the move they call it through `a.dashboard`.
+  - Done: `*App` 387 → 377. Seven functions became methods on `dashboardViewState` (they read its state or take its deps), and four that use only the styles became plain functions (`renderNetWorthSummary`, `renderColumnTotal`, `netWorthRowStyle`, `amountStyleBySign`); `dashboardDeps` arrived, with six services and the config. Reports calls `a.dashboard.renderAssetLiabilityColumns` and `renderNetWorthSummary`. The render takes only the styles, so no new same-typed parameter needed an adapter test. No assertion changed, except four conditions in which only the method's path changed.
 - [ ] **VL-407 — Corporate Actions**
   - 8 of 10. Deps: services. Inputs: styles, width, height, the ticker filter. Calls: 12 production, 11 tests. Stays: `handleCorporateActionViewKeys` (writes the filter), `confirmDeleteCorporateAction` (confirm dialog).
 - [ ] **VL-408 — Reports**

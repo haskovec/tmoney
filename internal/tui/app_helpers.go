@@ -285,7 +285,7 @@ func (a *App) afterRegisterSave(savedID types.ID) tea.Cmd {
 // user is looking at. Shared by the two bulk writers — import and transfer
 // linking — which can change any account's balance at once.
 func (a *App) reloadAfterBulkWrite() tea.Cmd {
-	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	cmds := []tea.Cmd{a.loadSidebarData(), a.dashboard.load(a.dashboardDeps())}
 	if a.currentView == ViewRegister && a.register.data != nil {
 		cmds = append(cmds, a.loadRegisterData(a.register.data.account.ID))
 	}

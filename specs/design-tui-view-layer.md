@@ -928,6 +928,32 @@ planted mistake (the width in place of the height, a view-state method that
 takes `*App`, a captured service pointer, a captured or missing config dep)
 failed its test.
 
+#### Built (VL-406, 2026-10-02): Dashboard, and the first plain functions
+
+`*App` 387 → **377 methods (−10)**, as counted. The rule for where a moved
+function goes split the eleven for the first time: seven read the view state
+or take its deps and are methods on `dashboardViewState`; four use only the
+styles (`renderNetWorthSummary`, `renderColumnTotal`, `netWorthRowStyle`,
+`amountStyleBySign`) and are plain functions that take the styles first.
+`dashboardDeps` binds six services and the config, as `portfolioDeps` does;
+W14 had fixed the load's nil check first, so the deps carry no service that is
+only checked. The key handler and the expand toggle stay on `App`: both move
+the sidebar cursor.
+
+Reports' two pinned renders now call `a.dashboard.renderAssetLiabilityColumns`
+and `renderNetWorthSummary`. That is the coupling §8 records (Reports shows the
+Dashboard's expand state), unchanged and now visible at the call.
+
+**No adapter test this time.** The render takes only the styles, a type no
+other parameter has, so a wrong argument does not compile. The functions that
+gained a styles parameter kept their other parameters as they were.
+
+**The cost.** Production code +130/−105 (net +25), comments +15/−6 (net +9).
+37 test lines changed. No assertion changed, except four conditions in which
+only the method's path changed (`app.dashboard.render(app.styles)`). Each
+planted mistake (a view-state method that takes `*App`, a captured service
+pointer, a captured config) failed its test.
+
 ---
 
 ## 5. Risks the phases must handle

@@ -258,7 +258,7 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 	// Reload the active view so its valuation reflects the new toggle.
 	switch a.currentView {
 	case ViewDashboard:
-		return a, a.loadDashboardData()
+		return a, a.dashboard.load(a.dashboardDeps())
 	case ViewInvestmentRegister:
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
 			return a, a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)

@@ -10,9 +10,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -47,8 +50,39 @@ type dashboardLoadedMsg struct {
 	data *dashboardData
 }
 
-// loadDashboardData returns a command that loads all data needed for the dashboard view.
-func (a *App) loadDashboardData() tea.Cmd {
+// dashboardDeps is what the Dashboard view needs from outside itself. Every
+// dep is a func, because switchDatabase replaces App's services and closes the
+// previous *db.DB; and deps are passed to each call, never stored in the view
+// state. Both rules are pinned by the guards that run over viewControllers.
+// config is the user's config, for the valuation options; like the services,
+// it is read when the load runs.
+type dashboardDeps struct {
+	reports    func() *report.Service
+	schedules  func() *scheduled.Service
+	payees     func() *payee.Service
+	accounts   func() *account.Service
+	valuations func() *investment.ValuationService
+	securities func() *security.Service
+	config     func() *config.Config
+}
+
+// dashboardDeps binds the Dashboard view to the services App owns. Every
+// accessor may return nil, because an App built by a test has no services, so
+// each caller keeps its own nil guard.
+func (a *App) dashboardDeps() dashboardDeps {
+	return dashboardDeps{
+		reports:    func() *report.Service { return a.services.Report },
+		schedules:  func() *scheduled.Service { return a.services.Scheduled },
+		payees:     func() *payee.Service { return a.services.Payee },
+		accounts:   func() *account.Service { return a.services.Account },
+		valuations: func() *investment.ValuationService { return a.services.InvestmentValuation },
+		securities: func() *security.Service { return a.services.Security },
+		config:     func() *config.Config { return a.cfg },
+	}
+}
+
+// load returns a command that loads all data needed for the dashboard view.
+func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 	return func() tea.Msg {
 		data := &dashboardData{
 			payeeNames:   make(map[types.ID]string),
@@ -56,8 +90,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load net worth report
-		if a.services.Report != nil {
-			report, err := a.services.Report.NetWorthReport()
+		if reports := d.reports(); reports != nil {
+			report, err := reports.NetWorthReport()
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -65,22 +99,22 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load due scheduled transactions
-		if a.services.Scheduled != nil {
-			due, err := a.services.Scheduled.ListDue()
+		if schedules := d.schedules(); schedules != nil {
+			due, err := schedules.ListDue()
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.dueTxns = due
 
-			upcoming, err := a.services.Scheduled.ListUpcoming(30)
+			upcoming, err := schedules.ListUpcoming(30)
 			if err != nil {
 				return errMsg{err: err}
 			}
 			// Filter out items already in due list
 			var filteredUpcoming []*scheduled.Transaction
 			dueIDs := make(map[string]bool)
-			for _, d := range due {
-				dueIDs[d.ID.String()] = true
+			for _, dt := range due {
+				dueIDs[dt.ID.String()] = true
 			}
 			for _, u := range upcoming {
 				if !dueIDs[u.ID.String()] {
@@ -91,8 +125,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load payee names for scheduled transactions
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if payeeSvc := d.payees(); payeeSvc != nil {
+			payees, err := payeeSvc.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -101,8 +135,8 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load account names
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if accountSvc := d.accounts(); accountSvc != nil {
+			accounts, err := accountSvc.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -111,7 +145,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 		}
 
 		// Load investment account valuations with holdings for dashboard display
-		if a.services.InvestmentValuation != nil && data.netWorth != nil {
+		if valuations := d.valuations(); valuations != nil && data.netWorth != nil {
 			data.investmentHoldings = make(map[types.ID]*investment.AccountValuation)
 			data.securityTickers = make(map[types.ID]string)
 
@@ -119,14 +153,14 @@ func (a *App) loadDashboardData() tea.Cmd {
 				if !account.Type(acct.Type).IsInvestmentType() {
 					continue
 				}
-				val, err := a.services.InvestmentValuation.GetAccountValuation(acct.AccountID, types.Today(), a.valuationOptions())
+				val, err := valuations.GetAccountValuation(acct.AccountID, types.Today(), valuationOptionsFor(d.config()))
 				if err == nil {
 					data.investmentHoldings[acct.AccountID] = val
 				}
 			}
 
 			// Load security tickers for all holdings
-			if a.services.Security != nil {
+			if secSvc := d.securities(); secSvc != nil {
 				securityIDs := make(map[types.ID]bool)
 				for _, val := range data.investmentHoldings {
 					for _, h := range val.Holdings {
@@ -134,7 +168,7 @@ func (a *App) loadDashboardData() tea.Cmd {
 					}
 				}
 				for secID := range securityIDs {
-					sec, err := a.services.Security.GetByID(secID)
+					sec, err := secSvc.GetByID(secID)
 					if err == nil {
 						data.securityTickers[secID] = sec.Ticker
 					}
@@ -197,13 +231,13 @@ func (a *App) setDashboardAccountExpanded(expanded bool) {
 	a.dashboard.expandedAccounts[acct.ID] = expanded
 }
 
-// renderDashboard renders the dashboard view.
-func (a *App) renderDashboard() string {
+// render renders the dashboard view.
+func (s *dashboardViewState) render(styles widget.Styles) string {
 	// Discard any hit-test rows recorded on a previous render; they are
 	// rebuilt below for the current data/expand state.
-	a.dashboard.accountRows = nil
+	s.accountRows = nil
 
-	if a.dashboard.data == nil {
+	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading dashboard...")
@@ -212,22 +246,22 @@ func (a *App) renderDashboard() string {
 	var sections []string
 
 	// Title row: DASHBOARD + date
-	contentWidth := a.styles.ContentWidth()
+	contentWidth := styles.ContentWidth()
 	dateStr := time.Now().Format("Jan 2, 2006")
 	titleText := "DASHBOARD"
 	padding := max(contentWidth-lipgloss.Width(titleText)-lipgloss.Width(dateStr)-4, 1)
-	titleRow := a.styles.Title.Render(titleText) + strings.Repeat(" ", padding) + a.styles.Muted.Render(dateStr)
+	titleRow := styles.Title.Render(titleText) + strings.Repeat(" ", padding) + styles.Muted.Render(dateStr)
 	sections = append(sections, titleRow)
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// Net worth display
-	if a.dashboard.data.netWorth != nil {
-		nw := a.dashboard.data.netWorth
+	if s.data.netWorth != nil {
+		nw := s.data.netWorth
 		sections = append(sections, "")
-		sections = append(sections, a.renderNetWorthSummary(nw)...)
+		sections = append(sections, renderNetWorthSummary(styles, nw)...)
 		sections = append(sections, "")
 
 		// Assets and Liabilities columns. renderAssetLiabilityColumns fills
@@ -237,20 +271,20 @@ func (a *App) renderDashboard() string {
 		// click can map a row back to its account.
 		expandableRows := map[int]types.ID{}
 		blockStart := dashboardLineCount(sections)
-		sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth, expandableRows))
+		sections = append(sections, s.renderAssetLiabilityColumns(styles, nw, contentWidth, expandableRows))
 		if len(expandableRows) > 0 {
-			a.dashboard.accountRows = make(map[int]types.ID, len(expandableRows))
+			s.accountRows = make(map[int]types.ID, len(expandableRows))
 			for relRow, id := range expandableRows {
-				a.dashboard.accountRows[blockStart+relRow+1] = id
+				s.accountRows[blockStart+relRow+1] = id
 			}
 		}
 	} else {
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No account data available"))
+		sections = append(sections, styles.Muted.Render("  No account data available"))
 	}
 
 	// Scheduled transactions section
-	sections = append(sections, a.renderDashboardScheduled())
+	sections = append(sections, s.renderScheduled(styles))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -276,7 +310,7 @@ func dashboardLineCount(sections []string) int {
 // account ID for each investment account that renders a ▸/▾ expand affordance,
 // so the dashboard can hit-test mouse clicks on those rows. Callers that don't
 // need hit-testing (the Net Worth report) pass nil.
-func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth int, expandableRows map[int]types.ID) string {
+func (s *dashboardViewState) renderAssetLiabilityColumns(styles widget.Styles, report *report.NetWorth, totalWidth int, expandableRows map[int]types.ID) string {
 	colWidth := max(
 		// Leave gap between columns
 		(totalWidth-6)/2, 20)
@@ -290,9 +324,9 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	var headerIdxToID map[int]types.ID
 
 	// Build assets column
-	assetsLines := []string{a.styles.SectionHead.Render(widget.PadRight("ASSETS", colWidth))}
+	assetsLines := []string{styles.SectionHead.Render(widget.PadRight("ASSETS", colWidth))}
 	if len(report.Assets) == 0 {
-		assetsLines = append(assetsLines, a.styles.Muted.Render("  (none)"))
+		assetsLines = append(assetsLines, styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Assets {
 			amount := netWorthRowAmount(acct)
@@ -300,10 +334,10 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
 			expandable := false
-			if account.Type(acct.Type).IsInvestmentType() && a.dashboard.data != nil && a.dashboard.data.investmentHoldings != nil {
-				if _, hasHoldings := a.dashboard.data.investmentHoldings[acct.AccountID]; hasHoldings {
+			if account.Type(acct.Type).IsInvestmentType() && s.data != nil && s.data.investmentHoldings != nil {
+				if _, hasHoldings := s.data.investmentHoldings[acct.AccountID]; hasHoldings {
 					expandable = true
-					if a.dashboard.expandedAccounts[acct.AccountID] {
+					if s.expandedAccounts[acct.AccountID] {
 						prefix = "▾ "
 					} else {
 						prefix = "▸ "
@@ -316,7 +350,7 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// than the column wraps and shifts the hit-test rows.
 			nameWidth := max(colWidth-lipgloss.Width(amount)-lipgloss.Width(prefix)-2, 1)
 			name := widget.Truncate(acct.Name, nameWidth)
-			line := fmt.Sprintf("%s%-*s %s", prefix, nameWidth, name, a.netWorthRowStyle(acct).Render(amount))
+			line := fmt.Sprintf("%s%-*s %s", prefix, nameWidth, name, netWorthRowStyle(styles, acct).Render(amount))
 			if expandable && expandableRows != nil {
 				if headerIdxToID == nil {
 					headerIdxToID = map[int]types.ID{}
@@ -329,14 +363,14 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 			// regardless of expand state so the headline figure stays
 			// visible.
 			if account.Type(acct.Type).IsInvestmentType() {
-				if tr := a.renderDashboardTRLine(acct.AccountID, acct.Currency, colWidth); tr != "" {
+				if tr := s.renderTRLine(styles, acct.AccountID, acct.Currency, colWidth); tr != "" {
 					assetsLines = append(assetsLines, tr)
 				}
 			}
 
 			// Show top holdings if investment account is expanded
-			if account.Type(acct.Type).IsInvestmentType() && a.dashboard.expandedAccounts[acct.AccountID] {
-				assetsLines = append(assetsLines, a.renderDashboardHoldings(acct.AccountID, acct.Currency, colWidth)...)
+			if account.Type(acct.Type).IsInvestmentType() && s.expandedAccounts[acct.AccountID] {
+				assetsLines = append(assetsLines, s.renderHoldings(styles, acct.AccountID, acct.Currency, colWidth)...)
 			}
 		}
 	}
@@ -346,15 +380,15 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	// signed balance — a debt shows negative (in red), while a credit /
 	// paid-ahead card shows positive (in green), so an overpaid card no
 	// longer reads as a debt.
-	liabLines := []string{a.styles.SectionHead.Render(widget.PadRight("LIABILITIES", colWidth))}
+	liabLines := []string{styles.SectionHead.Render(widget.PadRight("LIABILITIES", colWidth))}
 	if len(report.Liabilities) == 0 {
-		liabLines = append(liabLines, a.styles.Muted.Render("  (none)"))
+		liabLines = append(liabLines, styles.Muted.Render("  (none)"))
 	} else {
 		for _, acct := range report.Liabilities {
 			amount := netWorthRowAmount(acct)
 			nameWidth := max(colWidth-lipgloss.Width(amount)-4, 1)
 			name := widget.Truncate(acct.Name, nameWidth)
-			line := fmt.Sprintf("  %-*s %s", nameWidth, name, a.netWorthRowStyle(acct).Render(amount))
+			line := fmt.Sprintf("  %-*s %s", nameWidth, name, netWorthRowStyle(styles, acct).Render(amount))
 			liabLines = append(liabLines, line)
 		}
 	}
@@ -369,14 +403,14 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 	for len(liabLines) < len(assetsLines) {
 		liabLines = append(liabLines, "")
 	}
-	sep := a.styles.Muted.Render("  " + strings.Repeat("─", colWidth-4))
+	sep := styles.Muted.Render("  " + strings.Repeat("─", colWidth-4))
 	assetsLines = append(assetsLines, sep)
 	liabLines = append(liabLines, sep)
 	for _, t := range report.Totals {
 		// Only valued accounts (assets) can be estimated, so only the assets
 		// total carries "~".
-		assetsLines = append(assetsLines, a.renderColumnTotal(colWidth, t.Currency, t.Assets, t.AssetsAvailable, t.Estimated))
-		liabLines = append(liabLines, a.renderColumnTotal(colWidth, t.Currency, t.Liabilities, t.LiabilitiesAvailable, false))
+		assetsLines = append(assetsLines, renderColumnTotal(styles, colWidth, t.Currency, t.Assets, t.AssetsAvailable, t.Estimated))
+		liabLines = append(liabLines, renderColumnTotal(styles, colWidth, t.Currency, t.Liabilities, t.LiabilitiesAvailable, false))
 	}
 
 	// Join columns side by side, tracking the cumulative output-line index so
@@ -408,19 +442,19 @@ func (a *App) renderAssetLiabilityColumns(report *report.NetWorth, totalWidth in
 // renderNetWorthSummary renders one "Net Worth (CUR):" line per currency.
 // Money in different currencies is never added. A currency with an account
 // that could not be valued shows "not available", not a partial sum.
-func (a *App) renderNetWorthSummary(nw *report.NetWorth) []string {
+func renderNetWorthSummary(styles widget.Styles, nw *report.NetWorth) []string {
 	lines := make([]string, 0, len(nw.Totals))
 	for _, t := range nw.Totals {
-		label := a.styles.Bold.Render("Net Worth (" + t.Currency + "):  ")
+		label := styles.Bold.Render("Net Worth (" + t.Currency + "):  ")
 		if !t.Available {
-			lines = append(lines, label+a.styles.Negative.Bold(true).Render("not available"))
+			lines = append(lines, label+styles.Negative.Bold(true).Render("not available"))
 			continue
 		}
 		value := formatDashboardMoneyIn(t.NetWorth, t.Currency)
 		if t.Estimated {
 			value = "~" + value
 		}
-		lines = append(lines, label+a.amountStyleBySign(t.NetWorth).Bold(true).Render(value))
+		lines = append(lines, label+amountStyleBySign(styles, t.NetWorth).Bold(true).Render(value))
 	}
 	return lines
 }
@@ -428,10 +462,10 @@ func (a *App) renderNetWorthSummary(nw *report.NetWorth) []string {
 // renderColumnTotal renders a column's total line for one currency, marked
 // "~" when estimated. The label is truncated to the width the amount leaves,
 // so a long currency amount cannot widen the line past the column.
-func (a *App) renderColumnTotal(colWidth int, currency string, total types.Money, available, estimated bool) string {
-	amt, style := "not available", a.styles.Negative.Bold(true)
+func renderColumnTotal(styles widget.Styles, colWidth int, currency string, total types.Money, available, estimated bool) string {
+	amt, style := "not available", styles.Negative.Bold(true)
 	if available {
-		amt, style = formatDashboardMoneyIn(total, currency), a.amountStyleBySign(total).Bold(true)
+		amt, style = formatDashboardMoneyIn(total, currency), amountStyleBySign(styles, total).Bold(true)
 		if estimated {
 			amt = "~" + amt
 		}
@@ -455,21 +489,21 @@ func netWorthRowAmount(acct report.AccountBalance) string {
 }
 
 // netWorthRowStyle colors a row's amount by sign, and an error as negative.
-func (a *App) netWorthRowStyle(acct report.AccountBalance) lipgloss.Style {
+func netWorthRowStyle(styles widget.Styles, acct report.AccountBalance) lipgloss.Style {
 	if acct.Err != nil {
-		return a.styles.Negative
+		return styles.Negative
 	}
-	return a.amountStyleBySign(acct.Balance)
+	return amountStyleBySign(styles, acct.Balance)
 }
 
-func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
+func amountStyleBySign(styles widget.Styles, balance types.Money) lipgloss.Style {
 	if balance.IsNegative() {
-		return a.styles.Negative
+		return styles.Negative
 	}
-	return a.styles.Positive
+	return styles.Positive
 }
 
-// renderDashboardTRLine renders the total-return row for an investment
+// renderTRLine renders the total-return row for an investment
 // account on the dashboard. It sits directly under the account balance
 // line and shows the account's TotalReturn value and TotalReturnPct.
 // Returns "" when no valuation is available so callers can skip the row
@@ -478,11 +512,11 @@ func (a *App) amountStyleBySign(balance types.Money) lipgloss.Style {
 //
 // A nil TotalReturnPct (denominator zero — no buys ever) renders as the
 // "—" placeholder so the row shape stays stable across accounts.
-func (a *App) renderDashboardTRLine(accountID types.ID, currency string, colWidth int) string {
-	if a.dashboard.data == nil || a.dashboard.data.investmentHoldings == nil {
+func (s *dashboardViewState) renderTRLine(styles widget.Styles, accountID types.ID, currency string, colWidth int) string {
+	if s.data == nil || s.data.investmentHoldings == nil {
 		return ""
 	}
-	val, ok := a.dashboard.data.investmentHoldings[accountID]
+	val, ok := s.data.investmentHoldings[accountID]
 	if !ok || val == nil {
 		return ""
 	}
@@ -495,31 +529,31 @@ func (a *App) renderDashboardTRLine(accountID types.ID, currency string, colWidt
 	amount := formatDashboardMoneyIn(val.TotalReturn, currency)
 	right := amount + " " + pctStr
 
-	style := a.styles.Muted
+	style := styles.Muted
 	switch {
 	case val.TotalReturn.IsNegative():
-		style = a.styles.Negative
+		style = styles.Negative
 	case !val.TotalReturn.IsZero():
-		style = a.styles.Positive
+		style = styles.Positive
 	}
 
 	pad := max(colWidth-lipgloss.Width(right)-6, 1)
 	return fmt.Sprintf("    %-*s %s", pad, "TR", style.Render(right))
 }
 
-// renderDashboardHoldings renders the top holdings for an investment account on the dashboard.
-func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWidth int) []string {
-	if a.dashboard.data == nil || a.dashboard.data.investmentHoldings == nil {
+// renderHoldings renders the top holdings for an investment account on the dashboard.
+func (s *dashboardViewState) renderHoldings(styles widget.Styles, accountID types.ID, currency string, colWidth int) []string {
+	if s.data == nil || s.data.investmentHoldings == nil {
 		return nil
 	}
 
-	val, ok := a.dashboard.data.investmentHoldings[accountID]
+	val, ok := s.data.investmentHoldings[accountID]
 	if !ok {
 		return nil
 	}
 
 	if len(val.Holdings) == 0 {
-		return []string{a.styles.Muted.Render("    cash only")}
+		return []string{styles.Muted.Render("    cash only")}
 	}
 
 	// Sort holdings by market value descending (they may already be sorted, but ensure)
@@ -538,8 +572,8 @@ func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWi
 
 	for _, h := range sorted[:displayCount] {
 		ticker := "???"
-		if a.dashboard.data.securityTickers != nil {
-			if t, ok := a.dashboard.data.securityTickers[h.SecurityID]; ok {
+		if s.data.securityTickers != nil {
+			if t, ok := s.data.securityTickers[h.SecurityID]; ok {
 				ticker = t
 			}
 		}
@@ -548,25 +582,25 @@ func (a *App) renderDashboardHoldings(accountID types.ID, currency string, colWi
 		if !h.HasPricing {
 			amount = "~" + amount
 		}
-		line := fmt.Sprintf("    %-*s %s", max(colWidth-lipgloss.Width(amount)-6, 1), ticker, a.styles.Muted.Render(amount))
+		line := fmt.Sprintf("    %-*s %s", max(colWidth-lipgloss.Width(amount)-6, 1), ticker, styles.Muted.Render(amount))
 		lines = append(lines, line)
 	}
 
 	if remaining := len(sorted) - displayCount; remaining > 0 {
-		lines = append(lines, a.styles.Muted.Render(fmt.Sprintf("    +%d more", remaining)))
+		lines = append(lines, styles.Muted.Render(fmt.Sprintf("    +%d more", remaining)))
 	}
 
 	return lines
 }
 
-// renderDashboardScheduled renders the scheduled transactions section of the dashboard.
-func (a *App) renderDashboardScheduled() string {
-	if a.dashboard.data == nil {
+// renderScheduled renders the scheduled transactions section of the dashboard.
+func (s *dashboardViewState) renderScheduled(styles widget.Styles) string {
+	if s.data == nil {
 		return ""
 	}
 
-	due := a.dashboard.data.dueTxns
-	upcoming := a.dashboard.data.upcomingTxns
+	due := s.data.dueTxns
+	upcoming := s.data.upcomingTxns
 	total := len(due) + len(upcoming)
 
 	var lines []string
@@ -580,36 +614,36 @@ func (a *App) renderDashboardScheduled() string {
 			header += fmt.Sprintf(" (%d due)", dueCount)
 		}
 	}
-	lines = append(lines, a.styles.SectionHead.Render(header))
+	lines = append(lines, styles.SectionHead.Render(header))
 
 	if total == 0 {
-		lines = append(lines, a.styles.Muted.Render("  No scheduled transactions"))
+		lines = append(lines, styles.Muted.Render("  No scheduled transactions"))
 		return strings.Join(lines, "\n")
 	}
 
 	// Due items
 	for _, st := range due {
-		lines = append(lines, a.formatScheduledItem(st, true))
+		lines = append(lines, s.formatScheduledItem(styles, st, true))
 	}
 
 	// Upcoming items (limit to 5)
 	limit := min(len(upcoming), 5)
 	for i := range limit {
-		lines = append(lines, a.formatScheduledItem(upcoming[i], false))
+		lines = append(lines, s.formatScheduledItem(styles, upcoming[i], false))
 	}
 	if len(upcoming) > 5 {
-		lines = append(lines, a.styles.Muted.Render(fmt.Sprintf("  ... and %d more", len(upcoming)-5)))
+		lines = append(lines, styles.Muted.Render(fmt.Sprintf("  ... and %d more", len(upcoming)-5)))
 	}
 
 	return strings.Join(lines, "\n")
 }
 
 // formatScheduledItem formats a single scheduled transaction line for the dashboard.
-func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string {
+func (s *dashboardViewState) formatScheduledItem(styles widget.Styles, st *scheduled.Transaction, isDue bool) string {
 	// Payee name (cap at 20 chars to prevent overflow)
 	payee := "Unknown"
 	if st.HasPayee() {
-		if name, ok := a.dashboard.data.payeeNames[st.PayeeID.ID]; ok {
+		if name, ok := s.data.payeeNames[st.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
@@ -628,17 +662,17 @@ func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string 
 		today := types.Today()
 		if st.NextDate.Equal(today) {
 			return fmt.Sprintf("  %s %s - %s %s",
-				a.styles.Alert.Render("●"),
+				styles.Alert.Render("●"),
 				payee,
 				amount,
-				a.styles.Alert.Render("due today"))
+				styles.Alert.Render("due today"))
 		}
 		daysAgo := int(math.Round(time.Since(st.NextDate.Time()).Hours() / 24))
 		return fmt.Sprintf("  %s %s - %s %s",
-			a.styles.Alert.Render("●"),
+			styles.Alert.Render("●"),
 			payee,
 			amount,
-			a.styles.Alert.Render(fmt.Sprintf("overdue %d days", daysAgo)))
+			styles.Alert.Render(fmt.Sprintf("overdue %d days", daysAgo)))
 	}
 
 	// Upcoming - show days until
@@ -648,8 +682,8 @@ func (a *App) formatScheduledItem(st *scheduled.Transaction, isDue bool) string 
 		daysText = "tomorrow"
 	}
 	return fmt.Sprintf("  %s %s - %s %s",
-		a.styles.Muted.Render("○"),
+		styles.Muted.Render("○"),
 		payee,
 		amount,
-		a.styles.Muted.Render(daysText))
+		styles.Muted.Render(daysText))
 }

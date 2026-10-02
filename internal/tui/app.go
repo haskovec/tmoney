@@ -362,7 +362,7 @@ func (a *App) Init() tea.Cmd {
 		a.autoPostOnFileOpen(),
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 	}
 	// If NewApp surfaced a startup theme issue/failure, the toast is
 	// already on the status bar — schedule its auto-clear here so it
@@ -473,7 +473,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, a.keys.Dashboard):
 		a.switchView(ViewDashboard)
-		return a, a.loadDashboardData()
+		return a, a.dashboard.load(a.dashboardDeps())
 
 	case key.Matches(msg, a.keys.Scheduled):
 		a.switchView(ViewScheduled)

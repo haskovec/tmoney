@@ -320,7 +320,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case accountDeletedMsg:
 		a.switchView(ViewDashboard)
-		return a, tea.Batch(a.loadSidebarData(), a.loadDashboardData())
+		return a, tea.Batch(a.loadSidebarData(), a.dashboard.load(a.dashboardDeps()))
 
 	case accountClosedMsg:
 		return a, a.afterAccountClosed()

@@ -49,7 +49,7 @@ func TestInvestmentLoads_WithoutTheValuationService(t *testing.T) {
 	t.Run("dashboard", func(t *testing.T) {
 		a, _ := newOneInvestmentAccountApp(t)
 		a.services.InvestmentValuation = nil
-		msg, ok := runLoad(t, a.loadDashboardData()).(dashboardLoadedMsg)
+		msg, ok := runLoad(t, a.dashboard.load(a.dashboardDeps())).(dashboardLoadedMsg)
 		if !ok {
 			t.Fatal("the load did not return dashboard data")
 		}
@@ -101,7 +101,7 @@ func TestInvestmentLoads_WithoutTheInvestmentService(t *testing.T) {
 	t.Run("dashboard", func(t *testing.T) {
 		a, acct := newOneInvestmentAccountApp(t)
 		a.services.Investment = nil
-		msg, ok := runLoad(t, a.loadDashboardData()).(dashboardLoadedMsg)
+		msg, ok := runLoad(t, a.dashboard.load(a.dashboardDeps())).(dashboardLoadedMsg)
 		if !ok {
 			t.Fatal("the load did not return dashboard data")
 		}

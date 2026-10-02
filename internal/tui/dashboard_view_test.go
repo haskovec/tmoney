@@ -27,7 +27,7 @@ func TestApp_RenderDashboard_Loading(t *testing.T) {
 	}
 	app.styles.Resize(100, 30)
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 	if !contains(view, "Loading") {
 		t.Errorf("renderDashboard() should show loading when data is nil, got: %q", view)
 	}
@@ -59,7 +59,7 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Check that key elements are present
 	if !contains(view, "DASHBOARD") {
@@ -112,7 +112,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	if !contains(view, "-$5000.00") {
 		t.Error("renderDashboard() should show negative net worth")
@@ -145,7 +145,7 @@ func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	if !contains(view, "$625.21") {
 		t.Errorf("renderDashboard() should show the credit-balance card, got:\n%s", view)
@@ -180,7 +180,7 @@ func TestApp_AmountStyleBySign(t *testing.T) {
 		{"zero", "0", false},
 	}
 	for _, tc := range cases {
-		got := app.amountStyleBySign(types.MustNewMoney(tc.amount)).GetForeground()
+		got := amountStyleBySign(app.styles, types.MustNewMoney(tc.amount)).GetForeground()
 		want := styles.Positive.GetForeground()
 		if tc.wantNeg {
 			want = styles.Negative.GetForeground()
@@ -219,7 +219,7 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	if !contains(view, "1 due") {
 		t.Error("renderDashboard() should show '1 due' in scheduled header")
@@ -252,7 +252,7 @@ func TestApp_RenderDashboard_EmptyData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	if !contains(view, "$0.00") {
 		t.Error("renderDashboard() should show '$0.00' for zero net worth")
@@ -312,7 +312,7 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 	}
 
 	// Should not panic on small width
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 	if view == "" {
 		t.Error("renderDashboard() should not return empty string on small width")
 	}
@@ -333,7 +333,7 @@ func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
 		}},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	if !contains(view, "No account data available") {
 		t.Error("renderDashboard() should show 'No account data available' when netWorth is nil")
@@ -386,7 +386,7 @@ func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
 		},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Investment account should show total value
 	if !contains(view, "Brokerage") {
@@ -455,7 +455,7 @@ func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
 		},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Account total should show
 	if !contains(view, "Brokerage") {
@@ -510,7 +510,7 @@ func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
 		},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Estimated value indicator should show
 	if !contains(view, "~$10000.00") {
@@ -558,7 +558,7 @@ func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
 		},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Should show cash only note when expanded but no holdings
 	if !contains(view, "Empty Fund") {
@@ -615,7 +615,7 @@ func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
 		},
 	}
 
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 
 	// Top 5 should be visible (STK1 through STK5 have highest values)
 	if !contains(view, "STK1") {
@@ -667,7 +667,7 @@ func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 	}
 
 	// Should not panic
-	view := app.renderDashboard()
+	view := app.dashboard.render(app.styles)
 	if !contains(view, "Brokerage") {
 		t.Error("dashboard should show investment account even with nil holdings map")
 	}
@@ -712,7 +712,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 		},
 	}
 
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 
 	if !contains(view, "TR") {
 		t.Error("dashboard should show 'TR' label for investment accounts")
@@ -760,7 +760,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 		}},
 	}
 
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 
 	if !contains(view, "-$825.00") {
 		t.Errorf("dashboard should show negative TotalReturn '-$825.00', got:\n%s", view)
@@ -804,7 +804,7 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 		}},
 	}
 
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 
 	if !contains(view, "TR") {
 		t.Errorf("dashboard should still show TR row when TotalReturnPct is nil, got:\n%s", view)
@@ -841,7 +841,7 @@ func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 		}},
 	}
 
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 
 	// The view does have a column-bottom "Total" row, so we can't search
 	// for "TR" alone (it could collide with substrings). Use the
@@ -986,7 +986,7 @@ func TestApp_Dashboard_RightExpandsLeftCollapses(t *testing.T) {
 	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("Right should expand the selected investment account")
 	}
-	if !contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
+	if !contains(widget.StripAnsi(app.dashboard.render(app.styles)), "TKR0") {
 		t.Error("expanded account should render its holdings")
 	}
 
@@ -995,7 +995,7 @@ func TestApp_Dashboard_RightExpandsLeftCollapses(t *testing.T) {
 	if app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("Left should collapse the selected investment account")
 	}
-	if contains(widget.StripAnsi(app.renderDashboard()), "TKR0") {
+	if contains(widget.StripAnsi(app.dashboard.render(app.styles)), "TKR0") {
 		t.Error("collapsed account should NOT render its holdings")
 	}
 }
@@ -1042,7 +1042,7 @@ func TestApp_Dashboard_ToggleWorksForCashOnlyAccount(t *testing.T) {
 	if !app.dashboard.expandedAccounts[acctID] {
 		t.Fatal("toggle should expand a cash-only investment account (it shows the ▸/▾ affordance)")
 	}
-	if !contains(widget.StripAnsi(app.renderDashboard()), "cash only") {
+	if !contains(widget.StripAnsi(app.dashboard.render(app.styles)), "cash only") {
 		t.Error("expanded cash-only account should render its 'cash only' line")
 	}
 }
@@ -1124,7 +1124,7 @@ func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
 func TestApp_Dashboard_MouseRowMapMatchesAffordance(t *testing.T) {
 	app, names := dashboardMouseApp(t)
 
-	lines := strings.Split(widget.StripAnsi(app.renderDashboard()), "\n")
+	lines := strings.Split(widget.StripAnsi(app.dashboard.render(app.styles)), "\n")
 	if len(app.dashboard.accountRows) != 2 {
 		t.Fatalf("expected 2 expandable-account rows recorded, got %d", len(app.dashboard.accountRows))
 	}
@@ -1146,7 +1146,7 @@ func TestApp_Dashboard_MouseRowMapMatchesAffordance(t *testing.T) {
 // moves the sidebar cursor onto it, and a second click collapses it.
 func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
-	app.renderDashboard() // populate dashboard.accountRows
+	app.dashboard.render(app.styles) // populate dashboard.accountRows
 
 	// Find the collapsed account's header row.
 	var targetRow int
@@ -1175,7 +1175,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	}
 
 	// Re-render to refresh the row map (layout changed), then click again to collapse.
-	app.renderDashboard()
+	app.dashboard.render(app.styles)
 	for row, id := range app.dashboard.accountRows {
 		if id == targetID {
 			targetRow = row
@@ -1194,7 +1194,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 // the asset account on the left.
 func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
-	app.renderDashboard()
+	app.dashboard.render(app.styles)
 
 	var row int
 	var id types.ID
@@ -1220,7 +1220,7 @@ func TestApp_Dashboard_MouseClickLiabilitiesColumnIgnored(t *testing.T) {
 // with no expandable account (the top padding row) is a harmless no-op.
 func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
-	app.renderDashboard()
+	app.dashboard.render(app.styles)
 	snapshot := maps.Clone(app.dashboard.expandedAccounts)
 
 	contentStartX := app.styles.SidebarWidth() + 1
@@ -1243,7 +1243,7 @@ func TestApp_Dashboard_MouseClickNonHeaderRowIgnored(t *testing.T) {
 func TestApp_Dashboard_MouseClickBeforeRenderIsNoOp(t *testing.T) {
 	// A rendered twin tells where the ▸/▾ header rows would be.
 	rendered, _ := dashboardMouseApp(t)
-	rendered.renderDashboard()
+	rendered.dashboard.render(rendered.styles)
 	if len(rendered.dashboard.accountRows) == 0 {
 		t.Fatal("the fixture should render expandable account rows")
 	}
@@ -1304,7 +1304,7 @@ func TestApp_Dashboard_HoldingsStartCollapsed(t *testing.T) {
 	if app.dashboard.expandedAccounts[acctID] {
 		t.Error("investment accounts should start collapsed on load, not auto-expanded")
 	}
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 	if !strings.Contains(view, "▸") {
 		t.Error("a collapsed investment account should render the ▸ affordance")
 	}
@@ -1375,7 +1375,7 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 		}},
 	}
 
-	view := widget.StripAnsi(app.renderDashboard())
+	view := widget.StripAnsi(app.dashboard.render(app.styles))
 	for _, want := range []string{
 		"Net Worth (EUR):  €40.00",
 		"Net Worth (USD):  not available",
@@ -1414,7 +1414,7 @@ func dashboardColumns(t *testing.T, width int) string {
 			{Currency: "USD", Assets: m("100.00"), Liabilities: m("-30.00"), NetWorth: m("70.00"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
 		},
 	}
-	return widget.StripAnsi(app.renderAssetLiabilityColumns(nw, width, nil))
+	return widget.StripAnsi(app.dashboard.renderAssetLiabilityColumns(app.styles, nw, width, nil))
 }
 
 // Each currency's assets total and liabilities total are on one row.
@@ -1491,10 +1491,10 @@ func TestDashboardTRAndHoldings_UseAccountCurrency(t *testing.T) {
 		},
 	}}}
 
-	if tr := widget.StripAnsi(app.renderDashboardTRLine(id, "EUR", 40)); !strings.Contains(tr, "€12.50") || strings.Contains(tr, "$") {
+	if tr := widget.StripAnsi(app.dashboard.renderTRLine(app.styles, id, "EUR", 40)); !strings.Contains(tr, "€12.50") || strings.Contains(tr, "$") {
 		t.Errorf("TR line = %q, want euros", tr)
 	}
-	holdings := widget.StripAnsi(strings.Join(app.renderDashboardHoldings(id, "EUR", 40), "\n"))
+	holdings := widget.StripAnsi(strings.Join(app.dashboard.renderHoldings(app.styles, id, "EUR", 40), "\n"))
 	if !strings.Contains(holdings, "€300.00") || strings.Contains(holdings, "$") {
 		t.Errorf("holdings = %q, want euros", holdings)
 	}

@@ -258,7 +258,7 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	// Close the previously deferred database (from an earlier switch).
 	// The current a.db is kept alive as prevDB so that any in-flight
-	// goroutines from loadDashboardData/loadSidebarData/etc. that still
+	// goroutines from dashboard.load/loadSidebarData/etc. that still
 	// hold service references to it won't panic on a nil *sql.DB conn.
 	if a.prevDB != nil {
 		_ = a.prevDB.Close()
@@ -313,7 +313,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 	)
 }
 
