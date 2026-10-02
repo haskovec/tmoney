@@ -450,10 +450,17 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 	}
 }
 
-// The wheel's chart-fetch tail tells the Prices view whether it is on screen.
-// The view's data outlives a view switch, so off the Prices view, with a price
-// list still loaded, a wheel scroll must still schedule nothing.
-func TestApp_MouseWheel_OffPricesWithPriceDataReturnsNoCmd(t *testing.T) {
+// TestApp_MouseWheel_NonPricesViewReturnsNoCmd pins the contract that the
+// prices-chart-fetch tail added to handleMouseWheel is a true no-op off the
+// Prices list: scrolling a register table moves the cursor but schedules no
+// command. Without this guard a future change to
+// scheduleListChartFetchIfActive's view guard could leak a stray cmd
+// onto other views unnoticed.
+//
+// A price list is loaded, because the Prices view's data outlives a view
+// switch. Without it the fetch would return nothing whatever the wheel told
+// the view about being on screen, and the test could not catch a wrong value.
+func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 	app := &App{
 		currentView: ViewRegister,
@@ -480,41 +487,12 @@ func TestApp_MouseWheel_OffPricesWithPriceDataReturnsNoCmd(t *testing.T) {
 	app.register.table.SetFocused(true)
 	app.register.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
 
-	_, cmd := app.Update(tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown})
-	if cmd != nil {
-		t.Errorf("wheel scroll off the Prices view must schedule no command, got %T", cmd())
-	}
-}
-
-// TestApp_MouseWheel_NonPricesViewReturnsNoCmd pins the contract that the
-// prices-chart-fetch tail added to handleMouseWheel is a true no-op off the
-// Prices list: scrolling a register table moves the cursor but schedules no
-// command. Without this guard a future change to
-// scheduleListChartFetchIfActive's view guard could leak a stray cmd
-// onto other views unnoticed.
-func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
-	app := &App{
-		currentView: ViewRegister,
-		keys:        defaultKeyMap(),
-		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
-		statusbar:   widget.NewStatusBar(),
-		register: registerViewState{
-			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
-			data:  &registerData{},
-		},
-		width:  100,
-		height: 24,
-	}
-	app.styles.Resize(100, 24)
-	app.sidebar.SetFocused(false)
-	app.register.table.SetFocused(true)
-	app.register.table.SetRows([][]string{{"a"}, {"b"}, {"c"}})
-
 	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
 	_, cmd := app.Update(msg)
 	if cmd != nil {
-		t.Errorf("wheel scroll off the prices list must schedule no command, got %T", cmd())
+		// Not cmd(): a stray command is a debounce tick, and running it waits
+		// out the debounce delay.
+		t.Error("wheel scroll off the prices list must schedule no command")
 	}
 }
 
