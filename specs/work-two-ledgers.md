@@ -676,7 +676,7 @@ A change made from this document will put transfer code back on `transaction.Ser
 
 `handleKeyPress` (`internal/tui/app.go`) matches the global keys before it calls the view handler. The Corporate Actions view has no exception. Two things break:
 
-1. **Filter typing.** After `/`, `handleCorporateActionViewKeys` (`internal/tui/corporate_action_history.go`) adds each typed character to `corporateActionViewFilter`. But the global keys run first: `1` to `5` change the view, `?` opens help, and Esc leaves the view. A user cannot type a digit into the filter. The investment register has the guard that this view lacks: while `investmentRegister.filterSearching` is true, every key goes to `handleInvestmentRegisterKeys`.
+1. **Filter typing.** After `/`, `handleCorporateActionViewKeys` (`internal/tui/corporate_action_history.go`) adds each typed character to `corporateActions.filter`. But the global keys run first: `1` to `5` change the view, `?` opens help, and Esc leaves the view. A user cannot type a digit into the filter. The investment register has the guard that this view lacks: while `investmentRegister.filterSearching` is true, every key goes to `handleInvestmentRegisterKeys`.
 2. **Esc.** The global Esc arm makes two exceptions: Prices detail mode, and an active investment-register filter. Corporate Actions is not one of them. Thus Esc always calls `switchView(previousView)`. It does not close the details panel, and it does not end filter entry. The three Esc arms in `handleCorporateActionViewKeys` never run.
 
 W1 made the help line say "Back", because that is what Esc does today (`corporateActionShortcuts`).

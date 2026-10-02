@@ -518,6 +518,10 @@ accident (VL-305 in the plan added a sixth, the last bullet):
   cross-surface handoffs, like the sticky date, and stay on `App`.
   `pendingSecuritySelectID` is written and read only by the securities view
   and moves into its struct.
+  *Revised in phase 4 (the review of #85):* a handoff that the view's own
+  methods read moves into the view state, so `pendingInvestmentSelectID` moves
+  in VL-409. `pendingRegisterSelectID` stays: the account register is not one
+  of the views phase 4 moves, so no moved method reads it.
 - **The corporate-action ticker filter is a handoff too.**
   `corporateActionViewFilter` is set by the Securities view's drill-in and
   cleared by the menu before the history loads; `loadCorporateActionViewData`
@@ -528,6 +532,12 @@ accident (VL-305 in the plan added a sixth, the last bullet):
   (`corporateActionViewFilterEditing = false`) on the way out, and the filter
   itself survives a round trip on purpose. `leave()` must do both of those
   things and nothing more.
+  *Revised in phase 4 (the review of #85):* the filter moved into the view
+  state as `corporateActions.filter`. The Securities drill-in and the menu
+  write it there. The reason to keep it on `App` came from phase 2; in phase
+  4 the view's moved methods read it, and from `App` it had to reach them as a
+  parameter at six call sites, each a wrong value that compiles. `leave()`
+  still keeps it.
 - **The bulk-refresh flag stays on `App`.** `refreshingPrices` and
   `refreshNotifID` are the in-flight guard for a refresh that `u` starts from
   the Securities view as well as the Prices view. Nesting them in the Prices
@@ -961,19 +971,29 @@ pointer, a captured config) failed its test.
 (it writes the filter) and the delete confirm (it opens the confirm dialog)
 stay on `App`.
 
-**The ticker filter is the third value that nearly failed silently.** It
-stays on `App` (decision 2: the Securities drill-in and the menu set it), so
-the methods that read it take it as a `string`. Six call sites pass it: the
-render closure, the load arm, the two table builds while the filter is typed,
-and the two selections (Enter and `d`). A planted empty filter at each one
-passed every test. The filter tests called `filtered` directly or checked only
-the text of the filter, and none checked the rows under a filter through the
-app; before the move, those paths read the filter themselves, so the gap had
-no cost. Four tests now cover the six call sites, and each planted mistake
-fails one of them. That follows the call-site rule from the review of #84. The
-other way out, moving the filter into the view state as the review of #75
-proposed, would remove the parameter but break decision 2; with the call sites
-tested, the decision stands.
+**The ticker filter is the third value that nearly failed silently, and it
+moved into the view state.** The first version kept it on `App` (decision 2:
+the Securities drill-in and the menu set it), so the methods that read it took
+it as a `string`. Six call sites passed it: the render closure, the load arm,
+the two table builds while the filter is typed, and the two selections (Enter
+and `d`). A planted empty filter at each one passed every test. The filter
+tests called `filtered` directly or checked only the text of the filter, and
+none checked the rows under a filter through the app; before the move, those
+paths read the filter themselves, so the gap had no cost. Four tests were
+added to cover the six call sites.
+
+The review of #85 then asked to move the filter into the view state, as the
+review of #75 had, and this time the measured cost decided it. Phase 4 had
+changed the ground under decision 2: the reach guard does not apply to views,
+and `App` code already writes view state (the load arms, the database-switch
+resets, the `leave` hooks). So the filter is `corporateActions.filter`, the
+drill-in and the menu write it there, and the methods read it from their
+receiver; the six parameters are gone. Decision 2 and decision 1 record the
+revision, and the rule for VL-409: a handoff that the view's own methods read
+moves into the view state. The four tests stay: they are the only tests of
+the rows under a filter through the app. A rewrite of the parameter's reads
+also changed the word "filter" in the hint "Press / to filter by ticker or
+type", which no test checked; the render test now checks the hint too.
 
 **The screen size** reaches the detail panel's hit test as two `int` values,
 beside the click's two. The close-button test clicks through the app at
