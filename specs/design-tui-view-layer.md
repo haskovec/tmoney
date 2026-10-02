@@ -1006,6 +1006,26 @@ the method's path changed. Each planted mistake (an empty filter at each of the
 six call sites, the size swapped, a view-state method that takes `*App`, a
 captured service pointer) failed a test.
 
+#### Built (VL-408, 2026-10-03): Reports, the smallest move
+
+`*App` 370 → **365 methods (−5)**, as counted: six methods moved onto
+`reportsViewState` (the load, the key handler, the two period moves, the
+spending render and the adjacent periods), and `reportsDeps` arrived.
+`renderReports` and `renderNetWorthReport` stay on `App`: the net-worth render
+reads the Dashboard's state through `a.dashboard.renderAssetLiabilityColumns`,
+which §8 records as an open question. `renderReports` calls
+`a.reports.renderSpending` for the spending report.
+
+The key handler and the two period moves now return only a command; the
+entry's `onKey` closure returns the App. The move added only the deps and the
+key bindings as parameters, and each has a type of its own, so a wrong argument
+does not compile and no call-site test was needed. The load's `year` and
+`month` are both `int`, but they were parameters before the move.
+
+**The cost.** Production code +81/−69 (net +12), comments +14/−6 (net +8). 19
+test lines changed, most of them failure messages that named the old methods.
+No assertion changed.
+
 ---
 
 ## 5. Risks the phases must handle
