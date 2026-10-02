@@ -49,8 +49,8 @@ func TestCorporateActions_FilterTakesGlobalKeys(t *testing.T) {
 	if a.showHelp {
 		t.Error("? opened the help overlay while typing the filter")
 	}
-	if a.corporateActionViewFilter != "12?" {
-		t.Errorf("filter = %q, want %q", a.corporateActionViewFilter, "12?")
+	if a.corporateActions.filter != "12?" {
+		t.Errorf("filter = %q, want %q", a.corporateActions.filter, "12?")
 	}
 }
 
@@ -111,16 +111,16 @@ func TestCorporateActions_RoundTripKeepsTheFilter(t *testing.T) {
 	a := corporateActionsApp(t)
 	press(a, typed("/ab")...)
 	a.corporateActions.detail = &investment.CorporateAction{}
-	if !a.corporateActions.filterEditing || a.corporateActionViewFilter != "ab" {
+	if !a.corporateActions.filterEditing || a.corporateActions.filter != "ab" {
 		t.Fatalf("setup: filterEditing=%v filter=%q, want true and %q",
-			a.corporateActions.filterEditing, a.corporateActionViewFilter, "ab")
+			a.corporateActions.filterEditing, a.corporateActions.filter, "ab")
 	}
 
 	a.switchView(ViewDashboard)
 	a.switchView(ViewCorporateActions)
 
-	if a.corporateActionViewFilter != "ab" {
-		t.Errorf("the round trip changed the filter to %q, want %q", a.corporateActionViewFilter, "ab")
+	if a.corporateActions.filter != "ab" {
+		t.Errorf("the round trip changed the filter to %q, want %q", a.corporateActions.filter, "ab")
 	}
 	if a.corporateActions.detail != nil {
 		t.Error("the details panel survived the round trip")
@@ -130,10 +130,10 @@ func TestCorporateActions_RoundTripKeepsTheFilter(t *testing.T) {
 	}
 }
 
-// The ticker filter lives on App, and each call that builds, selects or
-// renders the view's rows passes it in. A wrong value there compiles, so each
-// call site has a test. The fixture (corporateActionsEnv) lists an AAPL split,
-// then an MSFT merger; under the filter "MSFT" only the merger shows.
+// The rows under the ticker filter, through the app: the load arm, the render,
+// the table builds while the filter is typed, and the selection on Enter and d.
+// The fixture (corporateActionsEnv) lists an AAPL split, then an MSFT merger;
+// under the filter "MSFT" only the merger shows.
 
 // The load arm builds the table under the filter a drill-in from Securities
 // set before the load.
@@ -148,15 +148,19 @@ func TestCorporateActions_LoadBuildsTheTableUnderTheFilter(t *testing.T) {
 	}
 }
 
-// The render closure hands the view the filter, which the header names.
+// The render names the filter in its header, or says how to set one.
 func TestCorporateActions_RenderNamesTheFilter(t *testing.T) {
-	app, _, _ := corporateActionsEnv(t, 120, 40, "MSFT")
 	e, ok := viewFor(ViewCorporateActions)
 	if !ok {
 		t.Fatal("no view table entry for ViewCorporateActions")
 	}
+	app, _, _ := corporateActionsEnv(t, 120, 40, "MSFT")
 	if out := e.render(app); !strings.Contains(out, "Filter: MSFT") {
 		t.Errorf("the render does not name the filter:\n%s", out)
+	}
+	app, _, _ = corporateActionsEnv(t, 120, 40, "")
+	if out := e.render(app); !strings.Contains(out, "Press / to filter by ticker or type") {
+		t.Errorf("with no filter, the render does not say how to set one:\n%s", out)
 	}
 }
 

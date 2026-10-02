@@ -58,7 +58,7 @@ func newTestCorporateActionViewData(t *testing.T) (*App, *investment.CorporateAc
 
 func TestFilteredCorporateActions_NoFilterReturnsAll(t *testing.T) {
 	app, _, _ := newTestCorporateActionViewData(t)
-	got := app.corporateActions.filtered(app.corporateActionViewFilter)
+	got := app.corporateActions.filtered()
 	if len(got) != 2 {
 		t.Errorf("filtered count = %d, want 2", len(got))
 	}
@@ -66,8 +66,8 @@ func TestFilteredCorporateActions_NoFilterReturnsAll(t *testing.T) {
 
 func TestFilteredCorporateActions_TickerMatch(t *testing.T) {
 	app, split, _ := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "aapl"
-	got := app.corporateActions.filtered(app.corporateActionViewFilter)
+	app.corporateActions.filter = "aapl"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 {
 		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
@@ -80,8 +80,8 @@ func TestFilteredCorporateActions_TargetTickerMatch(t *testing.T) {
 	// "GOOG" only appears as the merger's target — confirming we search
 	// against the resolved target ticker too.
 	app, _, merger := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "GOOG"
-	got := app.corporateActions.filtered(app.corporateActionViewFilter)
+	app.corporateActions.filter = "GOOG"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 {
 		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
@@ -92,8 +92,8 @@ func TestFilteredCorporateActions_TargetTickerMatch(t *testing.T) {
 
 func TestFilteredCorporateActions_TypeMatch(t *testing.T) {
 	app, _, merger := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "merger"
-	got := app.corporateActions.filtered(app.corporateActionViewFilter)
+	app.corporateActions.filter = "merger"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 || got[0].ID != merger.ID {
 		t.Errorf("expected merger action only, got %v", got)
 	}
@@ -166,8 +166,8 @@ func corporateActionsEnv(t *testing.T, w, h int, filter string) (app *App, split
 	app.statusbar = widget.NewStatusBar()
 	app.sidebar = NewSidebar()
 	app.styles = styles
-	app.corporateActionViewFilter = filter
-	app.corporateActions.buildTable(app.corporateActionViewFilter)
+	app.corporateActions.filter = filter
+	app.corporateActions.buildTable()
 	return app, split, merger
 }
 

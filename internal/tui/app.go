@@ -237,11 +237,8 @@ type App struct {
 	// Spin-off dialog state
 	spinOff spinOffSurface
 
-	// Corporate Actions view state. The ticker filter stays on App: other
-	// surfaces set it (the Securities drill-in, the menu), so like the
-	// pending select IDs it is a handoff into the view, not view state.
-	corporateActions          corporateActionViewState
-	corporateActionViewFilter string
+	// Corporate Actions view state
+	corporateActions corporateActionViewState
 
 	// File dialog state (Open / Save As / browse), including its double-click tracker
 	file fileSurface

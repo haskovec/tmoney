@@ -175,7 +175,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case corporateActionViewLoadedMsg:
 		a.corporateActions.data = msg.data
-		a.corporateActions.buildTable(a.corporateActionViewFilter)
+		a.corporateActions.buildTable()
 		return a, nil
 
 	case corporateActionDeletedMsg:

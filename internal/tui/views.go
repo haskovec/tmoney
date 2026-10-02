@@ -275,7 +275,7 @@ func init() {
 			name:       "Corporate Actions",
 			fullScreen: true,
 			render: func(a *App) string {
-				return a.corporateActions.render(a.styles, a.height, a.corporateActionViewFilter)
+				return a.corporateActions.render(a.styles, a.height)
 			},
 			onKey: (*App).handleCorporateActionViewKeys,
 			hints: func(*App) string {

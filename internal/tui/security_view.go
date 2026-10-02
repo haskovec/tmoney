@@ -382,9 +382,9 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Open the global corporate-action register, pre-filtered to the
 		// highlighted ticker (so it acts as a per-security drill-in).
 		if sec := a.selectedSecurity(); sec != nil {
-			a.corporateActionViewFilter = sec.Ticker
+			a.corporateActions.filter = sec.Ticker
 		} else {
-			a.corporateActionViewFilter = ""
+			a.corporateActions.filter = ""
 		}
 		a.switchView(ViewCorporateActions)
 		return a, a.corporateActions.load(a.corporateActionDeps())

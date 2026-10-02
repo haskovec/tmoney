@@ -24,6 +24,9 @@ type corporateActionViewState struct {
 	// detail is the action whose details panel is open. The panel is part of
 	// the view, not a modal, but isDialogVisible counts it.
 	detail *investment.CorporateAction
+	// filter is the ticker filter. The Securities drill-in and the menu set it
+	// before the view loads, and leaving the view keeps it.
+	filter string
 	// filterEditing is true while the user types the ticker filter.
 	filterEditing bool
 }
@@ -96,11 +99,11 @@ func (s *corporateActionViewState) load(d corporateActionDeps) tea.Cmd {
 // filtered returns the subset of loaded actions whose
 // ticker, type, or details match the current filter query
 // (case-insensitive substring).
-func (s *corporateActionViewState) filtered(filter string) []*investment.CorporateAction {
+func (s *corporateActionViewState) filtered() []*investment.CorporateAction {
 	if s.data == nil {
 		return nil
 	}
-	q := strings.ToLower(strings.TrimSpace(filter))
+	q := strings.ToLower(strings.TrimSpace(s.filter))
 	if q == "" {
 		return s.data.actions
 	}
@@ -118,7 +121,7 @@ func (s *corporateActionViewState) filtered(filter string) []*investment.Corpora
 }
 
 // buildTable creates and populates the table.
-func (s *corporateActionViewState) buildTable(filter string) {
+func (s *corporateActionViewState) buildTable() {
 	if s.data == nil {
 		return
 	}
@@ -136,7 +139,7 @@ func (s *corporateActionViewState) buildTable(filter string) {
 		s.table.SetColumns(columns)
 	}
 
-	visible := s.filtered(filter)
+	visible := s.filtered()
 	rows := make([][]string, len(visible))
 	for i, ca := range visible {
 		rows[i] = formatGlobalCorporateActionRow(ca, s.data.secMap)
@@ -147,11 +150,11 @@ func (s *corporateActionViewState) buildTable(filter string) {
 
 // selected returns the action under the table cursor, or
 // nil if the table is empty or out of range.
-func (s *corporateActionViewState) selected(filter string) *investment.CorporateAction {
+func (s *corporateActionViewState) selected() *investment.CorporateAction {
 	if s.table == nil {
 		return nil
 	}
-	visible := s.filtered(filter)
+	visible := s.filtered()
 	cursor := s.table.Cursor()
 	if cursor < 0 || cursor >= len(visible) {
 		return nil
@@ -219,7 +222,7 @@ func resolveSecurityTicker(id types.NullableID, secMap map[types.ID]*security.Se
 }
 
 // render renders the full view (used as content body).
-func (s *corporateActionViewState) render(styles widget.Styles, height int, filter string) string {
+func (s *corporateActionViewState) render(styles widget.Styles, height int) string {
 	if s.data == nil {
 		return lipgloss.NewStyle().Padding(1, 2).Render("Loading corporate actions...")
 	}
@@ -231,8 +234,8 @@ func (s *corporateActionViewState) render(styles widget.Styles, height int, filt
 	sections = append(sections, titleRow)
 
 	filterLine := ""
-	if filter != "" {
-		filterLine = styles.Muted.Render(fmt.Sprintf("Filter: %s", filter))
+	if s.filter != "" {
+		filterLine = styles.Muted.Render(fmt.Sprintf("Filter: %s", s.filter))
 	} else {
 		filterLine = styles.Muted.Render("Press / to filter by ticker or type")
 	}
@@ -243,7 +246,7 @@ func (s *corporateActionViewState) render(styles widget.Styles, height int, filt
 
 	tableHeight := max(height-8, 2)
 
-	visible := s.filtered(filter)
+	visible := s.filtered()
 	if s.table != nil && len(visible) > 0 {
 		tableWidth := max(contentWidth-4, 1)
 		sections = append(sections, s.table.Render(styles, tableWidth, tableHeight))
@@ -341,13 +344,13 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 			a.corporateActions.filterEditing = false
 		default:
 			if msg.String() == "backspace" {
-				if len(a.corporateActionViewFilter) > 0 {
-					a.corporateActionViewFilter = a.corporateActionViewFilter[:len(a.corporateActionViewFilter)-1]
-					a.corporateActions.buildTable(a.corporateActionViewFilter)
+				if len(a.corporateActions.filter) > 0 {
+					a.corporateActions.filter = a.corporateActions.filter[:len(a.corporateActions.filter)-1]
+					a.corporateActions.buildTable()
 				}
 			} else if msg.Text != "" {
-				a.corporateActionViewFilter += msg.Text
-				a.corporateActions.buildTable(a.corporateActionViewFilter)
+				a.corporateActions.filter += msg.Text
+				a.corporateActions.buildTable()
 			}
 		}
 		return a, nil
@@ -385,11 +388,11 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 	case msg.String() == "/":
 		a.corporateActions.filterEditing = true
 	case key.Matches(msg, a.keys.Enter):
-		if ca := a.corporateActions.selected(a.corporateActionViewFilter); ca != nil {
+		if ca := a.corporateActions.selected(); ca != nil {
 			a.corporateActions.detail = ca
 		}
 	case msg.String() == "d":
-		if ca := a.corporateActions.selected(a.corporateActionViewFilter); ca != nil {
+		if ca := a.corporateActions.selected(); ca != nil {
 			a.confirmDeleteCorporateAction(ca)
 		}
 	}

@@ -132,7 +132,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 		return a, a.loadSpinOffDialogData()
 
 	case widget.MenuActionCorporateActions:
-		a.corporateActionViewFilter = ""
+		a.corporateActions.filter = ""
 		a.switchView(ViewCorporateActions)
 		return a, a.corporateActions.load(a.corporateActionDeps())
 
