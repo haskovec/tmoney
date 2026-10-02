@@ -155,14 +155,19 @@ func allControllers() []controllerSurface {
 // could be added and never guarded.
 func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 	appT := reflect.TypeFor[App]()
-	for _, row := range allControllers() {
-		f, ok := appT.FieldByName(row.field)
-		if !ok {
-			t.Errorf("controllerSurfaces names App.%s, which does not exist", row.field)
-			continue
-		}
-		if f.Type != row.surface {
-			t.Errorf("App.%s is a %s, but the table says %s", row.field, f.Type, row.surface)
+	for _, table := range []struct {
+		name string
+		rows []controllerSurface
+	}{{"controllerSurfaces", controllerSurfaces}, {"viewControllers", viewControllers}} {
+		for _, row := range table.rows {
+			f, ok := appT.FieldByName(row.field)
+			if !ok {
+				t.Errorf("%s names App.%s, which does not exist", table.name, row.field)
+				continue
+			}
+			if f.Type != row.surface {
+				t.Errorf("App.%s is a %s, but %s says %s", row.field, f.Type, table.name, row.surface)
+			}
 		}
 	}
 	// The reverse direction: a surface type with a sibling deps type is a
@@ -185,8 +190,9 @@ func TestGuard_ControllerTableMatchesApp(t *testing.T) {
 		// the detector that catches a deps-free surface left out of the table.
 		for _, surface := range receiversDeclaringClose(t, readSourceFile(t, path)) {
 			if !inTable[surface] {
-				t.Errorf("%s declares (*%s).close, so it is a controller surface, but it is not in "+
-					"controllerSurfaces. Add a row; the guards run over the table only.", path, surface)
+				t.Errorf("%s declares (*%s).close, so it is a controller, but it is in neither "+
+					"controllerSurfaces nor viewControllers. Add a row; the guards run over the "+
+					"tables only.", path, surface)
 			}
 		}
 	}

@@ -204,6 +204,8 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
 
 Each item moves the view's movable methods onto its state struct, with the 4c shape: a deps struct for the services, bound by one `App` method, and the inputs passed in at the call. The counts are from VL-401. "Calls" are the call sites that change: production code that stays on `App`, and tests.
 
+Where each moved function goes (the design's VL-403 note): a function that reads or writes the view state, or takes the view's deps, is a method on the state; a pure helper that takes neither is a plain function. Each item also tests the entry closures it adds, as VL-403 does.
+
 - [x] **VL-403 — Pilot: Amortization**
   - Move all 5 methods (`amortizationStatsLine`, `buildAmortizationTable`, `handleAmortizationKeys`, `loadAmortizationData`, `renderAmortizationView`). Deps: services. Inputs: styles, keys, width, height. Calls: 3 production, 5 tests.
   - Settle the guard shape. The proposal: a table for views beside `controllerSurfaces`, with the guard that no method on the view state names `App` and the two deps guards, and without the reach guard (the design says why). Mutation-verify each guard, as the 4c rows were.

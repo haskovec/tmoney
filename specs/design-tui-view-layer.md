@@ -844,6 +844,18 @@ predicted (−4 for five methods moved), plus a fixed cost of about two adapter
 tests per view. That is not "much higher than the count suggests", so the
 plan's stop condition does not apply. VL-404 can go ahead when it is wanted.
 
+**One rule for where a moved function goes** (from the review of #80, so that
+the seven views do not mix two styles):
+
+- A function that reads or writes the view state, or that takes the view's
+  deps, is a **method on the view state**. A function that takes the deps is
+  one of the view's commands (a load or a fetch), and it belongs beside the
+  view's state even when it does not read it. That is why `load` is a method
+  although it does not use its receiver.
+- A pure helper that takes neither the state nor the deps, such as a row
+  formatter, is a **plain function**. `formatAmortizationRow` was one before
+  the move and stays one.
+
 ---
 
 ## 5. Risks the phases must handle

@@ -241,6 +241,9 @@ func TestAmortizationView_KeysReachTheTable(t *testing.T) {
 	if tbl == nil || tbl.RowCount() < 100 {
 		t.Fatal("want a projection table of more than 100 rows")
 	}
+	if env.app.height <= 10 {
+		t.Fatalf("test premise: a page is height−10 rows, so the screen must be taller than 10; got %d", env.app.height)
+	}
 
 	press(env.app, tea.KeyPressMsg{Code: tea.KeyDown})
 	if got := tbl.Cursor(); got != 1 {
