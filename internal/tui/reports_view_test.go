@@ -174,34 +174,34 @@ func TestApp_RenderSpendingReport(t *testing.T) {
 		}},
 	}
 
-	view := app.renderSpendingReport()
+	view := app.reports.renderSpending(app.styles)
 
 	if !contains(view, "SPENDING BY CATEGORY") {
-		t.Error("renderSpendingReport() should contain 'SPENDING BY CATEGORY'")
+		t.Error("reports.renderSpending should contain 'SPENDING BY CATEGORY'")
 	}
 	if !contains(view, "January 2024") {
-		t.Error("renderSpendingReport() should contain 'January 2024'")
+		t.Error("reports.renderSpending should contain 'January 2024'")
 	}
 	if !contains(view, "Housing") {
-		t.Error("renderSpendingReport() should contain 'Housing'")
+		t.Error("reports.renderSpending should contain 'Housing'")
 	}
 	if !contains(view, "Food") {
-		t.Error("renderSpendingReport() should contain 'Food'")
+		t.Error("reports.renderSpending should contain 'Food'")
 	}
 	if !contains(view, "Transportation") {
-		t.Error("renderSpendingReport() should contain 'Transportation'")
+		t.Error("reports.renderSpending should contain 'Transportation'")
 	}
 	if !contains(view, "Rent") {
-		t.Error("renderSpendingReport() should contain subcategory 'Rent'")
+		t.Error("reports.renderSpending should contain subcategory 'Rent'")
 	}
 	if !contains(view, "Groceries") {
-		t.Error("renderSpendingReport() should contain subcategory 'Groceries'")
+		t.Error("reports.renderSpending should contain subcategory 'Groceries'")
 	}
 	if !contains(view, "TOTAL") {
-		t.Error("renderSpendingReport() should contain 'TOTAL'")
+		t.Error("reports.renderSpending should contain 'TOTAL'")
 	}
 	if !contains(view, "$3000.00") {
-		t.Error("renderSpendingReport() should contain total '$3000.00'")
+		t.Error("reports.renderSpending should contain total '$3000.00'")
 	}
 }
 
@@ -226,9 +226,9 @@ func TestApp_RenderSpendingReport_Empty(t *testing.T) {
 		}},
 	}
 
-	view := app.renderSpendingReport()
+	view := app.reports.renderSpending(app.styles)
 	if !contains(view, "No spending data") {
-		t.Error("renderSpendingReport() should show 'No spending data' when empty")
+		t.Error("reports.renderSpending should show 'No spending data' when empty")
 	}
 }
 
@@ -247,9 +247,9 @@ func TestApp_RenderSpendingReport_NoData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderSpendingReport()
+	view := app.reports.renderSpending(app.styles)
 	if !contains(view, "No spending data") {
-		t.Error("renderSpendingReport() should show 'No spending data' when nil")
+		t.Error("reports.renderSpending should show 'No spending data' when nil")
 	}
 }
 
@@ -298,7 +298,7 @@ func TestApp_GetAdjacentPeriods_Monthly(t *testing.T) {
 		}},
 	}
 
-	prev, next := app.getAdjacentPeriods()
+	prev, next := app.reports.adjacentPeriods()
 	if !contains(prev, "Feb") || !contains(prev, "2024") {
 		t.Errorf("previous period = %q, want Feb 2024", prev)
 	}
@@ -316,7 +316,7 @@ func TestApp_GetAdjacentPeriods_MonthlyYearWrap(t *testing.T) {
 		}},
 	}
 
-	prev, next := app.getAdjacentPeriods()
+	prev, next := app.reports.adjacentPeriods()
 	if !contains(prev, "Dec") || !contains(prev, "2023") {
 		t.Errorf("previous period = %q, want Dec 2023", prev)
 	}
@@ -326,7 +326,7 @@ func TestApp_GetAdjacentPeriods_MonthlyYearWrap(t *testing.T) {
 
 	// December wraps to January of next year
 	app.reports.data.month = 12
-	prev, next = app.getAdjacentPeriods()
+	prev, next = app.reports.adjacentPeriods()
 	if !contains(prev, "Nov") || !contains(prev, "2024") {
 		t.Errorf("previous period = %q, want Nov 2024", prev)
 	}
@@ -343,7 +343,7 @@ func TestApp_GetAdjacentPeriods_Yearly(t *testing.T) {
 		}},
 	}
 
-	prev, next := app.getAdjacentPeriods()
+	prev, next := app.reports.adjacentPeriods()
 	if prev != "2023" {
 		t.Errorf("previous period = %q, want %q", prev, "2023")
 	}
@@ -357,7 +357,7 @@ func TestApp_GetAdjacentPeriods_Nil(t *testing.T) {
 		reports: reportsViewState{data: nil},
 	}
 
-	prev, next := app.getAdjacentPeriods()
+	prev, next := app.reports.adjacentPeriods()
 	if prev != "" || next != "" {
 		t.Errorf("expected empty strings for nil reports, got %q, %q", prev, next)
 	}
@@ -545,9 +545,9 @@ func TestApp_ReportsPreviousPeriod_Monthly(t *testing.T) {
 		}},
 	}
 
-	_, cmd := app.reportsPreviousPeriod()
+	cmd := app.reports.previousPeriod(app.reportsDeps())
 	if cmd == nil {
-		t.Error("reportsPreviousPeriod should return a command")
+		t.Error("reports.previousPeriod should return a command")
 	}
 }
 
@@ -560,9 +560,9 @@ func TestApp_ReportsPreviousPeriod_MonthlyJanuaryWrap(t *testing.T) {
 		}},
 	}
 
-	_, cmd := app.reportsPreviousPeriod()
+	cmd := app.reports.previousPeriod(app.reportsDeps())
 	if cmd == nil {
-		t.Error("reportsPreviousPeriod should return a command for January wrap")
+		t.Error("reports.previousPeriod should return a command for January wrap")
 	}
 }
 
@@ -575,9 +575,9 @@ func TestApp_ReportsNextPeriod_Monthly(t *testing.T) {
 		}},
 	}
 
-	_, cmd := app.reportsNextPeriod()
+	cmd := app.reports.nextPeriod(app.reportsDeps())
 	if cmd == nil {
-		t.Error("reportsNextPeriod should return a command")
+		t.Error("reports.nextPeriod should return a command")
 	}
 }
 
@@ -590,9 +590,9 @@ func TestApp_ReportsNextPeriod_MonthlyDecemberWrap(t *testing.T) {
 		}},
 	}
 
-	_, cmd := app.reportsNextPeriod()
+	cmd := app.reports.nextPeriod(app.reportsDeps())
 	if cmd == nil {
-		t.Error("reportsNextPeriod should return a command for December wrap")
+		t.Error("reports.nextPeriod should return a command for December wrap")
 	}
 }
 
@@ -601,14 +601,14 @@ func TestApp_ReportsPeriodNav_Nil(t *testing.T) {
 		reports: reportsViewState{data: nil},
 	}
 
-	_, cmd := app.reportsPreviousPeriod()
+	cmd := app.reports.previousPeriod(app.reportsDeps())
 	if cmd != nil {
-		t.Error("reportsPreviousPeriod should return nil for nil reports")
+		t.Error("reports.previousPeriod should return nil for nil reports")
 	}
 
-	_, cmd = app.reportsNextPeriod()
+	cmd = app.reports.nextPeriod(app.reportsDeps())
 	if cmd != nil {
-		t.Error("reportsNextPeriod should return nil for nil reports")
+		t.Error("reports.nextPeriod should return nil for nil reports")
 	}
 }
 
@@ -619,14 +619,14 @@ func TestApp_ReportsPeriodNav_NetWorthIgnored(t *testing.T) {
 		}},
 	}
 
-	_, cmd := app.reportsPreviousPeriod()
+	cmd := app.reports.previousPeriod(app.reportsDeps())
 	if cmd != nil {
-		t.Error("reportsPreviousPeriod should return nil for net worth")
+		t.Error("reports.previousPeriod should return nil for net worth")
 	}
 
-	_, cmd = app.reportsNextPeriod()
+	cmd = app.reports.nextPeriod(app.reportsDeps())
 	if cmd != nil {
-		t.Error("reportsNextPeriod should return nil for net worth")
+		t.Error("reports.nextPeriod should return nil for net worth")
 	}
 }
 
@@ -708,9 +708,9 @@ func TestApp_RenderSpendingReport_ImprovedNoData(t *testing.T) {
 		}},
 	}
 
-	view := app.renderSpendingReport()
+	view := app.reports.renderSpending(app.styles)
 	if !contains(view, "Add transactions to see reports") {
-		t.Error("renderSpendingReport() should show helpful message when nil")
+		t.Error("reports.renderSpending should show helpful message when nil")
 	}
 }
 
@@ -784,22 +784,22 @@ func TestApp_RenderSpendingReport_IncludeTransfersSuffix(t *testing.T) {
 		}},
 	}
 
-	view := app.renderSpendingReport()
+	view := app.reports.renderSpending(app.styles)
 	if !contains(view, "(incl. transfers)") {
-		t.Errorf("renderSpendingReport() with includeTransfers should show the '(incl. transfers)' suffix; got:\n%s", view)
+		t.Errorf("reports.renderSpending with includeTransfers should show the '(incl. transfers)' suffix; got:\n%s", view)
 	}
 	if !contains(view, "t transfers") {
-		t.Errorf("renderSpendingReport() footer should hint the 't transfers' toggle; got:\n%s", view)
+		t.Errorf("reports.renderSpending footer should hint the 't transfers' toggle; got:\n%s", view)
 	}
 
 	// Without the flag the suffix disappears (the footer hint stays).
 	app.reports.data.includeTransfers = false
-	view = app.renderSpendingReport()
+	view = app.reports.renderSpending(app.styles)
 	if contains(view, "(incl. transfers)") {
-		t.Errorf("renderSpendingReport() without includeTransfers must not show the suffix; got:\n%s", view)
+		t.Errorf("reports.renderSpending without includeTransfers must not show the suffix; got:\n%s", view)
 	}
 	if !contains(view, "t transfers") {
-		t.Errorf("renderSpendingReport() footer should always hint the 't transfers' toggle; got:\n%s", view)
+		t.Errorf("reports.renderSpending footer should always hint the 't transfers' toggle; got:\n%s", view)
 	}
 }
 

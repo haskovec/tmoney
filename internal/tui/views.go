@@ -120,14 +120,16 @@ func init() {
 			id:     ViewReports,
 			name:   "Reports",
 			render: (*App).renderReports,
-			onKey:  (*App).handleReportsKeys,
+			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+				return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
+			},
 			hints: func(*App) string {
 				return "←→ period  n net worth  s spending  y year  m month  esc back  " + commonKeyHints
 			},
 			shortcuts: reportsShortcuts,
 			reload: func(a *App) []tea.Cmd {
 				if a.reports.data != nil {
-					return []tea.Cmd{a.loadReportsViewData(
+					return []tea.Cmd{a.reports.load(a.reportsDeps(),
 						a.reports.data.rtype, a.reports.data.year, a.reports.data.month, a.reports.data.includeTransfers,
 					)}
 				}
