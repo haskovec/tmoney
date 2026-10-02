@@ -126,9 +126,9 @@ func init() {
 			},
 			shortcuts: reportsShortcuts,
 			reload: func(a *App) []tea.Cmd {
-				if a.reports != nil {
+				if a.reports.data != nil {
 					return []tea.Cmd{a.loadReportsViewData(
-						a.reports.rtype, a.reports.year, a.reports.month, a.reports.includeTransfers,
+						a.reports.data.rtype, a.reports.data.year, a.reports.data.month, a.reports.data.includeTransfers,
 					)}
 				}
 				return nil

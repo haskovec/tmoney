@@ -165,8 +165,9 @@ Fields that stay on `App` in every item: `currentView`, `previousView`, `pending
   - Fields: `data`, `table`.
   - Done: `App` holds it as `scheduled`, so `a.scheduled` became `a.scheduled.data` and `a.scheduledTable` became `a.scheduled.table`. Other structs have a `scheduled` field too (the schedule dialog's data, two deps bags), so the tool rewrote only `App` receivers. The two schedule dialogs read the view's selected row; only the view and the database-switch resets write its state.
 
-- [ ] **VL-308 — `reportsViewState`**
+- [x] **VL-308 — `reportsViewState`**
   - Field: `data`.
+  - Done: `App` holds it as `reports`, so `a.reports` became `a.reports.data`. The field count does not change: one field becomes one field, so every view has the same shape. The tool's receiver filter missed `model.(*App).reports` in three test lines; the compiler found them, and they were fixed by hand.
 
 - [ ] **VL-309 — `reconciliationViewState`**
   - Fields: `data`, `table`.
