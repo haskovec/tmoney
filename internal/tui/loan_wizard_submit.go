@@ -472,7 +472,7 @@ func (a *App) afterLoanWizardSave() tea.Cmd {
 	}
 	return tea.Batch(
 		a.loadSidebarData(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 		a.loadScheduledViewData(),
 		a.loadScheduledDueCount(),
 		widget.ClearToastCmd(),

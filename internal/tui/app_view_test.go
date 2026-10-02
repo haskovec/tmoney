@@ -413,7 +413,7 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 
 	// Sanity: the raw dashboard content really is taller than the screen,
 	// otherwise this test isn't exercising the clamp.
-	if h := lipgloss.Height(app.renderDashboard()); h <= termHeight {
+	if h := lipgloss.Height(app.dashboard.render(app.styles)); h <= termHeight {
 		t.Fatalf("test precondition failed: dashboard content is only %d lines, expected > %d", h, termHeight)
 	}
 

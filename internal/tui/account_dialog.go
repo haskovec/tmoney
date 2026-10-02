@@ -608,7 +608,7 @@ func (a *App) deleteSelectedAccount() tea.Cmd {
 // when one is on screen, because a rename or an opening-balance edit changes
 // every one of them.
 func (a *App) afterAccountDialogSave() tea.Cmd {
-	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	cmds := []tea.Cmd{a.loadSidebarData(), a.dashboard.load(a.dashboardDeps())}
 	if a.currentView == ViewRegister {
 		cmds = append(cmds, a.loadRegisterData(a.sidebar.SelectedAccountID()))
 	}

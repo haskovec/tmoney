@@ -484,6 +484,6 @@ func (a *App) applyAutoPostResult(summary *scheduled.AutoPostSummary) tea.Cmd {
 	return tea.Batch(
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 	)
 }

@@ -168,6 +168,24 @@ var viewControllers = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "dashboard",
+		surface: reflect.TypeFor[dashboardViewState](),
+		deps:    reflect.TypeFor[dashboardDeps](),
+		bind:    func(a *App) any { return a.dashboardDeps() },
+		probes: func(a *App) []func() any {
+			d := a.dashboardDeps()
+			return []func() any{
+				func() any { return d.reports() },
+				func() any { return d.schedules() },
+				func() any { return d.payees() },
+				func() any { return d.accounts() },
+				func() any { return d.valuations() },
+				func() any { return d.securities() },
+				func() any { return d.config() },
+			}
+		},
+	},
 }
 
 // allControllers is every row of both tables: the surfaces, then the views.

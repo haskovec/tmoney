@@ -169,7 +169,7 @@ func (a *App) reopenSelectedAccount() tea.Cmd {
 // afterAccountClosed reloads the sidebar and dashboard, plus whichever
 // account-scoped view is on screen, so a closed account stops showing as open.
 func (a *App) afterAccountClosed() tea.Cmd {
-	cmds := []tea.Cmd{a.loadSidebarData(), a.loadDashboardData()}
+	cmds := []tea.Cmd{a.loadSidebarData(), a.dashboard.load(a.dashboardDeps())}
 	switch a.currentView {
 	case ViewRegister:
 		cmds = append(cmds, a.loadRegisterData(a.sidebar.SelectedAccountID()))

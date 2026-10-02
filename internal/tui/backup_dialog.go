@@ -186,7 +186,7 @@ func (a *App) reloadAfterRestore() (tea.Model, tea.Cmd) {
 	return a, tea.Batch(
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 	)
 }
 

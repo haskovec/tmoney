@@ -231,12 +231,12 @@ func (a *App) renderNetWorthReport() string {
 
 	// Net worth summary, one line per currency
 	sections = append(sections, "")
-	sections = append(sections, a.renderNetWorthSummary(nw)...)
+	sections = append(sections, renderNetWorthSummary(a.styles, nw)...)
 	sections = append(sections, "")
 
 	// Assets and liabilities columns. nil: the Net Worth report has no
 	// expand/collapse affordance, so no mouse hit-test rows are recorded.
-	sections = append(sections, a.renderAssetLiabilityColumns(nw, contentWidth, nil))
+	sections = append(sections, a.dashboard.renderAssetLiabilityColumns(a.styles, nw, contentWidth, nil))
 
 	// Navigation hints
 	sections = append(sections, "")

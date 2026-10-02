@@ -44,7 +44,7 @@ func runLoad(t *testing.T, cmd tea.Cmd) (msg tea.Msg) {
 
 func TestInvestmentLoads_WithoutTheValuationService(t *testing.T) {
 	loads := map[string]func(a *App, id types.ID) tea.Cmd{
-		"dashboard":           func(a *App, _ types.ID) tea.Cmd { return a.loadDashboardData() },
+		"dashboard":           func(a *App, _ types.ID) tea.Cmd { return a.dashboard.load(a.dashboardDeps()) },
 		"investment register": func(a *App, id types.ID) tea.Cmd { return a.loadInvestmentRegisterData(id) },
 		"portfolio":           func(a *App, id types.ID) tea.Cmd { return a.portfolio.load(a.portfolioDeps(), id) },
 		"portfolio lots": func(a *App, id types.ID) tea.Cmd {
@@ -64,7 +64,7 @@ func TestInvestmentLoads_WithoutTheInvestmentService(t *testing.T) {
 	t.Run("dashboard", func(t *testing.T) {
 		a, acct := newOneInvestmentAccountApp(t)
 		a.services.Investment = nil
-		msg, ok := runLoad(t, a.loadDashboardData()).(dashboardLoadedMsg)
+		msg, ok := runLoad(t, a.dashboard.load(a.dashboardDeps())).(dashboardLoadedMsg)
 		if !ok {
 			t.Fatal("the load did not return dashboard data")
 		}

@@ -58,12 +58,12 @@ func init() {
 		{
 			id:        ViewDashboard,
 			name:      "Dashboard",
-			render:    (*App).renderDashboard,
+			render:    func(a *App) string { return a.dashboard.render(a.styles) },
 			onKey:     (*App).handleDashboardKeys,
 			hints:     func(*App) string { return "↑↓ navigate  ←→ collapse/expand  enter select  " + commonKeyHints },
 			shortcuts: dashboardShortcuts,
 			reload: func(a *App) []tea.Cmd {
-				return []tea.Cmd{a.loadDashboardData(), a.loadScheduledDueCount()}
+				return []tea.Cmd{a.dashboard.load(a.dashboardDeps()), a.loadScheduledDueCount()}
 			},
 			focus: func(a *App) {
 				// Dashboard uses sidebar navigation

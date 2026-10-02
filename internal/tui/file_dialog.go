@@ -313,7 +313,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
-		a.loadDashboardData(),
+		a.dashboard.load(a.dashboardDeps()),
 	)
 }
 
