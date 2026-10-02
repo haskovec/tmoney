@@ -954,6 +954,38 @@ only the method's path changed (`app.dashboard.render(app.styles)`). Each
 planted mistake (a view-state method that takes `*App`, a captured service
 pointer, a captured config) failed its test.
 
+#### Built (VL-407, 2026-10-02): Corporate Actions, and the filter at six call sites
+
+`*App` 377 → **370 methods (−7)**, as counted: eight methods moved onto
+`corporateActionViewState`, and `corporateActionDeps` arrived. The key handler
+(it writes the filter) and the delete confirm (it opens the confirm dialog)
+stay on `App`.
+
+**The ticker filter is the third value that nearly failed silently.** It
+stays on `App` (decision 2: the Securities drill-in and the menu set it), so
+the methods that read it take it as a `string`. Six call sites pass it: the
+render closure, the load arm, the two table builds while the filter is typed,
+and the two selections (Enter and `d`). A planted empty filter at each one
+passed every test. The filter tests called `filtered` directly or checked only
+the text of the filter, and none checked the rows under a filter through the
+app; before the move, those paths read the filter themselves, so the gap had
+no cost. Four tests now cover the six call sites, and each planted mistake
+fails one of them. That follows the call-site rule from the review of #84. The
+other way out, moving the filter into the view state as the review of #75
+proposed, would remove the parameter but break decision 2; with the call sites
+tested, the decision stands.
+
+**The screen size** reaches the detail panel's hit test as two `int` values,
+beside the click's two. The close-button test clicks through the app at
+120×40, so it catches the size swapped at the call site, and the overlay tests
+catch a height passed as the width.
+
+**The cost.** Production code +93/−78 (net +15), comments +18/−10 (net +8). 11
+test lines changed. No assertion changed, except two conditions in which only
+the method's path changed. Each planted mistake (an empty filter at each of the
+six call sites, the size swapped, a view-state method that takes `*App`, a
+captured service pointer) failed a test.
+
 ---
 
 ## 5. Risks the phases must handle
