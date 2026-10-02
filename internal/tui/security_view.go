@@ -373,7 +373,7 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		sec := a.selectedSecurity()
 		if sec != nil {
 			a.switchView(ViewPrices)
-			return a, a.loadPriceViewDataForSecurity(sec)
+			return a, a.prices.loadForSecurity(a.priceDeps(), sec)
 		}
 	case msg.String() == "u":
 		// Refresh prices for all visible securities from the default provider.

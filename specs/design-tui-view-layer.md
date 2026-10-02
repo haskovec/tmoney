@@ -855,6 +855,40 @@ the seven views do not mix two styles):
 - A pure helper that takes neither the state nor the deps, such as a row
   formatter, is a **plain function**. `formatAmortizationRow` was one before
   the move and stays one.
+- A method that takes the deps takes them **first**, before the message, the
+  key bindings or the styles (from the review of #81).
+
+#### Built (VL-404, 2026-10-02): Prices, the largest view
+
+`*App` 420 → **398 methods (−22)**, as counted. 22 methods hang off
+`*priceViewState`, and none names `App`. `formatPriceRow` became a plain
+function under the rule above: it never used its receiver. `priceDeps` arrived
+to bind the security and price services. The name has to be `priceDeps`, not
+`pricesDeps`: the table guard finds the view state from the deps name
+(`price` + `ViewState`), and it failed the build's tests until the view's row
+was in `viewControllers`, which is the guard doing its job.
+
+**What stayed on `App`:** the three key handlers (they open the price dialogs
+and start the bulk refresh), `afterPriceChange` and `applyPriceRefreshResult`
+(the status bar, the refresh flag, `a.err`). They call the moved methods with
+`a.priceDeps()`, `a.keys` and the screen size.
+
+**The adapter tests.** Only parameters of the same type can be swapped
+without a compile error, so two tests cover them. The render fits the screen in
+both modes (with the width and height swapped, it draws 160 lines on a 30-line
+screen). And the chart fetch takes `onScreen`, which replaced a read of
+`currentView`: the old wheel test, which scrolls the wheel off the Prices view
+and expects no command, now loads a price list. Without it, the fetch returned
+nothing whatever the flag said, so the test could not catch a wrong
+`onScreen`. The view's data stays loaded after a view switch, so the case is
+real. (The review of #81 merged a first, separate test into the old one.)
+
+**The cost.** Production code +194/−177 (net +17), comments +49/−38 (net +11).
+68 test call sites changed. The assertion comparer found no assertion changed,
+except two conditions in which only the method's path changed
+(`a.prices.listCursorSecurityID()`). Each planted mistake (a swapped size, a
+constant `onScreen`, a view-state method that takes `*App`, a captured service
+pointer) failed its test.
 
 ---
 

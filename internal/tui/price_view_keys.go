@@ -17,7 +17,7 @@ func (a *App) handlePriceViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if a.prices.data.searching {
-		return a.handlePriceSearchKey(msg)
+		return a, a.prices.handleSearchKey(a.priceDeps(), msg, a.keys)
 	}
 	if a.prices.data.mode == pricesViewDetail {
 		return a.handlePriceDetailKeys(msg)
@@ -64,12 +64,12 @@ func (a *App) handlePriceListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.prices.data.searching = true
 		a.prices.data.searchQuery = ""
 	case key.Matches(msg, a.keys.Enter):
-		return a, a.drillIntoSelectedListRow()
+		return a, a.prices.drillIntoSelectedListRow(a.priceDeps())
 	case msg.String() == "u":
 		return a, a.startPriceRefresh()
 	}
 	if cursorMoved {
-		return a, a.schedulePriceChartFetch(a.listCursorSecurityID())
+		return a, a.prices.scheduleChartFetch(a.prices.listCursorSecurityID())
 	}
 	return a, nil
 }
@@ -103,11 +103,11 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(msg, a.keys.Escape):
 		// Flip back to list mode synchronously so the next render is the
-		// landing page; loadPriceViewData refreshes the data behind it.
+		// landing page; load refreshes the data behind it.
 		a.prices.data.mode = pricesViewList
 		a.prices.data.selectedSecurity = nil
 		a.prices.data.prices = nil
-		return a, a.loadPriceViewData()
+		return a, a.prices.load(a.priceDeps())
 	case key.Matches(msg, a.keys.Search):
 		a.prices.data.searching = true
 		a.prices.data.searchQuery = ""
@@ -119,7 +119,7 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
-		p := a.selectedPrice()
+		p := a.prices.selectedPrice()
 		if p != nil && a.prices.data.selectedSecurity != nil {
 			d := buildEditPriceDialog(a.prices.data.selectedSecurity, p)
 			d.SetVisible(true)
@@ -131,7 +131,7 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case key.Matches(msg, a.keys.Delete):
-		p := a.selectedPrice()
+		p := a.prices.selectedPrice()
 		if p != nil {
 			priceID := p.ID
 			dateStr := p.Date.Time().Format("2006-01-02")
@@ -161,57 +161,57 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // drillIntoSelectedListRow loads detail mode for the security at the
 // list-table cursor.
-func (a *App) drillIntoSelectedListRow() tea.Cmd {
-	if a.prices.data == nil || a.prices.listTable == nil {
+func (s *priceViewState) drillIntoSelectedListRow(d priceDeps) tea.Cmd {
+	if s.data == nil || s.listTable == nil {
 		return nil
 	}
-	cursor := a.prices.listTable.Cursor()
-	if cursor < 0 || cursor >= len(a.prices.data.latestPrices) {
+	cursor := s.listTable.Cursor()
+	if cursor < 0 || cursor >= len(s.data.latestPrices) {
 		return nil
 	}
-	targetID := a.prices.data.latestPrices[cursor].SecurityID
+	targetID := s.data.latestPrices[cursor].SecurityID
 
 	// Resolve to a *security.Security from the cached list so the loader
 	// can populate ticker/name without an extra round-trip.
 	var sec *security.Security
-	for _, s := range a.prices.data.securities {
-		if s.ID == targetID {
-			sec = s
+	for _, cand := range s.data.securities {
+		if cand.ID == targetID {
+			sec = cand
 			break
 		}
 	}
 	if sec == nil {
 		// Fall back: synthesize from the LatestPrice row.
-		sec = &security.Security{Ticker: a.prices.data.latestPrices[cursor].Ticker, Name: a.prices.data.latestPrices[cursor].Name}
+		sec = &security.Security{Ticker: s.data.latestPrices[cursor].Ticker, Name: s.data.latestPrices[cursor].Name}
 		sec.ID = targetID
 	}
-	a.prices.data.mode = pricesViewDetail
-	a.prices.data.selectedSecurity = sec
-	return a.loadPriceViewDataForSecurity(sec)
+	s.data.mode = pricesViewDetail
+	s.data.selectedSecurity = sec
+	return s.loadForSecurity(d, sec)
 }
 
-// handlePriceSearchKey handles key presses while in search mode.
-func (a *App) handlePriceSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+// handleSearchKey handles key presses while in search mode.
+func (s *priceViewState) handleSearchKey(d priceDeps, msg tea.KeyPressMsg, keys keyMap) tea.Cmd {
 	switch {
-	case key.Matches(msg, a.keys.Escape):
-		a.prices.data.searching = false
-		a.prices.data.searchQuery = ""
-	case key.Matches(msg, a.keys.Enter):
-		a.prices.data.searching = false
+	case key.Matches(msg, keys.Escape):
+		s.data.searching = false
+		s.data.searchQuery = ""
+	case key.Matches(msg, keys.Enter):
+		s.data.searching = false
 		// Select the first filtered security
-		filtered := a.prices.data.filteredSecurities()
+		filtered := s.data.filteredSecurities()
 		if len(filtered) > 0 {
-			a.prices.data.selectedSecurity = filtered[0]
-			a.prices.data.searchQuery = ""
-			return a, a.loadPriceViewDataForSecurity(filtered[0])
+			s.data.selectedSecurity = filtered[0]
+			s.data.searchQuery = ""
+			return s.loadForSecurity(d, filtered[0])
 		}
-		a.prices.data.searchQuery = ""
+		s.data.searchQuery = ""
 	case msg.String() == "backspace":
-		if len(a.prices.data.searchQuery) > 0 {
-			a.prices.data.searchQuery = a.prices.data.searchQuery[:len(a.prices.data.searchQuery)-1]
+		if len(s.data.searchQuery) > 0 {
+			s.data.searchQuery = s.data.searchQuery[:len(s.data.searchQuery)-1]
 		}
 	case msg.Text != "":
-		a.prices.data.searchQuery += msg.Text
+		s.data.searchQuery += msg.Text
 	}
-	return a, nil
+	return nil
 }

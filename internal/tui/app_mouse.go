@@ -182,9 +182,9 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 			a.prices.clicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 		}
 		if a.prices.clicks.Click(rowIdx) {
-			return a, a.drillIntoSelectedListRow()
+			return a, a.prices.drillIntoSelectedListRow(a.priceDeps())
 		}
-		return a, a.schedulePriceListChartFetchIfActive()
+		return a, a.prices.scheduleListChartFetchIfActive(a.currentView == ViewPrices)
 	}
 
 	return a, nil
@@ -219,7 +219,7 @@ func (a *App) handleMouseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// On the prices landing list, refresh the chart panel for the row the
 	// wheel scrolled to — same root cause as the single-click path above.
 	// Returns nil (no-op) on every other view.
-	return a, a.schedulePriceListChartFetchIfActive()
+	return a, a.prices.scheduleListChartFetchIfActive(a.currentView == ViewPrices)
 }
 
 // handleDialogMouse routes a mouse event to the frontmost visible modal.

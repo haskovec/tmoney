@@ -1,17 +1,30 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
+
+// renderPrices renders the view through its table entry, as the app does, so
+// the entry's closure that passes styles and the screen size is under test too.
+func renderPrices(t *testing.T, app *App) string {
+	t.Helper()
+	e, ok := viewFor(ViewPrices)
+	if !ok {
+		t.Fatal("no view table entry for ViewPrices")
+	}
+	return e.render(app)
+}
 
 // =============================================================================
 // SM-123: Price list table component
@@ -80,8 +93,7 @@ func TestFormatPriceRow(t *testing.T) {
 
 	p := price.NewPrice(secID, d, m, price.SourceManual)
 
-	app := &App{}
-	row := app.formatPriceRow(p)
+	row := formatPriceRow(p)
 
 	if len(row) != 3 {
 		t.Fatalf("expected 3 columns, got %d", len(row))
@@ -115,8 +127,7 @@ func TestFormatPriceRow_Sources(t *testing.T) {
 
 	for _, tt := range tests {
 		p := price.NewPrice(secID, d, m, tt.source)
-		app := &App{}
-		row := app.formatPriceRow(p)
+		row := formatPriceRow(p)
 		if row[2] != tt.expected {
 			t.Errorf("source %q: got %q, want %q", tt.source, row[2], tt.expected)
 		}
@@ -142,7 +153,7 @@ func TestBuildPriceTable(t *testing.T) {
 		}},
 	}
 
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	if app.prices.table == nil {
 		t.Fatal("prices.table should not be nil after build")
@@ -173,7 +184,7 @@ func TestBuildPriceTable_SortedByDateDesc(t *testing.T) {
 		}},
 	}
 
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	if app.prices.table == nil {
 		t.Fatal("prices.table should not be nil")
@@ -210,7 +221,7 @@ func TestHandlePriceViewKeys_Navigation(t *testing.T) {
 			prices:           []*price.Price{p1, p2},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	// Move down
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
@@ -243,7 +254,7 @@ func TestHandlePriceViewKeys_NewOpensDialog(t *testing.T) {
 			prices:           []*price.Price{},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	app.handlePriceViewKeys(nKey)
@@ -275,7 +286,7 @@ func TestHandlePriceViewKeys_EnterOpensEditDialog(t *testing.T) {
 			prices:           []*price.Price{p},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
 	app.handlePriceViewKeys(enterKey)
@@ -308,7 +319,7 @@ func TestHandlePriceViewKeys_DeleteShowsConfirm(t *testing.T) {
 			prices:           []*price.Price{p},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
 	app.handlePriceViewKeys(dKey)
@@ -332,7 +343,7 @@ func TestHandlePriceViewKeys_ImportOpensDialog(t *testing.T) {
 			prices:           []*price.Price{},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	iKey := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	app.handlePriceViewKeys(iKey)
@@ -355,7 +366,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 			prices:           []*price.Price{},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	// Enter search mode
 	slashKey := tea.KeyPressMsg{Code: '/', Text: "/"}
@@ -367,7 +378,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 
 	// Type search query
 	aKey := tea.KeyPressMsg{Code: 'a', Text: "a"}
-	app.handlePriceSearchKey(aKey)
+	app.prices.handleSearchKey(app.priceDeps(), aKey, app.keys)
 
 	if app.prices.data.searchQuery != "a" {
 		t.Errorf("searchQuery = %q, want %q", app.prices.data.searchQuery, "a")
@@ -375,7 +386,7 @@ func TestHandlePriceViewKeys_SearchMode(t *testing.T) {
 
 	// Escape exits search
 	escKey := tea.KeyPressMsg{Code: tea.KeyEscape}
-	app.handlePriceSearchKey(escKey)
+	app.prices.handleSearchKey(app.priceDeps(), escKey, app.keys)
 
 	if app.prices.data.searching {
 		t.Error("should exit search mode after Escape")
@@ -503,7 +514,7 @@ func TestRenderPriceView_Loading(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(output, "Loading prices") {
 		t.Error("should show loading message when price view data is nil")
 	}
@@ -525,7 +536,7 @@ func TestRenderPriceView_NoPrices(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(output, "No prices found") {
 		t.Error("should show 'No prices found' message")
 	}
@@ -550,9 +561,9 @@ func TestRenderPriceView_WithData(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildPriceTable()
+	app.prices.buildTable()
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(output, "PRICES") {
 		t.Error("should contain 'PRICES' title")
 	}
@@ -577,7 +588,7 @@ func TestRenderPriceView_ShowsSecurityInfo(t *testing.T) {
 	}
 	app.styles.Resize(100, 30)
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(output, "Apple Inc.") {
 		t.Errorf("should show security name, got: %s", output)
 	}
@@ -1041,16 +1052,16 @@ func TestSelectedPrice(t *testing.T) {
 			prices:           []*price.Price{p1, p2},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
-	selected := app.selectedPrice()
+	selected := app.prices.selectedPrice()
 	if selected == nil {
 		t.Fatal("selectedPrice() returned nil")
 	}
 
 	// Move down
 	app.prices.table.MoveDown()
-	selected = app.selectedPrice()
+	selected = app.prices.selectedPrice()
 	if selected == nil {
 		t.Fatal("selectedPrice() returned nil after MoveDown")
 	}
@@ -1058,7 +1069,7 @@ func TestSelectedPrice(t *testing.T) {
 
 func TestSelectedPrice_NilData(t *testing.T) {
 	app := &App{}
-	selected := app.selectedPrice()
+	selected := app.prices.selectedPrice()
 	if selected != nil {
 		t.Error("selectedPrice() should return nil when no price view data")
 	}
@@ -1090,7 +1101,7 @@ func TestPriceView_FullScreenRender(t *testing.T) {
 			prices:           []*price.Price{p},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	content := app.renderContent(28)
 	if !strings.Contains(content, "PRICES") {
@@ -1148,7 +1159,7 @@ func TestBuildPriceListTable(t *testing.T) {
 			},
 		}},
 	}
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 
 	if app.prices.listTable == nil {
 		t.Fatal("prices.listTable should be built")
@@ -1175,9 +1186,9 @@ func TestRenderPriceView_ListMode_ShowsLatestPrices(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(output, "AAPL") {
 		t.Error("list-mode render should show ticker")
 	}
@@ -1222,9 +1233,9 @@ func TestRenderPriceView_ListMode_NarrowOmitsChartPanel(t *testing.T) {
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d2, Price: m2},
 		},
 	}
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	// The chart-panel title format `─ TICKER — NAME ─` must not appear
 	// when the panel is suppressed.
 	if strings.Contains(output, "─ AAPL — AAPL Inc.") {
@@ -1264,11 +1275,11 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	}
 	// Under PC-013 the chart-render path no longer calls priceSvc; it
 	// reads only from prices.data.historyCache. Pre-populate the cache so
-	// renderPriceView has data to draw.
+	// render has data to draw.
 	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp2, hp1})
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	// The chart-panel title decoration is unique to the panel — it
 	// won't appear in the table row, which uses no em-dash separator.
 	if !strings.Contains(output, "AAPL — AAPL Inc.") {
@@ -1279,7 +1290,7 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 // PC-007: at content width >= chartPanelMinContentWidth, when the
 // highlighted security has zero prices on file, the chart panel renders
 // the "No price history" placeholder inside a still-titled box rather
-// than a chart. Today's loadPriceViewData filters 0-price securities
+// than a chart. Today's load filters 0-price securities
 // out of latestPrices, so the test injects a synthetic LatestPrice row
 // pointing at a security with no prices in the DB to drive the case.
 func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T) {
@@ -1306,9 +1317,9 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 		historyCache: newHistoryCache(),
 	}
 	a.prices.data.historyCache.Put(secs[0].ID, nil)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	if !strings.Contains(output, "No price history") {
 		t.Errorf("0-price chart panel should render `No price history` placeholder; got:\n%s", output)
 	}
@@ -1324,7 +1335,7 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 // renders the "Only one price on file — chart needs ≥ 2 points"
 // placeholder with the value and date inside a still-titled box rather
 // than a chart. The 1-price routing branch shipped under PC-006; this
-// test pins the end-to-end contract through renderPriceView.
+// test pins the end-to-end contract through render.
 func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
 	a.width = 200
@@ -1349,9 +1360,9 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 		historyCache: newHistoryCache(),
 	}
 	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp})
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	if !strings.Contains(output, "Only one price on file") {
 		t.Errorf("1-price chart panel should render `Only one price on file` placeholder; got:\n%s", output)
 	}
@@ -1376,7 +1387,7 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 // the chart panel renders a real chart — not a placeholder — without
 // panicking. The clampYRange helper pads the all-equal values by ±0.5%
 // so ntcharts has a non-zero Y spread; this test pins that wiring at the
-// renderPriceView level. The unit-level guard lives in
+// render level. The unit-level guard lives in
 // TestBuildChartPanel_FlatLineDoesNotPanic; this is the end-to-end pin.
 func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
@@ -1407,15 +1418,15 @@ func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T)
 		historyCache: newHistoryCache(),
 	}
 	a.prices.data.historyCache.Put(secs[0].ID, flatPrices)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	defer func() {
 		if r := recover(); r != nil {
-			t.Fatalf("renderPriceView panicked on flat-line input: %v", r)
+			t.Fatalf("render panicked on flat-line input: %v", r)
 		}
 	}()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 
 	if !strings.Contains(output, "AAPL — AAPL Inc.") {
 		t.Errorf("flat-line chart panel must render with title; got:\n%s", output)
@@ -1443,7 +1454,7 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	output := app.renderPriceView()
+	output := renderPrices(t, app)
 	if !strings.Contains(strings.ToLower(output), "no prices") {
 		t.Errorf("empty list-mode should hint at the absence of prices, got: %s", output)
 	}
@@ -1453,7 +1464,7 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 // is empty, the chart panel must not render — the empty hint stands alone
 // just as it does at narrow widths. The chart-panel title decoration `─ X
 // — Y ─` is unique to the panel; its absence proves the early-return path
-// fires before composePriceListBody is reached.
+// fires before composeListBody is reached.
 func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
 	a.width = 200
@@ -1470,9 +1481,9 @@ func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 		securities:   secs,
 		latestPrices: nil,
 	}
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	if !strings.Contains(strings.ToLower(output), "no prices") {
 		t.Errorf("wide empty list-mode should still show the empty hint; got:\n%s", output)
 	}
@@ -1486,7 +1497,7 @@ func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 
 // PC-010: when the prices.listTable cursor is past the end of latestPrices
 // (a transient inconsistency that can happen if the data slice shrinks
-// between rebuilds), buildPriceListChartPanel must return "" so no chart
+// between rebuilds), buildListChartPanel must return "" so no chart
 // panel renders. The render falls back to just the table.
 func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
@@ -1517,14 +1528,14 @@ func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) 
 			{SecurityID: secs[0].ID, Ticker: "AAPL", Name: "AAPL Inc.", Date: d, Price: m},
 		},
 	}
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 	a.prices.listTable.MoveDown()
 	if a.prices.listTable.Cursor() != 1 {
 		t.Fatalf("test premise: expected cursor=1 after MoveDown, got %d", a.prices.listTable.Cursor())
 	}
 	a.prices.data.latestPrices = a.prices.data.latestPrices[:1]
 
-	output := a.renderPriceView()
+	output := renderPrices(t, a)
 	if strings.Contains(output, "AAPL — AAPL Inc.") {
 		t.Errorf("out-of-range cursor must suppress the chart panel; got:\n%s", output)
 	}
@@ -1553,7 +1564,7 @@ func TestHandlePriceViewKeys_ListMode_EnterDrillsIn(t *testing.T) {
 			},
 		}},
 	}
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 
 	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
 	_, cmd := app.handlePriceViewKeys(enter)
@@ -1583,7 +1594,7 @@ func TestHandlePriceViewKeys_DetailMode_EscReturnsToList(t *testing.T) {
 			prices:           []*price.Price{},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, cmd := app.handlePriceViewKeys(esc)
@@ -1620,7 +1631,7 @@ func TestHandleKeyPress_PricesDetail_EscStaysInPricesView(t *testing.T) {
 			prices:           []*price.Price{},
 		}},
 	}
-	app.buildPriceTable()
+	app.prices.buildTable()
 
 	esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 	_, _ = app.handleKeyPress(esc)
@@ -1663,7 +1674,7 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 	app.styles.Resize(100, 30)
 	app.prices.clicks = widget.NewClickTracker(400 * time.Millisecond)
 	app.prices.clicks.SetNowFn(func() time.Time { return now })
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 
 	// Y layout: 0 menu bar, 1 top padding, 2 title, 3 title separator,
 	// 4 table header, 5 header border, 6 data row 0.
@@ -1727,7 +1738,7 @@ func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 
 	if app.prices.listTable.Cursor() != 0 {
 		t.Fatalf("test premise: expected initial cursor 0, got %d", app.prices.listTable.Cursor())
@@ -1791,7 +1802,7 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildPriceListTable()
+	app.prices.buildListTable()
 	// Prices is a full-screen view; matches switchView(ViewPrices) which
 	// unfocuses the sidebar so the wheel scrolls the table, not the sidebar.
 	app.sidebar.SetFocused(false)
@@ -1859,10 +1870,10 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	// Mirror what the async fetch path would do: cache the 2-price
 	// slice (newest-first, matching priceSvc.GetPriceHistory contract).
 	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{newer, older})
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	// First render — the cache has the 2-price slice, full chart shows.
-	out1 := a.renderPriceView()
+	out1 := renderPrices(t, a)
 	if !strings.Contains(out1, "AAPL — AAPL Inc.") {
 		t.Fatalf("first render missing chart-panel title; got:\n%s", out1)
 	}
@@ -1878,7 +1889,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 		t.Fatalf("DeletePrice: %v", err)
 	}
 
-	out2 := a.renderPriceView()
+	out2 := renderPrices(t, a)
 	if !strings.Contains(out2, "AAPL — AAPL Inc.") {
 		t.Fatalf("second render missing chart-panel title; got:\n%s", out2)
 	}
@@ -1892,7 +1903,7 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	// disappears entirely — proving the cache is the only source.
 	a.prices.data.historyCache.Clear()
 
-	out3 := a.renderPriceView()
+	out3 := renderPrices(t, a)
 	if strings.Contains(out3, "AAPL — AAPL Inc.") {
 		t.Errorf("post-Clear render must omit the chart panel "+
 			"(no cache entry, no fallback); got:\n%s", out3)
@@ -1947,7 +1958,7 @@ func TestHandlePriceListKeys_DownSchedulesDebounceTick(t *testing.T) {
 	withShortPriceChartDebounce(t, time.Millisecond)
 
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	startCursor := a.prices.listTable.Cursor()
 	if startCursor != 0 {
@@ -1978,15 +1989,15 @@ func TestPriceChartDebounceTick_StaleGenIsDropped(t *testing.T) {
 	withShortPriceChartDebounce(t, time.Millisecond)
 
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	// First schedule (cursor still on row 0).
-	cmd1 := a.schedulePriceChartFetch(secs[0].ID)
+	cmd1 := a.prices.scheduleChartFetch(secs[0].ID)
 	tick1 := runDebounceTick(t, cmd1)
 
 	// Second schedule, before tick1 has been routed through Update.
 	// chartDebounceGen bumps; tick1 is now stale.
-	cmd2 := a.schedulePriceChartFetch(secs[1].ID)
+	cmd2 := a.prices.scheduleChartFetch(secs[1].ID)
 	tick2 := runDebounceTick(t, cmd2)
 
 	if tick1.gen >= tick2.gen {
@@ -2025,7 +2036,7 @@ func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
 	withShortPriceChartDebounce(t, time.Millisecond)
 
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("180.00")
@@ -2033,7 +2044,7 @@ func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
 		t.Fatalf("AddPrice: %v", err)
 	}
 
-	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	cmd := a.prices.scheduleChartFetch(secs[0].ID)
 	tick := runDebounceTick(t, cmd)
 
 	_, fetchCmd := a.Update(tick)
@@ -2058,7 +2069,7 @@ func TestPriceChartDebounceTick_DispatchesFetchOnMatch(t *testing.T) {
 // the debounce/fetch chain terminates here.
 func TestPriceChartHistoryLoadedMsg_UpdatesStateAndStops(t *testing.T) {
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 	a.prices.data.historyCache = newHistoryCache()
 
 	d := types.MustParseDate("2026-04-22")
@@ -2094,7 +2105,7 @@ func TestPriceChartDebounceTick_CacheHitSkipsFetch(t *testing.T) {
 	withShortPriceChartDebounce(t, time.Millisecond)
 
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
 	d := types.MustParseDate("2026-04-22")
 	m, _ := types.NewMoney("180.00")
@@ -2102,7 +2113,7 @@ func TestPriceChartDebounceTick_CacheHitSkipsFetch(t *testing.T) {
 	a.prices.data.historyCache = newHistoryCache()
 	a.prices.data.historyCache.Put(secs[0].ID, []*price.Price{hp})
 
-	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	cmd := a.prices.scheduleChartFetch(secs[0].ID)
 	tick := runDebounceTick(t, cmd)
 
 	_, fetchCmd := a.Update(tick)
@@ -2122,15 +2133,15 @@ func TestPriceChartDebounceTick_CursorMismatchIsDropped(t *testing.T) {
 	withShortPriceChartDebounce(t, time.Millisecond)
 
 	a, _, secs := setupAppWithTwoSecurities(t)
-	a.buildPriceListTable()
+	a.prices.buildListTable()
 
-	cmd := a.schedulePriceChartFetch(secs[0].ID)
+	cmd := a.prices.scheduleChartFetch(secs[0].ID)
 	tick := runDebounceTick(t, cmd)
 
 	// Move cursor off secs[0] without scheduling a new tick (test
 	// fixture; in production the move would itself schedule).
 	a.prices.listTable.MoveDown()
-	if a.listCursorSecurityID() != secs[1].ID {
+	if a.prices.listCursorSecurityID() != secs[1].ID {
 		t.Fatalf("test premise: cursor should be on secs[1] after MoveDown")
 	}
 
@@ -2172,7 +2183,7 @@ func TestHandlePriceListKeys_CursorMovingKeysScheduleDebounce(t *testing.T) {
 			withShortPriceChartDebounce(t, time.Millisecond)
 
 			a, _, secs := setupAppWithTwoSecurities(t)
-			a.buildPriceListTable()
+			a.prices.buildListTable()
 			for a.prices.listTable.Cursor() < tc.startCursor {
 				a.prices.listTable.MoveDown()
 			}
@@ -2195,9 +2206,9 @@ func TestHandlePriceListKeys_CursorMovingKeysScheduleDebounce(t *testing.T) {
 			}
 
 			wantID := secs[tc.wantSecIdx].ID
-			if a.listCursorSecurityID() != wantID {
+			if a.prices.listCursorSecurityID() != wantID {
 				t.Fatalf("cursor landed on %v, want %v (idx %d)",
-					a.listCursorSecurityID(), wantID, tc.wantSecIdx)
+					a.prices.listCursorSecurityID(), wantID, tc.wantSecIdx)
 			}
 			tick := runDebounceTick(t, cmd)
 			if tick.secID != wantID {
@@ -2227,7 +2238,7 @@ func TestHandlePriceListKeys_NonCursorKeysDoNotScheduleDebounce(t *testing.T) {
 			withShortPriceChartDebounce(t, time.Millisecond)
 
 			a, _, _ := setupAppWithTwoSecurities(t)
-			a.buildPriceListTable()
+			a.prices.buildListTable()
 			beforeCursor := a.prices.listTable.Cursor()
 			beforeGen := a.prices.data.chartDebounceGen
 
@@ -2268,4 +2279,55 @@ func setupAppWithTwoSecurities(t *testing.T) (*App, *fakeRefreshProvider, []*sec
 		historyCache: newHistoryCache(),
 	}
 	return a, fp, secs
+}
+
+// The render closure hands the view the screen size: both modes fit the screen
+// they are given, in both directions. With the width and height swapped, the
+// view would draw 160 lines on a 30-line screen.
+func TestPriceView_RenderFitsTheScreen(t *testing.T) {
+	start := types.NewDate(2025, time.January, 1)
+	var secs []*security.Security
+	var latest []*price.LatestPrice
+	var history []*price.Price
+	for i := range 60 {
+		sec := security.NewSecurity(fmt.Sprintf("T%02d", i), fmt.Sprintf("Ticker %d", i), security.TypeStock)
+		m := types.MustNewMoney(fmt.Sprintf("%d.00", 100+i))
+		d := start.AddDays(i)
+		secs = append(secs, sec)
+		latest = append(latest, &price.LatestPrice{SecurityID: sec.ID, Ticker: sec.Ticker, Name: sec.Name, Date: d, Price: m})
+		history = append(history, price.NewPrice(secs[0].ID, d, m, price.SourceManual))
+	}
+
+	for _, tc := range []struct {
+		name string
+		mode pricesViewMode
+	}{{"list", pricesViewList}, {"detail", pricesViewDetail}} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &App{currentView: ViewPrices, width: 160, height: 30, styles: widget.NewStyles()}
+			app.styles.Resize(app.width, app.height)
+			data := &priceViewData{mode: tc.mode, securities: secs, latestPrices: latest, historyCache: newHistoryCache()}
+			if tc.mode == pricesViewDetail {
+				data.selectedSecurity = secs[0]
+				data.prices = history
+			}
+			data.historyCache.Put(secs[0].ID, history)
+			app.prices.data = data
+			if tc.mode == pricesViewList {
+				app.prices.buildListTable()
+			} else {
+				app.prices.buildTable()
+			}
+
+			lines := strings.Split(renderPrices(t, app), "\n")
+			if len(lines) > app.height {
+				t.Errorf("render is %d lines on a %d-line screen", len(lines), app.height)
+			}
+			for i, l := range lines {
+				if w := lipgloss.Width(l); w > app.width {
+					t.Errorf("line %d is %d cells wide on a %d-cell screen", i, w, app.width)
+					break
+				}
+			}
+		})
+	}
 }

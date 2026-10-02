@@ -6,6 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -452,9 +454,14 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 // prices-chart-fetch tail added to handleMouseWheel is a true no-op off the
 // Prices list: scrolling a register table moves the cursor but schedules no
 // command. Without this guard a future change to
-// schedulePriceListChartFetchIfActive's view guard could leak a stray cmd
+// scheduleListChartFetchIfActive's view guard could leak a stray cmd
 // onto other views unnoticed.
+//
+// A price list is loaded, because the Prices view's data outlives a view
+// switch. Without it the fetch would return nothing whatever the wheel told
+// the view about being on screen, and the test could not catch a wrong value.
 func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
+	sec := security.NewSecurity("AAPL", "Apple Inc.", security.TypeStock)
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
@@ -465,9 +472,16 @@ func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
 			data:  &registerData{},
 		},
+		prices: priceViewState{data: &priceViewData{
+			mode:         pricesViewList,
+			securities:   []*security.Security{sec},
+			latestPrices: []*price.LatestPrice{{SecurityID: sec.ID, Ticker: "AAPL", Name: "Apple Inc."}},
+			historyCache: newHistoryCache(),
+		}},
 		width:  100,
 		height: 24,
 	}
+	app.prices.buildListTable()
 	app.styles.Resize(100, 24)
 	app.sidebar.SetFocused(false)
 	app.register.table.SetFocused(true)
@@ -476,7 +490,9 @@ func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 	msg := tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown}
 	_, cmd := app.Update(msg)
 	if cmd != nil {
-		t.Errorf("wheel scroll off the prices list must schedule no command, got %T", cmd())
+		// Not cmd(): a stray command is a debounce tick, and running it waits
+		// out the debounce delay.
+		t.Error("wheel scroll off the prices list must schedule no command")
 	}
 }
 

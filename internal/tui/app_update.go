@@ -353,13 +353,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.afterSecurityChange(note)
 
 	case priceViewDataLoadedMsg:
-		return a, a.applyPriceViewData(msg.data)
+		return a, a.prices.applyData(msg.data)
 
 	case priceChartDebounceTickMsg:
-		return a, a.handlePriceChartDebounceTick(msg)
+		return a, a.prices.handleChartDebounceTick(a.priceDeps(), msg)
 
 	case priceChartHistoryLoadedMsg:
-		a.applyPriceChartHistory(msg)
+		a.prices.applyChartHistory(msg)
 		return a, nil
 
 	case priceAddedMsg:
