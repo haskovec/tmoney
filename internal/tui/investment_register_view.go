@@ -85,7 +85,10 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 				return errMsg{err: err}
 			}
 			data.cashBalance = cash
+		}
 
+		// Load the valuation through the read model
+		if a.services.InvestmentValuation != nil {
 			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
 			if err != nil {
 				return errMsg{err: err}

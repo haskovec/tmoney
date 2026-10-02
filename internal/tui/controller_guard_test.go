@@ -162,7 +162,6 @@ var viewControllers = []controllerSurface{
 			d := a.portfolioDeps()
 			return []func() any{
 				func() any { return d.accounts() },
-				func() any { return d.investments() },
 				func() any { return d.valuations() },
 				func() any { return d.securities() },
 				func() any { return d.config() },

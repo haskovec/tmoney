@@ -3,7 +3,7 @@
 **Date:** 2026-09-27
 **Status:** DONE. Every item in the order table has shipped; each item keeps its problem statement and as-built notes.
 **Source:** Code review of the tree on 2026-09-27. Not a pull-request diff.
-**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, and W13 from the smoke test of W8 phase 1.
+**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, W13 from the smoke test of W8 phase 1, and W14 from VL-405 in the view-layer plan.
 
 Use this file as the queue. Do one work item at a time. Do not start an item whose **Needs** line is still open. When an item ships, change its status line to the commit, and do not delete the problem statement. The next reader needs to know why the code looks the way it does.
 
@@ -58,6 +58,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W12 | done (#60) | Corporate Actions keys must reach the view | — | small |
 | W8 | done (#59, #61) | One view table in the TUI | W1, W2, and W12 | large |
 | W13 | done (#62) | The Prices detail hint must show | — | small |
+| W14 | done | Each investment load guards the service it calls | — | small |
 | W9 | done (#63) | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -772,6 +773,38 @@ The Prices view has two modes, the list and one security's history, and each has
 
 - Do not change the hint text.
 - Do not refresh the hints in the render path. `View` must not write state that it does not need for the mouse.
+
+## W14 — Each investment load guards the service it calls
+
+**Status:** done.
+**Source:** VL-405 in `specs/implementation-plan-tui-view-layer.md` (the Portfolio move), 2026-10-02. The bug is older: it came with the extraction of the valuation service (`ba24049`), when some nil checks were not updated.
+
+### Problem
+
+`app.Services` has two investment fields: `Investment`, the write side, and `InvestmentValuation`, the read model. Four loads checked one and called the other:
+
+- `loadDashboardData` checked `Investment` and called only `InvestmentValuation`.
+- `loadInvestmentRegisterData` checked `Investment` and called both, with no guard on the valuation call.
+- The Portfolio view's `load` and `loadLotDetail` checked the investment service and called only the valuation service.
+
+Production always wires both services, so a user cannot hit it. But an `App` with only the investment service wired panicked in all four loads, and an `App` with only the valuation service skipped work it could do. Tests build both kinds of `App`.
+
+### Fix
+
+Each load checks the service it calls. The investment register's load has two blocks, the cash balance under `Investment` and the valuation under `InvestmentValuation`, as its other loads are already split. The Portfolio deps lose `investments`, which existed only for the wrong check. The lot-detail error now names the valuation service.
+
+The other 17 nil checks of the two services in `internal/tui` guard the service they call, and were left alone. The CLI does not nil-check them.
+
+### Tests
+
+`internal/tui/investment_services_nil_test.go`, against one lot-tracking investment account:
+
+| Case | Assert |
+| --- | --- |
+| Each of the four loads, with no valuation service | No panic. |
+| Each of the four loads, with no investment service | The valuation (or the lot detail) still loads. |
+
+All eight cases fail on the code before the fix.
 
 ## W9 — Stop exporting repositories from `app.Services`
 
