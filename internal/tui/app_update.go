@@ -175,14 +175,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case corporateActionViewLoadedMsg:
 		a.corporateActions.data = msg.data
-		a.buildCorporateActionViewTable()
+		a.corporateActions.buildTable()
 		return a, nil
 
 	case corporateActionDeletedMsg:
 		a.statusbar.AddNotification("Corporate action reversed", widget.NotificationInfo)
 		// Invalidate downstream view caches so re-entering them refetches.
 		a.portfolio.data = nil
-		return a, a.loadCorporateActionViewData()
+		return a, a.corporateActions.load(a.corporateActionDeps())
 
 	case scheduledViewDataLoadedMsg:
 		a.scheduled.data = msg.data

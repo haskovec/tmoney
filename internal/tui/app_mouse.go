@@ -242,7 +242,8 @@ func (a *App) handleDialogMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// its [x], and otherwise swallows the click so the table it covers
 		// cannot move.
 		if a.corporateActions.detail != nil {
-			return a.handleCorporateActionDetailMouse(msg)
+			a.corporateActions.handleDetailMouse(a.styles, a.width, a.height, msg)
+			return a, nil
 		}
 		return a, nil
 	}

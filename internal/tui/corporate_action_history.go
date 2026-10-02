@@ -24,6 +24,9 @@ type corporateActionViewState struct {
 	// detail is the action whose details panel is open. The panel is part of
 	// the view, not a modal, but isDialogVisible counts it.
 	detail *investment.CorporateAction
+	// filter is the ticker filter. The Securities drill-in and the menu set it
+	// before the view loads, and leaving the view keeps it.
+	filter string
 	// filterEditing is true while the user types the ticker filter.
 	filterEditing bool
 }
@@ -43,27 +46,48 @@ type corporateActionViewLoadedMsg struct {
 // corporateActionDeletedMsg is sent after a successful reversal+delete.
 type corporateActionDeletedMsg struct{}
 
+// corporateActionDeps is what the Corporate Actions view needs from outside
+// itself. Every dep is a func, because switchDatabase replaces App's services
+// and closes the previous *db.DB; and deps are passed to each call, never
+// stored in the view state. Both rules are pinned by the guards that run over
+// viewControllers.
+type corporateActionDeps struct {
+	corporateActions func() *investment.CorporateActionService
+	securities       func() *security.Service
+}
+
+// corporateActionDeps binds the Corporate Actions view to the services App
+// owns. Every accessor may return nil, because an App built by a test has no
+// services, so each caller keeps its own nil guard.
+func (a *App) corporateActionDeps() corporateActionDeps {
+	return corporateActionDeps{
+		corporateActions: func() *investment.CorporateActionService { return a.services.CorporateAction },
+		securities:       func() *security.Service { return a.services.Security },
+	}
+}
+
 // loadCorporateActionViewData fetches every corporate action and the
 // security map used to resolve tickers. The view's filter query is left
 // untouched so callers may pre-populate it before dispatching the load.
-func (a *App) loadCorporateActionViewData() tea.Cmd {
+func (s *corporateActionViewState) load(d corporateActionDeps) tea.Cmd {
 	return func() tea.Msg {
-		if a.services.CorporateAction == nil || a.services.Security == nil {
+		corporateActions, securities := d.corporateActions(), d.securities()
+		if corporateActions == nil || securities == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
-		actions, err := a.services.CorporateAction.ListAll()
+		actions, err := corporateActions.ListAll()
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load corporate actions: %w", err)}
 		}
 
-		allSecurities, err := a.services.Security.List(security.Filter{})
+		allSecurities, err := securities.List(security.Filter{})
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
 		}
 		secMap := make(map[types.ID]*security.Security, len(allSecurities))
-		for _, s := range allSecurities {
-			secMap[s.ID] = s
+		for _, sec := range allSecurities {
+			secMap[sec.ID] = sec
 		}
 
 		return corporateActionViewLoadedMsg{
@@ -72,22 +96,22 @@ func (a *App) loadCorporateActionViewData() tea.Cmd {
 	}
 }
 
-// filteredCorporateActions returns the subset of loaded actions whose
+// filtered returns the subset of loaded actions whose
 // ticker, type, or details match the current filter query
 // (case-insensitive substring).
-func (a *App) filteredCorporateActions() []*investment.CorporateAction {
-	if a.corporateActions.data == nil {
+func (s *corporateActionViewState) filtered() []*investment.CorporateAction {
+	if s.data == nil {
 		return nil
 	}
-	q := strings.ToLower(strings.TrimSpace(a.corporateActionViewFilter))
+	q := strings.ToLower(strings.TrimSpace(s.filter))
 	if q == "" {
-		return a.corporateActions.data.actions
+		return s.data.actions
 	}
-	filtered := make([]*investment.CorporateAction, 0, len(a.corporateActions.data.actions))
-	for _, ca := range a.corporateActions.data.actions {
-		ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActions.data.secMap)
-		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActions.data.secMap)
-		details := formatCorporateActionDetails(ca, a.corporateActions.data.secMap)
+	filtered := make([]*investment.CorporateAction, 0, len(s.data.actions))
+	for _, ca := range s.data.actions {
+		ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, s.data.secMap)
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, s.data.secMap)
+		details := formatCorporateActionDetails(ca, s.data.secMap)
 		hay := strings.ToLower(strings.Join([]string{ticker, targetTicker, string(ca.ActionType), details}, " "))
 		if strings.Contains(hay, q) {
 			filtered = append(filtered, ca)
@@ -96,9 +120,9 @@ func (a *App) filteredCorporateActions() []*investment.CorporateAction {
 	return filtered
 }
 
-// buildCorporateActionViewTable creates and populates the table.
-func (a *App) buildCorporateActionViewTable() {
-	if a.corporateActions.data == nil {
+// buildTable creates and populates the table.
+func (s *corporateActionViewState) buildTable() {
+	if s.data == nil {
 		return
 	}
 
@@ -109,29 +133,29 @@ func (a *App) buildCorporateActionViewTable() {
 		{Header: "Details", MinWidth: 24, Align: widget.AlignLeft},
 	}
 
-	if a.corporateActions.table == nil {
-		a.corporateActions.table = widget.NewTable(columns)
+	if s.table == nil {
+		s.table = widget.NewTable(columns)
 	} else {
-		a.corporateActions.table.SetColumns(columns)
+		s.table.SetColumns(columns)
 	}
 
-	visible := a.filteredCorporateActions()
+	visible := s.filtered()
 	rows := make([][]string, len(visible))
 	for i, ca := range visible {
-		rows[i] = formatGlobalCorporateActionRow(ca, a.corporateActions.data.secMap)
+		rows[i] = formatGlobalCorporateActionRow(ca, s.data.secMap)
 	}
-	a.corporateActions.table.SetRows(rows)
-	a.corporateActions.table.SetFocused(true)
+	s.table.SetRows(rows)
+	s.table.SetFocused(true)
 }
 
-// selectedCorporateAction returns the action under the table cursor, or
+// selected returns the action under the table cursor, or
 // nil if the table is empty or out of range.
-func (a *App) selectedCorporateAction() *investment.CorporateAction {
-	if a.corporateActions.table == nil {
+func (s *corporateActionViewState) selected() *investment.CorporateAction {
+	if s.table == nil {
 		return nil
 	}
-	visible := a.filteredCorporateActions()
-	cursor := a.corporateActions.table.Cursor()
+	visible := s.filtered()
+	cursor := s.table.Cursor()
 	if cursor < 0 || cursor >= len(visible) {
 		return nil
 	}
@@ -197,40 +221,40 @@ func resolveSecurityTicker(id types.NullableID, secMap map[types.ID]*security.Se
 	return "???"
 }
 
-// renderCorporateActionView renders the full view (used as content body).
-func (a *App) renderCorporateActionView() string {
-	if a.corporateActions.data == nil {
+// render renders the full view (used as content body).
+func (s *corporateActionViewState) render(styles widget.Styles, height int) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().Padding(1, 2).Render("Loading corporate actions...")
 	}
 
-	contentWidth := a.styles.ContentWidth()
+	contentWidth := styles.ContentWidth()
 	var sections []string
 
-	titleRow := a.styles.Title.Render("CORPORATE ACTIONS")
+	titleRow := styles.Title.Render("CORPORATE ACTIONS")
 	sections = append(sections, titleRow)
 
 	filterLine := ""
-	if a.corporateActionViewFilter != "" {
-		filterLine = a.styles.Muted.Render(fmt.Sprintf("Filter: %s", a.corporateActionViewFilter))
+	if s.filter != "" {
+		filterLine = styles.Muted.Render(fmt.Sprintf("Filter: %s", s.filter))
 	} else {
-		filterLine = a.styles.Muted.Render("Press / to filter by ticker or type")
+		filterLine = styles.Muted.Render("Press / to filter by ticker or type")
 	}
 	sections = append(sections, filterLine)
 
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	tableHeight := max(a.height-8, 2)
+	tableHeight := max(height-8, 2)
 
-	visible := a.filteredCorporateActions()
-	if a.corporateActions.table != nil && len(visible) > 0 {
+	visible := s.filtered()
+	if s.table != nil && len(visible) > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.corporateActions.table.Render(a.styles, tableWidth, tableHeight))
-		if info := a.corporateActions.table.ScrollInfo(tableHeight - 2); info != "" {
-			sections = append(sections, a.styles.Muted.Render("  "+info))
+		sections = append(sections, s.table.Render(styles, tableWidth, tableHeight))
+		if info := s.table.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, styles.Muted.Render("  "+info))
 		}
 	} else {
-		sections = append(sections, "", a.styles.Muted.Render("  No corporate actions"))
+		sections = append(sections, "", styles.Muted.Render("  No corporate actions"))
 	}
 
 	// The details modal is composited by renderLayout's overlay cascade, not
@@ -246,39 +270,39 @@ func corporateActionDetailWidth(screenWidth int) int {
 	return max(min(screenWidth-8, 70), 30)
 }
 
-// renderCorporateActionDetails renders the read-only details overlay.
-func (a *App) renderCorporateActionDetails() string {
-	ca := a.corporateActions.detail
-	// This used to be guarded by its caller inside renderCorporateActionView.
+// renderDetails renders the read-only details overlay.
+func (s *corporateActionViewState) renderDetails(styles widget.Styles, width int) string {
+	ca := s.detail
+	// This used to be guarded by its caller inside the view's render.
 	// It is called from the app-level cascade now, so it carries its own: the
-	// ticker lookups below dereference a.corporateActions.data.secMap.
-	if ca == nil || a.corporateActions.data == nil {
+	// ticker lookups below dereference s.data.secMap.
+	if ca == nil || s.data == nil {
 		return ""
 	}
-	overlayWidth := corporateActionDetailWidth(a.width)
+	overlayWidth := corporateActionDetailWidth(width)
 	// Border (1 each side) plus padding (2 each side) — see OverlayBox in
 	// widget/styles.go. The previous overlayWidth-4 wrapped the separator.
 	innerWidth := max(overlayWidth-dialog.DialogHorizontalOverhead, 10)
 
 	var lines []string
-	title := a.styles.Title.Render("Action Details")
-	closeBtn := a.styles.Muted.Render("[x]")
+	title := styles.Title.Render("Action Details")
+	closeBtn := styles.Muted.Render("[x]")
 	titleGap := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(closeBtn), 1)
 	lines = append(lines, title+strings.Repeat(" ", titleGap)+closeBtn)
-	lines = append(lines, a.styles.Muted.Render(strings.Repeat("─", innerWidth)))
+	lines = append(lines, styles.Muted.Render(strings.Repeat("─", innerWidth)))
 
-	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, a.corporateActions.data.secMap)
+	ticker := resolveSecurityTicker(types.NullableID{ID: ca.SecurityID, Valid: true}, s.data.secMap)
 	lines = append(lines, fmt.Sprintf("Type:    %s", ca.ActionType.DisplayName()))
 	lines = append(lines, fmt.Sprintf("Date:    %s", ca.ActionDate.Time().Format("2006-01-02")))
 	lines = append(lines, fmt.Sprintf("Ticker:  %s", ticker))
 	if ca.TargetSecurityID.Valid {
-		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, a.corporateActions.data.secMap)
+		targetTicker := resolveSecurityTicker(ca.TargetSecurityID, s.data.secMap)
 		lines = append(lines, fmt.Sprintf("Target:  %s", targetTicker))
 	}
-	lines = append(lines, fmt.Sprintf("Details: %s", formatCorporateActionDetails(ca, a.corporateActions.data.secMap)))
-	lines = append(lines, "", a.styles.Muted.Render("esc close"))
+	lines = append(lines, fmt.Sprintf("Details: %s", formatCorporateActionDetails(ca, s.data.secMap)))
+	lines = append(lines, "", styles.Muted.Render("esc close"))
 
-	return a.styles.OverlayBox.Width(overlayWidth).Render(strings.Join(lines, "\n"))
+	return styles.OverlayBox.Width(overlayWidth).Render(strings.Join(lines, "\n"))
 }
 
 // corporateActionShortcuts returns the shortcut section for the Corporate
@@ -320,13 +344,13 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 			a.corporateActions.filterEditing = false
 		default:
 			if msg.String() == "backspace" {
-				if len(a.corporateActionViewFilter) > 0 {
-					a.corporateActionViewFilter = a.corporateActionViewFilter[:len(a.corporateActionViewFilter)-1]
-					a.buildCorporateActionViewTable()
+				if len(a.corporateActions.filter) > 0 {
+					a.corporateActions.filter = a.corporateActions.filter[:len(a.corporateActions.filter)-1]
+					a.corporateActions.buildTable()
 				}
 			} else if msg.Text != "" {
-				a.corporateActionViewFilter += msg.Text
-				a.buildCorporateActionViewTable()
+				a.corporateActions.filter += msg.Text
+				a.corporateActions.buildTable()
 			}
 		}
 		return a, nil
@@ -364,11 +388,11 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 	case msg.String() == "/":
 		a.corporateActions.filterEditing = true
 	case key.Matches(msg, a.keys.Enter):
-		if ca := a.selectedCorporateAction(); ca != nil {
+		if ca := a.corporateActions.selected(); ca != nil {
 			a.corporateActions.detail = ca
 		}
 	case msg.String() == "d":
-		if ca := a.selectedCorporateAction(); ca != nil {
+		if ca := a.corporateActions.selected(); ca != nil {
 			a.confirmDeleteCorporateAction(ca)
 		}
 	}
@@ -406,7 +430,7 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 	)
 }
 
-// corporateActionDetailMouseAction maps a screen click to the read-only
+// detailMouseAction maps a screen click to the read-only
 // details overlay. Only the title row's [x] does anything; every other click,
 // inside the panel or outside it, is inert — so the register underneath cannot
 // move while the modal is up.
@@ -415,34 +439,33 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 // so the transform is the standard one: OverlayTopLeft gives the panel's
 // top-left corner, then border (1) + h-padding (2) on X and border (1) +
 // v-padding (1) on Y reach the content band. Nothing offsets Y — that is the
-// point of moving the render out of renderCorporateActionView, where the
+// point of moving the render out of the view's render, where the
 // 1-row header added a permanent +1.
-func (a *App) corporateActionDetailMouseAction(x, y int) dialog.DialogAction {
-	overlay := a.renderCorporateActionDetails()
+func (s *corporateActionViewState) detailMouseAction(styles widget.Styles, width, height int, click tea.Mouse) dialog.DialogAction {
+	overlay := s.renderDetails(styles, width)
 	if overlay == "" {
 		return dialog.DialogActionNone
 	}
-	startCol, startRow := widget.OverlayTopLeft(overlay, a.width, a.height)
-	localX, localY := x-startCol-3, y-startRow-2
-	innerWidth := max(corporateActionDetailWidth(a.width)-dialog.DialogHorizontalOverhead, 10)
+	startCol, startRow := widget.OverlayTopLeft(overlay, width, height)
+	localX, localY := click.X-startCol-3, click.Y-startRow-2
+	innerWidth := max(corporateActionDetailWidth(width)-dialog.DialogHorizontalOverhead, 10)
 	if localY == 0 && localX >= innerWidth-3 && localX < innerWidth {
 		return dialog.DialogActionCancel
 	}
 	return dialog.DialogActionNone
 }
 
-// handleCorporateActionDetailMouse closes the details overlay on a click on
+// handleDetailMouse closes the details overlay on a click on
 // its [x]. Wheel events reach here too (handleMouseWheel routes through
 // handleDialogMouse) and are swallowed: the overlay has no scroll surface and
 // the register behind it must not move.
-func (a *App) handleCorporateActionDetailMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (s *corporateActionViewState) handleDetailMouse(styles widget.Styles, width, height int, msg tea.MouseMsg) {
 	click, ok := msg.(tea.MouseClickMsg)
 	if !ok || click.Button != tea.MouseLeft {
-		return a, nil
+		return
 	}
 	m := msg.Mouse()
-	if a.corporateActionDetailMouseAction(m.X, m.Y) == dialog.DialogActionCancel {
-		a.corporateActions.detail = nil
+	if s.detailMouseAction(styles, width, height, m) == dialog.DialogActionCancel {
+		s.detail = nil
 	}
-	return a, nil
 }

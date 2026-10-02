@@ -186,6 +186,19 @@ var viewControllers = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "corporateActions",
+		surface: reflect.TypeFor[corporateActionViewState](),
+		deps:    reflect.TypeFor[corporateActionDeps](),
+		bind:    func(a *App) any { return a.corporateActionDeps() },
+		probes: func(a *App) []func() any {
+			d := a.corporateActionDeps()
+			return []func() any{
+				func() any { return d.corporateActions() },
+				func() any { return d.securities() },
+			}
+		},
+	},
 }
 
 // allControllers is every row of both tables: the surfaces, then the views.

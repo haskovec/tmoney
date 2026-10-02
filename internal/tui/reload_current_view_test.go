@@ -177,7 +177,7 @@ func TestReloadCurrentView_CorporateActions_RefreshesHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.switchView(ViewCorporateActions)
-	runCmd(t, a, a.loadCorporateActionViewData(), 1)
+	runCmd(t, a, a.corporateActions.load(a.corporateActionDeps()), 1)
 	if a.corporateActions.data == nil || len(a.corporateActions.data.actions) != 0 {
 		t.Fatal("setup: expected an empty history on screen")
 	}

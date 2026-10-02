@@ -58,7 +58,7 @@ func newTestCorporateActionViewData(t *testing.T) (*App, *investment.CorporateAc
 
 func TestFilteredCorporateActions_NoFilterReturnsAll(t *testing.T) {
 	app, _, _ := newTestCorporateActionViewData(t)
-	got := app.filteredCorporateActions()
+	got := app.corporateActions.filtered()
 	if len(got) != 2 {
 		t.Errorf("filtered count = %d, want 2", len(got))
 	}
@@ -66,8 +66,8 @@ func TestFilteredCorporateActions_NoFilterReturnsAll(t *testing.T) {
 
 func TestFilteredCorporateActions_TickerMatch(t *testing.T) {
 	app, split, _ := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "aapl"
-	got := app.filteredCorporateActions()
+	app.corporateActions.filter = "aapl"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 {
 		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
@@ -80,8 +80,8 @@ func TestFilteredCorporateActions_TargetTickerMatch(t *testing.T) {
 	// "GOOG" only appears as the merger's target — confirming we search
 	// against the resolved target ticker too.
 	app, _, merger := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "GOOG"
-	got := app.filteredCorporateActions()
+	app.corporateActions.filter = "GOOG"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 {
 		t.Fatalf("filtered count = %d, want 1", len(got))
 	}
@@ -92,8 +92,8 @@ func TestFilteredCorporateActions_TargetTickerMatch(t *testing.T) {
 
 func TestFilteredCorporateActions_TypeMatch(t *testing.T) {
 	app, _, merger := newTestCorporateActionViewData(t)
-	app.corporateActionViewFilter = "merger"
-	got := app.filteredCorporateActions()
+	app.corporateActions.filter = "merger"
+	got := app.corporateActions.filtered()
 	if len(got) != 1 || got[0].ID != merger.ID {
 		t.Errorf("expected merger action only, got %v", got)
 	}
@@ -145,7 +145,17 @@ func screenCellOf(t *testing.T, screen, needle string) (x, y int) {
 // the details overlay open, sized to a real screen.
 func corporateActionDetailEnv(t *testing.T, w, h int) (*App, *investment.CorporateAction) {
 	t.Helper()
-	app, split, _ := newTestCorporateActionViewData(t)
+	app, split, _ := corporateActionsEnv(t, w, h, "")
+	app.corporateActions.detail = split
+	return app, split
+}
+
+// corporateActionsEnv is the Corporate Actions view on a w×h screen, with the
+// two fixture actions loaded (an AAPL split, then an MSFT merger) and the
+// table built under the ticker filter.
+func corporateActionsEnv(t *testing.T, w, h int, filter string) (app *App, split, merger *investment.CorporateAction) {
+	t.Helper()
+	app, split, merger = newTestCorporateActionViewData(t)
 	styles := widget.NewStyles()
 	styles.Resize(w, h)
 	app.ready = true
@@ -156,9 +166,9 @@ func corporateActionDetailEnv(t *testing.T, w, h int) (*App, *investment.Corpora
 	app.statusbar = widget.NewStatusBar()
 	app.sidebar = NewSidebar()
 	app.styles = styles
-	app.buildCorporateActionViewTable()
-	app.corporateActions.detail = split
-	return app, split
+	app.corporateActions.filter = filter
+	app.corporateActions.buildTable()
+	return app, split, merger
 }
 
 // TestCorporateActionDetail_OverlaySitsWhereOverlayTopLeftSaysItDoes is the
@@ -172,7 +182,7 @@ func TestCorporateActionDetail_OverlaySitsWhereOverlayTopLeftSaysItDoes(t *testi
 	} {
 		t.Run(fmt.Sprintf("%dx%d", tc.w, tc.h), func(t *testing.T) {
 			app, _ := corporateActionDetailEnv(t, tc.w, tc.h)
-			overlay := app.renderCorporateActionDetails()
+			overlay := app.corporateActions.renderDetails(app.styles, app.width)
 			startCol, startRow := widget.OverlayTopLeft(overlay, app.width, app.height)
 			x, y := screenCellOf(t, app.renderLayout(), "Action Details")
 			if x != startCol+3 || y != startRow+2 {
@@ -189,7 +199,7 @@ func TestCorporateActionDetail_OverlaySitsWhereOverlayTopLeftSaysItDoes(t *testi
 // panel one line taller than it looks.
 func TestCorporateActionDetails_ContentFitsTheBox(t *testing.T) {
 	app, _ := corporateActionDetailEnv(t, 120, 40)
-	lines := strings.Split(app.renderCorporateActionDetails(), "\n")
+	lines := strings.Split(app.corporateActions.renderDetails(app.styles, app.width), "\n")
 	if len(lines) != 12 {
 		t.Errorf("panel is %d lines, want 12 (a spill row means the separator wrapped)", len(lines))
 	}
@@ -216,7 +226,7 @@ func TestCorporateActionDetails_ShortTerminalKeepsHint(t *testing.T) {
 func TestCorporateActionDetails_NilViewRendersNothing(t *testing.T) {
 	app, _ := corporateActionDetailEnv(t, 120, 40)
 	app.corporateActions.data = nil
-	if got := app.renderCorporateActionDetails(); got != "" {
+	if got := app.corporateActions.renderDetails(app.styles, app.width); got != "" {
 		t.Errorf("render returned %d bytes, want empty", len(got))
 	}
 }
@@ -250,7 +260,7 @@ func TestCorporateActionDetail_MissesAreInert(t *testing.T) {
 		{"outside the panel", 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := app.corporateActionDetailMouseAction(tc.x, tc.y); got != dialog.DialogActionNone {
+			if got := app.corporateActions.detailMouseAction(app.styles, app.width, app.height, tea.Mouse{X: tc.x, Y: tc.y}); got != dialog.DialogActionNone {
 				t.Errorf("action = %v, want none", got)
 			}
 		})
