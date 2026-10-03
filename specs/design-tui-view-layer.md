@@ -1,7 +1,7 @@
 # Design sketch: TUI view layer — one view table, and the other half of `App`
 
 **Date:** 2026-09-14
-**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is measured and planned (VL-401, VL-402), and its pilot (Amortization, VL-403) is built. Its other items are not committed. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
+**Status:** PHASES 0, 1, 2 AND 3 BUILT; phase 4 is built for the seven views it planned (VL-403 to VL-409), which took `*App` from 424 to 348 methods. Phase 0 shipped as W1 (PR #46). Phase 1 (the view table), phase 2 (the per-view state structs) and phase 3 (the two file splits) are built; see their status notes below.
 
 **Addresses:** `specs/code-quality-review.md` item 4, slice **4b** as
 `specs/design-tui-decomposition.md` defined it: the view-layer god files
@@ -37,7 +37,7 @@ Target numbers at the end of phase 3:
 | Measure | Now | Target |
 |---|---|---|
 | `App` fields | 91 | ~68 (first written as ~57, a miscount; built: 70 — see the phase 2 status) |
-| Methods on `*App` | 416 | **~416 — unchanged, and stated honestly** — see below |
+| Methods on `*App` | 416 | **~416 — unchanged, and stated honestly** — see below. (Phases 0–3 held it flat; phase 4 then took it from 424 to 348.) |
 | Copies of the view list | 7 full + 2 subsets | 1 |
 | Views with no help section | 1 | 0 |
 | `price_view.go` lines | 1,231 | ≤ 450, in ~5 files |
@@ -1039,6 +1039,74 @@ Dashboard state), and no test covered the link, because it was never visible;
 a new test pins, through the entry, that the net-worth view shows an account
 expanded on the Dashboard and hides a collapsed one. The behaviour itself is
 unchanged, and whether it is right is still the question in §8.
+
+
+#### Built (VL-409, 2026-10-03): the investment register, and phase 4 done
+
+`*App` 363 → **348 methods (−15)**: sixteen functions moved off `App` and
+`investmentRegisterDeps` arrived. Moving `pendingInvestmentSelectID` into the
+view state first (the decision from the review of #85) made two more methods
+movable than VL-401 counted: the table build and the search-key handler, so
+16 of 18 moved, not 14. Fifteen are methods on `investmentRegisterViewState`;
+`shouldShowInvestmentBalance` uses only the styles and is a plain function.
+The key handler (the sidebar, the status bar, undo, and Portfolio's state) and
+the status toggle (undo) stay on `App`. The save paths (`afterInvestmentSave`,
+`afterTransferSave`) now set `investmentRegister.pendingSelectID`.
+
+`investmentRegisterDeps` binds the account, investment, valuation and security
+services and the config. Since W14, the load guards each service it calls, so
+`investments` is a real dep here: the cash balance comes from it.
+
+**Two more heights.** `render` and `handleSearchKey` take the screen height,
+and the width has the same type. Both call sites passed the width without a
+test failing, so two tests cover them: the render fits a 30-line screen with
+67 rows, and PgDn while the filter is typed moves a page of height−6 rows.
+
+**The cost.** Production code +191/−170 (net +21), comments +35/−21 (net +14).
+Tests +155/−95 in ten files. No assertion changed; thirteen conditions changed
+only their path (`app.investmentRegister.filterActive()` and the like). Each
+planted mistake (the width at either call site, a view-state method that takes
+`*App`, a captured service, a captured config) failed a test.
+
+#### Phase 4, as built
+
+| View | Moved off `App` | Stayed on `App` | Adapter tests |
+|---|---|---|---|
+| Amortization | 5 | 0 | 2 (keys, render size) |
+| Prices | 23 | 5 | 2 (render size, `onScreen`) |
+| Portfolio | 12 | 1 | 1 (render size) |
+| Dashboard | 11 | 2 | 0 |
+| Corporate Actions | 8 | 2 | 4 (the filter, before it moved) |
+| Reports | 8 | 0 | 1 (the Dashboard's state) |
+| Investment register | 16 | 2 | 2 (render size, search PgDn) |
+| **All** | **83** | **12** | |
+
+`*App` went from 424 to 348: 83 functions off, 7 deps bindings on. VL-401
+counted 112 movable across all eleven views and VL-402 chose seven of them;
+the revised handoff rule and the Reports parameter moved four more than the
+seven views' first count of 79.
+
+What the phase taught, in the order it was learned:
+
+- **Every value that reaches a moved method from `App` is a place to be
+  wrong.** A deps struct or the styles cannot be wrong and still compile. An
+  `int`, a `string`, a `bool` or another view's state can, and each time such
+  a value was planted wrong, it passed every test that existed then: the
+  screen size in Amortization and in the investment register, Prices'
+  `onScreen` flag, Portfolio's valuation options, the Corporate Actions
+  filter, and the Dashboard's state in Reports. Each was fixed by binding the
+  value in one place (the config as a dep, the filter in the view state) or by
+  a test at each call site (the rule in the plan).
+- **A handoff that the view's moved methods read belongs in the view state.**
+  Phase 2 kept such values on `App`; phase 4 showed that each then had to reach
+  the methods as a parameter. The ticker filter and the investment register's
+  pending ID moved.
+- **The reach guard does not fit views.** The message arms and the view table
+  entries stay on `App` and read the view state; the other 4c guards do fit,
+  and all ran over `viewControllers`, mutation-verified for each row.
+- **A move can expose a bug next door.** W14 (four loads that checked one
+  investment service and called the other) was found in VL-405 and fixed
+  before the next two views.
 
 ---
 
