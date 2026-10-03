@@ -28,7 +28,7 @@ func TestReopenAccount_UnfreezesInvestmentRegister(t *testing.T) {
 		t.Fatal("account not in the sidebar")
 	}
 	a.switchView(ViewInvestmentRegister)
-	runCmd(t, a, a.loadInvestmentRegisterData(acct.ID), 1)
+	runCmd(t, a, a.investmentRegister.load(a.investmentRegisterDeps(), acct.ID), 1)
 	if !a.investmentRegister.data.account.IsClosed() {
 		t.Fatal("setup: register should show the account as closed")
 	}

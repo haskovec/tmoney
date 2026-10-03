@@ -80,7 +80,7 @@ func (a *App) openInvestmentTypeSelector(editing bool) {
 	selectedIdx := 0
 
 	if editing {
-		txn := a.selectedInvestmentTransaction()
+		txn := a.investmentRegister.selectedTransaction()
 		if txn != nil {
 			a.investmentEditTxnID = txn.ID
 			selectedIdx = investmentTransactionTypeIndex(txn.Type)
@@ -146,7 +146,7 @@ func (a *App) dispatchInvestmentTypeSelection(idx int) (tea.Model, tea.Cmd) {
 	// holding pre-filled as the parent security.
 	if idx >= len(investmentTransactionTypeOptions()) {
 		a.spinOff.preSelectedID = nil
-		if txn := a.selectedInvestmentTransaction(); txn != nil && txn.SecurityID.Valid {
+		if txn := a.investmentRegister.selectedTransaction(); txn != nil && txn.SecurityID.Valid {
 			secID := txn.SecurityID.ID
 			a.spinOff.preSelectedID = &secID
 		}
