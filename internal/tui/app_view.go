@@ -153,7 +153,7 @@ func (a *App) handleWindowSize(width, height int) {
 	// security filter is active, so mirror that here to avoid a needless
 	// rebuild (and scroll/cursor reset) on every resize tick while filtered.
 	if a.investmentRegister.data != nil &&
-		tableHasBalanceColumn(a.investmentRegister.table) != (a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()) {
-		a.buildInvestmentRegisterTable()
+		tableHasBalanceColumn(a.investmentRegister.table) != (shouldShowInvestmentBalance(a.styles) && !a.investmentRegister.filterActive()) {
+		a.investmentRegister.buildTable(a.styles)
 	}
 }

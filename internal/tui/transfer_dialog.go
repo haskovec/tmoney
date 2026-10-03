@@ -955,7 +955,7 @@ func (a *App) afterTransferSave(msg transferDialogSavedMsg) tea.Cmd {
 	// new transfer scrolls into view, mirroring plain transactions and splits.
 	if !msg.savedID.IsNil() {
 		if msg.savedIsInvestment {
-			a.pendingInvestmentSelectID = msg.savedID
+			a.investmentRegister.pendingSelectID = msg.savedID
 		} else {
 			a.pendingRegisterSelectID = msg.savedID
 		}

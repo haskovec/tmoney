@@ -23,7 +23,7 @@ func shareTransferRegister(t *testing.T, a *App, acct *account.Account, leg *inv
 		account:      acct,
 		transactions: []*investment.Transaction{leg},
 	}
-	a.buildInvestmentRegisterTable()
+	a.investmentRegister.buildTable(a.styles)
 	a.sidebar.SetFocused(false)
 	a.investmentRegister.table.SetFocused(true)
 }

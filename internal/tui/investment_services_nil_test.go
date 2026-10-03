@@ -63,7 +63,7 @@ func TestInvestmentLoads_WithoutTheValuationService(t *testing.T) {
 	t.Run("investment register", func(t *testing.T) {
 		a, acct := newOneInvestmentAccountApp(t)
 		a.services.InvestmentValuation = nil
-		msg, ok := runLoad(t, a.loadInvestmentRegisterData(acct.ID)).(investmentRegisterLoadedMsg)
+		msg, ok := runLoad(t, a.investmentRegister.load(a.investmentRegisterDeps(), acct.ID)).(investmentRegisterLoadedMsg)
 		if !ok {
 			t.Fatal("the load did not return register data")
 		}
@@ -112,7 +112,7 @@ func TestInvestmentLoads_WithoutTheInvestmentService(t *testing.T) {
 	t.Run("investment register", func(t *testing.T) {
 		a, acct := newOneInvestmentAccountApp(t)
 		a.services.Investment = nil
-		msg, ok := runLoad(t, a.loadInvestmentRegisterData(acct.ID)).(investmentRegisterLoadedMsg)
+		msg, ok := runLoad(t, a.investmentRegister.load(a.investmentRegisterDeps(), acct.ID)).(investmentRegisterLoadedMsg)
 		if !ok {
 			t.Fatal("the load did not return register data")
 		}

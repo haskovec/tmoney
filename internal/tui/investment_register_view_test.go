@@ -34,7 +34,7 @@ func TestRenderInvestmentTotalReturnLines_PartialMarker(t *testing.T) {
 		}},
 	}
 
-	breakdown, total := app.renderInvestmentTotalReturnLines()
+	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles)
 	if !strings.Contains(breakdown, "(partial)") {
 		t.Errorf("expected '(partial)' on breakdown line; got %q", breakdown)
 	}
@@ -62,7 +62,7 @@ func TestRenderInvestmentTotalReturnLines_NoPartialMarker(t *testing.T) {
 		}},
 	}
 
-	breakdown, total := app.renderInvestmentTotalReturnLines()
+	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles)
 	if strings.Contains(breakdown, "(partial)") {
 		t.Errorf("unexpected '(partial)' on breakdown line; got %q", breakdown)
 	}
@@ -107,21 +107,23 @@ func TestApp_BuildInvestmentRegisterTable_SelectsPendingByID(t *testing.T) {
 
 	app := &App{
 		styles: widget.NewStyles(),
-		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
-			account:       &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment, Active: true},
-			transactions:  txns,
-			securityNames: map[types.ID]string{},
-		}},
-		pendingInvestmentSelectID: newID,
+		investmentRegister: investmentRegisterViewState{
+			data: &investmentRegisterData{
+				account:       &account.Account{BaseModel: types.BaseModel{ID: acctID}, Name: "Brokerage", Type: account.TypeInvestment, Active: true},
+				transactions:  txns,
+				securityNames: map[types.ID]string{},
+			},
+			pendingSelectID: newID,
+		},
 	}
 
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	if app.investmentRegister.table.Cursor() != 1 {
 		t.Errorf("cursor = %d, want 1 (the just-saved transaction)", app.investmentRegister.table.Cursor())
 	}
-	if !app.pendingInvestmentSelectID.IsNil() {
-		t.Error("pendingInvestmentSelectID should be cleared after selection")
+	if !app.investmentRegister.pendingSelectID.IsNil() {
+		t.Error("investmentRegister.pendingSelectID should be cleared after selection")
 	}
 }
 
@@ -172,7 +174,7 @@ func TestFormatInvestmentRegisterRow(t *testing.T) {
 		}},
 	}
 
-	row := app.formatInvestmentRegisterRow(txn)
+	row := app.investmentRegister.formatRow(txn)
 
 	if len(row) != 7 {
 		t.Fatalf("expected 7 columns, got %d", len(row))
@@ -222,7 +224,7 @@ func TestFormatInvestmentRegisterRow_PendingStatus(t *testing.T) {
 		}},
 	}
 
-	row := app.formatInvestmentRegisterRow(txn)
+	row := app.investmentRegister.formatRow(txn)
 
 	if row[1] != " " {
 		t.Errorf("status = %q, want %q for pending", row[1], " ")
@@ -260,7 +262,7 @@ func TestFormatInvestmentRegisterRow_ReconciledStatus(t *testing.T) {
 		}},
 	}
 
-	row := app.formatInvestmentRegisterRow(txn)
+	row := app.investmentRegister.formatRow(txn)
 
 	if row[1] != "R" {
 		t.Errorf("status = %q, want %q for reconciled", row[1], "R")
@@ -290,7 +292,7 @@ func TestFormatInvestmentRegisterRow_SellTransaction(t *testing.T) {
 		}},
 	}
 
-	row := app.formatInvestmentRegisterRow(txn)
+	row := app.investmentRegister.formatRow(txn)
 
 	if row[2] != "Sell" {
 		t.Errorf("type = %q, want %q", row[2], "Sell")
@@ -319,7 +321,7 @@ func TestFormatInvestmentRegisterRow_NoSecurity(t *testing.T) {
 		}},
 	}
 
-	row := app.formatInvestmentRegisterRow(txn)
+	row := app.investmentRegister.formatRow(txn)
 
 	if row[2] != "Fee" {
 		t.Errorf("type = %q, want %q", row[2], "Fee")
@@ -355,7 +357,7 @@ func TestBuildInvestmentRegisterTable(t *testing.T) {
 		}},
 	}
 
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	if app.investmentRegister.table == nil {
 		t.Fatal("investmentRegister.table should not be nil after build")
@@ -379,7 +381,7 @@ func TestBuildInvestmentRegisterTable_Empty(t *testing.T) {
 		}},
 	}
 
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	if app.investmentRegister.table == nil {
 		t.Fatal("investmentRegister.table should not be nil after build even with no transactions")
@@ -391,7 +393,7 @@ func TestBuildInvestmentRegisterTable_Empty(t *testing.T) {
 
 func TestBuildInvestmentRegisterTable_NilData(t *testing.T) {
 	app := &App{}
-	app.buildInvestmentRegisterTable() // should not panic
+	app.investmentRegister.buildTable(app.styles) // should not panic
 	if app.investmentRegister.table != nil {
 		t.Error("investmentRegister.table should be nil when investmentRegister.data is nil")
 	}
@@ -403,7 +405,7 @@ func TestRenderInvestmentRegister_Loading(t *testing.T) {
 	}
 	app.styles.Resize(80, 24)
 
-	output := app.renderInvestmentRegister()
+	output := app.investmentRegister.render(app.styles, app.height)
 	if !strings.Contains(output, "Loading investment register") {
 		t.Error("should show loading message when investment register data is nil")
 	}
@@ -427,9 +429,9 @@ func TestRenderInvestmentRegister_NoTransactions(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(80, 24)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := app.renderInvestmentRegister()
+	output := app.investmentRegister.render(app.styles, app.height)
 	if !strings.Contains(output, "No investment transactions") {
 		t.Error("should show 'No investment transactions' message")
 	}
@@ -461,9 +463,9 @@ func TestRenderInvestmentRegister_WithData(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := app.renderInvestmentRegister()
+	output := app.investmentRegister.render(app.styles, app.height)
 	if !strings.Contains(output, "BROKERAGE") {
 		t.Error("should contain account name in uppercase")
 	}
@@ -490,9 +492,9 @@ func TestRenderInvestmentRegister_ShowsCashBalance(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(100, 30)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := app.renderInvestmentRegister()
+	output := app.investmentRegister.render(app.styles, app.height)
 	if !strings.Contains(output, "$5000.00") {
 		t.Error("should show cash balance amount")
 	}
@@ -566,7 +568,7 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Move down
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
@@ -614,7 +616,7 @@ func TestHandleInvestmentRegisterKeys_ToggleClear(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Press 'c' to toggle cleared - should return a command since it requires service call
 	cKey := tea.KeyPressMsg{Code: 'c', Text: "c"}
@@ -647,11 +649,11 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	selected := app.selectedInvestmentTransaction()
+	selected := app.investmentRegister.selectedTransaction()
 	if selected == nil {
-		t.Fatal("selectedInvestmentTransaction() returned nil")
+		t.Fatal("investmentRegister.selectedTransaction() returned nil")
 	}
 	if selected.Type != investment.TransactionTypeBuy {
 		t.Errorf("selected type = %q, want %q", selected.Type, investment.TransactionTypeBuy)
@@ -659,9 +661,9 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 
 	// Move to second
 	app.investmentRegister.table.MoveDown()
-	selected = app.selectedInvestmentTransaction()
+	selected = app.investmentRegister.selectedTransaction()
 	if selected == nil {
-		t.Fatal("selectedInvestmentTransaction() returned nil after MoveDown")
+		t.Fatal("investmentRegister.selectedTransaction() returned nil after MoveDown")
 	}
 	if selected.Type != investment.TransactionTypeDeposit {
 		t.Errorf("selected type = %q, want %q", selected.Type, investment.TransactionTypeDeposit)
@@ -670,9 +672,9 @@ func TestSelectedInvestmentTransaction(t *testing.T) {
 
 func TestSelectedInvestmentTransaction_NilData(t *testing.T) {
 	app := &App{}
-	selected := app.selectedInvestmentTransaction()
+	selected := app.investmentRegister.selectedTransaction()
 	if selected != nil {
-		t.Error("selectedInvestmentTransaction() should return nil when no data")
+		t.Error("investmentRegister.selectedTransaction() should return nil when no data")
 	}
 }
 
@@ -689,7 +691,7 @@ func TestInvestmentRegisterColumns(t *testing.T) {
 			securityNames: map[types.ID]string{},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	if app.investmentRegister.table == nil {
 		t.Fatal("investmentRegister.table should not be nil")
@@ -741,7 +743,7 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 			cashBalance:   types.MustNewMoney("3150.00"),
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	content := app.renderContent(28)
 	if !strings.Contains(content, "BROKERAGE") {
@@ -777,7 +779,7 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Press 'n' to open transaction type selector
 	nKey := tea.KeyPressMsg{Code: 'n', Text: "n"}
@@ -831,7 +833,7 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Press Enter to edit the selected transaction
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
@@ -885,7 +887,7 @@ func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) 
 			securityNames: map[types.ID]string{},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Press Enter with no transactions
 	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
@@ -925,7 +927,7 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "AAPL"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	// Press 'd' to delete
 	dKey := tea.KeyPressMsg{Code: 'd', Text: "d"}
@@ -1087,7 +1089,7 @@ func TestFormatInvestmentRegisterRow_AllTypes(t *testing.T) {
 				txn = investment.NewTransaction(acctID, date, tt.txnType, types.MustNewMoney("100.00"))
 			}
 
-			row := app.formatInvestmentRegisterRow(txn)
+			row := app.investmentRegister.formatRow(txn)
 			if row[2] != tt.wantDisplay {
 				t.Errorf("type display = %q, want %q", row[2], tt.wantDisplay)
 			}
@@ -1152,9 +1154,9 @@ func TestRenderInvestmentRegister_TotalReturnHeader(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(120, 30)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := widget.StripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.investmentRegister.render(app.styles, app.height))
 
 	wants := []string{
 		"Unrealized", "$4500.00",
@@ -1192,7 +1194,7 @@ func TestRenderInvestmentTotalReturnLines_PerformanceFallbacks(t *testing.T) {
 			},
 		}},
 	}
-	_, totalRaw := app.renderInvestmentTotalReturnLines()
+	_, totalRaw := app.investmentRegister.renderTotalReturnLines(app.styles)
 	total := widget.StripAnsi(totalRaw)
 	for _, want := range []string{"IRR 2.75% (cum.)", "TWR 3.20% (cum.)"} {
 		if !strings.Contains(total, want) {
@@ -1231,9 +1233,9 @@ func TestRenderInvestmentRegister_TotalReturnPctNilRendersDash(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(120, 30)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := widget.StripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.investmentRegister.render(app.styles, app.height))
 	if !strings.Contains(output, "Total return") {
 		t.Fatalf("output should contain 'Total return' line; got:\n%s", output)
 	}
@@ -1261,9 +1263,9 @@ func TestRenderInvestmentRegister_NilValuationOmitsTotalReturn(t *testing.T) {
 		}},
 	}
 	app.styles.Resize(120, 30)
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
-	output := widget.StripAnsi(app.renderInvestmentRegister())
+	output := widget.StripAnsi(app.investmentRegister.render(app.styles, app.height))
 	if strings.Contains(output, "Total return") {
 		t.Errorf("output should NOT contain 'Total return' when valuation is nil; got:\n%s", output)
 	}
@@ -1287,5 +1289,29 @@ func TestInvestmentRegister_SecurityNameLookup(t *testing.T) {
 	}
 	if data.securityNames[secID2] != "MSFT" {
 		t.Errorf("security name lookup failed for secID2")
+	}
+}
+
+// The render closure hands the view the screen height: a register with many
+// rows fits the screen it is given. With the width passed in its place, it
+// would draw 120 lines on a 30-line screen.
+func TestInvestmentRegister_RenderFitsTheScreen(t *testing.T) {
+	app, ids := newFilterTestApp(t, 120)
+	app.height = 30
+	app.styles.Resize(app.width, app.height)
+	date := types.NewDate(2024, time.April, 1)
+	for range 60 {
+		app.investmentRegister.data.transactions = append(app.investmentRegister.data.transactions,
+			investment.NewTransaction(ids.account, date, investment.TransactionTypeDeposit, types.MustNewMoney("10.00")))
+	}
+	app.investmentRegister.buildTable(app.styles)
+
+	e, ok := viewFor(ViewInvestmentRegister)
+	if !ok {
+		t.Fatal("no view table entry for ViewInvestmentRegister")
+	}
+	lines := strings.Split(e.render(app), "\n")
+	if len(lines) > app.height {
+		t.Errorf("render is %d lines on a %d-line screen", len(lines), app.height)
 	}
 }

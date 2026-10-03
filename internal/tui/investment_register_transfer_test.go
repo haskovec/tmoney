@@ -137,7 +137,7 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 			transactions: []*investment.Transaction{invLeg},
 		}},
 	}
-	a.buildInvestmentRegisterTable()
+	a.investmentRegister.buildTable(a.styles)
 	// A fresh sidebar starts focused, and handleInvestmentRegisterKeys delegates
 	// every key to it while it is. Move focus to the register table, which is the
 	// state a user is in when they press "d" on a row.

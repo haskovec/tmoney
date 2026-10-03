@@ -179,7 +179,7 @@ func (a *App) refreshAfterCorporateAction() tea.Cmd {
 		}
 	case ViewInvestmentRegister:
 		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
-			return a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)
+			return a.investmentRegister.load(a.investmentRegisterDeps(), a.investmentRegister.data.account.ID)
 		}
 	case ViewCorporateActions:
 		return a.corporateActions.load(a.corporateActionDeps())
@@ -214,7 +214,7 @@ func (a *App) reloadInvestmentRegisterCmd() tea.Cmd {
 	if id.IsNil() {
 		return nil
 	}
-	return a.loadInvestmentRegisterData(id)
+	return a.investmentRegister.load(a.investmentRegisterDeps(), id)
 }
 
 // investmentDialogSeed is the App-owned context a security-bearing investment
@@ -256,7 +256,7 @@ func (a *App) takeInvestmentDialogSeed() (investmentDialogSeed, bool) {
 func (a *App) afterInvestmentSave(savedDate types.Date, savedID types.ID, note string) tea.Cmd {
 	a.rememberSavedDate(savedDate)
 	a.investmentEditTxnID = types.NilID
-	a.pendingInvestmentSelectID = savedID
+	a.investmentRegister.pendingSelectID = savedID
 	a.statusbar.AddNotification(note, widget.NotificationInfo)
 	return a.reloadInvestmentRegisterCmd()
 }

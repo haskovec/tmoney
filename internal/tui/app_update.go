@@ -65,7 +65,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case investmentRegisterLoadedMsg:
 		a.investmentRegister.data = msg.data
-		a.buildInvestmentRegisterTable()
+		a.investmentRegister.buildTable(a.styles)
 		return a, nil
 
 	case portfolioLoadedMsg:

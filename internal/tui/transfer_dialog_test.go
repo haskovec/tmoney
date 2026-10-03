@@ -677,8 +677,8 @@ func TestApp_Update_TransferDialogSavedMsg_SelectsRegularLeg(t *testing.T) {
 	if updated.pendingRegisterSelectID != legID {
 		t.Errorf("pendingRegisterSelectID = %v, want %v", updated.pendingRegisterSelectID, legID)
 	}
-	if !updated.pendingInvestmentSelectID.IsNil() {
-		t.Error("pendingInvestmentSelectID should stay unset for a regular leg")
+	if !updated.investmentRegister.pendingSelectID.IsNil() {
+		t.Error("investmentRegister.pendingSelectID should stay unset for a regular leg")
 	}
 }
 
@@ -698,8 +698,8 @@ func TestApp_Update_TransferDialogSavedMsg_SelectsInvestmentLeg(t *testing.T) {
 	model, _ := app.Update(msg)
 	updated := model.(*App)
 
-	if updated.pendingInvestmentSelectID != legID {
-		t.Errorf("pendingInvestmentSelectID = %v, want %v", updated.pendingInvestmentSelectID, legID)
+	if updated.investmentRegister.pendingSelectID != legID {
+		t.Errorf("investmentRegister.pendingSelectID = %v, want %v", updated.investmentRegister.pendingSelectID, legID)
 	}
 	if !updated.pendingRegisterSelectID.IsNil() {
 		t.Error("pendingRegisterSelectID should stay unset for an investment leg")
@@ -721,7 +721,7 @@ func TestApp_Update_TransferDialogSavedMsg_NilLegSelectsNothing(t *testing.T) {
 	model, _ := app.Update(transferDialogSavedMsg{savedID: types.NilID})
 	updated := model.(*App)
 
-	if !updated.pendingRegisterSelectID.IsNil() || !updated.pendingInvestmentSelectID.IsNil() {
+	if !updated.pendingRegisterSelectID.IsNil() || !updated.investmentRegister.pendingSelectID.IsNil() {
 		t.Error("a NilID savedID should leave both pending selections unset")
 	}
 }

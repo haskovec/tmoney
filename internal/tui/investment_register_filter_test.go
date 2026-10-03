@@ -100,7 +100,7 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 			},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 	return app, ids
 }
 
@@ -121,7 +121,7 @@ func typeFilter(app *App, query string) {
 func TestInvestmentFilter_SlashEntersSearchMode(t *testing.T) {
 	app, _ := newFilterTestApp(t, 0)
 
-	if app.investmentRegisterFilterActive() {
+	if app.investmentRegister.filterActive() {
 		t.Fatal("filter should be inactive before pressing /")
 	}
 	app.handleInvestmentRegisterKeys(slashKey())
@@ -129,7 +129,7 @@ func TestInvestmentFilter_SlashEntersSearchMode(t *testing.T) {
 	if !app.investmentRegister.filterSearching {
 		t.Error("expected investmentRegister.filterSearching=true after /")
 	}
-	if !app.investmentRegisterFilterActive() {
+	if !app.investmentRegister.filterActive() {
 		t.Error("expected filter active after /")
 	}
 	// Empty query shows every row (including the cash deposit).
@@ -143,7 +143,7 @@ func TestInvestmentFilter_LiveNarrowSingleSecurity(t *testing.T) {
 
 	typeFilter(app, "fx") // matches FXAIX ticker only
 
-	visible := app.visibleInvestmentTransactions()
+	visible := app.investmentRegister.visibleTransactions()
 	if len(visible) != 3 {
 		t.Fatalf("query 'fx': visible = %d, want 3 (FXAIX rows)", len(visible))
 	}
@@ -162,11 +162,11 @@ func TestInvestmentFilter_LiveNarrowMatchesFullName(t *testing.T) {
 
 	typeFilter(app, "fi") // matches "Fidelity ..." names of FXAIX and FSKAX
 
-	visible := app.visibleInvestmentTransactions()
+	visible := app.investmentRegister.visibleTransactions()
 	if len(visible) != 5 {
 		t.Fatalf("query 'fi': visible = %d, want 5 (FXAIX 3 + FSKAX 2)", len(visible))
 	}
-	line := app.investmentFilterStatusLine()
+	line := app.investmentRegister.filterStatusLine()
 	if !strings.Contains(line, "2 securities") {
 		t.Errorf("status line %q should report 2 securities", line)
 	}
@@ -176,7 +176,7 @@ func TestInvestmentFilter_CashRowsExcludedWhenQuerySet(t *testing.T) {
 	app, _ := newFilterTestApp(t, 0)
 
 	typeFilter(app, "fx")
-	for _, txn := range app.visibleInvestmentTransactions() {
+	for _, txn := range app.investmentRegister.visibleTransactions() {
 		if txn.Type == investment.TransactionTypeDeposit {
 			t.Error("cash deposit (no security) should be excluded from a non-empty filter")
 		}
@@ -198,10 +198,10 @@ func TestInvestmentFilter_EnterLocksSingleMatch(t *testing.T) {
 	if app.investmentRegister.filterQuery != "" {
 		t.Errorf("query should be cleared on lock, got %q", app.investmentRegister.filterQuery)
 	}
-	if len(app.visibleInvestmentTransactions()) != 3 {
-		t.Errorf("locked FXAIX: visible = %d, want 3", len(app.visibleInvestmentTransactions()))
+	if len(app.investmentRegister.visibleTransactions()) != 3 {
+		t.Errorf("locked FXAIX: visible = %d, want 3", len(app.investmentRegister.visibleTransactions()))
 	}
-	line := app.investmentFilterStatusLine()
+	line := app.investmentRegister.filterStatusLine()
 	if !strings.Contains(line, "FXAIX") || !strings.Contains(line, "Fidelity 500 Index Fund") {
 		t.Errorf("locked status line %q should show ticker and full name", line)
 	}
@@ -234,7 +234,7 @@ func TestInvestmentFilter_VimLetterKeysAppendNotNavigate(t *testing.T) {
 	if app.investmentRegister.filterQuery != "fsk" {
 		t.Fatalf("query = %q, want \"fsk\" (j/k must append to the query, not navigate)", app.investmentRegister.filterQuery)
 	}
-	vis := app.visibleInvestmentTransactions()
+	vis := app.investmentRegister.visibleTransactions()
 	if len(vis) != 2 {
 		t.Fatalf("query 'fsk': visible = %d, want 2 (FSKAX rows)", len(vis))
 	}
@@ -274,7 +274,7 @@ func TestInvestmentFilter_EscClearsWhileSidebarFocused(t *testing.T) {
 	app.sidebar.SetFocused(true)                 // Tab to the sidebar, filter still locked
 
 	app.handleInvestmentRegisterKeys(escapeKey())
-	if app.investmentRegisterFilterActive() {
+	if app.investmentRegister.filterActive() {
 		t.Error("Esc should clear the locked filter even when the sidebar is focused")
 	}
 }
@@ -285,11 +285,11 @@ func TestInvestmentFilter_EscClearsFromSearching(t *testing.T) {
 	typeFilter(app, "fx")
 	app.handleInvestmentRegisterKeys(escapeKey())
 
-	if app.investmentRegisterFilterActive() {
+	if app.investmentRegister.filterActive() {
 		t.Error("Esc should clear the filter from searching mode")
 	}
-	if len(app.visibleInvestmentTransactions()) != 7 {
-		t.Errorf("after Esc: visible = %d, want 7 (all rows)", len(app.visibleInvestmentTransactions()))
+	if len(app.investmentRegister.visibleTransactions()) != 7 {
+		t.Errorf("after Esc: visible = %d, want 7 (all rows)", len(app.investmentRegister.visibleTransactions()))
 	}
 }
 
@@ -300,11 +300,11 @@ func TestInvestmentFilter_EscClearsFromLocked(t *testing.T) {
 	app.handleInvestmentRegisterKeys(enterKey()) // lock
 	app.handleInvestmentRegisterKeys(escapeKey())
 
-	if app.investmentRegisterFilterActive() {
+	if app.investmentRegister.filterActive() {
 		t.Error("Esc should clear a locked filter")
 	}
-	if len(app.visibleInvestmentTransactions()) != 7 {
-		t.Errorf("after Esc from locked: visible = %d, want 7", len(app.visibleInvestmentTransactions()))
+	if len(app.investmentRegister.visibleTransactions()) != 7 {
+		t.Errorf("after Esc from locked: visible = %d, want 7", len(app.investmentRegister.visibleTransactions()))
 	}
 }
 
@@ -323,22 +323,22 @@ func TestInvestmentFilter_TickerlessSecurity(t *testing.T) {
 	app, ids := newFilterTestApp(t, 0)
 
 	typeFilter(app, "mid cap") // matches the tickerless MFS name only
-	if len(app.visibleInvestmentTransactions()) != 1 {
-		t.Fatalf("query 'mid cap': visible = %d, want 1", len(app.visibleInvestmentTransactions()))
+	if len(app.investmentRegister.visibleTransactions()) != 1 {
+		t.Fatalf("query 'mid cap': visible = %d, want 1", len(app.investmentRegister.visibleTransactions()))
 	}
 	app.handleInvestmentRegisterKeys(enterKey())
 	if app.investmentRegister.filterLockedSec != ids.mfs {
 		t.Errorf("locked security = %v, want MFS", app.investmentRegister.filterLockedSec)
 	}
 	// Tickerless: display name is the plain name with no " — ticker" prefix.
-	if name := app.securityDisplayName(ids.mfs); name != "MFS Mid Cap Value CT" {
+	if name := app.investmentRegister.securityDisplayName(ids.mfs); name != "MFS Mid Cap Value CT" {
 		t.Errorf("tickerless display name = %q, want %q", name, "MFS Mid Cap Value CT")
 	}
 }
 
 func TestInvestmentFilter_SecurityDisplayNameWithTicker(t *testing.T) {
 	app, ids := newFilterTestApp(t, 0)
-	if got := app.securityDisplayName(ids.fxaix); got != "FXAIX — Fidelity 500 Index Fund" {
+	if got := app.investmentRegister.securityDisplayName(ids.fxaix); got != "FXAIX — Fidelity 500 Index Fund" {
 		t.Errorf("display name = %q, want %q", got, "FXAIX — Fidelity 500 Index Fund")
 	}
 }
@@ -350,14 +350,14 @@ func TestInvestmentFilter_SelectedTransactionIndexesFilteredSlice(t *testing.T) 
 	app.handleInvestmentRegisterKeys(enterKey()) // lock FXAIX, cursor at 0
 
 	app.investmentRegister.table.MoveDown() // to filtered row index 1
-	sel := app.selectedInvestmentTransaction()
+	sel := app.investmentRegister.selectedTransaction()
 	if sel == nil {
-		t.Fatal("selectedInvestmentTransaction returned nil")
+		t.Fatal("investmentRegister.selectedTransaction returned nil")
 	}
 	if !sel.SecurityID.Valid || sel.SecurityID.ID != ids.fxaix {
 		t.Errorf("selected row is not an FXAIX row: %v", sel.Type)
 	}
-	visible := app.visibleInvestmentTransactions()
+	visible := app.investmentRegister.visibleTransactions()
 	if sel != visible[1] {
 		t.Error("selected transaction must index the filtered slice, not the full ledger")
 	}
@@ -384,13 +384,13 @@ func TestInvestmentFilter_BalanceColumnHiddenWhileFiltered(t *testing.T) {
 func TestInvestmentFilter_TotalReturnHeaderHiddenWhileFiltered(t *testing.T) {
 	app, _ := newFilterTestApp(t, 0)
 
-	unfiltered := widget.StripAnsi(app.renderInvestmentRegister())
+	unfiltered := widget.StripAnsi(app.investmentRegister.render(app.styles, app.height))
 	if !strings.Contains(unfiltered, "Total return") {
 		t.Fatalf("precondition: unfiltered render should show the total-return header")
 	}
 
 	typeFilter(app, "fx")
-	filtered := widget.StripAnsi(app.renderInvestmentRegister())
+	filtered := widget.StripAnsi(app.investmentRegister.render(app.styles, app.height))
 	if strings.Contains(filtered, "Total return") {
 		t.Error("total-return header should be hidden while filtered")
 	}
@@ -403,10 +403,10 @@ func TestInvestmentFilter_NoMatchStatusLine(t *testing.T) {
 	app, _ := newFilterTestApp(t, 0)
 
 	typeFilter(app, "zzzz")
-	if len(app.visibleInvestmentTransactions()) != 0 {
-		t.Errorf("query 'zzzz': visible = %d, want 0", len(app.visibleInvestmentTransactions()))
+	if len(app.investmentRegister.visibleTransactions()) != 0 {
+		t.Errorf("query 'zzzz': visible = %d, want 0", len(app.investmentRegister.visibleTransactions()))
 	}
-	if line := app.investmentFilterStatusLine(); !strings.Contains(line, "no matches") {
+	if line := app.investmentRegister.filterStatusLine(); !strings.Contains(line, "no matches") {
 		t.Errorf("status line %q should report no matches", line)
 	}
 }
@@ -482,7 +482,7 @@ func TestInvestmentFilter_ResizeWhileFilteredDoesNotRebuild(t *testing.T) {
 	typeFilter(app, "fx")
 	app.handleInvestmentRegisterKeys(enterKey()) // lock FXAIX (3 rows)
 
-	// Plant a row-style marker. buildInvestmentRegisterTable -> SetRows clears
+	// Plant a row-style marker. buildTable -> SetRows clears
 	// row styles, so the marker's survival proves the resize tick did NOT
 	// rebuild the table — which is the whole point of the filter-aware resize
 	// check (an unfiltered-only check would rebuild on every resize while
@@ -510,7 +510,7 @@ func TestInvestmentFilter_ClearedOnLeavingView(t *testing.T) {
 	app.handleInvestmentRegisterKeys(enterKey()) // lock
 
 	app.switchView(ViewDashboard)
-	if app.investmentRegisterFilterActive() {
+	if app.investmentRegister.filterActive() {
 		t.Error("leaving the investment register should clear the filter")
 	}
 }
@@ -524,5 +524,23 @@ func TestInvestmentFilter_PreselectUnknownSecurityIsNoOp(t *testing.T) {
 	preselectSecurityCombo(d, secIDs, types.NewID()) // not in secIDs
 	if f := d.FieldByLabel("Security"); f.SelectedIndex != 0 {
 		t.Errorf("unknown preselect should leave SelectedIndex at 0, got %d", f.SelectedIndex)
+	}
+}
+
+// While the filter is typed, PgDn moves a page of height−6 rows. The key
+// handler passes the screen height to the search-key handler; with the width
+// in its place, PgDn would jump to the last row.
+func TestInvestmentFilter_PageDownWhileTypingMovesAPage(t *testing.T) {
+	app, _ := newFilterTestApp(t, 120)
+	app.height = 10
+	app.investmentRegister.buildTable(app.styles)
+	press(app, typed("/")...)
+	if !app.investmentRegister.filterSearching {
+		t.Fatal("setup: / did not start the filter")
+	}
+
+	press(app, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if got, want := app.investmentRegister.table.Cursor(), app.height-6; got != want {
+		t.Errorf("cursor after PgDn = %d, want %d (a page is height−6 rows)", got, want)
 	}
 }

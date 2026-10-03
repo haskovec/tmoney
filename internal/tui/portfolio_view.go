@@ -549,11 +549,11 @@ func (a *App) handlePortfolioKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		// Escape from holdings goes back to investment register
 		a.switchView(ViewInvestmentRegister)
-		return a, a.loadInvestmentRegisterData(a.portfolio.data.account.ID)
+		return a, a.investmentRegister.load(a.investmentRegisterDeps(), a.portfolio.data.account.ID)
 	case msg.String() == "r":
 		// Switch to register view
 		a.switchView(ViewInvestmentRegister)
-		return a, a.loadInvestmentRegisterData(a.portfolio.data.account.ID)
+		return a, a.investmentRegister.load(a.investmentRegisterDeps(), a.portfolio.data.account.ID)
 	case msg.String() == "s":
 		// Open stock split dialog pre-selected to the highlighted holding's security
 		if a.portfolio.mode == portfolioViewHoldings {
