@@ -271,7 +271,7 @@ func (s *dashboardViewState) render(styles widget.Styles) string {
 		// click can map a row back to its account.
 		expandableRows := map[int]types.ID{}
 		blockStart := dashboardLineCount(sections)
-		sections = append(sections, s.renderAssetLiabilityColumns(styles, nw, contentWidth, expandableRows))
+		sections = append(sections, renderAssetLiabilityColumns(styles, nw, contentWidth, s, expandableRows))
 		if len(expandableRows) > 0 {
 			s.accountRows = make(map[int]types.ID, len(expandableRows))
 			for relRow, id := range expandableRows {
@@ -306,11 +306,14 @@ func dashboardLineCount(sections []string) int {
 }
 
 // renderAssetLiabilityColumns renders the assets and liabilities side by side.
-// When expandableRows is non-nil, it is filled with block-relative row index →
-// account ID for each investment account that renders a ▸/▾ expand affordance,
-// so the dashboard can hit-test mouse clicks on those rows. Callers that don't
-// need hit-testing (the Net Worth report) pass nil.
-func (s *dashboardViewState) renderAssetLiabilityColumns(styles widget.Styles, report *report.NetWorth, totalWidth int, expandableRows map[int]types.ID) string {
+// dash is the Dashboard's state, for the investment detail it adds to an
+// investment account's rows: the ▸/▾ expand affordance, the total-return line
+// and, when expanded, the holdings. The Net Worth report passes nil and gets
+// plain rows. When expandableRows is non-nil, it is filled with block-relative
+// row index → account ID for each account that renders a ▸/▾ affordance, so
+// the dashboard can hit-test mouse clicks on those rows; callers that don't
+// need hit-testing pass nil.
+func renderAssetLiabilityColumns(styles widget.Styles, report *report.NetWorth, totalWidth int, dash *dashboardViewState, expandableRows map[int]types.ID) string {
 	colWidth := max(
 		// Leave gap between columns
 		(totalWidth-6)/2, 20)
@@ -334,10 +337,10 @@ func (s *dashboardViewState) renderAssetLiabilityColumns(styles widget.Styles, r
 			// Investment accounts get an expand/collapse indicator
 			prefix := "  "
 			expandable := false
-			if account.Type(acct.Type).IsInvestmentType() && s.data != nil && s.data.investmentHoldings != nil {
-				if _, hasHoldings := s.data.investmentHoldings[acct.AccountID]; hasHoldings {
+			if account.Type(acct.Type).IsInvestmentType() && dash != nil && dash.data != nil && dash.data.investmentHoldings != nil {
+				if _, hasHoldings := dash.data.investmentHoldings[acct.AccountID]; hasHoldings {
 					expandable = true
-					if s.expandedAccounts[acct.AccountID] {
+					if dash.expandedAccounts[acct.AccountID] {
 						prefix = "▾ "
 					} else {
 						prefix = "▸ "
@@ -362,15 +365,15 @@ func (s *dashboardViewState) renderAssetLiabilityColumns(styles widget.Styles, r
 			// TR (total return) row for investment accounts — always shown
 			// regardless of expand state so the headline figure stays
 			// visible.
-			if account.Type(acct.Type).IsInvestmentType() {
-				if tr := s.renderTRLine(styles, acct.AccountID, acct.Currency, colWidth); tr != "" {
+			if account.Type(acct.Type).IsInvestmentType() && dash != nil {
+				if tr := dash.renderTRLine(styles, acct.AccountID, acct.Currency, colWidth); tr != "" {
 					assetsLines = append(assetsLines, tr)
 				}
 			}
 
 			// Show top holdings if investment account is expanded
-			if account.Type(acct.Type).IsInvestmentType() && s.expandedAccounts[acct.AccountID] {
-				assetsLines = append(assetsLines, s.renderHoldings(styles, acct.AccountID, acct.Currency, colWidth)...)
+			if account.Type(acct.Type).IsInvestmentType() && dash != nil && dash.expandedAccounts[acct.AccountID] {
+				assetsLines = append(assetsLines, dash.renderHoldings(styles, acct.AccountID, acct.Currency, colWidth)...)
 			}
 		}
 	}

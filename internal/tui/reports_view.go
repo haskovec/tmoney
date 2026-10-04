@@ -200,10 +200,8 @@ func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
 	return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 }
 
-// render renders the reports view. dash is the Dashboard's state: the net-worth
-// report's asset and liability columns show its holdings and its expanded
-// accounts (the design's §8 asks whether they should).
-func (s *reportsViewState) render(styles widget.Styles, dash *dashboardViewState) string {
+// render renders the reports view.
+func (s *reportsViewState) render(styles widget.Styles) string {
 	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -212,7 +210,7 @@ func (s *reportsViewState) render(styles widget.Styles, dash *dashboardViewState
 
 	switch s.data.rtype {
 	case reportTypeNetWorth:
-		return s.renderNetWorth(styles, dash)
+		return s.renderNetWorth(styles)
 	case reportTypeSpending:
 		return s.renderSpending(styles)
 	default:
@@ -223,7 +221,7 @@ func (s *reportsViewState) render(styles widget.Styles, dash *dashboardViewState
 }
 
 // renderNetWorth renders the net worth report.
-func (s *reportsViewState) renderNetWorth(styles widget.Styles, dash *dashboardViewState) string {
+func (s *reportsViewState) renderNetWorth(styles widget.Styles) string {
 	if s.data.netWorth == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -254,9 +252,11 @@ func (s *reportsViewState) renderNetWorth(styles widget.Styles, dash *dashboardV
 	sections = append(sections, renderNetWorthSummary(styles, nw)...)
 	sections = append(sections, "")
 
-	// Assets and liabilities columns. nil: the Net Worth report has no
-	// expand/collapse affordance, so no mouse hit-test rows are recorded.
-	sections = append(sections, dash.renderAssetLiabilityColumns(styles, nw, contentWidth, nil))
+	// Assets and liabilities columns, plain: the report shows no investment
+	// detail (no ▸/▾, no total-return lines, no holdings), so it does not
+	// depend on what the Dashboard has loaded or expanded, and it records no
+	// mouse hit-test rows.
+	sections = append(sections, renderAssetLiabilityColumns(styles, nw, contentWidth, nil, nil))
 
 	// Navigation hints
 	sections = append(sections, "")
