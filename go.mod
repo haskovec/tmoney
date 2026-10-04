@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.10
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/BurntSushi/toml v1.6.0
-	github.com/NimbleMarkets/ntcharts/v2 v2.3.0
+	github.com/NimbleMarkets/ntcharts/v2 v2.4.0
 	github.com/alpacahq/alpacadecimal v0.0.9
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
@@ -17,7 +17,7 @@ require (
 require (
 	github.com/apache/arrow-go/v18 v18.8.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260922123528-4e49372c11f9 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260928045949-bbf040aedf25 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
