@@ -221,7 +221,7 @@ func init() {
 		{
 			id:     ViewInvestmentRegister,
 			name:   "Investment Register",
-			render: (*App).renderInvestmentRegister,
+			render: func(a *App) string { return a.investmentRegister.render(a.styles, a.height) },
 			onKey:  (*App).handleInvestmentRegisterKeys,
 			hints: func(*App) string {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
@@ -230,7 +230,7 @@ func init() {
 			table:     func(a *App) *widget.Table { return a.investmentRegister.table },
 			reload: func(a *App) []tea.Cmd {
 				if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
-					return []tea.Cmd{a.loadInvestmentRegisterData(a.investmentRegister.data.account.ID)}
+					return []tea.Cmd{a.investmentRegister.load(a.investmentRegisterDeps(), a.investmentRegister.data.account.ID)}
 				}
 				return nil
 			},
@@ -243,7 +243,7 @@ func init() {
 			},
 			// Leaving the investment register drops its (transient) security
 			// filter, so reopening the account later shows the full register.
-			leave: (*App).resetInvestmentRegisterFilter,
+			leave: func(a *App) { a.investmentRegister.resetFilter() },
 		},
 		{
 			id:   ViewPortfolio,

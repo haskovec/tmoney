@@ -196,13 +196,13 @@ type App struct {
 	// consumed (then reset) as each dialog is built. NilID means no preselect.
 	investmentNewTxnSecurityID types.ID
 
-	// After a save+reload, the register/investment-register build step moves
-	// the cursor onto the row whose transaction ID matches. Selecting by ID
-	// (rather than position) keeps the cursor on the saved row even when it
-	// sorts into the middle of the list (e.g. a back-dated entry). NilID means
-	// "no pending selection"; the build step clears the field after applying.
-	pendingRegisterSelectID   types.ID
-	pendingInvestmentSelectID types.ID
+	// After a save+reload, the register build step moves the cursor onto the
+	// row whose transaction ID matches. Selecting by ID (rather than position)
+	// keeps the cursor on the saved row even when it sorts into the middle of
+	// the list (e.g. a back-dated entry). NilID means "no pending selection";
+	// the build step clears the field after applying. The investment
+	// register's twin is investmentRegister.pendingSelectID.
+	pendingRegisterSelectID types.ID
 
 	// Buy dialog state
 	buy buySurface
@@ -501,7 +501,7 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// With the investment register filter active, Esc clears the filter
 		// rather than navigating away; let the view handler claim it. (A
 		// still-typing filter is already captured by the early guard above.)
-		if a.currentView == ViewInvestmentRegister && a.investmentRegisterFilterActive() {
+		if a.currentView == ViewInvestmentRegister && a.investmentRegister.filterActive() {
 			return a.handleInvestmentRegisterKeys(msg)
 		}
 		// With the Corporate Actions details panel open, Esc closes the panel

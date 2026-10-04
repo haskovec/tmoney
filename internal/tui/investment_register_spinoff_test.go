@@ -23,7 +23,7 @@ func TestInvestmentTypeSelector_NewIncludesSpinOff(t *testing.T) {
 
 func TestInvestmentTypeSelector_EditExcludesSpinOff(t *testing.T) {
 	app := &App{}
-	app.openInvestmentTypeSelector(true) // no register: selectedInvestmentTransaction is nil-safe
+	app.openInvestmentTypeSelector(true) // no register: selectedTransaction is nil-safe
 	opts := app.investmentTypeSelector.Fields()[0].Options
 	if len(opts) != len(investmentTransactionTypeOptions()) {
 		t.Errorf("Edit selector should not add options, got %d", len(opts))
@@ -53,7 +53,7 @@ func TestInvestmentTypeSelector_SpinOffDispatch(t *testing.T) {
 			securityNames: map[types.ID]string{secID: "GBTC"},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	app.openInvestmentTypeSelector(false)
 	fields := app.investmentTypeSelector.Fields()

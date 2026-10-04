@@ -211,6 +211,22 @@ var viewControllers = []controllerSurface{
 			}
 		},
 	},
+	{
+		field:   "investmentRegister",
+		surface: reflect.TypeFor[investmentRegisterViewState](),
+		deps:    reflect.TypeFor[investmentRegisterDeps](),
+		bind:    func(a *App) any { return a.investmentRegisterDeps() },
+		probes: func(a *App) []func() any {
+			d := a.investmentRegisterDeps()
+			return []func() any{
+				func() any { return d.accounts() },
+				func() any { return d.investments() },
+				func() any { return d.valuations() },
+				func() any { return d.securities() },
+				func() any { return d.config() },
+			}
+		},
+	},
 }
 
 // allControllers is every row of both tables: the surfaces, then the views.

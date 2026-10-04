@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -31,6 +32,12 @@ type investmentRegisterViewState struct {
 	filterSearching bool
 	filterQuery     string
 	filterLockedSec types.ID
+
+	// After a save+reload, the table build step moves the cursor onto the row
+	// whose transaction ID matches, so a saved row stays under the cursor even
+	// when it sorts into the middle of the list. The save paths set it; NilID
+	// means "no pending selection"; the build step clears it after applying.
+	pendingSelectID types.ID
 }
 
 // investmentRegisterData holds the loaded data for the investment account register view.
@@ -52,8 +59,35 @@ type investmentRegisterLoadedMsg struct {
 	data *investmentRegisterData
 }
 
-// loadInvestmentRegisterData returns a command that loads all data needed for the investment register view.
-func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
+// investmentRegisterDeps is what the investment register view needs from
+// outside itself. Every dep is a func, because switchDatabase replaces App's
+// services and closes the previous *db.DB; and deps are passed to each call,
+// never stored in the view state. Both rules are pinned by the guards that run
+// over viewControllers. config is the user's config, for the valuation
+// options; like the services, it is read when the load runs.
+type investmentRegisterDeps struct {
+	accounts    func() *account.Service
+	investments func() *investment.Service
+	valuations  func() *investment.ValuationService
+	securities  func() *security.Service
+	config      func() *config.Config
+}
+
+// investmentRegisterDeps binds the investment register view to the services
+// App owns. Every accessor may return nil, because an App built by a test has
+// no services, so each caller keeps its own nil guard.
+func (a *App) investmentRegisterDeps() investmentRegisterDeps {
+	return investmentRegisterDeps{
+		accounts:    func() *account.Service { return a.services.Account },
+		investments: func() *investment.Service { return a.services.Investment },
+		valuations:  func() *investment.ValuationService { return a.services.InvestmentValuation },
+		securities:  func() *security.Service { return a.services.Security },
+		config:      func() *config.Config { return a.cfg },
+	}
+}
+
+// load returns a command that loads all data needed for the investment register view.
+func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID types.ID) tea.Cmd {
 	return func() tea.Msg {
 		data := &investmentRegisterData{
 			securityNames:     make(map[types.ID]string),
@@ -61,8 +95,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account
-		if a.services.Account != nil {
-			acct, err := a.services.Account.GetByID(accountID)
+		if accounts := d.accounts(); accounts != nil {
+			acct, err := accounts.GetByID(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -70,14 +104,14 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load the transactions and the valuation through the read model
-		if a.services.InvestmentValuation != nil {
-			txns, err := a.services.InvestmentValuation.ListTransactions(accountID, investment.TransactionFilter{})
+		if valuations := d.valuations(); valuations != nil {
+			txns, err := valuations.ListTransactions(accountID, investment.TransactionFilter{})
 			if err != nil {
 				return errMsg{err: err}
 			}
 			data.transactions = txns
 
-			val, err := a.services.InvestmentValuation.GetAccountValuation(accountID, types.Today(), a.valuationOptions())
+			val, err := valuations.GetAccountValuation(accountID, types.Today(), valuationOptionsFor(d.config()))
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -85,8 +119,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load cash balance via service
-		if a.services.Investment != nil {
-			cash, err := a.services.Investment.GetCashBalance(accountID)
+		if investments := d.investments(); investments != nil {
+			cash, err := investments.GetCashBalance(accountID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -94,8 +128,8 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load security names for display
-		if a.services.Security != nil {
-			securities, err := a.services.Security.List(security.Filter{})
+		if secSvc := d.securities(); secSvc != nil {
+			securities, err := secSvc.List(security.Filter{})
 			if err == nil {
 				for _, sec := range securities {
 					data.securityNames[sec.ID] = securityLabel(sec)
@@ -108,14 +142,14 @@ func (a *App) loadInvestmentRegisterData(accountID types.ID) tea.Cmd {
 	}
 }
 
-// selectedInvestmentTransaction returns the currently selected investment transaction based on table cursor.
-func (a *App) selectedInvestmentTransaction() *investment.Transaction {
-	if a.investmentRegister.data == nil || a.investmentRegister.table == nil {
+// selectedTransaction returns the currently selected investment transaction based on table cursor.
+func (s *investmentRegisterViewState) selectedTransaction() *investment.Transaction {
+	if s.data == nil || s.table == nil {
 		return nil
 	}
 
-	txns := a.visibleInvestmentTransactions()
-	cursor := a.investmentRegister.table.Cursor()
+	txns := s.visibleTransactions()
+	cursor := s.table.Cursor()
 	if cursor < 0 || cursor >= len(txns) {
 		return nil
 	}
@@ -125,19 +159,20 @@ func (a *App) selectedInvestmentTransaction() *investment.Transaction {
 // handleInvestmentRegisterKeys handles key presses in the investment register view.
 func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// While typing a security filter query, every key drives the filter
-	// (see handleInvestmentRegisterSearchKey). handleKeyPress routes here
+	// (see handleSearchKey). handleKeyPress routes here
 	// with an early guard so global bindings don't steal keystrokes.
 	if a.investmentRegister.filterSearching {
-		return a.handleInvestmentRegisterSearchKey(msg)
+		a.investmentRegister.handleSearchKey(msg, a.keys, a.styles, a.height)
+		return a, nil
 	}
 
 	// Esc clears a locked filter regardless of which pane has focus. This must
 	// precede the sidebar delegation below, otherwise a locked filter with the
 	// sidebar focused would swallow Esc (handleSidebarKeys has no Esc branch)
 	// instead of clearing. Reached via the global Esc exception in handleKeyPress.
-	if key.Matches(msg, a.keys.Escape) && a.investmentRegisterFilterActive() {
-		a.resetInvestmentRegisterFilter()
-		a.buildInvestmentRegisterTable()
+	if key.Matches(msg, a.keys.Escape) && a.investmentRegister.filterActive() {
+		a.investmentRegister.resetFilter()
+		a.investmentRegister.buildTable(a.styles)
 		return a, nil
 	}
 
@@ -188,7 +223,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		a.investmentRegister.filterSearching = true
 		a.investmentRegister.filterQuery = ""
 		a.investmentRegister.filterLockedSec = types.NilID
-		a.buildInvestmentRegisterTable()
+		a.investmentRegister.buildTable(a.styles)
 		if a.investmentRegister.table != nil {
 			a.investmentRegister.table.SetCursor(0)
 		}
@@ -201,9 +236,9 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 	case key.Matches(msg, a.keys.New):
 		a.openInvestmentTypeSelector(false)
 	case key.Matches(msg, a.keys.Enter):
-		txn := a.selectedInvestmentTransaction()
+		txn := a.investmentRegister.selectedTransaction()
 		if txn != nil {
-			if notice, refused := a.shareTransferEditRefusal(txn); refused {
+			if notice, refused := a.investmentRegister.shareTransferEditRefusal(a.investmentRegisterDeps(), txn); refused {
 				a.statusbar.AddNotification(notice, widget.NotificationAlert)
 				return a, nil
 			}
@@ -219,7 +254,7 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 			return a, a.portfolio.load(a.portfolioDeps(), a.investmentRegister.data.account.ID)
 		}
 	case key.Matches(msg, a.keys.Delete):
-		txn := a.selectedInvestmentTransaction()
+		txn := a.investmentRegister.selectedTransaction()
 		if txn != nil {
 			txnID := txn.ID
 			// Transfer-typed rows have a paired counterpart in another
@@ -295,7 +330,7 @@ func preselectSecurityCombo(d *dialog.Dialog, secIDs []types.ID, secID types.ID)
 
 // toggleInvestmentTransactionStatus toggles the cleared status of the selected investment transaction.
 func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
-	txn := a.selectedInvestmentTransaction()
+	txn := a.investmentRegister.selectedTransaction()
 	if txn == nil {
 		return a, nil
 	}
@@ -382,7 +417,7 @@ type investmentTransactionClearedMsg struct{}
 // account, so only the sending leg can be edited here. The service refuses the
 // other rows too (UpdateTransferShares); checking first keeps the user from
 // filling in a dialog that would be rejected.
-func (a *App) shareTransferEditRefusal(txn *investment.Transaction) (string, bool) {
+func (s *investmentRegisterViewState) shareTransferEditRefusal(d investmentRegisterDeps, txn *investment.Transaction) (string, bool) {
 	if txn.Type != investment.TransactionTypeTransferShares || txn.IsShareTransferSource() {
 		return "", false
 	}
@@ -390,8 +425,8 @@ func (a *App) shareTransferEditRefusal(txn *investment.Transaction) (string, boo
 		return "This share transfer has no cost basis, so its direction is unknown. It cannot be edited.", true
 	}
 	source := "its source account"
-	if txn.TransferAccountID.Valid && a.services.Account != nil {
-		if acct, err := a.services.Account.GetByID(txn.TransferAccountID.ID); err == nil {
+	if accounts := d.accounts(); txn.TransferAccountID.Valid && accounts != nil {
+		if acct, err := accounts.GetByID(txn.TransferAccountID.ID); err == nil {
 			source = acct.Name
 		}
 	}

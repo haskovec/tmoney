@@ -179,7 +179,7 @@ func TestApp_BuildInvestmentRegisterTable_ShowsCashColumn(t *testing.T) {
 			},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	rows := app.investmentRegister.table.Rows()
 	if len(rows) != 2 {
@@ -214,7 +214,7 @@ func TestApp_BuildInvestmentRegisterTable_HidesCashWhenNarrow(t *testing.T) {
 			},
 		}},
 	}
-	app.buildInvestmentRegisterTable()
+	app.investmentRegister.buildTable(app.styles)
 
 	rows := app.investmentRegister.table.Rows()
 	if len(rows[0]) != 7 {

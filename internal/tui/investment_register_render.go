@@ -15,7 +15,7 @@ import (
 
 // investmentRegisterColumns returns the investment register's column set; when
 // withBalance is true it appends the trailing running cash-balance column.
-// Single source of truth shared by buildInvestmentRegisterTable and the
+// Single source of truth shared by buildTable and the
 // resize-time fit check.
 func investmentRegisterColumns(withBalance bool) []widget.Column {
 	cols := []widget.Column{
@@ -36,49 +36,49 @@ func investmentRegisterColumns(withBalance bool) []widget.Column {
 // shouldShowInvestmentBalance reports whether the investment register is wide
 // enough to include the running cash-balance column. The investment register
 // has seven fixed columns, so Balance only fits on a fairly wide terminal
-// (table width ≈ 98). The width must match renderInvestmentRegister's.
-func (a *App) shouldShowInvestmentBalance() bool {
-	tableWidth := max(a.styles.ContentWidth()-4, 1)
+// (table width ≈ 98). The width must match the view's render.
+func shouldShowInvestmentBalance(styles widget.Styles) bool {
+	tableWidth := max(styles.ContentWidth()-4, 1)
 	return columnsFitWidth(investmentRegisterColumns(true), tableWidth, registerFlexMargin)
 }
 
-// buildInvestmentRegisterTable creates and populates the table for the investment register view.
-func (a *App) buildInvestmentRegisterTable() {
-	if a.investmentRegister.data == nil {
+// buildTable creates and populates the table for the investment register view.
+func (s *investmentRegisterViewState) buildTable(styles widget.Styles) {
+	if s.data == nil {
 		return
 	}
 
 	// The running-balance column is account-wide and can't be sliced per
 	// security, so it is suppressed whenever the filter is active.
-	showBalance := a.shouldShowInvestmentBalance() && !a.investmentRegisterFilterActive()
+	showBalance := shouldShowInvestmentBalance(styles) && !s.filterActive()
 	columns := investmentRegisterColumns(showBalance)
 
-	txns := a.visibleInvestmentTransactions()
+	txns := s.visibleTransactions()
 
 	var cash []types.Money
 	if showBalance {
 		opening := types.ZeroMoney
-		if a.investmentRegister.data.account != nil {
-			opening = a.investmentRegister.data.account.OpeningBalance
+		if s.data.account != nil {
+			opening = s.data.account.OpeningBalance
 		}
 		cash = runningCash(txns, opening)
 	}
 
-	if a.investmentRegister.table == nil {
-		a.investmentRegister.table = widget.NewTable(columns)
+	if s.table == nil {
+		s.table = widget.NewTable(columns)
 	} else {
-		a.investmentRegister.table.SetColumns(columns)
+		s.table.SetColumns(columns)
 	}
 
 	rows := make([][]string, len(txns))
 	for i, txn := range txns {
-		row := a.formatInvestmentRegisterRow(txn)
+		row := s.formatRow(txn)
 		if showBalance {
 			row = append(row, formatDashboardMoney(cash[i]))
 		}
 		rows[i] = row
 	}
-	a.investmentRegister.table.SetRows(rows)
+	s.table.SetRows(rows)
 
 	// After a save, move the cursor onto the just-saved row by matching its
 	// transaction ID. Selecting by ID (not position) keeps the cursor on the
@@ -86,19 +86,19 @@ func (a *App) buildInvestmentRegisterTable() {
 	// entry. The pending ID is cleared only once a matching row is found, so a
 	// rebuild against a stale ledger (e.g. a resize landing in the async
 	// save→reload window) preserves the pending selection for the real reload.
-	if !a.pendingInvestmentSelectID.IsNil() {
+	if !s.pendingSelectID.IsNil() {
 		for i, txn := range txns {
-			if txn.ID == a.pendingInvestmentSelectID {
-				a.investmentRegister.table.SetCursor(i)
-				a.pendingInvestmentSelectID = types.NilID
+			if txn.ID == s.pendingSelectID {
+				s.table.SetCursor(i)
+				s.pendingSelectID = types.NilID
 				break
 			}
 		}
 	}
 }
 
-// formatInvestmentRegisterRow formats an investment transaction into table row strings.
-func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string {
+// formatRow formats an investment transaction into table row strings.
+func (s *investmentRegisterViewState) formatRow(txn *investment.Transaction) []string {
 	// Date — 4-digit year so impossibly-old typos like 0018 vs 2018 are
 	// visually distinguishable rather than both rendering as "18".
 	dateStr := txn.Date.Time().Format("01/02/2006")
@@ -118,7 +118,7 @@ func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string 
 	// Security (ticker from lookup map)
 	sec := ""
 	if txn.SecurityID.Valid {
-		if name, ok := a.investmentRegister.data.securityNames[txn.SecurityID.ID]; ok {
+		if name, ok := s.data.securityNames[txn.SecurityID.ID]; ok {
 			sec = name
 		}
 	}
@@ -141,45 +141,45 @@ func (a *App) formatInvestmentRegisterRow(txn *investment.Transaction) []string 
 	return []string{dateStr, status, txnType, sec, shares, price, total}
 }
 
-// renderInvestmentRegister renders the investment account register view.
-func (a *App) renderInvestmentRegister() string {
-	if a.investmentRegister.data == nil {
+// render renders the investment account register view.
+func (s *investmentRegisterViewState) render(styles widget.Styles, height int) string {
+	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
 			Render("Loading investment register...")
 	}
 
-	contentWidth := a.styles.ContentWidth()
+	contentWidth := styles.ContentWidth()
 
 	var sections []string
 
 	// Title row: account name + cash balance
-	acctName := strings.ToUpper(a.investmentRegister.data.account.Name)
-	cashStr := "Cash: " + formatDashboardMoney(a.investmentRegister.data.cashBalance)
+	acctName := strings.ToUpper(s.data.account.Name)
+	cashStr := "Cash: " + formatDashboardMoney(s.data.cashBalance)
 
 	maxNameWidth := max(contentWidth-lipgloss.Width(cashStr)-6, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
 	padding := max(contentWidth-lipgloss.Width(acctName)-lipgloss.Width(cashStr)-4, 1)
 
-	cashStyle := a.styles.Positive
-	if a.investmentRegister.data.cashBalance.IsNegative() {
-		cashStyle = a.styles.Negative
+	cashStyle := styles.Positive
+	if s.data.cashBalance.IsNegative() {
+		cashStyle = styles.Negative
 	}
-	titleRow := a.styles.Title.Render(acctName) + strings.Repeat(" ", padding) + cashStyle.Render(cashStr)
+	titleRow := styles.Title.Render(acctName) + strings.Repeat(" ", padding) + cashStyle.Render(cashStr)
 	sections = append(sections, titleRow)
 
 	// Closed-account banner: a closed account's register is read-only.
 	closedBanner := 0
-	if a.investmentRegister.data.account != nil && a.investmentRegister.data.account.IsClosed() {
+	if s.data.account != nil && s.data.account.IsClosed() {
 		closedBanner = 1
 		label := "Closed · read-only"
-		if a.investmentRegister.data.account.ClosedDate.Valid {
-			label = "Closed " + a.investmentRegister.data.account.ClosedDate.Date.String() + " · read-only"
+		if s.data.account.ClosedDate.Valid {
+			label = "Closed " + s.data.account.ClosedDate.Date.String() + " · read-only"
 		}
-		sections = append(sections, a.styles.Muted.Render(label))
+		sections = append(sections, styles.Muted.Render(label))
 	}
 
-	filterActive := a.investmentRegisterFilterActive()
+	filterActive := s.filterActive()
 
 	// Total-return breakdown (one line of components + one line for total).
 	// Suppressed while filtering — it is an account-wide summary and would be
@@ -187,7 +187,7 @@ func (a *App) renderInvestmentRegister() string {
 	// rows of vertical space for scanning the filtered list.
 	totalReturnLines := 0
 	if !filterActive {
-		if breakdown, total := a.renderInvestmentTotalReturnLines(); breakdown != "" {
+		if breakdown, total := s.renderTotalReturnLines(styles); breakdown != "" {
 			sections = append(sections, breakdown)
 			sections = append(sections, total)
 			totalReturnLines = 2
@@ -198,12 +198,12 @@ func (a *App) renderInvestmentRegister() string {
 	filterLine := 0
 	if filterActive {
 		filterLine = 1
-		sections = append(sections, a.styles.Bold.Render(a.investmentFilterStatusLine()))
+		sections = append(sections, styles.Bold.Render(s.filterStatusLine()))
 	}
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
-	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
 	// widget.Table
 	headerHeight := 1
@@ -211,24 +211,24 @@ func (a *App) renderInvestmentRegister() string {
 	titleHeight := 2 + totalReturnLines + closedBanner + filterLine // title + separator (+ optional total-return breakdown, filter line, closed banner)
 	paddingHeight := 2                                              // top/bottom padding
 	scrollInfoHeight := 1                                           // reserve a row for the scroll info line so a long list doesn't overflow the status bar
-	tableHeight := max(a.height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
+	tableHeight := max(height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
-	visibleCount := len(a.visibleInvestmentTransactions())
-	if a.investmentRegister.table != nil && visibleCount > 0 {
+	visibleCount := len(s.visibleTransactions())
+	if s.table != nil && visibleCount > 0 {
 		tableWidth := max(contentWidth-4, 1)
-		sections = append(sections, a.investmentRegister.table.Render(a.styles, tableWidth, tableHeight))
-		if info := a.investmentRegister.table.ScrollInfo(tableHeight - 2); info != "" {
-			sections = append(sections, a.styles.Muted.Render("  "+info))
+		sections = append(sections, s.table.Render(styles, tableWidth, tableHeight))
+		if info := s.table.ScrollInfo(tableHeight - 2); info != "" {
+			sections = append(sections, styles.Muted.Render("  "+info))
 		}
 	} else if filterActive {
 		// Filtered down to nothing — the status line already names the query.
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No matching transactions"))
+		sections = append(sections, styles.Muted.Render("  No matching transactions"))
 	} else {
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  No investment transactions"))
+		sections = append(sections, styles.Muted.Render("  No investment transactions"))
 		sections = append(sections, "")
-		sections = append(sections, a.styles.Muted.Render("  Press 'n' to add a new transaction"))
+		sections = append(sections, styles.Muted.Render("  Press 'n' to add a new transaction"))
 	}
 
 	return lipgloss.NewStyle().
@@ -236,7 +236,7 @@ func (a *App) renderInvestmentRegister() string {
 		Render(strings.Join(sections, "\n"))
 }
 
-// renderInvestmentTotalReturnLines builds the two header lines that show the
+// renderTotalReturnLines builds the two header lines that show the
 // total-return breakdown for the investment account: a components line
 // (Unrealized · Realized · Div · Int · Fees) and a summary line
 // (Total return $amount (pct%) · IRR pct% · TWR pct% · Value $total), where
@@ -250,21 +250,21 @@ func (a *App) renderInvestmentRegister() string {
 // minus sign visually reflects the subtraction in the total-return formula.
 // A nil TotalReturnPct (no buys ever — denominator is zero) renders as the
 // "—" placeholder so the line shape stays stable.
-func (a *App) renderInvestmentTotalReturnLines() (string, string) {
-	if a.investmentRegister.data == nil || a.investmentRegister.data.valuation == nil {
+func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Styles) (string, string) {
+	if s.data == nil || s.data.valuation == nil {
 		return "", ""
 	}
-	v := a.investmentRegister.data.valuation
+	v := s.data.valuation
 
 	money := func(m types.Money) string {
-		s := formatDashboardMoney(m)
+		str := formatDashboardMoney(m)
 		switch {
 		case m.IsNegative():
-			return a.styles.Negative.Render(s)
+			return styles.Negative.Render(str)
 		case m.IsZero():
-			return a.styles.Bold.Render(s)
+			return styles.Bold.Render(str)
 		default:
-			return a.styles.Positive.Render(s)
+			return styles.Positive.Render(str)
 		}
 	}
 
@@ -274,21 +274,21 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	if !v.FeesPaid.IsZero() {
 		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
 	}
-	feeRendered := a.styles.Bold.Render(feeStr)
+	feeRendered := styles.Bold.Render(feeStr)
 	if !v.FeesPaid.IsZero() {
-		feeRendered = a.styles.Negative.Render(feeStr)
+		feeRendered = styles.Negative.Render(feeStr)
 	}
 
-	realizedField := a.styles.Muted.Render("Realized") + " " + money(v.RealizedGain)
+	realizedField := styles.Muted.Render("Realized") + " " + money(v.RealizedGain)
 	if v.AnyRealizedUnavailable {
-		realizedField += " " + a.styles.Muted.Render("(partial)")
+		realizedField += " " + styles.Muted.Render("(partial)")
 	}
 	parts := []string{
-		a.styles.Muted.Render("Unrealized") + " " + money(v.TotalGainLoss),
+		styles.Muted.Render("Unrealized") + " " + money(v.TotalGainLoss),
 		realizedField,
-		a.styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
-		a.styles.Muted.Render("Int") + " " + money(v.InterestReceived),
-		a.styles.Muted.Render("Fees") + " " + feeRendered,
+		styles.Muted.Render("Div") + " " + money(v.DividendsReceived),
+		styles.Muted.Render("Int") + " " + money(v.InterestReceived),
+		styles.Muted.Render("Fees") + " " + feeRendered,
 	}
 	breakdown := strings.Join(parts, " · ")
 
@@ -300,22 +300,22 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 		}
 		return fmt.Sprintf("%.2f%%", *p)
 	}
-	total := a.styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pct(v.TotalReturnPct) + ")"
+	total := styles.Muted.Render("Total return") + " " + money(v.TotalReturn) + " (" + pct(v.TotalReturnPct) + ")"
 	if v.AnyRealizedUnavailable {
-		total += " " + a.styles.Muted.Render("(partial)")
+		total += " " + styles.Muted.Render("(partial)")
 	}
 	// IRR and TWR show the annual figure once the ledger spans a year;
 	// before that the holding-period figure is shown and marked "(cum.)".
 	perf := func(label string, annual, cumulative *float64) string {
-		s := " · " + a.styles.Muted.Render(label) + " "
+		str := " · " + styles.Muted.Render(label) + " "
 		if annual != nil {
-			return s + pct(annual)
+			return str + pct(annual)
 		}
-		s += pct(cumulative)
+		str += pct(cumulative)
 		if cumulative != nil {
-			s += " " + a.styles.Muted.Render("(cum.)")
+			str += " " + styles.Muted.Render("(cum.)")
 		}
-		return s
+		return str
 	}
 	total += perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct)
 	total += perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct)
@@ -323,7 +323,7 @@ func (a *App) renderInvestmentTotalReturnLines() (string, string) {
 	// optional (partial) marker: total value is independent of the
 	// realized-gain partiality that marker qualifies, so it must sit
 	// outside the marker's scope.
-	total += " · " + a.styles.Muted.Render("Value") + " " + money(v.TotalValue)
+	total += " · " + styles.Muted.Render("Value") + " " + money(v.TotalValue)
 
 	return breakdown, total
 }
