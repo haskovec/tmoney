@@ -3,7 +3,7 @@
 **Date:** 2026-09-27
 **Status:** DONE. Every item in the order table has shipped; each item keeps its problem statement and as-built notes.
 **Source:** Code review of the tree on 2026-09-27. Not a pull-request diff.
-**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, W13 from the smoke test of W8 phase 1, and W14 from VL-405 in the view-layer plan.
+**Decisions:** Design interview on 2026-09-27. It added W3a and W11, split W5 into W5a to W5d, and changed W2, W3, W4, W6, W7, W8, W9, and W10. Each changed item has a **Decision** line. W12 came later, from the review of PR #46, W13 from the smoke test of W8 phase 1, W14 from VL-405 in the view-layer plan, and W15 from its §8 question.
 
 Use this file as the queue. Do one work item at a time. Do not start an item whose **Needs** line is still open. When an item ships, change its status line to the commit, and do not delete the problem statement. The next reader needs to know why the code looks the way it does.
 
@@ -59,6 +59,7 @@ Do the items in the table order. Each item is one branch and one pull request. W
 | W8 | done (#59, #61) | One view table in the TUI | W1, W2, and W12 | large |
 | W13 | done (#62) | The Prices detail hint must show | — | small |
 | W14 | done | Each investment load guards the service it calls | — | small |
+| W15 | done | Reports' net worth is a plain report | — | small |
 | W9 | done (#63) | Stop exporting repositories from `app.Services` | W5c | large |
 
 The data-safety fixes (W3a, W4, W5a, W5b, W6) go before the display work (W5c, W5d). W6 does not need W5. Its error text does not name a balance.
@@ -805,6 +806,36 @@ There were 23 nil checks of the two services in `internal/tui`: 21 in `App` code
 | Each of the four loads, with no investment service | The valuation (or the lot detail) still loads. |
 
 All eight cases fail on the code before the fix.
+
+## W15 — Reports' net worth is a plain report
+
+**Status:** done.
+**Source:** The open question in §8 of `specs/design-tui-view-layer.md`, decided on 2026-10-04 (option A of four).
+
+### Problem
+
+The Reports view's net-worth report drew its asset and liability columns with the Dashboard's code, which read the Dashboard's state. So the report showed the Dashboard's investment detail: a ▸/▾ marker and a total-return line for each investment account, and the holdings of each account expanded on the Dashboard. Three things were wrong with that:
+
+- The markers did nothing in Reports. Its ←/→ keys change the period, and a click there does not expand an account.
+- The holdings could be older than the totals: Reports loads its own net worth, but the holdings came from the Dashboard's last load.
+- What the report showed depended on another screen: what was expanded there, and whether it had loaded.
+
+### Fix
+
+The net-worth report is plain: the accounts and the totals, with no investment detail. `renderAssetLiabilityColumns` (`internal/tui/dashboard_view.go`) is a plain function that takes the Dashboard's state as an optional parameter. The Dashboard passes its state and keeps its markers, total-return lines, holdings and mouse rows. Reports passes nil, and no longer takes the Dashboard's state at all.
+
+### Tests
+
+| Case | Assert |
+| --- | --- |
+| The Dashboard has one investment account expanded and one collapsed; Reports renders its net worth through the view table | No ▸ or ▾, no total-return line, no holding of either account; every account is listed. |
+
+The Dashboard's own tests of its markers, holdings and mouse rows are unchanged and pass.
+
+### Do not
+
+- Do not change the Dashboard's view.
+- Do not add investment detail to the report in this item. If the report should show holdings, load them in Reports (option C), not from the Dashboard.
 
 ## W9 — Stop exporting repositories from `app.Services`
 

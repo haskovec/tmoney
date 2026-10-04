@@ -1038,7 +1038,9 @@ of four or five maps. The parameter can be wrong and still compile (an empty
 Dashboard state), and no test covered the link, because it was never visible;
 a new test pins, through the entry, that the net-worth view shows an account
 expanded on the Dashboard and hides a collapsed one. The behaviour itself is
-unchanged, and whether it is right is still the question in §8.
+unchanged, and whether it is right is still the question in §8. (Decided
+2026-10-04: it was not; the report is now plain, and Reports no longer takes
+the Dashboard's state. See §8 and W15.)
 
 
 #### Built (VL-409, 2026-10-03): the investment register, and phase 4 done
@@ -1211,14 +1213,17 @@ view table is the document a future reader opens to learn what a view is.
 
 - **View controllers (phase 4).** Measured and planned (VL-401, VL-402):
   seven items, a pilot first, none committed.
-- **Reports shows the Dashboard's expand state.** Reports' net-worth render
-  calls the Dashboard's `renderAssetLiabilityColumns`, which reads the
-  Dashboard's holdings and expanded accounts, so an account expanded on the
-  Dashboard shows expanded in Reports too. A product question: should the two
-  views share that state? Since VL-408 the Reports renders take the
-  Dashboard's state as a parameter, which only the view table entry passes
-  in, and `TestReportsNetWorth_ShowsTheDashboardsExpandState` pins today's
-  answer, so changing it is a one-place decision.
+- **Reports showed the Dashboard's expand state. Decided 2026-10-04: it does
+  not (W15 in the work list).** Reports' net-worth render called the
+  Dashboard's `renderAssetLiabilityColumns`, which read the Dashboard's
+  holdings and expanded accounts, so an account expanded on the Dashboard
+  showed expanded in Reports too. Its ▸/▾ markers did nothing there (Reports'
+  ←/→ keys change the period), and its holdings could be older than its
+  totals, because they came from the Dashboard's last load. The net-worth
+  report is now plain: accounts and totals, no investment detail.
+  `renderAssetLiabilityColumns` is a plain function that takes the Dashboard's
+  state as an optional parameter; the Dashboard passes it, and Reports passes
+  nil. `TestReportsNetWorth_IsAPlainReport` pins the decision.
 - **Reload for Reconciliation and CorporateActions** (§5.4). A product
   question, filed with those views. Phase 1 preserves today's behaviour.
 - **`load*` → `*LoadedMsg` → `build*Table` as a registry entry.** Eleven arms
