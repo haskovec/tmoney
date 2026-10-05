@@ -1414,7 +1414,7 @@ func dashboardColumns(t *testing.T, width int) string {
 			{Currency: "USD", Assets: m("100.00"), Liabilities: m("-30.00"), NetWorth: m("70.00"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
 		},
 	}
-	return widget.StripAnsi(app.dashboard.renderAssetLiabilityColumns(app.styles, nw, width, nil))
+	return widget.StripAnsi(renderAssetLiabilityColumns(app.styles, nw, width, &app.dashboard, nil))
 }
 
 // Each currency's assets total and liabilities total are on one row.

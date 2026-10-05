@@ -22,7 +22,7 @@ func TestApp_RenderReports_Loading(t *testing.T) {
 		reports:     reportsViewState{data: nil},
 	}
 
-	view := app.reports.render(app.styles, &app.dashboard)
+	view := app.reports.render(app.styles)
 	if !contains(view, "Loading") {
 		t.Errorf("reports.render should show loading when data is nil, got: %q", view)
 	}
@@ -53,7 +53,7 @@ func TestApp_RenderNetWorthReport(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
+	view := app.reports.renderNetWorth(app.styles)
 
 	if !contains(view, "NET WORTH REPORT") {
 		t.Error("reports.renderNetWorth should contain 'NET WORTH REPORT'")
@@ -103,7 +103,7 @@ func TestApp_RenderNetWorthReport_NegativeNetWorth(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
+	view := app.reports.renderNetWorth(app.styles)
 	if !contains(view, "-$5000.00") {
 		t.Error("reports.renderNetWorth should show negative net worth")
 	}
@@ -124,7 +124,7 @@ func TestApp_RenderNetWorthReport_NoData(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
+	view := app.reports.renderNetWorth(app.styles)
 	if !contains(view, "No net worth data") {
 		t.Error("reports.renderNetWorth should show 'No net worth data' when nil")
 	}
@@ -649,7 +649,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.render(app.styles, &app.dashboard)
+	view := app.reports.render(app.styles)
 	if !contains(view, "NET WORTH REPORT") {
 		t.Error("reports.render should dispatch to net worth report")
 	}
@@ -666,7 +666,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		},
 	}
 
-	view = app.reports.render(app.styles, &app.dashboard)
+	view = app.reports.render(app.styles)
 	if !contains(view, "SPENDING BY CATEGORY") {
 		t.Error("reports.render should dispatch to spending report")
 	}
@@ -687,7 +687,7 @@ func TestApp_RenderNetWorthReport_ImprovedNoData(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.renderNetWorth(app.styles, &app.dashboard)
+	view := app.reports.renderNetWorth(app.styles)
 	if !contains(view, "Add accounts to get started") {
 		t.Error("reports.renderNetWorth should show helpful message when nil")
 	}
@@ -890,7 +890,7 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 	}
 
 	var titleLine string
-	for _, line := range strings.Split(app.reports.renderNetWorth(app.styles, &app.dashboard), "\n") {
+	for _, line := range strings.Split(app.reports.renderNetWorth(app.styles), "\n") {
 		if strings.Contains(line, "NET WORTH REPORT") {
 			titleLine = line
 			break
@@ -907,12 +907,11 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 	}
 }
 
-// Reports' net-worth view shows the Dashboard's expand state: an account
-// expanded on the Dashboard shows its holdings here too, and a collapsed one
-// does not. The design's §8 asks whether it should. This pins today's
-// behaviour through the view table entry, which hands Reports the Dashboard's
-// state, so that a change to it is a decision and not an accident.
-func TestReportsNetWorth_ShowsTheDashboardsExpandState(t *testing.T) {
+// Reports' net-worth view is a plain report: it shows no investment detail
+// (no ▸/▾ marker, no total-return line, no holdings), whatever the Dashboard
+// has loaded or expanded. Here the Dashboard has Brokerage A expanded, with the
+// holding AAA, and Brokerage B collapsed, with BBB; Reports shows neither.
+func TestReportsNetWorth_IsAPlainReport(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
 	app.currentView = ViewReports
 	app.reports.data = &reportsViewData{rtype: reportTypeNetWorth, netWorth: app.dashboard.data.netWorth}
@@ -921,10 +920,14 @@ func TestReportsNetWorth_ShowsTheDashboardsExpandState(t *testing.T) {
 		t.Fatal("no view table entry for ViewReports")
 	}
 	out := widget.StripAnsi(e.render(app))
-	if !strings.Contains(out, "AAA") {
-		t.Errorf("the account expanded on the Dashboard does not show its holding:\n%s", out)
+	for _, detail := range []string{"▸", "▾", "TR ", "AAA", "BBB"} {
+		if strings.Contains(out, detail) {
+			t.Errorf("the net-worth report shows %q, investment detail from the Dashboard:\n%s", detail, out)
+		}
 	}
-	if strings.Contains(out, "BBB") {
-		t.Errorf("the account collapsed on the Dashboard shows its holding:\n%s", out)
+	for _, acct := range []string{"Brokerage A", "Brokerage B", "Checking", "Visa"} {
+		if !strings.Contains(out, acct) {
+			t.Errorf("the net-worth report does not list %q:\n%s", acct, out)
+		}
 	}
 }
