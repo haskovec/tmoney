@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -64,7 +65,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToInv(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"IRA A", "IRA B"}, 0)
@@ -103,7 +104,7 @@ func TestApp_SubmitTransferDialog_DispatchesInvToReg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Brokerage", "Checking"}, 0)
@@ -142,7 +143,7 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Brokerage"}, 0)
@@ -403,7 +404,7 @@ func TestApp_HandleRegisterKeys_TransferKey(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -439,7 +440,7 @@ func TestApp_Update_TransferDialogDataMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	// Set up sidebar with a selected account
@@ -486,7 +487,7 @@ func TestApp_Update_TransferDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 		keys:                   defaultKeyMap(),
 		menubar:                widget.NewMenuBar(),
 		statusbar:              widget.NewStatusBar(),
-		sidebar:                NewSidebar(),
+		sidebar:                sidebar.New(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
@@ -523,7 +524,7 @@ func TestApp_SubmitTransferDialog_PassesSavedDateInMessage(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -563,7 +564,7 @@ func TestApp_HandleTransferDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -603,7 +604,7 @@ func TestApp_HandleTransferDialogKey_TabCycles(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -643,7 +644,7 @@ func TestApp_Update_TransferDialogSavedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	// Set up sidebar with a selected account
 	app.sidebar.SetAccounts([]*account.Account{
@@ -667,7 +668,7 @@ func TestApp_Update_TransferDialogSavedMsg_SelectsRegularLeg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := transferDialogSavedMsg{savedID: legID, savedIsInvestment: false}
@@ -691,7 +692,7 @@ func TestApp_Update_TransferDialogSavedMsg_SelectsInvestmentLeg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := transferDialogSavedMsg{savedID: legID, savedIsInvestment: true}
@@ -715,7 +716,7 @@ func TestApp_Update_TransferDialogSavedMsg_NilLegSelectsNothing(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, _ := app.Update(transferDialogSavedMsg{savedID: types.NilID})
@@ -759,7 +760,7 @@ func TestApp_SubmitTransferDialog_SameAccount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking"}, 0)
@@ -801,7 +802,7 @@ func TestApp_SubmitTransferDialog_NegativeAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -843,7 +844,7 @@ func TestApp_SubmitTransferDialog_InvalidDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -882,7 +883,7 @@ func TestApp_SubmitTransferDialog_EmptyAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -921,7 +922,7 @@ func TestApp_SubmitTransferDialog_ValidTransfer(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -994,7 +995,7 @@ func TestApp_RenderLayout_WithTransferDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1033,7 +1034,7 @@ func TestApp_TransferDialogDataMsg_PreSelectsFromAccount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	// Set up sidebar with Savings selected
@@ -1083,7 +1084,7 @@ func TestApp_SubmitTransferDialog_ZeroAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transfer")
 			d.AddSelectField("From", []string{"Checking", "Savings"}, 0)
@@ -1157,7 +1158,7 @@ func TestApp_HandleRegisterKeys_EnterOnTransfer_OpensTransferEdit(t *testing.T) 
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},

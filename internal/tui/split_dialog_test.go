@@ -14,6 +14,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -1089,7 +1090,7 @@ func TestApp_SubmitTransactionDialog_SplitChecked(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddTextField("Date", "01/15/2024", "", 10)
@@ -1164,7 +1165,7 @@ func TestApp_HandleSplitDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)"}, []types.ID{types.NilID}),
 			pendingTxn: &pendingSplitTransaction{
 				amount: types.MustNewMoney("-100.00"),
@@ -1191,7 +1192,7 @@ func TestApp_Update_SplitDialogSavedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
@@ -1214,7 +1215,7 @@ func TestApp_RenderLayout_WithSplitDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1249,7 +1250,7 @@ func TestApp_SplitDialogKeyRouting(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		split: splitSurface{editor: NewSplitDialog(types.MustNewMoney("-100.00"), []string{"(None)", "Food"}, []types.ID{types.NilID, types.NewID()}),
 			pendingTxn: &pendingSplitTransaction{
 				amount: types.MustNewMoney("-100.00"),
@@ -1341,7 +1342,7 @@ func TestApp_HandleRegisterKeys_EnterOnSplitTransaction_OpensEditFlow(t *testing
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -1542,7 +1543,7 @@ func newAppForSplitAddNew(t *testing.T, categorySvc *category.Service, cats []*c
 		keys:      defaultKeyMap(),
 		menubar:   widget.NewMenuBar(),
 		statusbar: widget.NewStatusBar(),
-		sidebar:   NewSidebar(),
+		sidebar:   sidebar.New(),
 		services: app.Services{
 			Category: categorySvc,
 		},
@@ -1865,7 +1866,7 @@ func splitDialogMouseEnv(t *testing.T, sd *SplitDialog) (*App, string, int, int)
 		keys:      defaultKeyMap(),
 		menubar:   widget.NewMenuBar(),
 		statusbar: widget.NewStatusBar(),
-		sidebar:   NewSidebar(),
+		sidebar:   sidebar.New(),
 		styles:    widget.NewStyles(),
 		split:     splitSurface{editor: sd},
 	}

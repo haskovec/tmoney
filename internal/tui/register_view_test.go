@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -231,7 +232,7 @@ func TestApp_HandleRegisterKeys_TableNavigation(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -289,7 +290,7 @@ func TestApp_HandleRegisterKeys_RKeyOpensReconciliation(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -326,7 +327,7 @@ func TestApp_HandleRegisterKeys_TabFocus(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -374,7 +375,7 @@ func TestApp_Update_RegisterLoaded(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	accountID := types.NewID()
@@ -557,7 +558,7 @@ func TestApp_Update_TransactionDialogSaved_SetsPendingSelectID(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
@@ -829,7 +830,7 @@ func TestApp_ToggleTransactionStatus_VoidBlocked(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -876,7 +877,7 @@ func TestApp_ToggleTransactionStatus_ReconciledBlocked(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -921,7 +922,7 @@ func TestApp_ShowVoidConfirmation_AlreadyVoid(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -972,7 +973,7 @@ func TestApp_ShowVoidConfirmation_ReconciledBlocked(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1017,7 +1018,7 @@ func TestApp_ShowVoidConfirmation_ShowsDialog(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1065,7 +1066,7 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1105,14 +1106,14 @@ func TestApp_ShowVoidConfirmation_TransferMessage(t *testing.T) {
 func TestApp_VoidKey_InRegisterView(t *testing.T) {
 	accountID := types.NewID()
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1156,7 +1157,7 @@ func TestApp_RegisterFrozenOnClosedAccount(t *testing.T) {
 		styles:      widget.NewStyles(),
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1244,7 +1245,7 @@ func TestApp_ShowDeleteConfirmation_AlreadyVoid(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1292,7 +1293,7 @@ func TestApp_ShowDeleteConfirmation_ReconciledBlocked(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1340,7 +1341,7 @@ func TestApp_ShowDeleteConfirmation_ShowsDialog(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1388,7 +1389,7 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},
@@ -1432,14 +1433,14 @@ func TestApp_ShowDeleteConfirmation_TransferMessage(t *testing.T) {
 func TestApp_DeleteKey_InRegisterView(t *testing.T) {
 	accountID := types.NewID()
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		services: app.Services{
 			Transaction: &transaction.Service{},
 		},

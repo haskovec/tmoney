@@ -6,6 +6,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -148,7 +149,7 @@ func TestSubmitScheduledTransferDialog_SelfTransfer(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldFrom].SelectedIndex = 0
@@ -176,7 +177,7 @@ func TestSubmitScheduledTransferDialog_MissingAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledTransferDialog([]string{"Checking", "Visa"}, []string{"(None)"})
 			d.Fields()[schedXferFieldAmount].Value = ""

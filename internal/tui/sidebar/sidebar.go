@@ -1,4 +1,10 @@
-package tui
+// Package sidebar holds the account sidebar: the grouped account list, its
+// cursor and scroll, the selected account, and its rendering.
+//
+// The cursor, the items and the grouping are the Sidebar's own. Package tui
+// reads and moves them only through the methods here; this package cannot
+// import tui.
+package sidebar
 
 import (
 	"strings"
@@ -81,8 +87,8 @@ type Sidebar struct {
 	focused bool
 }
 
-// NewSidebar creates a new Sidebar with default state.
-func NewSidebar() *Sidebar {
+// New creates a new Sidebar with default state.
+func New() *Sidebar {
 	return &Sidebar{
 		focused: true,
 	}
@@ -136,12 +142,28 @@ func (s *Sidebar) SetCursorToAccount(id types.ID) bool {
 	return false
 }
 
-// CursorItem returns the item at the current cursor position, or nil.
-func (s *Sidebar) CursorItem() *sidebarItem {
+// cursorItem returns the item at the current cursor position, or nil.
+func (s *Sidebar) cursorItem() *sidebarItem {
 	if s.cursor < 0 || s.cursor >= len(s.items) {
 		return nil
 	}
 	return &s.items[s.cursor]
+}
+
+// CursorAccount returns the account under the cursor, or nil when the cursor
+// is on a group header or the list is empty. An account item always holds its
+// account, because rebuildItems builds the items from the account list.
+func (s *Sidebar) CursorAccount() *account.Account {
+	item := s.cursorItem()
+	if item == nil || item.kind != sidebarItemAccount {
+		return nil
+	}
+	return item.account
+}
+
+// Cursor returns the cursor's index in the item list, group headers included.
+func (s *Sidebar) Cursor() int {
+	return s.cursor
 }
 
 // MoveUp moves the cursor up one position.
@@ -160,7 +182,7 @@ func (s *Sidebar) MoveDown() {
 
 // Select selects the item at the cursor. Returns true if an account was selected.
 func (s *Sidebar) Select() bool {
-	item := s.CursorItem()
+	item := s.cursorItem()
 	if item == nil {
 		return false
 	}
@@ -231,7 +253,7 @@ func buildGroups(accounts []*account.Account) []accountGroup {
 // another group and the old index then names a different row.
 func (s *Sidebar) rebuildItems() {
 	cursorAccountID := types.NilID
-	if item := s.CursorItem(); item != nil && item.kind == sidebarItemAccount {
+	if item := s.cursorItem(); item != nil && item.kind == sidebarItemAccount {
 		cursorAccountID = item.accountID
 	}
 

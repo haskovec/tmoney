@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -549,14 +550,14 @@ func TestHandleInvestmentRegisterKeys_Navigation(t *testing.T) {
 	)
 	txn2 := investment.NewTransaction(acctID, date, investment.TransactionTypeDeposit, types.MustNewMoney("5000.00"))
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -597,14 +598,14 @@ func TestHandleInvestmentRegisterKeys_ToggleClear(t *testing.T) {
 	)
 	txn.Status = investment.TransactionStatusPending
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -727,7 +728,7 @@ func TestInvestmentRegisterView_FullScreenRender(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -760,14 +761,14 @@ func TestHandleInvestmentRegisterKeys_NewOpensTypeSelector(t *testing.T) {
 		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
 	)
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -814,14 +815,14 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
 	)
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -868,14 +869,14 @@ func TestHandleInvestmentRegisterKeys_EnterEditsTransaction(t *testing.T) {
 }
 
 func TestHandleInvestmentRegisterKeys_EnterNoOpsWithNoTransaction(t *testing.T) {
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -908,14 +909,14 @@ func TestHandleInvestmentRegisterKeys_DeleteExistingTransaction(t *testing.T) {
 		acctID, date, investment.TransactionTypeBuy, types.MustNewMoney("1000.00"), secID, types.MustNewQuantity("5"),
 	)
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: sidebar,
+		sidebar: sb,
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account: &account.Account{
 				BaseModel: types.NewBaseModel(),
@@ -1102,7 +1103,7 @@ func TestInvestmentRegisterView_SwitchView(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.switchView(ViewInvestmentRegister)

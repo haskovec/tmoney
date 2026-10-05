@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -46,7 +47,7 @@ func TestInvestmentTypeSelector_SpinOffDispatch(t *testing.T) {
 		width:   80,
 		height:  24,
 		keys:    defaultKeyMap(),
-		sidebar: NewSidebar(),
+		sidebar: sidebar.New(),
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 			account:       &account.Account{BaseModel: types.NewBaseModel(), Name: "Brokerage", Type: account.TypeInvestment},
 			transactions:  []*investment.Transaction{txn},

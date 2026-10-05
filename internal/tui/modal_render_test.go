@@ -8,6 +8,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transferlink"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -21,7 +22,7 @@ func newModalRenderTestApp() *App {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,

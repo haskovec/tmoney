@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -164,7 +165,7 @@ func corporateActionsEnv(t *testing.T, w, h int, filter string) (app *App, split
 	app.keys = defaultKeyMap()
 	app.menubar = widget.NewMenuBar()
 	app.statusbar = widget.NewStatusBar()
-	app.sidebar = NewSidebar()
+	app.sidebar = sidebar.New()
 	app.styles = styles
 	app.corporateActions.filter = filter
 	app.corporateActions.buildTable()

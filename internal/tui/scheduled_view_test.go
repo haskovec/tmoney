@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -357,7 +358,7 @@ func TestApp_HandleScheduledKeys_TableNavigation(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns: []*scheduled.Transaction{
 				{BaseModel: types.BaseModel{ID: types.NewID()}, AccountID: accountID, Frequency: scheduled.FrequencyMonthly, NextDate: types.Today()},
@@ -408,7 +409,7 @@ func TestApp_HandleScheduledKeys_TabFocus(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			dueCount:      0,
@@ -451,7 +452,7 @@ func TestApp_Update_ScheduledViewDataLoaded(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	accountID := types.NewID()
@@ -601,7 +602,7 @@ func TestScheduledView_EnterOnDueItem_OpensPreview(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		services: app.Services{
 			Account:     accountSvc,

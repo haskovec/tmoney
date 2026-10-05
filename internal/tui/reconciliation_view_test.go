@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -381,7 +382,7 @@ func TestApp_MouseClick_ReconciliationView_TogglesCheck(t *testing.T) {
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -781,7 +782,7 @@ func TestReconciliationView_SwitchView(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.switchView(ViewReconciliation)
@@ -802,7 +803,7 @@ func TestReconciliationUpdate_StartedMsg(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := reconciliationStartedMsg{session: session, account: account}
@@ -876,7 +877,7 @@ func TestReconciliationUpdate_FinishedMsg(t *testing.T) {
 		currentView: ViewReconciliation,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
 		}},
@@ -912,7 +913,7 @@ func TestReconciliationUpdate_CancelledMsg(t *testing.T) {
 		previousView: ViewRegister,
 		keys:         defaultKeyMap(),
 		statusbar:    widget.NewStatusBar(),
-		sidebar:      NewSidebar(),
+		sidebar:      sidebar.New(),
 		reconciliation: reconciliationViewState{data: &reconciliationViewData{
 			account: &account.Account{Name: "Checking"},
 		}},
@@ -952,7 +953,7 @@ func TestReconciliationFullScreen(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),

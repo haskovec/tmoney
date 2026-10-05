@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/scheduled"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -862,15 +863,15 @@ func TestApp_DashboardInvestmentAccountOpensPortfolioView(t *testing.T) {
 		Type:      account.TypeInvestment,
 	}
 
-	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{investAcct})
+	sb := sidebar.New()
+	sb.SetAccounts([]*account.Account{investAcct})
 
 	// Move cursor to the account item (index 0 = group header, index 1 = account)
-	sidebar.cursor = 1
+	sb.SetCursor(1)
 
 	app := &App{
 		currentView: ViewDashboard,
-		sidebar:     sidebar,
+		sidebar:     sb,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
@@ -897,14 +898,14 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 		Type:      account.TypeChecking,
 	}
 
-	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{checkAcct})
+	sb := sidebar.New()
+	sb.SetAccounts([]*account.Account{checkAcct})
 
-	sidebar.cursor = 1
+	sb.SetCursor(1)
 
 	app := &App{
 		currentView: ViewDashboard,
-		sidebar:     sidebar,
+		sidebar:     sb,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
@@ -927,9 +928,9 @@ func TestApp_DashboardNonInvestmentAccountOpensRegisterView(t *testing.T) {
 // is the fixture for the ←/→ collapse/expand toggle tests.
 func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investment.Holding, expanded map[types.ID]bool) *App {
 	t.Helper()
-	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{acct})
-	sidebar.cursor = 1 // index 0 = group header, 1 = the account row
+	sb := sidebar.New()
+	sb.SetAccounts([]*account.Account{acct})
+	sb.SetCursor(1) // index 0 = group header, 1 = the account row
 
 	tickers := map[types.ID]string{}
 	for i := range holdings {
@@ -944,7 +945,7 @@ func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investme
 	return &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		styles:      styles,
@@ -1076,15 +1077,15 @@ func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
 		{BaseModel: types.BaseModel{ID: invB}, Name: "Brokerage B", Type: account.TypeInvestment},
 		{BaseModel: types.BaseModel{ID: visa}, Name: "Visa", Type: account.TypeCreditCard},
 	}
-	sidebar := NewSidebar()
-	sidebar.SetAccounts(accounts)
+	sb := sidebar.New()
+	sb.SetAccounts(accounts)
 
 	styles := widget.NewStyles()
 	styles.Resize(120, 40)
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		styles:      styles,
@@ -1170,7 +1171,7 @@ func TestApp_Dashboard_MouseClickTogglesHolding(t *testing.T) {
 	if !app.dashboard.expandedAccounts[targetID] {
 		t.Fatal("clicking the ▸ header should expand the account")
 	}
-	if item := app.sidebar.CursorItem(); item == nil || item.accountID != targetID {
+	if acct := app.sidebar.CursorAccount(); acct == nil || acct.ID != targetID {
 		t.Error("clicking an account's header should move the sidebar cursor onto it")
 	}
 
@@ -1250,7 +1251,7 @@ func TestApp_Dashboard_MouseClickBeforeRenderIsNoOp(t *testing.T) {
 
 	app, _ := dashboardMouseApp(t)
 	snapshot := maps.Clone(app.dashboard.expandedAccounts)
-	cursorBefore := app.sidebar.CursorItem()
+	cursorBefore := app.sidebar.Cursor()
 	contentStartX := app.styles.SidebarWidth() + 1
 	for row := range rendered.dashboard.accountRows {
 		click := tea.MouseClickMsg{X: contentStartX + 2, Y: row + 1, Button: tea.MouseLeft}
@@ -1262,7 +1263,7 @@ func TestApp_Dashboard_MouseClickBeforeRenderIsNoOp(t *testing.T) {
 		t.Errorf("a click before any render changed the expand state: got %v, want %v",
 			app.dashboard.expandedAccounts, snapshot)
 	}
-	if app.sidebar.CursorItem() != cursorBefore {
+	if app.sidebar.Cursor() != cursorBefore {
 		t.Error("a click before any render moved the sidebar cursor")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -751,7 +752,7 @@ func TestPaycheckWizard_Save_CreatesMultiLineSchedule(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Account:     accountSvc,
 			Payee:       payeeSvc,
@@ -1522,7 +1523,7 @@ func newAppForPaycheckAddNew(t *testing.T, categorySvc *category.Service, cats [
 		keys:      defaultKeyMap(),
 		menubar:   widget.NewMenuBar(),
 		statusbar: widget.NewStatusBar(),
-		sidebar:   NewSidebar(),
+		sidebar:   sidebar.New(),
 		services: app.Services{
 			Category: categorySvc,
 		},
@@ -1881,7 +1882,7 @@ func newPaycheckEditEnv(t *testing.T) *paycheckEditEnv {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		services: app.Services{
 			Account:     accountSvc,

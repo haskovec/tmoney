@@ -78,13 +78,8 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 	a.focusSidebar()
 	a.sidebar.SetCursor(idx)
 
-	item := a.sidebar.CursorItem()
-	if item == nil {
-		return a, nil
-	}
-
-	// Group headers: just move cursor
-	if item.kind == sidebarItemGroup {
+	// Group headers (and an empty list): just move the cursor.
+	if a.sidebar.CursorAccount() == nil {
 		return a, nil
 	}
 

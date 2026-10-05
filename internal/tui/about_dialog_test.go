@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -15,7 +16,7 @@ func newAboutTestApp() *App {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,

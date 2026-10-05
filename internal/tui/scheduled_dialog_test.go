@@ -17,6 +17,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -420,7 +421,7 @@ func TestApp_HandleScheduledKeys_NewKey(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{},
 			payeeNames:    make(map[types.ID]string),
@@ -451,7 +452,7 @@ func TestApp_HandleScheduledKeys_EditKey(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		scheduled: scheduledViewState{data: &scheduledViewData{
 			allTxns:       []*scheduled.Transaction{st},
 			dueCount:      0,
@@ -479,7 +480,7 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	data := &scheduledDialogData{
@@ -524,7 +525,7 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	data := &scheduledDialogData{
@@ -571,7 +572,7 @@ func TestScheduledDialog_ClickSave_DropsValueAdjustmentForNonAsset(t *testing.T)
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services:    app.Services{Category: catSvc},
 	}
 	app.Update(scheduledDialogDataMsg{data: &scheduledDialogData{
@@ -630,7 +631,7 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
@@ -668,7 +669,7 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			return d
@@ -703,7 +704,7 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Syntactically valid 10-char mask shape, but semantically
@@ -742,7 +743,7 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "not-a-number"
@@ -777,7 +778,7 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "abc"
@@ -812,7 +813,7 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldInterval].Value = "0"
@@ -847,7 +848,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Set duration to "Until Date" (index 1)
@@ -886,7 +887,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationUntilDate
@@ -925,7 +926,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
@@ -961,7 +962,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldDuration].SelectedIndex = durationOccurrences
@@ -997,7 +998,7 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
@@ -1036,7 +1037,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			// Leave amount empty for variable
@@ -1073,7 +1074,7 @@ func TestApp_SubmitScheduledDialog_DurationIndefinite_BlankEndDateAccepted(t *te
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
@@ -1107,7 +1108,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
@@ -1142,7 +1143,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "50.00"
@@ -1179,7 +1180,7 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildEditScheduledDialog(st,
 				accountOptions, []types.ID{accountID},
@@ -1247,7 +1248,7 @@ func TestApp_Update_ScheduledDialogSavedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := scheduledDialogSavedMsg{}
@@ -1267,7 +1268,7 @@ func TestApp_RenderLayout_WithScheduledDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1296,7 +1297,7 @@ func TestApp_GetKeyHints_Scheduled(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	hints := app.getKeyHints()
@@ -1318,7 +1319,7 @@ func TestApp_RenderScheduled_EmptyState(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1523,7 +1524,7 @@ func TestApp_AutoPostCompletedMsg_WithPosts(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	summary := &scheduled.AutoPostSummary{
@@ -1551,7 +1552,7 @@ func TestApp_AutoPostCompletedMsg_NoPosts(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	summary := &scheduled.AutoPostSummary{
@@ -1573,7 +1574,7 @@ func TestApp_AutoPostCompletedMsg_NilSummary(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := autoPostCompletedMsg{summary: nil}
@@ -1594,7 +1595,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewScheduledDialog(accountOptions, categoryOptions)
 			d.Fields()[schedFieldAmount].Value = "100.00"
@@ -1659,7 +1660,7 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: buildSchedDialogWithSplitToggle(t,
 			"4000.00", "01/15/2024", true, "Checking",
 			[]string{"(None)", "Salary"})},
@@ -1746,7 +1747,7 @@ func createMultiLineScheduledTestApp(t *testing.T) (*App, *scheduled.Service, *a
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Account:   accountSvc,
 			Payee:     payeeSvc,
@@ -1950,7 +1951,7 @@ func TestScheduledDialog_EditAsPaycheck_RelaunchesWizard(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		sched: schedSurface{modalSurface: modalSurface{dlg: dlg},
 			data: &scheduledDialogData{
 				mode:      scheduledDialogModeEdit,
@@ -2186,7 +2187,7 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Category: categorySvc,
 		},

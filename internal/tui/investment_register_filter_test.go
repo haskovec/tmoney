@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -53,8 +54,8 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 	styles := widget.NewStyles()
 	styles.Resize(width, 40)
 
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	zero := types.ZeroMoney
 	app := &App{
@@ -64,7 +65,7 @@ func newFilterTestApp(t *testing.T, width int) (*App, filterTestIDs) {
 		ready:       true,
 		keys:        defaultKeyMap(),
 		styles:      styles,
-		sidebar:     sidebar,
+		sidebar:     sb,
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{

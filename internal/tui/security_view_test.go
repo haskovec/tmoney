@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -386,7 +387,7 @@ func TestSecurityViewSwitchView(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.switchView(ViewSecurities)
@@ -863,7 +864,7 @@ func TestSecurityView_NavigateKeyBinding(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 	}
 
@@ -892,7 +893,7 @@ func TestSecurityView_FullScreenRender(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),

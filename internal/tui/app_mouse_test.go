@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -18,7 +19,7 @@ func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
@@ -43,14 +44,14 @@ func TestApp_MouseClick_MenuBar_OpensDropdown(t *testing.T) {
 // used to omit it from the full-screen list, so a click drove the hidden
 // sidebar instead of the corporate-action table.
 func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
-	sidebar := NewSidebar()
-	sidebar.SetAccounts([]*account.Account{
+	sb := sidebar.New()
+	sb.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking", Type: account.TypeChecking},
 		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Brokerage", Type: account.TypeInvestment},
 	})
 
-	sidebar.SetFocused(false)
-	sidebar.cursor = 0
+	sb.SetFocused(false)
+	sb.SetCursor(0)
 
 	tbl := widget.NewTable([]widget.Column{{Header: "Ticker", Width: 10}})
 	tbl.SetRows([][]string{{"AAA"}, {"BBB"}, {"CCC"}})
@@ -61,7 +62,7 @@ func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
 		currentView:      ViewCorporateActions,
 		keys:             defaultKeyMap(),
 		menubar:          widget.NewMenuBar(),
-		sidebar:          sidebar,
+		sidebar:          sb,
 		statusbar:        widget.NewStatusBar(),
 		corporateActions: corporateActionViewState{table: tbl},
 		width:            120,
@@ -86,8 +87,8 @@ func TestApp_MouseClick_CorporateActions_RoutesToTable(t *testing.T) {
 	if app.sidebar.IsFocused() {
 		t.Error("a click in the Corporate Actions view must not focus the sidebar")
 	}
-	if app.sidebar.cursor != 0 {
-		t.Errorf("sidebar cursor must be unchanged (0), got %d", app.sidebar.cursor)
+	if app.sidebar.Cursor() != 0 {
+		t.Errorf("sidebar cursor must be unchanged (0), got %d", app.sidebar.Cursor())
 	}
 }
 
@@ -98,7 +99,7 @@ func TestApp_SwitchView_CorporateActions_UnfocusesSidebar(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 	}
 	app.sidebar.SetFocused(true) // dashboard focuses the sidebar
@@ -115,7 +116,7 @@ func TestApp_MouseClick_MenuBar_ToggleDropdown(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
@@ -145,7 +146,7 @@ func TestApp_MouseClick_MenuBar_SwitchMenu(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
@@ -175,7 +176,7 @@ func TestApp_MouseClick_Dropdown_SelectsItem(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
@@ -202,7 +203,7 @@ func TestApp_MouseClick_OutsideMenu_ClosesDropdown(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,
@@ -227,7 +228,7 @@ func TestApp_MouseClick_Table_SelectsRow(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		register: registerViewState{
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
@@ -266,7 +267,7 @@ func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testin
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		investmentRegister: investmentRegisterViewState{
 			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
@@ -311,7 +312,7 @@ func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) 
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		investmentRegister: investmentRegisterViewState{
 			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
@@ -341,7 +342,7 @@ func TestApp_MouseClick_FocusSwitchToTable(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		register: registerViewState{
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
@@ -379,7 +380,7 @@ func TestApp_MouseClick_FocusSwitchToSidebar(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		register: registerViewState{
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
@@ -417,7 +418,7 @@ func TestApp_MouseWheel_ScrollsTable(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		register: registerViewState{
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
@@ -466,7 +467,7 @@ func TestApp_MouseWheel_NonPricesViewReturnsNoCmd(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		register: registerViewState{
 			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
@@ -501,7 +502,7 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -521,8 +522,8 @@ func TestApp_MouseWheel_ScrollsSidebar(t *testing.T) {
 	model, _ := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.sidebar.cursor != 1 {
-		t.Errorf("after wheel down, sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
+	if updatedApp.sidebar.Cursor() != 1 {
+		t.Errorf("after wheel down, sidebar cursor = %d, want 1", updatedApp.sidebar.Cursor())
 	}
 }
 
@@ -531,7 +532,7 @@ func TestApp_MouseClick_IgnoredDuringHelpOverlay(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		showHelp:    true,
 		width:       80,
@@ -559,7 +560,7 @@ func TestApp_MouseClick_Dialog_CloseButton(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
 			action: func() tea.Msg { return nil }},
@@ -594,7 +595,7 @@ func TestApp_MouseClick_Dialog_SubmitButton(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
 			action: func() tea.Msg { submitted = true; return nil }},
@@ -647,7 +648,7 @@ func TestApp_MouseClick_Dialog_CancelButton(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
 			action: func() tea.Msg { return nil }},
@@ -692,7 +693,7 @@ func TestApp_MouseClick_Dialog_OutsideNoAction(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
 			action: func() tea.Msg { return nil }},
@@ -717,7 +718,7 @@ func TestApp_MouseClick_HelpOverlay_StillBlocked(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		showHelp:    true,
 		width:       80,
@@ -746,7 +747,7 @@ func TestApp_MouseWheel_Dialog_ListField(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		confirm: confirmSurface{modalSurface: modalSurface{dlg: dlg},
 			action: func() tea.Msg { return nil }},
@@ -776,7 +777,7 @@ func TestApp_MouseRelease_Ignored(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       80,
 		height:      24,

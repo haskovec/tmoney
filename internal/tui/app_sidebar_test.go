@@ -6,18 +6,26 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
+
+// testAccount creates an open USD account with the given name and type.
+// Package sidebar has its own copy for its tests.
+func testAccount(name string, accountType account.Type) *account.Account {
+	return account.NewAccount(name, accountType, "USD", types.ZeroMoney, types.Today())
+}
 
 func TestApp_HandleSidebarKeys_NewAccountShortcut(t *testing.T) {
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 	}
-	// Sidebar is focused by default in NewSidebar()
+	// Sidebar is focused by default in sidebar.New()
 
 	msg := tea.KeyPressMsg{Code: 'n', Text: "n"}
 	_, cmd := app.Update(msg)
@@ -34,7 +42,7 @@ func TestApp_HandleSidebarKeys_NewAccountNotWhenUnfocused(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 	}
 	app.sidebar.SetFocused(false)
@@ -53,7 +61,7 @@ func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -71,8 +79,8 @@ func TestApp_MouseClick_Sidebar_SingleClick_OnlySelects(t *testing.T) {
 	model, cmd := app.Update(msg)
 	updatedApp := model.(*App)
 
-	if updatedApp.sidebar.cursor != 1 {
-		t.Errorf("sidebar cursor = %d, want 1", updatedApp.sidebar.cursor)
+	if updatedApp.sidebar.Cursor() != 1 {
+		t.Errorf("sidebar cursor = %d, want 1", updatedApp.sidebar.Cursor())
 	}
 	// Single click selects only — no open command, view does not switch.
 	if cmd != nil {
@@ -88,7 +96,7 @@ func TestApp_MouseClick_Sidebar_DoubleClick_OpensAccount(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -139,7 +147,7 @@ func TestApp_MouseOpenAccountMsg_SwitchesView(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -167,7 +175,7 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       100,
 		height:      24,
@@ -190,7 +198,7 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 	if updatedApp.sidebar.ItemCount() != 3 {
 		t.Errorf("ItemCount = %d, want 3", updatedApp.sidebar.ItemCount())
 	}
-	if updatedApp.sidebar.cursor != 0 {
-		t.Errorf("cursor = %d, want 0 (group header)", updatedApp.sidebar.cursor)
+	if updatedApp.sidebar.Cursor() != 0 {
+		t.Errorf("cursor = %d, want 0 (group header)", updatedApp.sidebar.Cursor())
 	}
 }

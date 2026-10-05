@@ -14,6 +14,7 @@ import (
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -458,7 +459,7 @@ func TestApp_HandleRegisterKeys_NewKey(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -491,7 +492,7 @@ func TestApp_Update_TransactionDialogDataMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	data := &transactionDialogData{
@@ -524,7 +525,7 @@ func TestApp_HandleTransactionDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
@@ -554,7 +555,7 @@ func TestApp_HandleTransactionDialogKey_TabCycles(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
@@ -591,7 +592,7 @@ func TestApp_Update_TransactionDialogSavedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	// Set up sidebar with a selected account
 	app.sidebar.SetAccounts([]*account.Account{
@@ -613,7 +614,7 @@ func TestApp_Update_TransactionDialogSavedMsg_StoresStickyDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
@@ -634,7 +635,7 @@ func TestApp_Update_TransactionDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 		keys:                   defaultKeyMap(),
 		menubar:                widget.NewMenuBar(),
 		statusbar:              widget.NewStatusBar(),
-		sidebar:                NewSidebar(),
+		sidebar:                sidebar.New(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
 
@@ -662,7 +663,7 @@ func TestApp_Update_TransactionDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	data := &transactionDialogData{
@@ -688,7 +689,7 @@ func TestApp_TransactionDialogCancel_DoesNotUpdateStickyDate(t *testing.T) {
 		keys:                   defaultKeyMap(),
 		menubar:                widget.NewMenuBar(),
 		statusbar:              widget.NewStatusBar(),
-		sidebar:                NewSidebar(),
+		sidebar:                sidebar.New(),
 		txnDialogLastSavedDate: initial,
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
@@ -721,7 +722,7 @@ func TestApp_SubmitTransactionDialog_PassesSavedDateInMessage(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
@@ -768,7 +769,7 @@ func TestApp_SubmitThenSaved_UpdatesStickyDate_AcrossOpens(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	app.sidebar.SetAccounts([]*account.Account{
 		{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
@@ -818,7 +819,7 @@ func TestApp_CheckPayeeAutoFill(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
@@ -858,7 +859,7 @@ func TestApp_CheckPayeeAutoFill_NoMatch(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/01/2024")
@@ -892,7 +893,7 @@ func TestApp_SubmitTransactionDialog_InvalidDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
@@ -928,7 +929,7 @@ func TestApp_SubmitTransactionDialog_InvalidAmount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
@@ -964,7 +965,7 @@ func TestApp_SubmitTransactionDialog_MultipleErrors(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "13/45/2024")
@@ -1006,7 +1007,7 @@ func TestApp_SubmitTransactionDialog_ValidNonSplit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		txn: txnSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := dialog.NewDialog("New Transaction")
 			d.AddDateField("Date", "01/15/2024")
@@ -1117,7 +1118,7 @@ func TestApp_SubmitTransactionDialog_NilDialog(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, cmd := app.submitTransactionDialog()
@@ -1135,7 +1136,7 @@ func TestApp_HandleTransactionDialogKey_NilDialog(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, cmd := app.handleTransactionDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -1209,7 +1210,7 @@ func TestApp_RenderLayout_WithTransactionDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1255,7 +1256,7 @@ func newAppForTxnAddNew(t *testing.T, query string, categorySvc *category.Servic
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Category: categorySvc,
 		},
@@ -1877,7 +1878,7 @@ func TestApp_HandleRegisterKeys_EnterOpensEditFlow_ForPlainTransaction(t *testin
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -1924,7 +1925,7 @@ func TestApp_HandleRegisterKeys_EnterOnVoidTransaction_NoOp(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -1973,7 +1974,7 @@ func TestApp_HandleRegisterKeys_EnterOnReconciledTransaction_NoOp(t *testing.T) 
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register: registerViewState{data: &registerData{
 			account: &account.Account{
 				BaseModel: types.BaseModel{ID: accountID},
@@ -2038,7 +2039,7 @@ func TestApp_Update_TransactionDialogDataMsg_EditMode(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	data := &transactionDialogData{

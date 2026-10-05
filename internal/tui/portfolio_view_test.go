@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -873,14 +874,14 @@ func TestRenderPortfolioView_LotMode(t *testing.T) {
 }
 
 func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewInvestmentRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		investmentRegister: investmentRegisterViewState{
 			data: &investmentRegisterData{
 				account: &account.Account{
@@ -911,14 +912,14 @@ func TestPortfolioViewToggle_RegisterToPortfolio(t *testing.T) {
 
 func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 	acctID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{
@@ -947,8 +948,8 @@ func TestPortfolioViewToggle_PortfolioToRegister(t *testing.T) {
 func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 	secID := types.NewID()
 	acctID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:       120,
@@ -956,7 +957,7 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{
@@ -1005,8 +1006,8 @@ func TestPortfolioKeys_LotDrillDown(t *testing.T) {
 func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 	secID := types.NewID()
 	acctID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:       120,
@@ -1014,7 +1015,7 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{
@@ -1055,14 +1056,14 @@ func TestPortfolioKeys_LotDrillDown_NonLotTracking(t *testing.T) {
 
 func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 	secID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{
@@ -1093,14 +1094,14 @@ func TestPortfolioKeys_EscapeFromLots(t *testing.T) {
 
 func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 	acctID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{
@@ -1128,8 +1129,8 @@ func TestPortfolioKeys_EscapeFromHoldings(t *testing.T) {
 
 func TestPortfolioKeys_Navigation(t *testing.T) {
 	secID := types.NewID()
-	sidebar := NewSidebar()
-	sidebar.SetFocused(false)
+	sb := sidebar.New()
+	sb.SetFocused(false)
 
 	app := &App{
 		width:       120,
@@ -1137,7 +1138,7 @@ func TestPortfolioKeys_Navigation(t *testing.T) {
 		currentView: ViewPortfolio,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     sidebar,
+		sidebar:     sb,
 		portfolio: portfolioViewState{
 			data: &portfolioViewData{
 				account: &account.Account{

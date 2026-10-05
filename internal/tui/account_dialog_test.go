@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -397,7 +398,7 @@ func TestApp_Update_AccountDialogDataMsg_New(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := accountDialogDataMsg{
@@ -426,7 +427,7 @@ func TestApp_Update_AccountDialogDataMsg_Edit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	acct := account.NewAccount("Savings", account.TypeSavings, "EUR", types.ZeroMoney, types.Today())
@@ -460,7 +461,7 @@ func TestApp_HandleAccountDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
@@ -487,7 +488,7 @@ func TestApp_HandleAccountDialogKey_TabCycles(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			return d
@@ -516,7 +517,7 @@ func TestApp_SubmitAccountDialog_EmptyName(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Clear the name field
@@ -546,7 +547,7 @@ func TestApp_SubmitAccountDialog_EmptyCurrency(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
@@ -576,7 +577,7 @@ func TestApp_SubmitAccountDialog_InvalidOpeningBalance(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
@@ -606,7 +607,7 @@ func TestApp_SubmitAccountDialog_InvalidDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Account"
@@ -636,7 +637,7 @@ func TestApp_SubmitAccountDialog_InvalidCreditLimit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Card"
@@ -669,7 +670,7 @@ func TestApp_SubmitAccountDialog_InvalidInterestRate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "Test Loan"
@@ -700,7 +701,7 @@ func TestApp_SubmitAccountDialog_MultipleErrors(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = ""
@@ -764,7 +765,7 @@ func TestApp_SubmitAccountDialog_ValidNew(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
@@ -799,7 +800,7 @@ func TestApp_SubmitAccountDialog_ValidEdit(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildEditAccountDialog(existing)
 			d.Fields()[acctFieldName].Value = "New Name"
@@ -853,7 +854,7 @@ func TestApp_Update_AccountDialogSavedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := accountDialogSavedMsg{}
@@ -870,7 +871,7 @@ func TestApp_Update_AccountDeletedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := accountDeletedMsg{}
@@ -891,7 +892,7 @@ func TestApp_Update_AccountClosedMsg(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := accountClosedMsg{}
@@ -911,7 +912,7 @@ func TestApp_RenderLayout_WithAccountDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -933,7 +934,7 @@ func TestApp_HandleMenuAction_NewAccount(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	_, cmd := app.handleMenuAction(widget.MenuActionNewAccount, "")
@@ -949,7 +950,7 @@ func TestApp_HandleMenuAction_EditAccount_NoSelection(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	_, cmd := app.handleMenuAction(widget.MenuActionEditAccount, "")
@@ -967,7 +968,7 @@ func TestApp_HandleMenuAction_EditAccount_WithSelection(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.sidebar.SetAccounts([]*account.Account{
@@ -1186,7 +1187,7 @@ func TestApp_HandleAccountDialogKey_TypeChangeUpdatesVisibility(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			// Focus the Type field
@@ -1228,7 +1229,7 @@ func TestApp_SubmitAccountDialog_HiddenCreditLimitIgnored(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Checking"
@@ -1254,7 +1255,7 @@ func TestApp_SubmitAccountDialog_HiddenInterestRateIgnored(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		acct: acctSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewAccountDialog()
 			d.Fields()[acctFieldName].Value = "My Cash"

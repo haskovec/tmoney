@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -126,7 +127,7 @@ func newInvRegTransferEnv(t *testing.T, otherType account.Type) *invRegTransferE
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services: app.Services{
 			Investment: svc.Investment,
 			Transfer:   svc.Transfer,

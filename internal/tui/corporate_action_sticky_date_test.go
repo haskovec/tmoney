@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -20,7 +21,7 @@ func newStickyDateTestApp(seed types.Date) *App {
 		keys:                   defaultKeyMap(),
 		menubar:                widget.NewMenuBar(),
 		statusbar:              widget.NewStatusBar(),
-		sidebar:                NewSidebar(),
+		sidebar:                sidebar.New(),
 		txnDialogLastSavedDate: seed,
 	}
 }

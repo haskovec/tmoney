@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -220,7 +221,7 @@ func TestApp_HandleFileDialogKey_Cancel(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			return d
@@ -244,7 +245,7 @@ func TestApp_HandleFileDialogKey_NilDialog(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, cmd := app.handleFileDialogKey(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -262,7 +263,7 @@ func TestApp_SubmitFileDialog_NilDialog(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, cmd := app.submitFileDialog()
@@ -280,7 +281,7 @@ func TestApp_SubmitFileDialog_NewFile_EmptyPath(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = ""
@@ -308,7 +309,7 @@ func TestApp_SubmitFileDialog_NewFile_WhitespacePath(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = "   "
@@ -336,7 +337,7 @@ func TestApp_SubmitFileDialog_NewFile_ValidPath(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildNewFileDialog()
 			d.Fields()[fileFieldPath].Value = "/tmp/test-tmoney.tdb"
@@ -361,7 +362,7 @@ func TestApp_SubmitFileDialog_OpenFile_EmptyPath(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenFileDialog()
 			d.Fields()[fileFieldPath].Value = ""
@@ -389,7 +390,7 @@ func TestApp_SubmitFileDialog_OpenFile_ValidPath(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenFileDialog()
 			d.Fields()[fileFieldPath].Value = "/tmp/existing.tdb"
@@ -414,7 +415,7 @@ func TestApp_SubmitFileDialog_OpenRecent_NoRecentFiles(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenRecentDialog(nil)
 			return d
@@ -436,7 +437,7 @@ func TestApp_SubmitFileDialog_OpenRecent_ValidSelection(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		file: fileSurface{modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildOpenRecentDialog(files)
 			return d
@@ -463,7 +464,7 @@ func TestApp_RenderLayout_WithFileDialog(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -482,7 +483,7 @@ func TestApp_HandleMenuAction_NewFile(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.handleMenuAction(widget.MenuActionNewFile, "")
@@ -501,7 +502,7 @@ func TestApp_HandleMenuAction_OpenFile(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.handleMenuAction(widget.MenuActionOpenFile, "")
@@ -520,7 +521,7 @@ func TestApp_HandleMenuAction_OpenRecent(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.handleMenuAction(widget.MenuActionOpenRecent, "")
@@ -698,7 +699,7 @@ func TestApp_HandleMenuAction_OpenFile_AlwaysStartsInDefaultDir(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.handleMenuAction(widget.MenuActionOpenFile, "")
@@ -729,7 +730,7 @@ func TestApp_BrowseDialog_DoubleClickOnDotDot_NavigatesUp(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		width:       100,
 		height:      40,
 	}
@@ -800,7 +801,7 @@ func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		width:       100,
 		height:      40,
 	}
