@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/pricechart"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -114,7 +115,7 @@ func (s *priceViewState) render(styles widget.Styles, width, height int) string 
 // the four column widths (10 + 32 + 15 + 12 = 69) plus the three
 // inter-column separators (3) plus a small visual gutter (3) so the
 // chart border doesn't sit directly against the last column. Below
-// chartPanelMinContentWidth the table reverts to filling the full
+// pricechart.MinContentWidth the table reverts to filling the full
 // content area as before.
 const priceListNaturalTableWidth = 75
 
@@ -174,7 +175,7 @@ func (s *priceViewState) renderList(styles widget.Styles, width, height int) str
 // or joined horizontally with the chart panel for the highlighted ticker on
 // wide terminals.
 func (s *priceViewState) composeListBody(styles widget.Styles, contentWidth, height int) string {
-	if !shouldShowChartPanel(contentWidth) {
+	if !pricechart.ShouldShow(contentWidth) {
 		tableWidth := max(contentWidth-4, 1)
 		return s.listTable.Render(styles, tableWidth, height)
 	}
@@ -244,7 +245,7 @@ func (s *priceViewState) buildListChartPanel(width, height int) string {
 	if sec == nil {
 		return ""
 	}
-	return buildChartPanel(width, height, sec, prices)
+	return pricechart.Panel(width, height, sec, prices)
 }
 
 // resolveListSecurity locates the *security.Security for id from

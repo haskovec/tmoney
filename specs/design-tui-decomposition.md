@@ -449,6 +449,10 @@ in one struct with no `App` methods left, that surface has become a package
 candidate on its own merits. Re-open the question then, with that surface's
 numbers. Do not re-open it from the old review.
 
+**Re-opened (2026-10-05), after phase 4 of the view layer.** The numbers
+and the decision are in `specs/design-tui-subpackages.md`: the chart panel
+and the Sidebar become packages; the wizards, the views and `errMsg` stay.
+
 ---
 
 ## 4. Phases

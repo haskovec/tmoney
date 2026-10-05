@@ -372,6 +372,10 @@ alone. And `tea.Model` sub-models replace the root on return in bubbletea v2.
 None of this is re-derived here; it is stated so the next reader does not
 start from the review's prescription.
 
+**Re-opened (2026-10-05), after phase 4 of the view layer.** The numbers
+and the decision are in `specs/design-tui-subpackages.md`: the chart panel
+and the Sidebar become packages; the wizards, the views and `errMsg` stay.
+
 ---
 
 ## 4. Phases

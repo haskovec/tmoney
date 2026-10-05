@@ -129,18 +129,20 @@ The CRUD invalidations hook into the existing message handlers that already trig
 
 ## Code Organization
 
-A new file `internal/tui/price_chart.go` contains:
+The package `internal/tui/pricechart` renders the panel (see `specs/design-tui-subpackages.md`, SP-1). It contains:
 
-- The `historyCache` type and its `evict` / `clear` helpers.
+- The panel itself (`pricechart.Panel(width, height, sec, prices)`).
 - The `[]*price.Price → []time.Time, []float64` converter used to feed `timeserieslinechart`.
-- The threshold check (`shouldShowChartPanel(contentWidth int) bool`).
+- The threshold check (`pricechart.ShouldShow(contentWidth int) bool`).
 - The placeholder-text logic for edge cases.
 
-These are pure functions and are unit-tested directly without spinning up an `App`.
+These are pure functions and are unit-tested directly without spinning up an `App`. The package cannot import `tui`.
+
+The file `internal/tui/price_chart.go` keeps the `historyCache` type (with `Evict` and `Clear`) and the debounced fetch, because only the Prices view uses them.
 
 Wiring lives in `price_view.go`:
 
-- `prices.renderList` composes the list table and the chart panel side by side using `lipgloss.JoinHorizontal` when `shouldShowChartPanel` returns true.
+- `prices.renderList` composes the list table and the chart panel side by side using `lipgloss.JoinHorizontal` when `pricechart.ShouldShow` returns true.
 - A cursor-change hook (in `handlePriceListKeys` after `MoveUp`/`MoveDown`/`MoveToTop`/`MoveToBottom`/`PageUp`/`PageDown`) schedules the debounced fetch.
 - The four CRUD message handlers (`priceAddedMsg`, `priceUpdatedMsg`, `priceDeletedMsg`, `priceImportedMsg`) call `historyCache.evict(secID)` before reload.
 - The `u` refresh path calls `historyCache.clear()` after the bulk-refresh result arrives.

@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/pricechart"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -1210,9 +1211,9 @@ func TestRenderPriceView_ListMode_NarrowOmitsChartPanel(t *testing.T) {
 	a.height = 30
 	a.styles.Resize(100, 30)
 
-	if a.styles.ContentWidth() >= chartPanelMinContentWidth {
+	if a.styles.ContentWidth() >= pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=100 should yield ContentWidth < %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	d := types.MustParseDate("2026-04-15")
@@ -1253,9 +1254,9 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	d1 := types.MustParseDate("2026-04-15")
@@ -1287,7 +1288,7 @@ func TestRenderPriceView_ListMode_WideShowsChartPanel(t *testing.T) {
 	}
 }
 
-// PC-007: at content width >= chartPanelMinContentWidth, when the
+// PC-007: at content width >= pricechart.MinContentWidth, when the
 // highlighted security has zero prices on file, the chart panel renders
 // the "No price history" placeholder inside a still-titled box rather
 // than a chart. Today's load filters 0-price securities
@@ -1299,9 +1300,9 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	// Drive the 0-price branch by caching an empty history slice for
@@ -1330,7 +1331,7 @@ func TestRenderPriceView_ListMode_ZeroPriceSecurityShowsPlaceholder(t *testing.T
 	}
 }
 
-// PC-008: at content width >= chartPanelMinContentWidth, when the
+// PC-008: at content width >= pricechart.MinContentWidth, when the
 // highlighted security has exactly one price on file, the chart panel
 // renders the "Only one price on file — chart needs ≥ 2 points"
 // placeholder with the value and date inside a still-titled box rather
@@ -1342,9 +1343,9 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	d := types.MustParseDate("2026-04-22")
@@ -1382,22 +1383,22 @@ func TestRenderPriceView_ListMode_OnePriceSecurityShowsPlaceholder(t *testing.T)
 	}
 }
 
-// PC-009: at content width >= chartPanelMinContentWidth, when the
+// PC-009: at content width >= pricechart.MinContentWidth, when the
 // highlighted security has a flat-line price history (all values equal),
 // the chart panel renders a real chart — not a placeholder — without
-// panicking. The clampYRange helper pads the all-equal values by ±0.5%
-// so ntcharts has a non-zero Y spread; this test pins that wiring at the
-// render level. The unit-level guard lives in
-// TestBuildChartPanel_FlatLineDoesNotPanic; this is the end-to-end pin.
+// panicking. The pricechart package's clampYRange pads the all-equal
+// values by ±0.5% so ntcharts has a non-zero Y spread; this test pins that
+// wiring at the render level. The unit-level guard lives in pricechart's
+// TestPanel_FlatLineDoesNotPanic; this is the end-to-end pin.
 func TestRenderPriceView_ListMode_FlatLinePriceHistoryRendersChart(t *testing.T) {
 	a, _, secs := setupRefreshTUITest(t, "AAPL")
 	a.width = 200
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	flat, _ := types.NewMoney("100.00")
@@ -1460,7 +1461,7 @@ func TestRenderPriceView_ListMode_EmptyShowsHint(t *testing.T) {
 	}
 }
 
-// PC-010: at content width >= chartPanelMinContentWidth, when latestPrices
+// PC-010: at content width >= pricechart.MinContentWidth, when latestPrices
 // is empty, the chart panel must not render — the empty hint stands alone
 // just as it does at narrow widths. The chart-panel title decoration `─ X
 // — Y ─` is unique to the panel; its absence proves the early-return path
@@ -1471,9 +1472,9 @@ func TestRenderPriceView_ListMode_WideEmptyOmitsChartPanel(t *testing.T) {
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	a.prices.data = &priceViewData{
@@ -1505,9 +1506,9 @@ func TestRenderPriceView_ListMode_OutOfRangeCursorOmitsChartPanel(t *testing.T) 
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	d := types.MustParseDate("2026-04-22")
@@ -1841,9 +1842,9 @@ func TestRenderPriceView_ListMode_ChartUsesHistoryCache(t *testing.T) {
 	a.height = 30
 	a.styles.Resize(200, 30)
 
-	if a.styles.ContentWidth() < chartPanelMinContentWidth {
+	if a.styles.ContentWidth() < pricechart.MinContentWidth {
 		t.Fatalf("test premise: width=200 should yield ContentWidth >= %d, got %d",
-			chartPanelMinContentWidth, a.styles.ContentWidth())
+			pricechart.MinContentWidth, a.styles.ContentWidth())
 	}
 
 	d1 := types.MustParseDate("2026-04-15")
