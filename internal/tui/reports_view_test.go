@@ -911,8 +911,6 @@ func TestApp_RenderNetWorthReport_TitleRowFitsTheContentWidth(t *testing.T) {
 // (no ▸/▾ marker, no total-return line, no holdings), whatever the Dashboard
 // has loaded or expanded. Here the Dashboard has Brokerage A expanded, with the
 // holding AAA, and Brokerage B collapsed, with BBB; Reports shows neither.
-// (The design's §8 records the decision: until 2026-10-04, Reports showed the
-// Dashboard's expand state.)
 func TestReportsNetWorth_IsAPlainReport(t *testing.T) {
 	app, _ := dashboardMouseApp(t)
 	app.currentView = ViewReports
