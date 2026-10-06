@@ -67,8 +67,10 @@ func (a *App) handleSidebarKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleMouseSidebar handles mouse clicks in the sidebar area.
-// Single click on an account moves the cursor; a double click on the same
-// account opens the register/portfolio.
+// A single click moves the cursor; a double click on an account opens the
+// register/portfolio. A double click is two clicks in a row on the same row,
+// so a click on a group header goes to the tracker too, and Select opens
+// nothing on a header.
 func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	idx := a.sidebar.HitTest(contentY)
 	if idx < 0 {
@@ -78,12 +80,6 @@ func (a *App) handleMouseSidebar(_ tea.MouseMsg, contentY int) (tea.Model, tea.C
 	a.focusSidebar()
 	a.sidebar.SetCursor(idx)
 
-	// Group headers (and an empty list): just move the cursor.
-	if a.sidebar.CursorAccount() == nil {
-		return a, nil
-	}
-
-	// Account item - require a double click to drill in.
 	if a.sidebarClicks == nil {
 		a.sidebarClicks = widget.NewClickTracker(widget.DoubleClickThreshold)
 	}

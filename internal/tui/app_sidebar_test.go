@@ -201,3 +201,53 @@ func TestApp_MouseClick_Sidebar_GroupHeader_JustMovesCursor(t *testing.T) {
 		t.Errorf("cursor = %d, want 0 (group header)", updatedApp.sidebar.Cursor())
 	}
 }
+
+// sidebarClickApp returns an App whose sidebar lists Checking under its group
+// header, and a func that clicks a sidebar row 100ms after the last click.
+// Row 0 is the header and row 1 is Checking.
+func sidebarClickApp(t *testing.T) (*App, func(row int) tea.Cmd) {
+	t.Helper()
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     sidebar.New(),
+		statusbar:   widget.NewStatusBar(),
+		width:       100,
+		height:      24,
+	}
+	app.styles.Resize(100, 24)
+	app.sidebar.SetAccounts([]*account.Account{testAccount("Checking", account.TypeChecking)})
+
+	now := time.Unix(0, 0)
+	app.sidebarClicks = widget.NewClickTracker(400 * time.Millisecond)
+	app.sidebarClicks.SetNowFn(func() time.Time { return now })
+	click := func(row int) tea.Cmd {
+		now = now.Add(100 * time.Millisecond)
+		_, cmd := app.Update(tea.MouseClickMsg{X: 5, Y: row + 1, Button: tea.MouseLeft})
+		return cmd
+	}
+	return app, click
+}
+
+func TestApp_MouseClick_Sidebar_GroupHeader_DoubleClickOpensNothing(t *testing.T) {
+	app, click := sidebarClickApp(t)
+	click(0)
+	if cmd := click(0); cmd != nil {
+		t.Error("a double click on a group header should not return an open command")
+	}
+	if !app.sidebar.SelectedAccountID().IsNil() {
+		t.Error("a double click on a group header should not select an account")
+	}
+}
+
+// A double click is two clicks in a row on the same row. A click on a group
+// header between two clicks on an account breaks it.
+func TestApp_MouseClick_Sidebar_HeaderClickBreaksADoubleClick(t *testing.T) {
+	_, click := sidebarClickApp(t)
+	click(1)
+	click(0)
+	if cmd := click(1); cmd != nil {
+		t.Error("account, header, account should not open the account")
+	}
+}

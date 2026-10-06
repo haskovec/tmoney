@@ -231,6 +231,9 @@ Four planted mistakes:
 - **The mouse handler with no group-header check** failed nothing. The check
   repeats one in `Select`, which returns false on a group header, so a
   double-click on a header opens nothing either way. The two checks it
-  replaced were redundant in the same way before the move. It stays, because
-  a move does not change behaviour; what it still does is keep header clicks
-  out of the double-click tracker.
+  replaced were redundant in the same way before the move. The move kept it,
+  because a move does not change behaviour. All it still did was keep header
+  clicks out of the double-click tracker, so account, header, account opened
+  the account. A follow-up (2026-10-05) removed it: every click now goes to
+  the tracker, and two tests pin the header's double click and the broken
+  one.
