@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
@@ -37,7 +38,7 @@ func newReplaceEnv(t *testing.T, row func(svc *app.Services, brokerageID types.I
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		services:    *svc,
 		undoManager: undo.NewManager(),
 		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{

@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -85,7 +86,7 @@ func TestSwitchView_AllTablesNil(t *testing.T) {
 	consts := viewConstants(t)
 	for i, vc := range consts {
 		t.Run(vc.Name, func(t *testing.T) {
-			a := &App{sidebar: NewSidebar(), statusbar: widget.NewStatusBar(), styles: widget.NewStyles()}
+			a := &App{sidebar: sidebar.New(), statusbar: widget.NewStatusBar(), styles: widget.NewStyles()}
 			a.currentView = consts[(i+1)%len(consts)].Value
 			defer func() {
 				if r := recover(); r != nil {
@@ -107,7 +108,7 @@ func TestSwitchView_LeavingTheInvestmentRegisterClearsItsFilter(t *testing.T) {
 	locked := types.NewID()
 	filtered := func() *App {
 		a := &App{
-			sidebar:     NewSidebar(),
+			sidebar:     sidebar.New(),
 			statusbar:   widget.NewStatusBar(),
 			styles:      widget.NewStyles(),
 			currentView: ViewInvestmentRegister,

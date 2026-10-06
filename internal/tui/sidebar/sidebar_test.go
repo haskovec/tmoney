@@ -1,32 +1,23 @@
-package tui
+package sidebar
 
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// testAccount creates an account with the given name and type for testing.
+// testAccount creates an open USD account with the given name and type.
 func testAccount(name string, accountType account.Type) *account.Account {
-	return &account.Account{
-		BaseModel:      types.BaseModel{ID: types.NewID(), CreatedAt: types.NewTimestamp(time.Now()), UpdatedAt: types.NewTimestamp(time.Now())},
-		Name:           name,
-		Type:           accountType,
-		Currency:       "USD",
-		OpeningBalance: types.ZeroMoney,
-		OpeningDate:    types.Today(),
-		Active:         true,
-	}
+	return account.NewAccount(name, accountType, "USD", types.ZeroMoney, types.Today())
 }
 
-func TestNewSidebar(t *testing.T) {
-	s := NewSidebar()
+func TestNew(t *testing.T) {
+	s := New()
 	if s == nil {
-		t.Fatal("NewSidebar() returned nil")
+		t.Fatal("New() returned nil")
 	}
 	if !s.focused {
 		t.Error("sidebar should be focused by default")
@@ -43,7 +34,7 @@ func TestNewSidebar(t *testing.T) {
 }
 
 func TestSidebar_SetAccounts_EmptyList(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	s.SetAccounts(nil)
 
 	if len(s.items) != 0 {
@@ -52,7 +43,7 @@ func TestSidebar_SetAccounts_EmptyList(t *testing.T) {
 }
 
 func TestSidebar_SetAccounts_SingleGroup(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -81,7 +72,7 @@ func TestSidebar_SetAccounts_SingleGroup(t *testing.T) {
 }
 
 func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Visa", account.TypeCreditCard),
@@ -114,7 +105,7 @@ func TestSidebar_SetAccounts_MultipleGroups(t *testing.T) {
 }
 
 func TestSidebar_ClosedAccountsGroupedLast(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	checking := testAccount("Checking", account.TypeChecking)
 	closedSavings := testAccount("Old Savings", account.TypeSavings)
 	closedSavings.Close(types.Today())
@@ -151,7 +142,7 @@ func TestSidebar_ClosedAccountsGroupedLast(t *testing.T) {
 }
 
 func TestSidebar_NoClosedGroupWhenAllActive(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	s.SetAccounts([]*account.Account{testAccount("Checking", account.TypeChecking)})
 	for _, item := range s.items {
 		if item.kind == sidebarItemGroup && item.groupKey == closedAccountsGroupLabel {
@@ -161,7 +152,7 @@ func TestSidebar_NoClosedGroupWhenAllActive(t *testing.T) {
 }
 
 func TestSidebar_AllGroupsAlwaysExpanded(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -187,7 +178,7 @@ func TestSidebar_AllGroupsAlwaysExpanded(t *testing.T) {
 }
 
 func TestSidebar_MoveUpDown(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -233,7 +224,7 @@ func TestSidebar_MoveUpDown(t *testing.T) {
 }
 
 func TestSidebar_Select_Account(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts)
@@ -252,7 +243,7 @@ func TestSidebar_Select_Account(t *testing.T) {
 }
 
 func TestSidebar_Select_Group(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
@@ -271,7 +262,7 @@ func TestSidebar_Select_Group(t *testing.T) {
 }
 
 func TestSidebar_SelectedAccount(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts)
@@ -294,12 +285,12 @@ func TestSidebar_SelectedAccount(t *testing.T) {
 	}
 }
 
-func TestSidebar_CursorItem(t *testing.T) {
-	s := NewSidebar()
+func TestSidebar_cursorItem(t *testing.T) {
+	s := New()
 
 	// Empty sidebar
-	if s.CursorItem() != nil {
-		t.Error("CursorItem() should be nil for empty sidebar")
+	if s.cursorItem() != nil {
+		t.Error("cursorItem() should be nil for empty sidebar")
 	}
 
 	accounts := []*account.Account{
@@ -307,17 +298,39 @@ func TestSidebar_CursorItem(t *testing.T) {
 	}
 	s.SetAccounts(accounts)
 
-	item := s.CursorItem()
+	item := s.cursorItem()
 	if item == nil {
-		t.Fatal("CursorItem() should not be nil")
+		t.Fatal("cursorItem() should not be nil")
 	}
 	if item.kind != sidebarItemGroup {
-		t.Error("first CursorItem should be a group")
+		t.Error("first cursorItem should be a group")
+	}
+}
+
+func TestSidebar_CursorAccount(t *testing.T) {
+	s := New()
+	if s.CursorAccount() != nil {
+		t.Error("CursorAccount() on an empty sidebar should be nil")
+	}
+
+	checking := testAccount("Checking", account.TypeChecking)
+	s.SetAccounts([]*account.Account{checking})
+
+	// Index 0 is the group header and index 1 is the account.
+	if got := s.CursorAccount(); got != nil {
+		t.Errorf("CursorAccount() on the group header = %q, want nil", got.Name)
+	}
+	s.SetCursor(1)
+	if got := s.CursorAccount(); got != checking {
+		t.Error("CursorAccount() on the account row should be that account")
+	}
+	if got := s.Cursor(); got != 1 {
+		t.Errorf("Cursor() = %d, want 1", got)
 	}
 }
 
 func TestSidebar_Focus(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 
 	if !s.IsFocused() {
 		t.Error("sidebar should be focused by default")
@@ -335,7 +348,7 @@ func TestSidebar_Focus(t *testing.T) {
 }
 
 func TestSidebar_Render_Empty(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
@@ -346,7 +359,7 @@ func TestSidebar_Render_Empty(t *testing.T) {
 }
 
 func TestSidebar_Render_EmptyShowsMessage(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	styles := widget.NewStyles()
 	styles.Resize(80, 24)
 
@@ -360,7 +373,7 @@ func TestSidebar_Render_EmptyShowsMessage(t *testing.T) {
 }
 
 func TestSidebar_Render_ZeroDimensions(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	styles := widget.NewStyles()
 
 	if s.Render(styles, 0, 10) != "" {
@@ -372,7 +385,7 @@ func TestSidebar_Render_ZeroDimensions(t *testing.T) {
 }
 
 func TestSidebar_Render_WithAccounts(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Visa", account.TypeCreditCard),
@@ -396,7 +409,7 @@ func TestSidebar_Render_WithAccounts(t *testing.T) {
 // alt-screen. The fix in Render is to build content at the inner width
 // (width - 1) so the rightmost cell stays inside the inner area.
 func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Contoso Checking", account.TypeChecking),
 		testAccount("Contoso Savings", account.TypeSavings),
@@ -431,7 +444,7 @@ func TestSidebar_Render_RowCountStableWhenAccountSelected(t *testing.T) {
 }
 
 func TestSidebar_SetCursor(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -462,7 +475,7 @@ func TestSidebar_SetCursor(t *testing.T) {
 }
 
 func TestSidebar_SetCursor_Empty(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 
 	s.SetCursor(5)
 	if s.cursor != 0 {
@@ -471,7 +484,7 @@ func TestSidebar_SetCursor_Empty(t *testing.T) {
 }
 
 func TestSidebar_ItemCount(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 
 	if s.ItemCount() != 0 {
 		t.Errorf("ItemCount on empty sidebar = %d, want 0", s.ItemCount())
@@ -490,7 +503,7 @@ func TestSidebar_ItemCount(t *testing.T) {
 }
 
 func TestSidebar_HitTest(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -521,7 +534,7 @@ func TestSidebar_HitTest(t *testing.T) {
 }
 
 func TestSidebar_HitTest_Empty(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 
 	if got := s.HitTest(0); got != -1 {
 		t.Errorf("HitTest(0) on empty sidebar = %d, want -1", got)
@@ -529,7 +542,7 @@ func TestSidebar_HitTest_Empty(t *testing.T) {
 }
 
 func TestSidebar_HitTest_WithScroll(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	// Create enough accounts to require scrolling
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
@@ -555,7 +568,7 @@ func TestSidebar_HitTest_WithScroll(t *testing.T) {
 }
 
 func TestSidebar_ScrollOnMoveDown(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 		testAccount("Savings", account.TypeSavings),
@@ -587,7 +600,7 @@ func TestSidebar_ScrollOnMoveDown(t *testing.T) {
 }
 
 func TestSidebar_ScrollClamp(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("Checking", account.TypeChecking),
 	}
@@ -604,7 +617,7 @@ func TestSidebar_ScrollClamp(t *testing.T) {
 }
 
 func TestSidebar_ScrollFollowsCursor(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	accounts := []*account.Account{
 		testAccount("A", account.TypeChecking),
 		testAccount("B", account.TypeSavings),
@@ -634,7 +647,7 @@ func TestSidebar_ScrollFollowsCursor(t *testing.T) {
 }
 
 func TestSidebar_SelectPreservesAcrossReload(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	checking := testAccount("Checking", account.TypeChecking)
 	accounts := []*account.Account{checking}
 	s.SetAccounts(accounts)
@@ -721,7 +734,7 @@ func TestBuildGroups_AllTypes(t *testing.T) {
 // A reload that moves an account to another group (close or reopen) must keep
 // the cursor on that account, not on whatever row now sits at the old index.
 func TestSidebar_SetAccountsKeepsCursorOnAccount(t *testing.T) {
-	s := NewSidebar()
+	s := New()
 	checking := testAccount("Checking", account.TypeChecking)
 	brokerage := testAccount("Northwind Brokerage", account.TypeInvestment)
 	brokerage.Close(types.Today())
@@ -736,7 +749,7 @@ func TestSidebar_SetAccountsKeepsCursorOnAccount(t *testing.T) {
 	brokerage.Reopen()
 	s.SetAccounts(accts)
 
-	if item := s.CursorItem(); item == nil || item.accountID != brokerage.ID {
+	if item := s.cursorItem(); item == nil || item.accountID != brokerage.ID {
 		t.Errorf("cursor item = %+v, want the reopened brokerage", item)
 	}
 }

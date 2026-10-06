@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -75,7 +76,7 @@ func TestApp_RenderLayout(t *testing.T) {
 		height:      24,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -161,7 +162,7 @@ func TestApp_View_ComponentWidths(t *testing.T) {
 				currentView: ViewDashboard,
 				keys:        defaultKeyMap(),
 				menubar:     widget.NewMenuBar(),
-				sidebar:     NewSidebar(),
+				sidebar:     sidebar.New(),
 				statusbar:   widget.NewStatusBar(),
 				width:       termWidth,
 				height:      24,
@@ -230,7 +231,7 @@ func TestApp_View_RegisterLoadedWidths(t *testing.T) {
 				currentView: ViewRegister,
 				keys:        defaultKeyMap(),
 				menubar:     widget.NewMenuBar(),
-				sidebar:     NewSidebar(),
+				sidebar:     sidebar.New(),
 				statusbar:   widget.NewStatusBar(),
 				width:       termWidth,
 				height:      24,
@@ -293,7 +294,7 @@ func TestApp_View_LineCount_AfterMouseAccountClick(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       120,
 		height:      24,
@@ -388,7 +389,7 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		width:       termWidth,
 		height:      termHeight,

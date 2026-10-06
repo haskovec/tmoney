@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -369,7 +370,7 @@ func TestApp_HandleReportsKeys_SwitchReportTypes(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			year:  2024,
@@ -399,7 +400,7 @@ func TestApp_HandleReportsKeys_PeriodNavigation(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
@@ -428,7 +429,7 @@ func TestApp_HandleReportsKeys_PeriodNav_NetWorthIgnored(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeNetWorth,
 			year:  2024,
@@ -450,7 +451,7 @@ func TestApp_HandleReportsKeys_YearlyToggle(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
@@ -472,7 +473,7 @@ func TestApp_HandleReportsKeys_MonthlyToggle(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
@@ -494,7 +495,7 @@ func TestApp_HandleReportsKeys_NilReports(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports:     reportsViewState{data: nil},
 	}
 
@@ -720,7 +721,7 @@ func TestApp_HandleReportsKeys_TransferToggle(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		reports: reportsViewState{data: &reportsViewData{
 			rtype: reportTypeSpending,
 			year:  2024,
@@ -813,7 +814,7 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			keys:        defaultKeyMap(),
 			menubar:     widget.NewMenuBar(),
 			statusbar:   widget.NewStatusBar(),
-			sidebar:     NewSidebar(),
+			sidebar:     sidebar.New(),
 			reports: reportsViewState{data: &reportsViewData{
 				rtype:            reportTypeSpending,
 				year:             2024,

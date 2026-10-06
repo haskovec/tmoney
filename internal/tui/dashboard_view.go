@@ -206,11 +206,10 @@ func (a *App) handleDashboardKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // dashboardLoadedMsg handler in app_update.go), so an account the user
 // collapses stays collapsed across dashboard reloads within the session.
 func (a *App) setDashboardAccountExpanded(expanded bool) {
-	item := a.sidebar.CursorItem()
-	if item == nil || item.kind != sidebarItemAccount || item.account == nil {
+	acct := a.sidebar.CursorAccount()
+	if acct == nil {
 		return
 	}
-	acct := item.account
 	if !acct.Type.IsInvestmentType() {
 		return
 	}

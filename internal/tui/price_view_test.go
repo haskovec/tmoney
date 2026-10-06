@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/pricechart"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -887,7 +888,7 @@ func TestPriceViewSwitchView(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	app.switchView(ViewPrices)
@@ -905,7 +906,7 @@ func TestPriceViewNavigateKeyBinding(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 	}
 
@@ -1092,7 +1093,7 @@ func TestPriceView_FullScreenRender(t *testing.T) {
 		height:      30,
 		ready:       true,
 		styles:      styles,
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		keys:        defaultKeyMap(),
@@ -1119,7 +1120,7 @@ func TestSecurityView_PNavigatesToPrices(t *testing.T) {
 		height:      24,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		securities: securityViewState{data: &securityViewData{
 			securities: []*security.Security{sec},
 			showHidden: true,
@@ -1662,7 +1663,7 @@ func TestApp_MousePricesList_DoubleClickDrillsIn(t *testing.T) {
 		keys:        defaultKeyMap(),
 		styles:      widget.NewStyles(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
@@ -1726,7 +1727,7 @@ func TestApp_MousePricesList_SingleClickSchedulesChartFetch(t *testing.T) {
 		keys:        defaultKeyMap(),
 		styles:      widget.NewStyles(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,
@@ -1790,7 +1791,7 @@ func TestApp_MouseWheel_PricesList_SchedulesChartFetch(t *testing.T) {
 		keys:        defaultKeyMap(),
 		styles:      widget.NewStyles(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		statusbar:   widget.NewStatusBar(),
 		prices: priceViewState{data: &priceViewData{
 			mode:       pricesViewList,

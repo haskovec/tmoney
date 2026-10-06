@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -252,7 +253,7 @@ func TestApp_HelpOverlayToggle(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
@@ -295,7 +296,7 @@ func TestApp_HelpOverlayBlocksOtherKeys(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
@@ -329,7 +330,7 @@ func TestApp_HelpOverlayRendered(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
@@ -358,7 +359,7 @@ func TestApp_MenuActionKeyboardShortcuts(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
@@ -416,7 +417,7 @@ func TestApp_HelpOverlayClickClosesOnX(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,
@@ -451,7 +452,7 @@ func TestApp_HelpOverlayClickElsewhereDoesNotClose(t *testing.T) {
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
 		menubar:     widget.NewMenuBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		width:       120,
 		height:      40,

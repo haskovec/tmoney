@@ -9,6 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/dbtest"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -46,7 +47,7 @@ func TestApp_Update_TransferDialogDataMsg_BuildsCategoryCombo(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 	data := &transferDialogData{
 		accounts: []*account.Account{
@@ -97,7 +98,7 @@ func TestApp_SubmitTransferDialog_InvToInvRejectsCategory(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: buildTransferDialog(accountOptions, catOptions, 0)},
 			accountIDs: []types.ID{fromID, toID},
 			categoryIDs: []types.ID{
@@ -145,7 +146,7 @@ func TestApp_SubmitTransferDialog_InvToInvAllowsNoCategory(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{modalSurface: modalSurface{dlg: buildTransferDialog(accountOptions, catOptions, 0)},
 			accountIDs:  []types.ID{fromID, toID},
 			categoryIDs: []types.ID{types.NilID, types.NewID()},
@@ -271,7 +272,7 @@ func newAppForTransferAddNew(t *testing.T, query string) *App {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		transfer: transferSurface{accountIDs: []types.ID{fromID, toID},
 			categoryIDs: ids,
 			data: &transferDialogData{

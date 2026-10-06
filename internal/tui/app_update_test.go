@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -90,7 +91,7 @@ func TestApp_Update_DashboardKey_ReloadsData(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	msg := tea.KeyPressMsg{Code: '1', Text: "1"}
@@ -139,7 +140,7 @@ func TestApp_Update_EscapeKey_RefreshesDestinationView(t *testing.T) {
 		keys:         defaultKeyMap(),
 		menubar:      widget.NewMenuBar(),
 		statusbar:    widget.NewStatusBar(),
-		sidebar:      NewSidebar(),
+		sidebar:      sidebar.New(),
 	}
 
 	msg := tea.KeyPressMsg{Code: tea.KeyEsc}

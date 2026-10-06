@@ -11,6 +11,7 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -76,7 +77,7 @@ type App struct {
 	styles widget.Styles
 
 	// Components
-	sidebar   *Sidebar
+	sidebar   *sidebar.Sidebar
 	menubar   *widget.MenuBar
 	statusbar *widget.StatusBar
 
@@ -297,7 +298,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		cfg:         cfg,
 		currentView: ViewDashboard,
 		styles:      widget.NewStyles(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
 		undoManager: undo.NewManager(),

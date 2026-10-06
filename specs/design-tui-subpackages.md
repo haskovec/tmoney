@@ -1,7 +1,7 @@
 # Design sketch: TUI sub-packages — the chart and the Sidebar, and why not the rest
 
 **Date:** 2026-10-05
-**Status:** SP-1 (the chart) BUILT; SP-2 (the Sidebar) planned.
+**Status:** BUILT. SP-1 (the chart) and SP-2 (the Sidebar) are built; the rest stays in `package tui` (§1.2).
 
 **Re-opens:** the "Why not packages" sections of
 `specs/design-tui-decomposition.md` (§3) and `specs/design-tui-view-layer.md`
@@ -171,28 +171,66 @@ Two planted mistakes:
 (`clampYRange`, `composeChartBox` and the rest) before the move. Now the
 compiler says so, and it will refuse the first call.
 
-### SP-2 — the Sidebar into `internal/tui/sidebar` (planned)
+### SP-2 — the Sidebar into `internal/tui/sidebar` (BUILT, 2026-10-05)
 
-- [ ] Move `sidebar.go` to `internal/tui/sidebar/sidebar.go`. Rename
+- [x] Move `sidebar.go` to `internal/tui/sidebar/sidebar.go`. Rename
   `NewSidebar` → `New`. Add `CursorAccount()` and `Cursor()`, and delete
   `CursorItem()`. `CursorAccount()` returns the account under the cursor, or
   nil on a group header or an empty list. Account items always hold their
   account, because the Sidebar builds them from the account list, so nil
   covers both of today's checks.
-- [ ] Move `sidebar_test.go` (32 tests, none of them uses `App`) into the
+- [x] Move `sidebar_test.go` (32 tests, none of them uses `App`) into the
   package. Its 30 `NewSidebar()` calls become `New()`.
-- [ ] In `tui`, production: `app.go` (the field's type and its constructor),
+- [x] In `tui`, production: `app.go` (the field's type and its constructor),
   `app_sidebar.go` (the mouse handler's group-header check) and
   `dashboard_view.go` (the expand toggle's account check). No other
   production file may change (the stop rule).
-- [ ] In `tui`, tests: the 271 `NewSidebar()` calls in 40 files become
+- [x] In `tui`, tests: the 271 `NewSidebar()` calls in 40 files become
   `sidebar.New()`; the 21 locals named `sidebar` become `sb`; the 8 reads of
   the cursor use `Cursor()` and the 4 writes use the existing `SetCursor`;
   the one `CursorItem().accountID` becomes `CursorAccount().ID`; and
   `testAccount` (12 calls in 3 files) gets its `tui` copy in
   `app_sidebar_test.go`.
 
-**What the boundary will enforce.** The cursor, the item list, the scroll
-offset and the grouping become the Sidebar's own. Today the tests set the
-cursor field directly in four places, and two production sites read the
-item's kind; after SP-2, the only way in is the Sidebar's methods.
+**What the boundary enforces.** The cursor, the item list, the scroll offset
+and the grouping are the Sidebar's own. Before SP-2, the tests set the cursor
+field directly in four places, and two production sites read the item's kind.
+Now the only way in is the Sidebar's methods.
+
+**As built.** `CursorItem` became the unexported `cursorItem`, because
+`Select` and the rebuild still use it inside the package. The three
+production files changed by 7 lines added and 12 removed; no other
+production file changed, and no export beyond `New`, `CursorAccount` and
+`Cursor` was needed, so the stop rule did not fire. A type-checked rename
+changed the 21 locals (68 identifiers) and left the `sidebar:` keys of the
+`App` literals alone. The helper `testAccount` now calls
+`account.NewAccount`, which sets the same fields.
+
+One count was short. The plan named one `CursorItem()` use in the tests;
+there were two more, in `TestApp_Dashboard_MouseClickBeforeRenderIsNoOp`,
+which compared the item pointer before and after a click. It now compares
+`Cursor()`. That is the test's intent (the click must not move the cursor),
+and `Cursor` was already planned, so this did not change the API.
+
+**Verification.** The moved code and tests diff clean against main after the
+renames, apart from the planned additions: the package comment, the two
+accessors, and one new test, `TestSidebar_CursorAccount`. The 32 tests that
+left `tui` are the 32 in the new package, under the same names except two
+(`TestNewSidebar` → `TestNew`, `TestSidebar_CursorItem` →
+`TestSidebar_cursorItem`). In `tui`, six assertions changed, and only their
+path: four reads of the cursor and two reads of the item under it.
+Four planted mistakes:
+
+- **`CursorAccount` always nil** failed five Dashboard expand tests, the
+  sidebar double-click test, and `TestSidebar_CursorAccount`: both production
+  call sites are under test.
+- **`Cursor` always 0** failed two mouse tests in `tui` and
+  `TestSidebar_CursorAccount`.
+- **The expand toggle reading `SelectedAccount`** (the committed account, not
+  the one under the cursor) failed four Dashboard tests.
+- **The mouse handler with no group-header check** failed nothing. The check
+  repeats one in `Select`, which returns false on a group header, so a
+  double-click on a header opens nothing either way. The two checks it
+  replaced were redundant in the same way before the move. It stays, because
+  a move does not change behaviour; what it still does is keep header clicks
+  out of the double-click tracker.

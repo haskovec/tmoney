@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -1014,7 +1015,7 @@ func TestApp_Update_BuyDialogDataMsg_SeedsFromStickyDate(t *testing.T) {
 		keys:                   defaultKeyMap(),
 		menubar:                widget.NewMenuBar(),
 		statusbar:              widget.NewStatusBar(),
-		sidebar:                NewSidebar(),
+		sidebar:                sidebar.New(),
 		txnDialogLastSavedDate: types.NewDate(2024, time.January, 15),
 	}
 
@@ -1035,7 +1036,7 @@ func TestApp_Update_BuyDialogDataMsg_DefaultsToTodayWhenNoStickyDate(t *testing.
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	model, _ := app.Update(buyDialogDataMsg{data: &buyDialogData{}})
@@ -1053,7 +1054,7 @@ func TestApp_Update_BuyDialogSavedMsg_StoresStickyDate(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 	}
 
 	saved := types.NewDate(2024, time.March, 20)
@@ -1079,7 +1080,7 @@ func TestApp_Update_BuyDialogSavedMsg_InvalidatesChartCache(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		prices:      priceViewState{data: &priceViewData{historyCache: cache}},
 	}
 

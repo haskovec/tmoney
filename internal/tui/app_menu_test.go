@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
+	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -195,7 +196,7 @@ func TestApp_SwitchView_Register_SetsFocus(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
@@ -217,7 +218,7 @@ func TestApp_SwitchView_Dashboard_SetsFocus(t *testing.T) {
 		currentView: ViewRegister,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
@@ -239,7 +240,7 @@ func TestApp_SwitchView_Scheduled_SetsFocus(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		scheduled:   scheduledViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
@@ -261,7 +262,7 @@ func TestApp_SwitchView_Reports_SetsFocus(t *testing.T) {
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		register:    registerViewState{table: widget.NewTable([]widget.Column{{Header: "Test", Width: 10}})},
 	}
 
@@ -360,7 +361,7 @@ func TestTransactionsMenu_NewPaycheckSchedule_Item(t *testing.T) {
 		keys:        defaultKeyMap(),
 		menubar:     widget.NewMenuBar(),
 		statusbar:   widget.NewStatusBar(),
-		sidebar:     NewSidebar(),
+		sidebar:     sidebar.New(),
 		styles:      widget.NewStyles(),
 		services: app.Services{
 			Account:     accountSvc,
