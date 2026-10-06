@@ -9,8 +9,7 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// testAccount creates an open USD account with the given name and type. Package
-// tui has its own copy for its tests.
+// testAccount creates an open USD account with the given name and type.
 func testAccount(name string, accountType account.Type) *account.Account {
 	return account.NewAccount(name, accountType, "USD", types.ZeroMoney, types.Today())
 }
@@ -308,8 +307,6 @@ func TestSidebar_cursorItem(t *testing.T) {
 	}
 }
 
-// CursorAccount is how package tui reads the row under the cursor: an account,
-// or nil on a group header or an empty list. Cursor is the index tests use.
 func TestSidebar_CursorAccount(t *testing.T) {
 	s := New()
 	if s.CursorAccount() != nil {

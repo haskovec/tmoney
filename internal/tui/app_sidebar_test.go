@@ -12,7 +12,6 @@ import (
 )
 
 // testAccount creates an open USD account with the given name and type.
-// Package sidebar has its own copy for its tests.
 func testAccount(name string, accountType account.Type) *account.Account {
 	return account.NewAccount(name, accountType, "USD", types.ZeroMoney, types.Today())
 }
