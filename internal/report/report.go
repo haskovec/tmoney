@@ -62,3 +62,62 @@ type CategorySpending struct {
 	Percentage    float64
 	Subcategories []CategorySpending
 }
+
+// Holdings is the holdings report: what the active investment accounts hold
+// today, added up across the accounts. There is one section per currency;
+// money in different currencies is never added.
+type Holdings struct {
+	AsOfDate types.Date
+	Sections []HoldingsSection // sorted by currency code
+	// Failed lists the accounts that could not be valued. Their positions
+	// and cash are in no row, and their currency's section is not Available.
+	Failed []AccountFailure
+}
+
+// HoldingsSection is the holdings of one currency.
+type HoldingsSection struct {
+	Currency  string
+	Rows      []HoldingRow // largest Value first; the Cash row sorts with the others
+	Value     types.Money  // the sum of the rows' Value
+	CostBasis types.Money  // the sum of the rows' CostBasis
+	Gain      types.Money  // the sum of the priced rows' Gain
+	// Available is false when an account in this currency could not be
+	// valued. Value then leaves that account out and must not be shown as
+	// the total. Each row's Percent is of the accounts that were valued.
+	Available bool
+	// Estimated is true when a row has no price and is valued at cost.
+	Estimated bool
+}
+
+// HoldingRow is one security across all the accounts, or the Cash row.
+type HoldingRow struct {
+	SecurityID types.ID // NilID on the Cash row
+	Cash       bool
+	Label      string         // the ticker, or the name when there is no ticker; "Cash"
+	Name       string         // "Uninvested cash" on the Cash row
+	Shares     types.Quantity // zero on the Cash row
+	Price      types.Money    // zero on the Cash row and when Estimated
+	Value      types.Money
+	CostBasis  types.Money      // the cash itself on the Cash row
+	Gain       types.Money      // Value - CostBasis; zero on the Cash row and when Estimated
+	Percent    float64          // of the section's Value
+	Estimated  bool             // no price: Value is the cost basis
+	Accounts   []HoldingAccount // largest Value first
+}
+
+// HoldingAccount is one account's part of a HoldingRow.
+type HoldingAccount struct {
+	AccountID types.ID
+	Name      string
+	Shares    types.Quantity // zero on the Cash row
+	Value     types.Money
+	Percent   float64 // of the row's Value
+}
+
+// AccountFailure is an account that a report could not value.
+type AccountFailure struct {
+	AccountID types.ID
+	Name      string
+	Currency  string
+	Err       error
+}
