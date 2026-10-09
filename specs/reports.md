@@ -2,7 +2,7 @@
 
 ## Overview
 
-Reports provide insights into financial data through summaries, charts, and analysis. Version 1 includes two core reports: Net Worth and Spending by Category.
+Reports provide insights into financial data through summaries, charts, and analysis. There are three reports: Net Worth, Spending by Category, and Holdings.
 
 ## Net Worth Report
 
@@ -305,6 +305,14 @@ In the TUI, selecting a category shows:
 2. Subcategory breakdown (if parent)
 3. Trend over time
 
+## Holdings Report
+
+Shows every security held in the active investment accounts, added up across
+the accounts, with its percentage of the total and a bar. One Cash row holds
+the uninvested cash, so the total is the investment value in net worth. Enter
+on a row shows how it splits across the accounts. The full design is in
+[`design-holdings-report.md`](design-holdings-report.md).
+
 ## Report Data Models
 
 ### NetWorthReport
@@ -355,6 +363,10 @@ type CategorySpending struct {
 # Net worth report
 tmoney --report net-worth
 tmoney --report net-worth --as-of 2024-01-01
+
+# Holdings report, and one security's split across the accounts
+tmoney report holdings
+tmoney report holdings --ticker ACME
 
 # Spending report
 tmoney --report spending --month 2024-01

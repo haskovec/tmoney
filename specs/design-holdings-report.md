@@ -3,7 +3,8 @@
 **Date:** 2026-10-09
 **Status:** APPROVED on 2026-10-09, with the choices in §3.
 
-Every name, ticker and amount in this document is fictional.
+Every name, ticker and amount in this document is fictional. Money shows as
+`types.Money.Format` writes it, with no thousands separators.
 
 ## 1. Purpose
 
@@ -34,7 +35,7 @@ These were settled with the owner on 2026-10-09.
 | D4 | Rows | All rows. No top-N limit. The table scrolls. The column header and the TOTAL line stay on the screen. |
 | D5 | Columns | Security, Name, Shares, Price, Value, % Total, Cost Basis, Gain, bar. There is no Accounts column. |
 | D6 | Narrow screen | Remove Shares and Price first, then Cost Basis and Gain, then Name. Security, Value, % Total and the bar always stay. Name is at least 16 cells. The bar is at least 10 cells. |
-| D7 | Gain | Unrealized gain in money only: Value − Cost Basis. Positive and negative colors as in the Portfolio view. No gain percentage. |
+| D7 | Gain | Unrealized gain in money only: Value − Cost Basis. No gain percentage. As in the Portfolio view, the cells in the table are plain text, and the TOTAL gain uses the positive and negative colors. |
 | D8 | Enter | Enter (or a double click) on a row shows how the row splits across accounts. On the Cash row it shows the cash of each account. Esc goes back. |
 | D9 | Bar | The largest row fills the full bar width. Partial cells use 1/8 blocks. The color is neutral, never red. |
 | D10 | CLI | `tmoney report holdings` prints all columns. A security selector prints the split for one security (§6). The TUI and the CLI use one report struct. |
@@ -257,15 +258,15 @@ HOLDINGS REPORT
 ===============
 As of: January 15, 2024
 
-Security                Name                        Shares    Price    Value         % Total  Cost Basis   Gain
-ACME                    Acme Total Market Index     412.5     $245.10  $101,103.75   40.0%    $78,400.00   $22,703.75  ████████████████████
-Cedar 2045 Target Fund  Cedar 2045 Target Fund      1850.221  $31.47   $58,226.45    23.0%    $49,900.00   $8,326.45   ███████████▌
-GLBX                    Globex International Index  690       $58.32   $40,240.80    15.9%    $38,100.00   $2,140.80   ███████▉
-UMBR                    Umbrella Total Bond         410       $72.15   $29,581.50    11.7%    $31,200.00   -$1,618.50  █████▊
-Cash                    Uninvested cash                                $12,345.67    4.9%     $12,345.67               ██▍
-INIT                    Initech Corp                60        $151.20  $9,072.00     3.6%     $5,400.00    $3,672.00   █▊
-~STRK                   Stark Industries            25        N/A      $2,500.00     1.0%     $2,500.00    N/A         ▍
-TOTAL (USD)                                                            ~$253,070.17  100.0%   $217,845.67  $35,224.50
+Security                Name                        Shares    Price    Value        % Total  Cost Basis  Gain
+ACME                    Acme Total Market Index     412.5     $245.10  $101103.75   40.0%    $78400.00   $22703.75  ████████████████████
+Cedar 2045 Target Fund  Cedar 2045 Target Fund      1850.221  $31.47   $58226.45    23.0%    $49900.00   $8326.45   ███████████▌
+GLBX                    Globex International Index  690       $58.32   $40240.80    15.9%    $38100.00   $2140.80   ███████▉
+UMBR                    Umbrella Total Bond         410       $72.15   $29581.50    11.7%    $31200.00   -$1618.50  █████▊
+Cash                    Uninvested cash                                $12345.67    4.9%     $12345.67              ██▍
+INIT                    Initech Corp                60        $151.20  $9072.00     3.6%     $5400.00    $3672.00   █▊
+~STRK                   Stark Industries            25        N/A      $2500.00     1.0%     $2500.00    N/A        ▍
+TOTAL (USD)                                                            ~$253070.17  100.0%   $217845.67  $35224.50
 
 ~ No price on file: the value is the cost basis.
 ```
@@ -287,13 +288,13 @@ HOLDING: ACME (Acme Total Market Index)
 =======================================
 As of: January 15, 2024
 
-Account                 Shares  Value        % of Holding
-Maple Invest Brokerage  250     $61,275.00   60.6%
-Maple Invest Roth IRA   100     $24,510.00   24.2%
-Cedar HSA Investment    62.5    $15,318.75   15.2%
-Total                   412.5   $101,103.75  100.0%
+Account                 Shares  Value       % of Holding
+Maple Invest Brokerage  250     $61275.00   60.6%
+Maple Invest Roth IRA   100     $24510.00   24.2%
+Cedar HSA Investment    62.5    $15318.75   15.2%
+Total                   412.5   $101103.75  100.0%
 
-ACME is 40.0% of all holdings (~$253,070.17 USD).
+ACME is 40.0% of all holdings (~$253070.17).
 ```
 
 - The heading uses `cmdutil.SecurityDisplay`.
@@ -326,8 +327,10 @@ ACME is 40.0% of all holdings (~$253,070.17 USD).
   clicks then work through the code that is already there.
 - `render` needs the height to size the table. The view entry passes
   `a.height` with the styles.
-- `tableContentRowOffset` gets a `ViewReports` case for the rows above the
-  holdings table header and above the split table header.
+- The title and the separator are the only lines above the holdings table
+  and above the split table. That is the base offset in
+  `tableContentRowOffset`, so the mouse needs no new case there. A test pins
+  a click on the first row.
 
 ### 7.2 Layout
 
@@ -361,45 +364,51 @@ fixed widths. `Name = max(16, min(longest name, spare / 2))`, and
 Below 41 cells the bar gets narrower and the table cuts the right side, as
 other tables do.
 
-One pure function, `holdingsColumns(width, longestName int) []widget.Column`,
-returns the columns. The view sets all widths as fixed widths, so it knows
+One pure function, `holdingsColumns(width, longestName int)`, returns the
+columns. The view sets all widths as fixed widths, so it knows
 the bar width when it builds the rows. The TOTAL line uses the same widths,
 so it lines up with the table.
 
 At `W` = 136:
 
 ```
-HOLDINGS                                                                                                          As of: Jan 15, 2024
+HOLDINGS                                                                                                             As of: Jan 15, 2024
 ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
 Security Name                             Shares      Price         Value % Total    Cost Basis         Gain
-ACME     Acme Total Market Index           412.5    $245.10   $101,103.75   40.0%    $78,400.00   $22,703.75 ███████████████████████████
-Cedar 2… Cedar 2045 Target Fund         1850.221     $31.47    $58,226.45   23.0%    $49,900.00    $8,326.45 ███████████████▌
-GLBX     Globex International Index          690     $58.32    $40,240.80   15.9%    $38,100.00    $2,140.80 ██████████▋
-UMBR     Umbrella Total Bond                 410     $72.15    $29,581.50   11.7%    $31,200.00   -$1,618.50 ███████▉
-Cash     Uninvested cash                                       $12,345.67    4.9%    $12,345.67              ███▎
-INIT     Initech Corp                         60    $151.20     $9,072.00    3.6%     $5,400.00    $3,672.00 ██▍
-~STRK    Stark Industries                     25        N/A     $2,500.00    1.0%     $2,500.00          N/A ▋
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-TOTAL                                                        ~$253,070.17  100.0%   $217,845.67   $35,224.50
+ACME     Acme Total Market Index           412.5    $245.10    $101103.75   40.0%     $78400.00    $22703.75 ███████████████████████████
+Cedar 2… Cedar 2045 Target Fund         1850.221     $31.47     $58226.45   23.0%     $49900.00     $8326.45 ███████████████▌
+GLBX     Globex International Index          690     $58.32     $40240.80   15.9%     $38100.00     $2140.80 ██████████▋
+UMBR     Umbrella Total Bond                 410     $72.15     $29581.50   11.7%     $31200.00    -$1618.50 ███████▉
+Cash     Uninvested cash                                        $12345.67    4.9%     $12345.67              ███▎
+INIT     Initech Corp                         60    $151.20      $9072.00    3.6%      $5400.00     $3672.00 ██▍
+~STRK    Stark Industries                     25        N/A      $2500.00    1.0%      $2500.00          N/A ▋
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+TOTAL                                                         ~$253070.17  100.0%    $217845.67    $35224.50
 ~ No price on file: the value is the cost basis.
 
-  n net worth  s spending  i holdings  esc back
+  enter accounts  n net worth  s spending  i holdings  esc back
 ```
 
 At `W` = 64:
 
 ```
+HOLDINGS                                     As of: Jan 15, 2024
+════════════════════════════════════════════════════════════════
 Security Name                     Value % Total
-ACME     Acme Total Mark…   $101,103.75   40.0% ████████████████
-Cedar 2… Cedar 2045 Targ…    $58,226.45   23.0% █████████▏
-GLBX     Globex Internat…    $40,240.80   15.9% ██████▎
-UMBR     Umbrella Total …    $29,581.50   11.7% ████▋
-Cash     Uninvested cash     $12,345.67    4.9% █▉
-INIT     Initech Corp         $9,072.00    3.6% █▍
-~STRK    Stark Industries     $2,500.00    1.0% ▍
 ────────────────────────────────────────────────────────────────
-TOTAL                      ~$253,070.17  100.0%
+ACME     Acme Total Mark…    $101103.75   40.0% ████████████████
+Cedar 2… Cedar 2045 Targ…     $58226.45   23.0% █████████▏
+GLBX     Globex Internat…     $40240.80   15.9% ██████▎
+UMBR     Umbrella Total …     $29581.50   11.7% ████▋
+Cash     Uninvested cash      $12345.67    4.9% █▉
+INIT     Initech Corp          $9072.00    3.6% █▍
+~STRK    Stark Industries      $2500.00    1.0% ▍
+────────────────────────────────────────────────────────────────
+TOTAL                       ~$253070.17  100.0%
+~ No price on file: the value is the cost basis.
+
+  enter accounts  n net worth  s spending  i holdings  esc back
 ```
 
 - The title row, the separator, the column header, the TOTAL lines and the
@@ -416,7 +425,8 @@ TOTAL                      ~$253,070.17  100.0%
 
 ### 7.3 The bar
 
-`renderHoldingBar(value, largest types.Money, width int) string`:
+`report.Bar(value, largest types.Money, width int) string`, which the CLI
+uses too:
 
 - `eighths = floor(value / largest × width × 8)`.
 - `eighths / 8` full blocks `█`, then one partial block from
@@ -432,15 +442,15 @@ report keeps its own `renderSpendingBar`.
 Enter, or a double click on a row, opens the split of the selected row:
 
 ```
-ACME  Acme Total Market Index                      $101,103.75   40.0% of total
-════════════════════════════════════════════════════════════════════════════════
-
-Account                         Shares         Value  % of Holding
-Maple Invest Brokerage             250    $61,275.00         60.6%
-Maple Invest Roth IRA              100    $24,510.00         24.2%
-Cedar HSA Investment              62.5    $15,318.75         15.2%
-────────────────────────────────────────────────────────────────────────────────
-Total                            412.5   $101,103.75        100.0%
+ACME  Acme Total Market Index                                                                                 $101103.75  40.0% of total
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+Account                                                                                                Shares         Value % of Holding
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Maple Invest Brokerage                                                                                    250     $61275.00        60.6%
+Maple Invest Roth IRA                                                                                     100     $24510.00        24.2%
+Cedar HSA Investment                                                                                     62.5     $15318.75        15.2%
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Total                                                                                                   412.5    $101103.75       100.0%
 
   esc back to holdings
 ```
@@ -455,6 +465,7 @@ Total                            412.5   $101,103.75        100.0%
   reports.
 - A reload (for example after a price refresh) closes the split and keeps
   the cursor on the same security, or on Cash.
+- Leaving the Reports view closes the split.
 
 ### 7.5 Hints and help
 
@@ -504,8 +515,8 @@ Every fixture uses fictional names and amounts.
 
 - `holdingsColumns` at widths 57/58, 84/85 and 108/109 shows the correct
   columns, and Name and bar follow the spare-width rule.
-- `renderHoldingBar`: the largest row is full, each partial eighth is
-  correct, and zero or negative values give an empty bar.
+- `report.Bar`: the largest row is full, each partial eighth is correct,
+  and zero or negative values give an empty bar.
 - `i` loads the holdings report. The menu item opens it.
 - Enter and a double click open the split. Esc closes it, and the cursor
   stays on the row. A second Esc leaves the view.

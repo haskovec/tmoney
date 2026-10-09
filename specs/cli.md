@@ -1412,6 +1412,62 @@ Transportation          $345.67   10.4%
 Total Spending:       $3,320.12
 ```
 
+### `report holdings`
+
+`Use: report holdings` · `Args: NoArgs`
+
+Show each security held in the active investment accounts, added up across
+the accounts, with its percentage of the total and a bar. One Cash row holds
+the accounts' uninvested cash, so the total is the investment value in net
+worth. A security with no price is valued at its cost basis and marked `~`.
+Each currency has its own table and total. When an account cannot be valued,
+its currency's total prints `not available` and the command exits non-zero.
+See [`design-holdings-report.md`](design-holdings-report.md).
+
+**Optional flags** (at most one; each prints how that security splits across
+the accounts):
+- `--ticker string` — The security's ticker
+- `--isin string` — The security's ISIN, for a security with no ticker
+- `--name string` — The security's exact name, for a security with no ticker
+
+```bash
+tmoney report holdings
+tmoney report holdings --ticker ACME
+tmoney report holdings --name "Cedar 2045 Target Fund"
+```
+
+```
+HOLDINGS REPORT
+===============
+As of: January 15, 2024
+
+Security                Name                        Shares    Price    Value        % Total  Cost Basis  Gain
+ACME                    Acme Total Market Index     412.5     $245.10  $101103.75   40.0%    $78400.00   $22703.75  ████████████████████
+Cedar 2045 Target Fund  Cedar 2045 Target Fund      1850.221  $31.47   $58226.45    23.0%    $49900.00   $8326.45   ███████████▌
+GLBX                    Globex International Index  690       $58.32   $40240.80    15.9%    $38100.00   $2140.80   ███████▉
+UMBR                    Umbrella Total Bond         410       $72.15   $29581.50    11.7%    $31200.00   -$1618.50  █████▊
+Cash                    Uninvested cash                                $12345.67    4.9%     $12345.67              ██▍
+INIT                    Initech Corp                60        $151.20  $9072.00     3.6%     $5400.00    $3672.00   █▊
+~STRK                   Stark Industries            25        N/A      $2500.00     1.0%     $2500.00    N/A        ▍
+TOTAL (USD)                                                            ~$253070.17  100.0%   $217845.67  $35224.50
+
+~ No price on file: the value is the cost basis.
+```
+
+```
+HOLDING: ACME (Acme Total Market Index)
+=======================================
+As of: January 15, 2024
+
+Account                 Shares  Value       % of Holding
+Maple Invest Brokerage  250     $61275.00   60.6%
+Maple Invest Roth IRA   100     $24510.00   24.2%
+Cedar HSA Investment    62.5    $15318.75   15.2%
+Total                   412.5   $101103.75  100.0%
+
+ACME is 40.0% of all holdings (~$253070.17).
+```
+
 ---
 
 ## `scheduled`
