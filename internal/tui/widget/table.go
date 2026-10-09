@@ -294,7 +294,7 @@ func (t *Table) renderHeader(styles Styles, colWidths []int, totalWidth int) str
 		if i < len(colWidths) {
 			w = colWidths[i]
 		}
-		cells[i] = alignText(col.Header, w, col.Align)
+		cells[i] = AlignText(col.Header, w, col.Align)
 	}
 
 	line := strings.Join(cells, " ")
@@ -319,7 +319,7 @@ func (t *Table) renderRow(styles Styles, rowIndex int, colWidths []int, totalWid
 		if i < len(row) {
 			cellValue = row[i]
 		}
-		cells[i] = alignText(cellValue, w, col.Align)
+		cells[i] = AlignText(cellValue, w, col.Align)
 	}
 
 	line := strings.Join(cells, " ")
@@ -391,8 +391,10 @@ func (t *Table) ScrollInfo(viewportHeight int) string {
 	return fmt.Sprintf("%d-%d of %d", start, end, len(t.rows))
 }
 
-// alignText aligns text within a given width.
-func alignText(text string, width int, align ColumnAlign) string {
+// AlignText fits text to width cells as a table cell is fitted: cut with an
+// ellipsis when too long, padded by align when too short. A line outside a
+// table, such as a total, uses it to line up with the columns.
+func AlignText(text string, width int, align ColumnAlign) string {
 	if width <= 0 {
 		return ""
 	}

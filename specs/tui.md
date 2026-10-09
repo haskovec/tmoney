@@ -364,6 +364,11 @@ The "Primary deposit" line is the schedule's parent account; its amount is compu
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+`n`, `s` and `i` switch between the net worth, spending and holdings
+reports. The holdings report is a table with a bar column; Enter or a double
+click on a row shows how it splits across the accounts, and Esc goes back.
+See [`design-holdings-report.md`](design-holdings-report.md).
+
 ## Menu Bar
 
 Each menu label has its shortcut letter underlined to indicate the `Alt+key` shortcut (e.g., the "F" in "File" is underlined for `Alt+F`). Pressing `Alt+key` opens the corresponding menu; pressing it again toggles the menu closed.
@@ -419,6 +424,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 - Dashboard
 - Net Worth
 - Spending by Category
+- Holdings
 
 ### Help Menu
 - Keyboard Shortcuts

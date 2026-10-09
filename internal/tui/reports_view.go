@@ -19,12 +19,14 @@ type reportType int
 const (
 	reportTypeNetWorth reportType = iota
 	reportTypeSpending
+	reportTypeHoldings
 )
 
 // reportsViewState is everything the Reports view owns. Its zero value is the
 // view before its first load.
 type reportsViewState struct {
-	data *reportsViewData
+	data     *reportsViewData
+	holdings holdingsViewState
 }
 
 // reportsViewData holds the loaded data for the reports view.
@@ -32,6 +34,7 @@ type reportsViewData struct {
 	rtype    reportType
 	netWorth *report.NetWorth
 	spending *report.Spending
+	holdings *report.Holdings
 	year     int
 	month    int // 1-12 for monthly, 0 for yearly
 	// includeTransfers folds categorized transfers into the spending report.
@@ -95,6 +98,14 @@ func (s *reportsViewState) load(d reportsDeps, rt reportType, year, month int, i
 				}
 				data.spending = report
 			}
+		case reportTypeHoldings:
+			if reports := d.reports(); reports != nil {
+				report, err := reports.Holdings()
+				if err != nil {
+					return errMsg{err: err}
+				}
+				data.holdings = report
+			}
 		}
 
 		return reportsViewDataLoadedMsg{data: data}
@@ -104,6 +115,9 @@ func (s *reportsViewState) load(d reportsDeps, rt reportType, year, month int, i
 // handleKey handles key presses in the reports view.
 func (s *reportsViewState) handleKey(d reportsDeps, msg tea.KeyPressMsg, keys keyMap) tea.Cmd {
 	if s.data == nil {
+		return nil
+	}
+	if s.handleHoldingsKey(msg, keys) {
 		return nil
 	}
 
@@ -129,6 +143,10 @@ func (s *reportsViewState) handleKey(d reportsDeps, msg tea.KeyPressMsg, keys ke
 			month = int(time.Now().Month())
 		}
 		return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
+
+	case msg.String() == "i":
+		// Switch to the holdings report
+		return s.load(d, reportTypeHoldings, s.data.year, s.data.month, s.data.includeTransfers)
 
 	case msg.String() == "y":
 		// Toggle to yearly spending view (only for spending)
@@ -200,8 +218,9 @@ func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
 	return s.load(d, reportTypeSpending, year, month, s.data.includeTransfers)
 }
 
-// render renders the reports view.
-func (s *reportsViewState) render(styles widget.Styles) string {
+// render renders the reports view. height is the terminal height, which
+// sizes the holdings table.
+func (s *reportsViewState) render(styles widget.Styles, height int) string {
 	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -213,6 +232,8 @@ func (s *reportsViewState) render(styles widget.Styles) string {
 		return s.renderNetWorth(styles)
 	case reportTypeSpending:
 		return s.renderSpending(styles)
+	case reportTypeHoldings:
+		return s.renderHoldings(styles, height)
 	default:
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -260,7 +281,7 @@ func (s *reportsViewState) renderNetWorth(styles widget.Styles) string {
 
 	// Navigation hints
 	sections = append(sections, "")
-	sections = append(sections, styles.Muted.Render("  n net worth  s spending  esc back"))
+	sections = append(sections, styles.Muted.Render("  n net worth  s spending  i holdings  esc back"))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -357,7 +378,7 @@ func (s *reportsViewState) renderSpending(styles widget.Styles) string {
 	if s.data.month > 0 {
 		modeHint = "y yearly"
 	}
-	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  esc back", modeHint)))
+	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  i holdings  esc back", modeHint)))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).

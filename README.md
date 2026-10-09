@@ -260,6 +260,10 @@ tmoney -f personal.tdb account balance
   --include-transfers` on the CLI, or `t` on the TUI Reports view — only the
   outflow leg of a pair counts (no double-count), only expense-typed
   categories appear, and the TUI toggle is session-only
+- Holdings across all investment accounts: each security added up, with its
+  percentage of the total and a bar, plus one Cash row, so the total is the
+  investment value in net worth. Enter (or `report holdings --ticker`) shows
+  how a security splits across the accounts
 
 ### Prices
 - Manual entry, CSV import, and history per security
@@ -302,7 +306,7 @@ The TUI has several views accessible via number keys or the menu bar:
 |-----|------|-------------|
 | `1` | Dashboard | Net worth, account balances, due scheduled transactions |
 | `2` | Scheduled | Due and upcoming scheduled transactions |
-| `3` | Reports | Net worth and spending by category reports |
+| `3` | Reports | Net worth, spending by category, and holdings reports |
 | `4` | Securities | Security master list with add/edit/hide/delete and `u` to refresh prices |
 | `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history; `u` to refresh prices |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
@@ -429,6 +433,8 @@ register.
 | `Left/Right` | Change period |
 | `n` | Net worth report |
 | `s` | Spending report |
+| `i` | Holdings report |
+| `Enter` | Holdings: show how the row splits across the accounts (also double-click) |
 | `t` | Toggle including categorized transfers (spending report; session-only) |
 | `y` | Yearly view |
 | `m` | Monthly view |
@@ -967,6 +973,10 @@ tmoney report spending --from 2024-01-01 --to 2024-06-30
 # Fold categorized transfers into the spending report (works with
 # --month, --year, or --from/--to)
 tmoney report spending --month 2026-07 --include-transfers
+
+# Holdings across all investment accounts, and one security's split
+tmoney report holdings
+tmoney report holdings --ticker ACME
 ```
 
 ### Prices

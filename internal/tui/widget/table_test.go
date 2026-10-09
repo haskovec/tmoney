@@ -332,49 +332,49 @@ func TestTable_ComputeColumnWidths_NoColumns(t *testing.T) {
 }
 
 func TestAlignText_Left(t *testing.T) {
-	result := alignText("hello", 10, AlignLeft)
+	result := AlignText("hello", 10, AlignLeft)
 	if result != "hello     " {
 		t.Errorf("alignText left = %q, want %q", result, "hello     ")
 	}
 }
 
 func TestAlignText_Right(t *testing.T) {
-	result := alignText("hello", 10, AlignRight)
+	result := AlignText("hello", 10, AlignRight)
 	if result != "     hello" {
 		t.Errorf("alignText right = %q, want %q", result, "     hello")
 	}
 }
 
 func TestAlignText_Center(t *testing.T) {
-	result := alignText("hi", 10, AlignCenter)
+	result := AlignText("hi", 10, AlignCenter)
 	if result != "    hi    " {
 		t.Errorf("alignText center = %q, want %q", result, "    hi    ")
 	}
 }
 
 func TestAlignText_Truncate(t *testing.T) {
-	result := alignText("hello world", 5, AlignLeft)
+	result := AlignText("hello world", 5, AlignLeft)
 	if result != "hell…" {
 		t.Errorf("alignText truncate = %q, want %q", result, "hell…")
 	}
 }
 
 func TestAlignText_ExactFit(t *testing.T) {
-	result := alignText("hello", 5, AlignLeft)
+	result := AlignText("hello", 5, AlignLeft)
 	if result != "hello" {
 		t.Errorf("alignText exact = %q, want %q", result, "hello")
 	}
 }
 
 func TestAlignText_ZeroWidth(t *testing.T) {
-	result := alignText("hello", 0, AlignLeft)
+	result := AlignText("hello", 0, AlignLeft)
 	if result != "" {
 		t.Errorf("alignText zero width = %q, want empty", result)
 	}
 }
 
 func TestAlignText_Width1Truncate(t *testing.T) {
-	result := alignText("hello", 1, AlignLeft)
+	result := AlignText("hello", 1, AlignLeft)
 	if result != "h" {
 		t.Errorf("alignText width 1 = %q, want %q", result, "h")
 	}

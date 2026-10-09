@@ -511,6 +511,11 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewCorporateActions && a.corporateActions.detail != nil {
 			return a.handleCorporateActionViewKeys(msg)
 		}
+		// With a holdings row's split open, Esc goes back to the holdings
+		// table and stays in the view.
+		if a.currentView == ViewReports && a.reports.splitOpen() {
+			return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
+		}
 		// Go back to previous view or dashboard, and refresh that view's
 		// data so changes made in the view we're leaving (e.g. a new
 		// investment transaction) are reflected on arrival.

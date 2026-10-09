@@ -15,6 +15,19 @@ type ValuationResult struct {
 	TotalValue       types.Money
 	CashBalance      types.Money // the investment ledger's cash, part of TotalValue
 	HasMissingPrices bool        // true if any holdings used cost basis instead of market price
+	// Holdings are the account's open positions. TotalValue is CashBalance
+	// plus the sum of their MarketValue.
+	Holdings []HoldingFigure
+}
+
+// HoldingFigure is one open position in one account, as valued.
+type HoldingFigure struct {
+	SecurityID  types.ID
+	Shares      types.Quantity
+	Price       types.Money // zero when HasPricing is false
+	MarketValue types.Money // the cost basis when HasPricing is false
+	CostBasis   types.Money
+	HasPricing  bool
 }
 
 // InvestmentValuer computes the total value of an investment account (cash + holdings).
