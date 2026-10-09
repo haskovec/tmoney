@@ -119,14 +119,18 @@ func init() {
 		{
 			id:     ViewReports,
 			name:   "Reports",
-			render: func(a *App) string { return a.reports.render(a.styles) },
+			render: func(a *App) string { return a.reports.render(a.styles, a.height) },
 			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
 			},
-			hints: func(*App) string {
-				return "←→ period  n net worth  s spending  y year  m month  esc back  " + commonKeyHints
+			hints: func(a *App) string {
+				if a.reports.holdingsReport() != nil {
+					return a.reports.holdingsHints() + "  " + commonKeyHints
+				}
+				return "←→ period  n net worth  s spending  i holdings  y year  m month  esc back  " + commonKeyHints
 			},
 			shortcuts: reportsShortcuts,
+			table:     func(a *App) *widget.Table { return a.reports.holdingsTableOnScreen() },
 			reload: func(a *App) []tea.Cmd {
 				if a.reports.data != nil {
 					return []tea.Cmd{a.reports.load(a.reportsDeps(),
@@ -135,6 +139,9 @@ func init() {
 				}
 				return nil
 			},
+			// An open holdings split is a drill-down, not a place: coming back
+			// to Reports shows the holdings table.
+			leave: func(a *App) { a.reports.closeSplit() },
 			focus: func(a *App) {
 				// Reports view doesn't use sidebar focus
 				a.sidebar.SetFocused(false)

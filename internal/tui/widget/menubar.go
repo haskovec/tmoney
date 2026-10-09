@@ -49,6 +49,7 @@ const (
 	MenuActionDashboard
 	MenuActionNetWorth
 	MenuActionSpendingByCategory
+	MenuActionHoldings
 
 	// Edit menu actions
 	MenuActionUndo
@@ -194,6 +195,7 @@ func DefaultMenus() []Menu {
 				{Label: "Dashboard", Action: MenuActionDashboard},
 				{Label: "Net Worth", Action: MenuActionNetWorth},
 				{Label: "Spending by Category", Action: MenuActionSpendingByCategory},
+				{Label: "Holdings", Action: MenuActionHoldings},
 			},
 		},
 		{
