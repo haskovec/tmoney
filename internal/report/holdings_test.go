@@ -361,7 +361,66 @@ func TestHoldings_ValuationFailure(t *testing.T) {
 		if len(rpt.Failed) != 1 || !errors.Is(rpt.Failed[0].Err, ErrNoInvestmentValuer) {
 			t.Errorf("failed = %+v, want ErrNoInvestmentValuer", rpt.Failed)
 		}
+		// Every account of the currency failed: the section stays, with no
+		// rows, so its TOTAL can show "not available" (rule 9).
+		sec := onlySection(t, rpt)
+		if sec.Currency != "USD" || sec.Available || len(sec.Rows) != 0 {
+			t.Errorf("section = %+v, want USD, not available, no rows", sec)
+		}
 	})
+}
+
+// Negative cash is a Cash row with a negative value (C3). The section adds
+// it, and the row's split still adds up to 100%.
+func TestHoldings_NegativeCash(t *testing.T) {
+	e := newHoldingsEnv(t)
+	acme := e.security(t, "ACME", "Acme Total Market Index")
+	brokerage := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
+	roth := mkAccount(t, e.accts, "Maple Invest Roth IRA", account.TypeInvestment, "USD", "0")
+	e.value(brokerage, "-150.00", priced(acme, "10", "100.00", "800.00"))
+	e.value(roth, "50.00")
+
+	sec := onlySection(t, e.report(t))
+	wantMoney(t, "section value", sec.Value, "900.00")
+	cash := rowByLabel(t, sec, "Cash")
+	wantMoney(t, "cash value", cash.Value, "-100.00")
+	wantPercent(t, "cash percent", cash.Percent, -100.0/900*100)
+	wantPercent(t, "ACME percent", rowByLabel(t, sec, "ACME").Percent, 1000.0/900*100)
+	if len(cash.Accounts) != 2 {
+		t.Fatalf("cash accounts = %+v, want 2", cash.Accounts)
+	}
+	// Sorted by value: the Roth's +50 first, then the brokerage's -150.
+	wantPercent(t, "Roth share of cash", cash.Accounts[0].Percent, -50)
+	wantPercent(t, "brokerage share of cash", cash.Accounts[1].Percent, 150)
+}
+
+// When the section's value is zero or less, every row's % Total is 0.
+func TestHoldings_SectionNotPositive(t *testing.T) {
+	e := newHoldingsEnv(t)
+	acme := e.security(t, "ACME", "Acme Total Market Index")
+	brokerage := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
+	e.value(brokerage, "-500.00", priced(acme, "2", "100.00", "150.00"))
+
+	sec := onlySection(t, e.report(t))
+	wantMoney(t, "section value", sec.Value, "-300.00")
+	for _, row := range sec.Rows {
+		if row.Percent != 0 {
+			t.Errorf("%s percent = %.2f, want 0", row.Label, row.Percent)
+		}
+	}
+}
+
+// An investment account with no cash and no positions gives an available
+// section with no rows.
+func TestHoldings_EmptyAccount(t *testing.T) {
+	e := newHoldingsEnv(t)
+	brokerage := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
+	e.value(brokerage, "0")
+
+	sec := onlySection(t, e.report(t))
+	if !sec.Available || len(sec.Rows) != 0 || !sec.Value.IsZero() {
+		t.Errorf("section = %+v, want available, no rows, zero value", sec)
+	}
 }
 
 // With no investment account there is no section.

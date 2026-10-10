@@ -147,6 +147,10 @@ func (b *holdingsBuilder) addHolding(acct *account.Account, h HoldingFigure, sec
 	row.Shares = row.Shares.Add(h.Shares)
 	row.Value = row.Value.Add(h.MarketValue)
 	row.CostBasis = row.CostBasis.Add(h.CostBasis)
+	// Prices are per security and date, and every account is valued as of
+	// the same day, so the accounts of a row agree on HasPricing. They can
+	// differ only when a price is written, or a price read fails, while the
+	// report runs; the whole row is then Estimated.
 	if h.HasPricing {
 		row.Price = h.Price
 	} else {
@@ -188,8 +192,12 @@ func (b *holdingsBuilder) build() HoldingsSection {
 	for i := range sec.Rows {
 		row := &sec.Rows[i]
 		row.Percent = percentOf(row.Value, sec.Value)
-		for j := range row.Accounts {
-			row.Accounts[j].Percent = percentOf(row.Accounts[j].Value, row.Value)
+		// An account's share of a negative Cash row is still its share: a
+		// row's accounts add up to 100% unless the row is zero.
+		if !row.Value.IsZero() {
+			for j := range row.Accounts {
+				row.Accounts[j].Percent = row.Accounts[j].Value.Float64() / row.Value.Float64() * 100
+			}
 		}
 		sort.SliceStable(row.Accounts, func(x, y int) bool {
 			a, c := row.Accounts[x], row.Accounts[y]
