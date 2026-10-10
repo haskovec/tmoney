@@ -421,8 +421,10 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 	tableWidth := max(styles.ContentWidth()-4, 1)
 	if s.holdings.width != tableWidth {
 		s.layoutHoldings(tableWidth)
-		if s.holdings.split != nil {
-			s.openSplit()
+		if split := s.holdings.split; split != nil {
+			// Only the widths change, so the split keeps its cursor.
+			ref := s.holdings.splitRef
+			split.SetColumns(splitColumns(tableWidth, rpt.Sections[ref.section].Rows[ref.row].Cash))
 		}
 	}
 	if s.holdings.split != nil {
@@ -435,9 +437,11 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 	}
 	hint := styles.Muted.Render("  enter accounts  n net worth  s spending  i holdings  esc back")
 	if len(rpt.Sections) == 0 && len(rpt.Failed) == 0 {
-		sections = append(sections, "",
-			styles.Muted.Render("  No investment accounts. Add one to see holdings."),
-			"", hint)
+		empty := "  No holdings in the investment accounts."
+		if rpt.AccountCount == 0 {
+			empty = "  No investment accounts. Add one to see holdings."
+		}
+		sections = append(sections, "", styles.Muted.Render(empty), "", hint)
 		return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
 	}
 
@@ -511,8 +515,10 @@ func (s *reportsViewState) holdingsTotalLine(styles widget.Styles, sec report.Ho
 		case holdingsColValue:
 			cells = append(cells, styles.Bold.Render(widget.AlignText(value, c.Width, c.Align)))
 		case holdingsColPercent:
+			// The rows are 0% of a total that is zero or less (negative
+			// cash), so the total is not 100% of them either.
 			pct := ""
-			if sec.Available {
+			if sec.Available && sec.Value.IsPositive() {
 				pct = "100.0%"
 			}
 			cells = append(cells, widget.AlignText(pct, c.Width, c.Align))

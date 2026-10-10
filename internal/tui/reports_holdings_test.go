@@ -220,6 +220,50 @@ func TestRenderHoldings_FailedAccountAndEmpty(t *testing.T) {
 	if view := app.reports.render(app.styles, app.height); !strings.Contains(view, "No investment accounts. Add one to see holdings.") {
 		t.Errorf("empty view:\n%s", view)
 	}
+
+	// An account that holds nothing is an account: the view says that
+	// nothing is held, not that there are no accounts.
+	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: &report.Holdings{AccountCount: 1}})
+	view = app.reports.render(app.styles, app.height)
+	if !strings.Contains(view, "No holdings in the investment accounts.") || strings.Contains(view, "No investment accounts") {
+		t.Errorf("view of an account that holds nothing:\n%s", view)
+	}
+}
+
+// When negative cash makes the total zero or less, every row is 0%, so the
+// TOTAL line does not show 100.0%.
+func TestRenderHoldings_TotalNotPositive(t *testing.T) {
+	m := types.MustNewMoney
+	app := newHoldingsApp(180, 40)
+	rpt := &report.Holdings{
+		AsOfDate: types.NewDate(2024, 1, 15),
+		Sections: []report.HoldingsSection{{
+			Currency: "USD", Available: true,
+			Value: m("-300.00"), CostBasis: m("-350.00"), Gain: m("50.00"),
+			Rows: []report.HoldingRow{
+				{SecurityID: types.NewID(), Label: "ACME", Name: "Acme Total Market Index",
+					Shares: types.MustNewQuantity("2"), Price: m("100.00"), Value: m("200.00"),
+					CostBasis: m("150.00"), Gain: m("50.00")},
+				{SecurityID: types.NilID, Cash: true, Label: "Cash", Name: "Uninvested cash",
+					Value: m("-500.00"), CostBasis: m("-500.00")},
+			},
+		}},
+	}
+	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: rpt})
+	view := app.reports.render(app.styles, app.height)
+	found := false
+	for line := range strings.Lines(view) {
+		if !strings.Contains(line, "TOTAL") {
+			continue
+		}
+		found = true
+		if !strings.Contains(line, "-$300.00") || strings.Contains(line, "100.0%") {
+			t.Errorf("TOTAL line = %q, want -$300.00 and no 100.0%%", line)
+		}
+	}
+	if !found {
+		t.Errorf("view has no TOTAL line:\n%s", view)
+	}
 }
 
 // With two currencies each TOTAL line names its currency, also on a screen
@@ -368,6 +412,80 @@ func TestHoldings_SplitEstimatedAndPartial(t *testing.T) {
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("split lacks %q:\n%s", want, view)
+		}
+	}
+}
+
+// A terminal resize lays the open split out again for the new width, and
+// the split's cursor stays on its account.
+func TestHoldings_ResizeKeepsTheSplitCursor(t *testing.T) {
+	app := newHoldingsApp(180, 40)
+	app.reports.render(app.styles, app.height)
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	app.reports.render(app.styles, app.height)
+	if c := app.reports.holdings.split.Cursor(); c != 1 {
+		t.Fatalf("split cursor = %d before the resize, want 1", c)
+	}
+
+	app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	view := app.reports.render(app.styles, app.height)
+	if !app.reports.splitOpen() {
+		t.Fatal("the resize closed the split")
+	}
+	if c := app.reports.holdings.split.Cursor(); c != 1 {
+		t.Errorf("split cursor = %d after the resize, want 1", c)
+	}
+	tableWidth := app.styles.ContentWidth() - 4
+	total := len(app.reports.holdings.split.Columns()) - 1
+	for _, c := range app.reports.holdings.split.Columns() {
+		total += c.Width
+	}
+	if total != tableWidth {
+		t.Errorf("split columns take %d cells, want the new table width %d", total, tableWidth)
+	}
+	if !strings.Contains(view, "Cedar HSA Investment") {
+		t.Errorf("split after the resize:\n%s", view)
+	}
+}
+
+// The period keys belong to the spending report. On the holdings report they
+// do nothing.
+func TestHoldings_PeriodKeysDoNothing(t *testing.T) {
+	keys := []tea.KeyPressMsg{
+		{Code: tea.KeyLeft},
+		{Code: tea.KeyRight},
+		{Code: 'y', Text: "y"},
+		{Code: 'm', Text: "m"},
+		{Code: 't', Text: "t"},
+	}
+	for _, k := range keys {
+		app := newHoldingsApp(180, 40)
+		if _, cmd := app.Update(k); cmd != nil {
+			t.Errorf("%s returned a command", k.String())
+		}
+		if app.reports.data.rtype != reportTypeHoldings || app.reports.splitOpen() {
+			t.Errorf("%s changed the holdings report", k.String())
+		}
+	}
+}
+
+// n and s go from the holdings report to net worth and spending.
+func TestHoldings_KeysNAndS(t *testing.T) {
+	for _, tt := range []struct {
+		key  rune
+		want reportType
+	}{
+		{'n', reportTypeNetWorth},
+		{'s', reportTypeSpending},
+	} {
+		app := newHoldingsApp(180, 40)
+		_, cmd := app.Update(tea.KeyPressMsg{Code: tt.key, Text: string(tt.key)})
+		if cmd == nil {
+			t.Fatalf("'%c' returned no command", tt.key)
+		}
+		if msg, ok := cmd().(reportsViewDataLoadedMsg); !ok || msg.data.rtype != tt.want {
+			t.Errorf("'%c' loaded %+v, want report type %v", tt.key, msg, tt.want)
 		}
 	}
 }
