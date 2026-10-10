@@ -91,3 +91,86 @@ func TestPrintHoldingsReport_FailedAndCurrencies(t *testing.T) {
 		t.Errorf("holdingsErrors = %v, want it to name the 401k", err)
 	}
 }
+
+// birchFailed is a report where the only USD account could not be valued:
+// its section stays, with no rows.
+func birchFailed() *reportdom.Holdings {
+	return &reportdom.Holdings{
+		Sections: []reportdom.HoldingsSection{{Currency: "USD", Available: false, Value: types.ZeroMoney}},
+		Failed: []reportdom.AccountFailure{
+			{Name: "Birch 401k", Currency: "USD", Err: errors.New("valuation failed: boom")},
+		},
+	}
+}
+
+// When every account of a currency failed, the section still prints its
+// TOTAL as "not available", and the report does not say there are no
+// accounts.
+func TestPrintHoldingsReport_AllAccountsFailed(t *testing.T) {
+	var out bytes.Buffer
+	printHoldingsReport(&out, birchFailed())
+	got := out.String()
+	for _, want := range []string{"TOTAL (USD)", "not available",
+		"Percentages leave out accounts that could not be valued."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "No investment accounts.") {
+		t.Errorf("output says there are no accounts:\n%s", got)
+	}
+}
+
+// A security in no row is "not held" only when every account was valued.
+// Else it can be in a failed account, and the error names those accounts.
+func TestNotHeldError(t *testing.T) {
+	rpt := birchFailed()
+	var out bytes.Buffer
+	if printHoldingSplit(&out, rpt, types.NewID(), "ACME", "Acme Total Market Index") {
+		t.Fatal("printHoldingSplit found a row in a report with no rows")
+	}
+	if out.Len() != 0 {
+		t.Errorf("printHoldingSplit printed %q, want nothing", out.String())
+	}
+	err := notHeldError(rpt, "ACME").Error()
+	if !strings.Contains(err, "Birch 401k: valuation failed: boom") || strings.Contains(err, "not held") {
+		t.Errorf("notHeldError = %q, want the failed account and no \"not held\"", err)
+	}
+
+	err = notHeldError(&reportdom.Holdings{}, "ACME").Error()
+	if err != "ACME is not held in an active investment account" {
+		t.Errorf("notHeldError with no failure = %q", err)
+	}
+}
+
+// The split of an unpriced security marks each value with "~" and says what
+// "~" means. The split of a security in a section with a failed account says
+// that its percentage is of the holdings that could be valued.
+func TestPrintHoldingSplit_EstimatedAndPartial(t *testing.T) {
+	m := types.MustNewMoney
+	strk := types.NewID()
+	rpt := &reportdom.Holdings{Sections: []reportdom.HoldingsSection{{
+		Currency: "USD", Available: false, Estimated: true, Value: m("2500.00"),
+		Rows: []reportdom.HoldingRow{{SecurityID: strk, Label: "STRK", Name: "Stark Industries",
+			Shares: types.MustNewQuantity("25"), Value: m("2500.00"), CostBasis: m("2500.00"),
+			Percent: 100, Estimated: true,
+			Accounts: []reportdom.HoldingAccount{{Name: "Maple Invest Brokerage",
+				Shares: types.MustNewQuantity("25"), Value: m("2500.00"), Percent: 100}}}},
+	}}}
+
+	var out bytes.Buffer
+	if !printHoldingSplit(&out, rpt, strk, "STRK", "Stark Industries") {
+		t.Fatal("printHoldingSplit did not find STRK")
+	}
+	got := out.String()
+	for _, want := range []string{
+		"Maple Invest Brokerage  25      ~$2500.00",
+		"Total                   25      ~$2500.00",
+		"STRK is 100.0% of the holdings that could be valued.",
+		"~ No price on file: the value is the cost basis.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output lacks %q:\n%s", want, got)
+		}
+	}
+}

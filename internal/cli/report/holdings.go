@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/spf13/cobra"
 )
 
@@ -63,26 +64,22 @@ func runReportHoldings(opts *reportHoldingsOptions, w io.Writer) error {
 	}
 	defer database.Close()
 
+	// Resolve the selector first: a bad selector fails before every account
+	// is valued.
+	var sec *security.Security
 	if opts.selected() {
-		sec, err := svc.Security.Resolve(opts.ticker, opts.isin, opts.name)
-		if err != nil {
+		if sec, err = svc.Security.Resolve(opts.ticker, opts.isin, opts.name); err != nil {
 			return err
 		}
-		rpt, err := svc.Report.Holdings()
-		if err != nil {
-			return fmt.Errorf("failed to generate holdings report: %w", err)
-		}
-		if !printHoldingSplit(w, rpt, sec.ID, sec.Ticker, sec.Name) {
-			return fmt.Errorf("%s is not held in an active investment account",
-				cmdutil.SecurityRef(sec.Ticker, sec.Name))
-		}
-		return holdingsErrors(rpt)
 	}
-
 	rpt, err := svc.Report.Holdings()
 	if err != nil {
 		return fmt.Errorf("failed to generate holdings report: %w", err)
 	}
-	printHoldingsReport(w, rpt)
+	if sec == nil {
+		printHoldingsReport(w, rpt)
+	} else if !printHoldingSplit(w, rpt, sec.ID, sec.Ticker, sec.Name) {
+		return notHeldError(rpt, cmdutil.SecurityRef(sec.Ticker, sec.Name))
+	}
 	return holdingsErrors(rpt)
 }

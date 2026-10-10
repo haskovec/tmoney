@@ -280,14 +280,17 @@ func printHoldingSplit(w io.Writer, rpt *reportdom.Holdings, securityID types.ID
 	ref := cmdutil.SecurityRef(ticker, name)
 	for _, f := range rows {
 		fmt.Fprintln(w)
+		// With no price, every value in the split is a cost basis: each gets
+		// the ~ that the security's row has in the report (C2).
+		money := func(m types.Money) string {
+			return formatTotal(m, f.sec.Currency, true, f.row.Estimated)
+		}
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(tw, "Account\tShares\tValue\t% of Holding")
 		for _, a := range f.row.Accounts {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%.1f%%\n", a.Name, a.Shares.String(),
-				cmdutil.FormatMoney(a.Value, f.sec.Currency), a.Percent)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%.1f%%\n", a.Name, a.Shares.String(), money(a.Value), a.Percent)
 		}
-		fmt.Fprintf(tw, "Total\t%s\t%s\t100.0%%\n", f.row.Shares.String(),
-			cmdutil.FormatMoney(f.row.Value, f.sec.Currency))
+		fmt.Fprintf(tw, "Total\t%s\t%s\t100.0%%\n", f.row.Shares.String(), money(f.row.Value))
 		tw.Flush()
 		fmt.Fprintln(w)
 		if f.sec.Available {
@@ -296,8 +299,21 @@ func printHoldingSplit(w io.Writer, rpt *reportdom.Holdings, securityID types.ID
 		} else {
 			fmt.Fprintf(w, "%s is %.1f%% of the holdings that could be valued.\n", ref, f.row.Percent)
 		}
+		if f.row.Estimated {
+			fmt.Fprintln(w, "~ No price on file: the value is the cost basis.")
+		}
 	}
 	return true
+}
+
+// notHeldError is the error for a security that is in no row. When an account
+// could not be valued the security can be in it, so the error names the
+// failed accounts and does not say that the security is not held.
+func notHeldError(rpt *reportdom.Holdings, ref string) error {
+	if err := holdingsErrors(rpt); err != nil {
+		return fmt.Errorf("%s is not in an account that could be valued: %w", ref, err)
+	}
+	return fmt.Errorf("%s is not held in an active investment account", ref)
 }
 
 // holdingsErrors returns one error naming every account that could not be
