@@ -135,6 +135,8 @@ func reportsShortcuts() shortcutSection {
 			{"y", "Yearly view"},
 			{"m", "Monthly view"},
 			{"t", "Toggle categorized transfers (spending)"},
+			{"i", "Holdings report"},
+			{"Enter", "Holdings: show the accounts that hold the row"},
 		},
 	}
 }

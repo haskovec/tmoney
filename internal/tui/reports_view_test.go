@@ -23,7 +23,7 @@ func TestApp_RenderReports_Loading(t *testing.T) {
 		reports:     reportsViewState{data: nil},
 	}
 
-	view := app.reports.render(app.styles)
+	view := app.reports.render(app.styles, app.height)
 	if !contains(view, "Loading") {
 		t.Errorf("reports.render should show loading when data is nil, got: %q", view)
 	}
@@ -650,7 +650,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		}},
 	}
 
-	view := app.reports.render(app.styles)
+	view := app.reports.render(app.styles, app.height)
 	if !contains(view, "NET WORTH REPORT") {
 		t.Error("reports.render should dispatch to net worth report")
 	}
@@ -667,7 +667,7 @@ func TestApp_RenderReports_DispatchesCorrectly(t *testing.T) {
 		},
 	}
 
-	view = app.reports.render(app.styles)
+	view = app.reports.render(app.styles, app.height)
 	if !contains(view, "SPENDING BY CATEGORY") {
 		t.Error("reports.render should dispatch to spending report")
 	}

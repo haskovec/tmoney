@@ -74,18 +74,27 @@ func (s *Service) AccountFigures(accounts []*account.Account) ([]AccountFigure, 
 
 // valueInvestmentFigure fills fig from the investment valuer.
 func (s *Service) valueInvestmentFigure(fig *AccountFigure, asOf types.Date) {
-	if s.investmentValue == nil {
-		fig.Err = ErrNoInvestmentValuer
-		return
-	}
-	val, err := s.investmentValue.GetAccountValuation(fig.AccountID, asOf)
+	val, err := s.valueAccount(fig.AccountID, asOf)
 	if err != nil {
-		fig.Err = fmt.Errorf("valuation failed: %w", err)
+		fig.Err = err
 		return
 	}
 	fig.Displayed = val.TotalValue
 	fig.Cash = val.CashBalance
 	fig.Estimated = val.HasMissingPrices
+}
+
+// valueAccount values one investment account. Without a valuer it refuses
+// with ErrNoInvestmentValuer rather than guess from the register balance.
+func (s *Service) valueAccount(id types.ID, asOf types.Date) (*ValuationResult, error) {
+	if s.investmentValue == nil {
+		return nil, ErrNoInvestmentValuer
+	}
+	val, err := s.investmentValue.GetAccountValuation(id, asOf)
+	if err != nil {
+		return nil, fmt.Errorf("valuation failed: %w", err)
+	}
+	return val, nil
 }
 
 // registerBalances reads every account's register balance from the

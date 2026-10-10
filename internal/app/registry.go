@@ -216,10 +216,22 @@ func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf t
 
 	// Check if any holdings lack pricing data (using cost basis as estimate)
 	hasMissingPrices := false
-	for _, h := range val.Holdings {
+	holdings := make([]report.HoldingFigure, len(val.Holdings))
+	for i, h := range val.Holdings {
 		if !h.HasPricing {
 			hasMissingPrices = true
-			break
+		}
+		price := types.ZeroMoney
+		if h.HasPricing {
+			price = h.CurrentPrice
+		}
+		holdings[i] = report.HoldingFigure{
+			SecurityID:  h.SecurityID,
+			Shares:      h.Shares,
+			Price:       price,
+			MarketValue: h.MarketValue,
+			CostBasis:   h.CostBasis,
+			HasPricing:  h.HasPricing,
 		}
 	}
 
@@ -227,5 +239,6 @@ func (a *investmentValuerAdapter) GetAccountValuation(accountID types.ID, asOf t
 		TotalValue:       val.TotalValue,
 		CashBalance:      val.CashBalance,
 		HasMissingPrices: hasMissingPrices,
+		Holdings:         holdings,
 	}, nil
 }

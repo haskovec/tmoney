@@ -55,6 +55,12 @@ type Table struct {
 	cursor       int
 	scrollOffset int
 
+	// viewRows is the number of data rows the last Render had room for, and
+	// rendered is whether a Render has run. HitTest uses them so a click
+	// under the visible rows does not hit a row that is scrolled off.
+	viewRows int
+	rendered bool
+
 	// Focus state
 	focused bool
 }
@@ -136,10 +142,14 @@ func (t *Table) SelectedRow() []string {
 // y is relative to the top of the table output (0-based). The header occupies
 // y=0 and its BorderBottom occupies y=1, so the first data row is at y=2.
 // Returns the data row index, or -1 if the click is on the header / border /
-// out of range.
+// out of range. After a Render, a click below the rows it had room for is
+// out of range too: the lines there belong to the view, not to the table.
 func (t *Table) HitTest(y int) int {
 	const dataRowOffset = 2 // header (y=0) + header bottom border (y=1)
 	if y < dataRowOffset || len(t.rows) == 0 {
+		return -1
+	}
+	if t.rendered && y-dataRowOffset >= t.viewRows {
 		return -1
 	}
 	dataRow := t.scrollOffset + (y - dataRowOffset)
@@ -216,6 +226,7 @@ func (t *Table) Render(styles Styles, width, height int) string {
 
 	// Adjust scroll offset to keep cursor visible
 	t.clampScroll(rowHeight)
+	t.viewRows, t.rendered = rowHeight, true
 
 	// Render visible rows
 	endRow := min(t.scrollOffset+rowHeight, len(t.rows))
@@ -294,7 +305,7 @@ func (t *Table) renderHeader(styles Styles, colWidths []int, totalWidth int) str
 		if i < len(colWidths) {
 			w = colWidths[i]
 		}
-		cells[i] = alignText(col.Header, w, col.Align)
+		cells[i] = AlignText(col.Header, w, col.Align)
 	}
 
 	line := strings.Join(cells, " ")
@@ -319,7 +330,7 @@ func (t *Table) renderRow(styles Styles, rowIndex int, colWidths []int, totalWid
 		if i < len(row) {
 			cellValue = row[i]
 		}
-		cells[i] = alignText(cellValue, w, col.Align)
+		cells[i] = AlignText(cellValue, w, col.Align)
 	}
 
 	line := strings.Join(cells, " ")
@@ -391,8 +402,10 @@ func (t *Table) ScrollInfo(viewportHeight int) string {
 	return fmt.Sprintf("%d-%d of %d", start, end, len(t.rows))
 }
 
-// alignText aligns text within a given width.
-func alignText(text string, width int, align ColumnAlign) string {
+// AlignText fits text to width cells as a table cell is fitted: cut with an
+// ellipsis when too long, padded by align when too short. A line outside a
+// table, such as a total, uses it to line up with the columns.
+func AlignText(text string, width int, align ColumnAlign) string {
 	if width <= 0 {
 		return ""
 	}

@@ -332,49 +332,49 @@ func TestTable_ComputeColumnWidths_NoColumns(t *testing.T) {
 }
 
 func TestAlignText_Left(t *testing.T) {
-	result := alignText("hello", 10, AlignLeft)
+	result := AlignText("hello", 10, AlignLeft)
 	if result != "hello     " {
 		t.Errorf("alignText left = %q, want %q", result, "hello     ")
 	}
 }
 
 func TestAlignText_Right(t *testing.T) {
-	result := alignText("hello", 10, AlignRight)
+	result := AlignText("hello", 10, AlignRight)
 	if result != "     hello" {
 		t.Errorf("alignText right = %q, want %q", result, "     hello")
 	}
 }
 
 func TestAlignText_Center(t *testing.T) {
-	result := alignText("hi", 10, AlignCenter)
+	result := AlignText("hi", 10, AlignCenter)
 	if result != "    hi    " {
 		t.Errorf("alignText center = %q, want %q", result, "    hi    ")
 	}
 }
 
 func TestAlignText_Truncate(t *testing.T) {
-	result := alignText("hello world", 5, AlignLeft)
+	result := AlignText("hello world", 5, AlignLeft)
 	if result != "hell…" {
 		t.Errorf("alignText truncate = %q, want %q", result, "hell…")
 	}
 }
 
 func TestAlignText_ExactFit(t *testing.T) {
-	result := alignText("hello", 5, AlignLeft)
+	result := AlignText("hello", 5, AlignLeft)
 	if result != "hello" {
 		t.Errorf("alignText exact = %q, want %q", result, "hello")
 	}
 }
 
 func TestAlignText_ZeroWidth(t *testing.T) {
-	result := alignText("hello", 0, AlignLeft)
+	result := AlignText("hello", 0, AlignLeft)
 	if result != "" {
 		t.Errorf("alignText zero width = %q, want empty", result)
 	}
 }
 
 func TestAlignText_Width1Truncate(t *testing.T) {
-	result := alignText("hello", 1, AlignLeft)
+	result := AlignText("hello", 1, AlignLeft)
 	if result != "h" {
 		t.Errorf("alignText width 1 = %q, want %q", result, "h")
 	}
@@ -856,6 +856,26 @@ func TestTable_HitTest_OutOfRange(t *testing.T) {
 	// y=4 with 2 rows and scrollOffset=0 -> data row 2, which is out of range
 	if got := tbl.HitTest(4); got != -1 {
 		t.Errorf("HitTest(4) with 2 rows = %d, want -1", got)
+	}
+}
+
+// After a Render, a click on a line below the rows it drew (a view's footer)
+// hits no row, also when the rows under it are scrolled off.
+func TestTable_HitTest_BelowRenderedRows(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	rows := make([][]string, 20)
+	for i := range rows {
+		rows[i] = []string{"row"}
+	}
+	tbl.SetRows(rows)
+	tbl.SetCursor(10)
+	tbl.Render(Styles{}, 5, 2+3) // three data rows, scrolled to show row 10
+
+	if got := tbl.HitTest(4); got != 10 {
+		t.Errorf("HitTest(4), the last drawn row = %d, want 10", got)
+	}
+	if got := tbl.HitTest(5); got != -1 {
+		t.Errorf("HitTest(5), under the drawn rows = %d, want -1", got)
 	}
 }
 
