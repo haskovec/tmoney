@@ -859,6 +859,26 @@ func TestTable_HitTest_OutOfRange(t *testing.T) {
 	}
 }
 
+// After a Render, a click on a line below the rows it drew (a view's footer)
+// hits no row, also when the rows under it are scrolled off.
+func TestTable_HitTest_BelowRenderedRows(t *testing.T) {
+	tbl := NewTable([]Column{{Header: "A", Width: 5}})
+	rows := make([][]string, 20)
+	for i := range rows {
+		rows[i] = []string{"row"}
+	}
+	tbl.SetRows(rows)
+	tbl.SetCursor(10)
+	tbl.Render(Styles{}, 5, 2+3) // three data rows, scrolled to show row 10
+
+	if got := tbl.HitTest(4); got != 10 {
+		t.Errorf("HitTest(4), the last drawn row = %d, want 10", got)
+	}
+	if got := tbl.HitTest(5); got != -1 {
+		t.Errorf("HitTest(5), under the drawn rows = %d, want -1", got)
+	}
+}
+
 func TestTable_HitTest_Negative(t *testing.T) {
 	tbl := NewTable([]Column{{Header: "A", Width: 5}})
 	tbl.SetRows([][]string{{"one"}})

@@ -43,6 +43,9 @@ const (
 	holdingsWidthName = 58  // below this, also no Name
 	holdingsMinName   = 16
 	holdingsMaxBar    = 40
+	// With no Name column, the TOTAL label has only the Security column, so
+	// that column is one cell wider for "TOTAL USD".
+	holdingsSecurityNoName = 9
 )
 
 // holdingsColumns returns the columns that fit a table of width cells, each
@@ -72,6 +75,10 @@ func holdingsColumns(width, longestName int) []holdingsColumn {
 			return width < holdingsWidthName
 		}
 		return false
+	}
+
+	if dropped(holdingsColName) {
+		all[0].Width = holdingsSecurityNoName
 	}
 
 	var cols []holdingsColumn
@@ -411,8 +418,7 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 			Padding(1, 2).
 			Render("No holdings data available.")
 	}
-	contentWidth := styles.ContentWidth()
-	tableWidth := max(contentWidth-4, 1)
+	tableWidth := max(styles.ContentWidth()-4, 1)
 	if s.holdings.width != tableWidth {
 		s.layoutHoldings(tableWidth)
 		if s.holdings.split != nil {
@@ -424,7 +430,7 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 	}
 
 	sections := []string{
-		reportTitleRow(styles, "HOLDINGS", "As of: "+rpt.AsOfDate.Time().Format("Jan 2, 2006"), contentWidth),
+		reportTitleRow(styles, "HOLDINGS", "As of: "+rpt.AsOfDate.Time().Format("Jan 2, 2006"), tableWidth),
 		styles.Muted.Render(strings.Repeat("═", tableWidth)),
 	}
 	hint := styles.Muted.Render("  enter accounts  n net worth  s spending  i holdings  esc back")
@@ -549,9 +555,15 @@ func (s *reportsViewState) renderHoldingsSplit(styles widget.Styles, height, tab
 	if row.Name != "" && row.Name != row.Label {
 		title += "  " + row.Name
 	}
-	share := fmt.Sprintf("%s  %.1f%% of total", formatDashboardMoneyIn(row.Value, sec.Currency), row.Percent)
+	value := formatDashboardMoneyIn(row.Value, sec.Currency)
+	if row.Estimated {
+		// The same marks as the row in the table and its TOTAL (C2).
+		title = "~" + title
+		value = "~" + value
+	}
+	share := fmt.Sprintf("%s  %.1f%% of total", value, row.Percent)
 	sections := []string{
-		reportTitleRow(styles, title, share, tableWidth+4),
+		reportTitleRow(styles, title, share, tableWidth),
 		styles.Muted.Render(strings.Repeat("═", tableWidth)),
 	}
 
@@ -559,9 +571,14 @@ func (s *reportsViewState) renderHoldingsSplit(styles widget.Styles, height, tab
 		styles.Muted.Render(strings.Repeat("─", tableWidth)),
 		styles.Bold.Render(strings.TrimRight(alignedLine(s.holdings.split.Columns(),
 			splitCells(row, "Total", row.Shares, row.Value, 100, sec.Currency)), " ")),
-		"",
-		styles.Muted.Render("  esc back to holdings"),
 	}
+	if row.Estimated {
+		footer = append(footer, styles.Muted.Render("~ No price on file: the value is the cost basis."))
+	}
+	if !sec.Available {
+		footer = append(footer, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
+	}
+	footer = append(footer, "", styles.Muted.Render("  esc back to holdings"))
 	avail := max(height-appChromeRows-2-2-len(footer), 3)
 	tbl := s.holdings.split
 	dataRows := avail - 2
@@ -592,8 +609,8 @@ func alignedLine(cols []widget.Column, cells []string) string {
 }
 
 // reportTitleRow is a report's title on the left and a muted note on the
-// right, in one line of contentWidth cells less the view's padding.
-func reportTitleRow(styles widget.Styles, title, note string, contentWidth int) string {
-	gap := max(contentWidth-lipgloss.Width(title)-lipgloss.Width(note)-4, 1)
+// right, in one line of width cells: the width of the separator under it.
+func reportTitleRow(styles widget.Styles, title, note string, width int) string {
+	gap := max(width-lipgloss.Width(title)-lipgloss.Width(note), 1)
 	return styles.Title.Render(title) + strings.Repeat(" ", gap) + styles.Muted.Render(note)
 }

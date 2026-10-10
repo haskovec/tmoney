@@ -121,6 +121,11 @@ func init() {
 			name:   "Reports",
 			render: func(a *App) string { return a.reports.render(a.styles, a.height) },
 			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+				// Keys always go to the report. A click in the sidebar took
+				// the focus, and with it the holdings cursor, so take it back.
+				if a.sidebar.IsFocused() {
+					a.focusContent()
+				}
 				return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
 			},
 			hints: func(a *App) string {
