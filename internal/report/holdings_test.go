@@ -296,10 +296,14 @@ func TestHoldings_AccountSet(t *testing.T) {
 
 	mkAccount(t, e.accts, "Contoso Checking", account.TypeChecking, "USD", "900.00")
 
-	sec := onlySection(t, e.report(t))
+	rpt := e.report(t)
+	sec := onlySection(t, rpt)
 	wantMoney(t, "section value", sec.Value, "100.00")
 	if len(sec.Rows) != 1 || len(sec.Rows[0].Accounts) != 1 || sec.Rows[0].Accounts[0].AccountID != open.ID {
 		t.Errorf("rows = %+v, want ACME from the open brokerage only", sec.Rows)
+	}
+	if rpt.AccountCount != 1 {
+		t.Errorf("AccountCount = %d, want 1: the open brokerage", rpt.AccountCount)
 	}
 }
 
@@ -361,6 +365,9 @@ func TestHoldings_ValuationFailure(t *testing.T) {
 		if len(rpt.Failed) != 1 || !errors.Is(rpt.Failed[0].Err, ErrNoInvestmentValuer) {
 			t.Errorf("failed = %+v, want ErrNoInvestmentValuer", rpt.Failed)
 		}
+		if rpt.AccountCount != 1 {
+			t.Errorf("AccountCount = %d, want 1: a failed account is counted", rpt.AccountCount)
+		}
 		// Every account of the currency failed: the section stays, with no
 		// rows, so its TOTAL can show "not available" (rule 9).
 		sec := onlySection(t, rpt)
@@ -410,24 +417,44 @@ func TestHoldings_SectionNotPositive(t *testing.T) {
 	}
 }
 
-// An investment account with no cash and no positions gives an available
-// section with no rows.
+// An investment account with no cash and no positions adds no row, and a
+// currency with no rows gets no section. The account is still counted, so
+// the views can tell it from no account at all.
 func TestHoldings_EmptyAccount(t *testing.T) {
-	e := newHoldingsEnv(t)
-	brokerage := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
-	e.value(brokerage, "0")
+	t.Run("only account", func(t *testing.T) {
+		e := newHoldingsEnv(t)
+		brokerage := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
+		e.value(brokerage, "0")
 
-	sec := onlySection(t, e.report(t))
-	if !sec.Available || len(sec.Rows) != 0 || !sec.Value.IsZero() {
-		t.Errorf("section = %+v, want available, no rows, zero value", sec)
-	}
+		rpt := e.report(t)
+		if len(rpt.Sections) != 0 || len(rpt.Failed) != 0 || rpt.AccountCount != 1 {
+			t.Errorf("report = %+v, want no section, no failure, one account", rpt)
+		}
+	})
+
+	t.Run("next to a currency that holds something", func(t *testing.T) {
+		e := newHoldingsEnv(t)
+		acme := e.security(t, "ACME", "Acme Total Market Index")
+		usd := mkAccount(t, e.accts, "Maple Invest Brokerage", account.TypeInvestment, "USD", "0")
+		cad := mkAccount(t, e.accts, "Fabrikam Depot", account.TypeInvestment, "CAD", "0")
+		e.value(usd, "0", priced(acme, "1", "100.00", "100.00"))
+		e.value(cad, "0")
+
+		rpt := e.report(t)
+		if sec := onlySection(t, rpt); sec.Currency != "USD" {
+			t.Errorf("section currency = %s, want USD", sec.Currency)
+		}
+		if rpt.AccountCount != 2 {
+			t.Errorf("AccountCount = %d, want 2", rpt.AccountCount)
+		}
+	})
 }
 
 // With no investment account there is no section.
 func TestHoldings_NoInvestmentAccounts(t *testing.T) {
 	e := newHoldingsEnv(t)
 	mkAccount(t, e.accts, "Contoso Checking", account.TypeChecking, "USD", "900.00")
-	if rpt := e.report(t); len(rpt.Sections) != 0 || len(rpt.Failed) != 0 {
+	if rpt := e.report(t); len(rpt.Sections) != 0 || len(rpt.Failed) != 0 || rpt.AccountCount != 0 {
 		t.Errorf("report = %+v, want empty", rpt)
 	}
 }

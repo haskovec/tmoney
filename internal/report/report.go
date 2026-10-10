@@ -68,7 +68,13 @@ type CategorySpending struct {
 // money in different currencies is never added.
 type Holdings struct {
 	AsOfDate types.Date
-	Sections []HoldingsSection // sorted by currency code
+	// AccountCount is the number of investment accounts in the report,
+	// valued or not. It tells "no accounts" from "accounts that hold
+	// nothing" when there is no section.
+	AccountCount int
+	// Sections are sorted by currency code. A currency whose accounts hold
+	// nothing has no section, unless one of its accounts failed.
+	Sections []HoldingsSection
 	// Failed lists the accounts that could not be valued. Their positions
 	// and cash are in no row, and their currency's section is not Available.
 	Failed []AccountFailure
