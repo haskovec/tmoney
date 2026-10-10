@@ -1425,7 +1425,7 @@ its currency's total prints `not available` and the command exits non-zero.
 See [`design-holdings-report.md`](design-holdings-report.md).
 
 **Optional flags** (at most one; each prints how that security splits across
-the accounts):
+the accounts; a security with no price has `~` on each value in its split):
 - `--ticker string` — The security's ticker
 - `--isin string` — The security's ISIN, for a security with no ticker
 - `--name string` — The security's exact name, for a security with no ticker

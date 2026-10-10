@@ -302,8 +302,15 @@ ACME is 40.0% of all holdings (~$253070.17).
   are.
 - A security that is in no row returns the error
   `ACME is not held in an active investment account` (with
-  `cmdutil.SecurityRef`).
+  `cmdutil.SecurityRef`). When an account could not be valued, the security
+  can be in that account, so the error is
+  `ACME is not in an account that could be valued:` followed by the account
+  errors.
 - A security held in two currencies prints one block per currency.
+- A security with no price has `~` on each value of its split, and the
+  `~` note follows the block (C2).
+- In a currency with a failed account, the last line reads
+  `ACME is 40.0% of the holdings that could be valued.`
 
 ## 7. TUI
 
@@ -311,7 +318,8 @@ ACME is 40.0% of all holdings (~$253070.17).
 
 - `reportTypeHoldings` is a new `reportType`. `reportsViewData` gets
   `holdings *report.Holdings`, and `load` calls `reports.Holdings()` for
-  it. Holdings does not use the year, month, or transfers fields.
+  it. Holdings does not use the year, month, or transfers fields. `i`
+  keeps them, so `s` goes back to the spending period the user had.
 - `i` in the Reports view loads it. `n` and `s` work from the holdings
   report as from the other reports. `←`, `→`, `y`, `m` and `t` do nothing
   in the holdings report.
@@ -339,7 +347,7 @@ cells. Fixed column widths:
 
 | Column | Width | Align |
 |---|---|---|
-| Security | 8 | left |
+| Security | 8, or 9 with no Name column, so `TOTAL USD` fits | left |
 | Name | spare (see below), at least 16 | left |
 | Shares | 12 | right |
 | Price | 10 | right |
@@ -456,6 +464,10 @@ Total                                                                           
 ```
 
 - Columns: Account (flex), Shares (12), Value (13), % of Holding (12).
+- A row with no price has `~` on its label and on its value in the title,
+  and the `~` note under the Total line (C2). In a currency with a failed
+  account, the note `Percentages leave out accounts that could not be
+  valued.` is under the Total line too.
 - On the Cash row there is no Shares column. Each account with cash has a
   row.
 - Esc closes the split. The cursor stays on the same holdings row. The
@@ -502,6 +514,9 @@ Every fixture uses fictional names and amounts.
   not Available, the other section still Available.
 - Rows with equal Value sort by Label. The percentages of a section add up
   to 100 within rounding.
+- Negative cash is a negative Cash row (C3), and the shares of its accounts
+  add up to 100%. A section whose Value is zero or less gives every row 0%.
+- Every account of a currency fails: the section stays, with no rows.
 
 `internal/cli/report`:
 
@@ -510,6 +525,10 @@ Every fixture uses fictional names and amounts.
 - A security that is not held, and an unknown ticker, return errors.
 - Two selectors at once return the `Resolve` error.
 - A failed account prints `not available` and the command exits non-zero.
+- When every account of a currency failed, the TOTAL prints
+  `not available`, and a security in no row gets the account errors, not
+  `not held`.
+- The split of an unpriced security has `~` and its note.
 
 `internal/tui`:
 
@@ -520,7 +539,12 @@ Every fixture uses fictional names and amounts.
 - `i` loads the holdings report. The menu item opens it.
 - Enter and a double click open the split. Esc closes it, and the cursor
   stays on the row. A second Esc leaves the view.
-- A click on the first row selects it (pins `tableContentRowOffset`).
+- A click on the first row selects it (pins `tableContentRowOffset`). A
+  click on a line under a scrolled table selects no row.
+- After a click in the sidebar, a key gives the focus back to the table.
+- With two currencies, each TOTAL line names its currency, also with no
+  Name column.
+- `i` keeps the spending period, so `s` goes back to it.
 - The hints change with the report, and the view guard tests still pass.
 
 ## 9. Docs to update in the code PR
