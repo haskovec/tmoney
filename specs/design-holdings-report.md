@@ -122,7 +122,13 @@ Net worth does not read the new field, so its output does not change.
 // money in different currencies is never added.
 type Holdings struct {
 	AsOfDate types.Date
-	Sections []HoldingsSection // sorted by currency code
+	// AccountCount is the number of investment accounts in the report,
+	// valued or not. It tells "no accounts" from "accounts that hold
+	// nothing" when there is no section.
+	AccountCount int
+	// Sections are sorted by currency code. A currency whose accounts hold
+	// nothing has no section, unless one of its accounts failed.
+	Sections []HoldingsSection
 	// Failed lists the accounts that could not be valued. Their positions
 	// and cash are in no row, and their currency's section is not Available.
 	Failed []AccountFailure
@@ -194,6 +200,7 @@ Steps:
 1. Read the accounts with `accountRepo.List(true)`. Keep each account where
    `Type.IsInvestmentType()` is true and `OpeningDate` is on or before
    today. This is the set that `NetWorthReport` values for today.
+   `AccountCount` is the number of these accounts.
 2. Read the label of each security with one query:
    `SELECT id, ticker, name FROM securities`. Close the rows before step 3.
    (`netWorthAsOf` explains why: the valuer runs its own queries, and an
@@ -217,7 +224,10 @@ Steps:
    - Sort each row's Accounts by Value, largest first, then by account name.
      `Percent = account.Value / row.Value × 100`, or 0 when the row's Value
      is zero.
-5. Sort the sections by currency code.
+5. Remove each section that is Available and has no rows: its accounts
+   hold no position and no cash. A section that is not Available stays, so
+   its TOTAL can show `not available` (rule 9).
+6. Sort the sections by currency code.
 
 When `investmentValue` is nil, every account fails with
 `ErrNoInvestmentValuer`, as in `AccountFigures`.
@@ -275,7 +285,12 @@ TOTAL (USD)                                                            ~$253070.
   line, in currency-code order.
 - The `~` note shows only when a row has `~`.
 - With no active investment account, the command prints
-  `No investment accounts.` and exits 0.
+  `No investment accounts.` and exits 0. When the accounts hold no position
+  and no cash, it prints `No holdings in the investment accounts.` and exits
+  0.
+- The TOTAL shows `100.0%` only when its Value is more than zero. When
+  negative cash makes the total zero or less, every row is 0% (§5 step 4),
+  and the `% Total` cell of the TOTAL is empty.
 - When an account fails, its currency's TOTAL shows `not available`. A line
   under the table says `Percentages leave out accounts that could not be
   valued.` After the report, the command returns an error that names each
@@ -427,7 +442,11 @@ TOTAL                       ~$253070.17  100.0%
   `Birch 401k: could not be valued (<reason>)`. Then one muted line:
   `Percentages leave out accounts that could not be valued.`
 - With no active investment account, the view shows
-  `No investment accounts. Add one to see holdings.`
+  `No investment accounts. Add one to see holdings.` When the accounts hold
+  no position and no cash, it shows `No holdings in the investment
+  accounts.`
+- As in the CLI, the TOTAL shows `100.0%` only when its Value is more than
+  zero.
 - The bottom hint line of all three reports becomes
   `n net worth  s spending  i holdings  esc back`.
 
@@ -477,6 +496,8 @@ Total                                                                           
   reports.
 - A reload (for example after a price refresh) closes the split and keeps
   the cursor on the same security, or on Cash.
+- A terminal resize lays the open split out for the new width. Its cursor
+  stays on the same account.
 - Leaving the Reports view closes the split.
 
 ### 7.5 Hints and help
@@ -517,6 +538,9 @@ Every fixture uses fictional names and amounts.
 - Negative cash is a negative Cash row (C3), and the shares of its accounts
   add up to 100%. A section whose Value is zero or less gives every row 0%.
 - Every account of a currency fails: the section stays, with no rows.
+- An account with no position and no cash gives no section, also next to a
+  currency that holds something. `AccountCount` still counts it, and it
+  counts a failed account.
 
 `internal/cli/report`:
 
@@ -524,7 +548,11 @@ Every fixture uses fictional names and amounts.
 - `--ticker` prints the split. `--name` finds a security with no ticker.
 - A security that is not held, and an unknown ticker, return errors.
 - Two selectors at once return the `Resolve` error.
-- A failed account prints `not available` and the command exits non-zero.
+- A failed account prints `not available` and the command exits non-zero
+  (the command runs on services with a valuer that fails one account).
+- An account that holds nothing prints `No holdings in the investment
+  accounts.`
+- A TOTAL of zero or less does not print `100.0%`.
 - When every account of a currency failed, the TOTAL prints
   `not available`, and a security in no row gets the account errors, not
   `not held`.
@@ -544,7 +572,13 @@ Every fixture uses fictional names and amounts.
 - After a click in the sidebar, a key gives the focus back to the table.
 - With two currencies, each TOTAL line names its currency, also with no
   Name column.
-- `i` keeps the spending period, so `s` goes back to it.
+- `i` keeps the spending period, so `s` goes back to it. `i` keeps the
+  transfers setting.
+- `n` and `s` load net worth and spending. `←`, `→`, `y`, `m` and `t` do
+  nothing.
+- An account that holds nothing shows `No holdings in the investment
+  accounts.` A TOTAL of zero or less does not show `100.0%`.
+- A resize keeps the cursor of the open split.
 - The hints change with the report, and the view guard tests still pass.
 
 ## 9. Docs to update in the code PR
