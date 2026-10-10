@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/spf13/cobra"
@@ -63,11 +64,16 @@ func runReportHoldings(opts *reportHoldingsOptions, w io.Writer) error {
 		return err
 	}
 	defer database.Close()
+	return reportHoldings(w, svc, opts)
+}
 
+// reportHoldings is runReportHoldings on open services.
+func reportHoldings(w io.Writer, svc *app.Services, opts *reportHoldingsOptions) error {
 	// Resolve the selector first: a bad selector fails before every account
 	// is valued.
 	var sec *security.Security
 	if opts.selected() {
+		var err error
 		if sec, err = svc.Security.Resolve(opts.ticker, opts.isin, opts.name); err != nil {
 			return err
 		}

@@ -86,6 +86,25 @@ func TestReportHoldings_NoInvestmentAccounts(t *testing.T) {
 	}
 }
 
+// An investment account that holds nothing is still an account: the report
+// says that nothing is held, not that there are no accounts.
+func TestReportHoldings_AccountHoldsNothing(t *testing.T) {
+	database, dbPath := dbtest.NewFile(t, "nothing.tdb")
+	if err := app.NewServices(database).Account.Create(account.NewAccount("Maple Invest Brokerage",
+		account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2024, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+
+	out, err := runHoldings(t, "--file", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "No holdings in the investment accounts.") || strings.Contains(out, "TOTAL") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
 // The full report adds ACME up across both accounts, puts the cash in one
 // row, and totals the investment value: cash 6000 − 5000 of buys, ACME
 // 40 × 120, the fund at its 20.00 buy price.
