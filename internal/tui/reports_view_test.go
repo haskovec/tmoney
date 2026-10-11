@@ -844,6 +844,7 @@ func TestApp_ReportsView_IncludeTransfersSessionState(t *testing.T) {
 			{"s (spending)", tea.KeyPressMsg{Code: 's', Text: "s"}},
 			{"y (yearly)", tea.KeyPressMsg{Code: 'y', Text: "y"}},
 			{"n (net worth)", tea.KeyPressMsg{Code: 'n', Text: "n"}},
+			{"i (holdings)", tea.KeyPressMsg{Code: 'i', Text: "i"}},
 			{"left (prev period)", tea.KeyPressMsg{Code: tea.KeyLeft}},
 			{"right (next period)", tea.KeyPressMsg{Code: tea.KeyRight}},
 		}

@@ -6,7 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/app"
+	"github.com/haskovec/tmoney/internal/dbtest"
 	reportdom "github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -172,5 +176,92 @@ func TestPrintHoldingSplit_EstimatedAndPartial(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("output lacks %q:\n%s", want, got)
 		}
+	}
+}
+
+// birchValuer values every account as cash only, except the ones in fail.
+type birchValuer struct{ fail map[types.ID]error }
+
+func (v birchValuer) GetAccountValuation(id types.ID, _ types.Date) (*reportdom.ValuationResult, error) {
+	if err := v.fail[id]; err != nil {
+		return nil, err
+	}
+	cash := types.MustNewMoney("250.00")
+	return &reportdom.ValuationResult{TotalValue: cash, CashBalance: cash}, nil
+}
+
+// The command with an account that cannot be valued: it prints the report
+// with its TOTAL "not available", then fails with an error that names the
+// account. The split of a security that only the failed account could hold
+// gets the same error.
+func TestReportHoldings_FailedAccount(t *testing.T) {
+	database := dbtest.New(t)
+	svc := app.NewServices(database)
+	mkAcct := func(name string) *account.Account {
+		t.Helper()
+		acct := account.NewAccount(name, account.TypeInvestment, "USD", types.ZeroMoney, types.NewDate(2024, 1, 1))
+		if err := svc.Account.Create(acct); err != nil {
+			t.Fatal(err)
+		}
+		return acct
+	}
+	mkAcct("Maple Invest Brokerage")
+	birch := mkAcct("Birch 401k")
+	if err := svc.Security.Create(security.NewSecurity("ACME", "Acme Total Market Index", security.TypeETF)); err != nil {
+		t.Fatal(err)
+	}
+	svc.Report = reportdom.NewService(account.NewRepository(database), database,
+		reportdom.WithInvestmentValuer(birchValuer{fail: map[types.ID]error{birch.ID: errors.New("boom")}}))
+
+	var out bytes.Buffer
+	err := reportHoldings(&out, svc, &reportHoldingsOptions{})
+	if err == nil || !strings.Contains(err.Error(), "Birch 401k") {
+		t.Errorf("err = %v, want an error that names the 401k", err)
+	}
+	got := out.String()
+	for _, want := range []string{"Cash", "$250.00", "TOTAL (USD)", "not available",
+		"Percentages leave out accounts that could not be valued."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output lacks %q:\n%s", want, got)
+		}
+	}
+	for line := range strings.Lines(got) {
+		if strings.HasPrefix(line, "TOTAL") && strings.Contains(line, "100.0%") {
+			t.Errorf("TOTAL line = %q, want no 100.0%% with a failed account", line)
+		}
+	}
+
+	out.Reset()
+	err = reportHoldings(&out, svc, &reportHoldingsOptions{ticker: "ACME"})
+	if err == nil || !strings.Contains(err.Error(), "ACME is not in an account that could be valued") ||
+		!strings.Contains(err.Error(), "Birch 401k") {
+		t.Errorf("split err = %v, want the not-valued error that names the 401k", err)
+	}
+}
+
+// When negative cash makes the total zero or less, every row is 0%, so the
+// TOTAL does not show 100.0%.
+func TestPrintHoldingsReport_TotalNotPositive(t *testing.T) {
+	m := types.MustNewMoney
+	rpt := &reportdom.Holdings{Sections: []reportdom.HoldingsSection{{
+		Currency: "USD", Available: true,
+		Value: m("-300.00"), CostBasis: m("-350.00"), Gain: m("50.00"),
+		Rows: []reportdom.HoldingRow{
+			{Label: "ACME", Name: "Acme Total Market Index", Shares: types.MustNewQuantity("2"),
+				Price: m("100.00"), Value: m("200.00"), CostBasis: m("150.00"), Gain: m("50.00")},
+			{Label: "Cash", Name: "Uninvested cash", Cash: true, Value: m("-500.00"), CostBasis: m("-500.00")},
+		},
+	}}}
+
+	var out bytes.Buffer
+	printHoldingsReport(&out, rpt)
+	got := out.String()
+	for line := range strings.Lines(got) {
+		if strings.HasPrefix(line, "TOTAL") && (!strings.Contains(line, "-$300.00") || strings.Contains(line, "100.0%")) {
+			t.Errorf("TOTAL line = %q, want -$300.00 and no 100.0%%", line)
+		}
+	}
+	if !strings.Contains(got, "TOTAL (USD)") {
+		t.Errorf("output has no TOTAL line:\n%s", got)
 	}
 }

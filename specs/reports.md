@@ -277,7 +277,7 @@ transfer pairs — e.g. ones produced by `transfer link` — leak in as
 spending. The opt-in toggle drops both guards and folds **categorized**
 transfers into the totals:
 
-- **CLI**: `tmoney --report spending --month 2024-01 --include-transfers`
+- **CLI**: `tmoney report spending --month 2024-01 --include-transfers`
   (also works with `--year` and `--from/--to`).
 - **TUI**: `t` on the Reports view toggles it for the current spending
   report. The toggle is session-only and is not persisted.
@@ -361,20 +361,20 @@ type CategorySpending struct {
 
 ```bash
 # Net worth report
-tmoney --report net-worth
-tmoney --report net-worth --as-of 2024-01-01
+tmoney report net-worth
+tmoney report net-worth --as-of 2024-01-01
 
 # Holdings report, and one security's split across the accounts
 tmoney report holdings
 tmoney report holdings --ticker ACME
 
 # Spending report
-tmoney --report spending --month 2024-01
-tmoney --report spending --year 2024
-tmoney --report spending --from 2024-01-01 --to 2024-06-30
+tmoney report spending --month 2024-01
+tmoney report spending --year 2024
+tmoney report spending --from 2024-01-01 --to 2024-06-30
 
 # Fold categorized transfers into the spending report (default: excluded)
-tmoney --report spending --month 2024-01 --include-transfers
+tmoney report spending --month 2024-01 --include-transfers
 ```
 
 ## v1.5 Features (Not in v1)

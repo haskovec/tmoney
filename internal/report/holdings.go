@@ -36,6 +36,7 @@ func (s *Service) Holdings() (*Holdings, error) {
 		if !acct.Type.IsInvestmentType() || acct.OpeningDate.After(today) {
 			continue
 		}
+		rpt.AccountCount++
 		b, ok := sections[acct.Currency]
 		if !ok {
 			b = newHoldingsBuilder(acct.Currency)
@@ -56,7 +57,13 @@ func (s *Service) Holdings() (*Holdings, error) {
 	}
 
 	for _, b := range sections {
-		rpt.Sections = append(rpt.Sections, b.build())
+		sec := b.build()
+		// A section with no rows has nothing to show. A section that is not
+		// Available stays, to show that its total is not available.
+		if sec.Available && len(sec.Rows) == 0 {
+			continue
+		}
+		rpt.Sections = append(rpt.Sections, sec)
 	}
 	sort.Slice(rpt.Sections, func(i, j int) bool { return rpt.Sections[i].Currency < rpt.Sections[j].Currency })
 	return rpt, nil

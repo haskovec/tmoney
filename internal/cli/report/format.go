@@ -183,7 +183,11 @@ func printHoldingsReport(w io.Writer, rpt *reportdom.Holdings) {
 	fmt.Fprintln(w)
 
 	if len(rpt.Sections) == 0 {
-		fmt.Fprintln(w, "No investment accounts.")
+		if rpt.AccountCount == 0 {
+			fmt.Fprintln(w, "No investment accounts.")
+		} else {
+			fmt.Fprintln(w, "No holdings in the investment accounts.")
+		}
 		return
 	}
 
@@ -240,8 +244,14 @@ func printHoldingsSection(w io.Writer, sec reportdom.HoldingsSection) {
 	}
 	total := fmt.Sprintf("TOTAL (%s)", sec.Currency)
 	if sec.Available {
-		fmt.Fprintf(tw, "%s\t\t\t\t%s\t100.0%%\t%s\t%s\t\n", total,
-			formatTotal(sec.Value, sec.Currency, true, sec.Estimated),
+		// The rows are 0% of a total that is zero or less (negative cash),
+		// so the total is not 100% of them either.
+		pct := ""
+		if sec.Value.IsPositive() {
+			pct = "100.0%"
+		}
+		fmt.Fprintf(tw, "%s\t\t\t\t%s\t%s\t%s\t%s\t\n", total,
+			formatTotal(sec.Value, sec.Currency, true, sec.Estimated), pct,
 			cmdutil.FormatMoney(sec.CostBasis, sec.Currency),
 			cmdutil.FormatMoney(sec.Gain, sec.Currency))
 	} else {
