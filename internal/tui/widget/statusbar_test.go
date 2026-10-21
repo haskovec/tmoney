@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 )
@@ -284,6 +285,198 @@ func TestStatusBar_Render_NotificationsOnly(t *testing.T) {
 
 	if !strings.Contains(stripped, "3 due") {
 		t.Errorf("Render() should contain notification, got: %q", stripped)
+	}
+}
+
+// Text wider than the bar must not wrap: lipgloss wraps text wider than
+// Width, and a second row pushes the frame past the terminal height.
+func TestStatusBar_Render_OverflowStaysOneRow(t *testing.T) {
+	long := strings.Repeat("price refresh failed for EXMPL ", 8)
+	tests := []struct {
+		name  string
+		setup func(sb *StatusBar)
+	}{
+		{"notification", func(sb *StatusBar) { sb.AddNotification(long, NotificationAlert) }},
+		{"toast", func(sb *StatusBar) { sb.SetToast(long, NotificationInfo) }},
+		{"sticky", func(sb *StatusBar) { sb.SetSticky(long, NotificationAlert) }},
+		{"context", func(sb *StatusBar) { sb.SetContext(long) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sb := NewStatusBar()
+			sb.SetContext("Dashboard – example.tdb")
+			sb.SetKeyHints("↑↓ navigate  ? help  ctrl+q quit")
+			tt.setup(sb)
+			styles := NewStyles()
+			styles.Resize(80, 24)
+
+			got := sb.Render(styles, 80)
+			if strings.Contains(got, "\n") {
+				t.Fatalf("Render() wrapped to %d rows: %q", strings.Count(got, "\n")+1, StripAnsi(got))
+			}
+			if w := lipgloss.Width(got); w != 80 {
+				t.Errorf("Render() width = %d, want 80", w)
+			}
+			if !strings.Contains(StripAnsi(got), "...") {
+				t.Errorf("Render() = %q, want a \"...\" where the text is cut", StripAnsi(got))
+			}
+		})
+	}
+}
+
+// The hints go first. Then the cut comes from the right, so the context
+// and the start of the notification stay.
+func TestStatusBar_Render_OverflowCutsFromTheRight(t *testing.T) {
+	sb := NewStatusBar()
+	sb.SetContext("Register")
+	sb.SetKeyHints("n new  d delete  ? help")
+	sb.AddNotification("Cannot edit reconciled transaction "+strings.Repeat("x", 100), NotificationAlert)
+	styles := NewStyles()
+	styles.Resize(60, 24)
+
+	rendered := sb.Render(styles, 60)
+	got := StripAnsi(rendered)
+	if strings.Contains(got, "\n") || lipgloss.Width(rendered) != 60 {
+		t.Fatalf("Render() = %q, want one row 60 cells wide", got)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(got), "Register │ Cannot edit") {
+		t.Errorf("Render() = %q, want the context, then the start of the notification", got)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(got), "...") {
+		t.Errorf("Render() = %q, want the notification cut with \"...\" at the right", got)
+	}
+	if strings.Contains(got, "n new") {
+		t.Errorf("Render() = %q, want the hints dropped", got)
+	}
+}
+
+// A control character in the text (an errors.Join error in a toast, or an
+// escape in a file name, for example) must not start a second row or
+// restyle the bar.
+func TestStatusBar_Render_ControlCharsStayOneRow(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(sb *StatusBar)
+	}{
+		{"toast", func(sb *StatusBar) { sb.SetToast("line one\nline two", NotificationAlert) }},
+		{"notification", func(sb *StatusBar) { sb.AddNotification("a\r\nb", NotificationInfo) }},
+		{"sticky", func(sb *StatusBar) { sb.SetSticky("a\rb", NotificationAlert) }},
+		{"context", func(sb *StatusBar) { sb.SetContext("Dash\nboard") }},
+		{"hints", func(sb *StatusBar) { sb.SetKeyHints("? help\tctrl+q quit\n") }},
+		{"vertical tab and form feed", func(sb *StatusBar) { sb.AddNotification("a\vb\fc", NotificationInfo) }},
+		{"escape", func(sb *StatusBar) { sb.SetContext("Dashboard - \x1b[31mred.tdb") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sb := NewStatusBar()
+			sb.SetContext("Register")
+			tt.setup(sb)
+			styles := NewStyles()
+			styles.Resize(80, 24)
+
+			got := sb.Render(styles, 80)
+			if strings.Contains(got, "\n") {
+				t.Fatalf("Render() wrapped to %d rows: %q", strings.Count(got, "\n")+1, StripAnsi(got))
+			}
+			if w := lipgloss.Width(got); w != 80 {
+				t.Errorf("Render() width = %d, want 80", w)
+			}
+			if strings.ContainsAny(got, "\r\t\v\f") || strings.Contains(got, "\x1b[31m") {
+				t.Errorf("Render() = %q, want the control characters gone", got)
+			}
+		})
+	}
+}
+
+// A notification wins over the context: the context shrinks first, down to
+// 12 cells, so a long alert keeps its end (the log path of the startup-repair
+// alert, for example). Only then does the cut take the alert from the right.
+func TestStatusBar_Render_OverflowShrinksContextFirst(t *testing.T) {
+	const context = "Dashboard – household-finances.tdb"
+	alert := "Startup repair failed, see /Users/example/Library/Application Support/tmoney/tmoney.log"
+
+	t.Run("alert fits once the context shrinks", func(t *testing.T) {
+		sb := NewStatusBar()
+		sb.SetContext(context)
+		sb.SetSticky(alert, NotificationAlert)
+		width := lipgloss.Width(alert) + 20 // padding 2, separator 3, 15 for the context
+		styles := NewStyles()
+		styles.Resize(width, 24)
+
+		got := StripAnsi(sb.Render(styles, width))
+		if !strings.Contains(got, alert) {
+			t.Errorf("Render() = %q, want the whole alert", got)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(got), "Dashboard – ...") {
+			t.Errorf("Render() = %q, want the context cut to 15 cells", got)
+		}
+	})
+
+	t.Run("context stops at 12 cells", func(t *testing.T) {
+		sb := NewStatusBar()
+		sb.SetContext(context)
+		sb.SetSticky(alert, NotificationAlert)
+		styles := NewStyles()
+		styles.Resize(60, 24)
+
+		rendered := sb.Render(styles, 60)
+		got := strings.TrimSpace(StripAnsi(rendered))
+		if !strings.HasPrefix(got, "Dashboard... │ Startup repair failed") || !strings.HasSuffix(got, "...") {
+			t.Errorf("Render() = %q, want a 12-cell context, then the alert cut at the right", got)
+		}
+		if w := lipgloss.Width(rendered); w != 60 {
+			t.Errorf("Render() width = %d, want 60", w)
+		}
+	})
+
+	t.Run("short context stays whole", func(t *testing.T) {
+		sb := NewStatusBar()
+		sb.SetContext("Register")
+		sb.SetSticky(alert, NotificationAlert)
+		styles := NewStyles()
+		styles.Resize(60, 24)
+
+		got := strings.TrimSpace(StripAnsi(sb.Render(styles, 60)))
+		if !strings.HasPrefix(got, "Register │ Startup repair failed") {
+			t.Errorf("Render() = %q, want the whole context", got)
+		}
+	})
+}
+
+// Every width gives one row of exactly that width and valid UTF-8, also
+// where the hint cut falls inside a multi-byte arrow.
+func TestStatusBar_Render_OneRowAtAnyWidth(t *testing.T) {
+	hints := "↑↓ navigate  ←→ collapse/expand  enter select"
+	tests := []struct {
+		name  string
+		setup func(sb *StatusBar)
+	}{
+		{"hints only", func(sb *StatusBar) {}},
+		{"all sections", func(sb *StatusBar) {
+			sb.SetContext("Dashboard")
+			sb.AddNotification("2 scheduled due", NotificationAlert)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sb := NewStatusBar()
+			sb.SetKeyHints(hints)
+			tt.setup(sb)
+			styles := NewStyles()
+
+			for width := 1; width <= 100; width++ {
+				got := sb.Render(styles, width)
+				if strings.Contains(got, "\n") {
+					t.Errorf("width %d: Render() wrapped: %q", width, StripAnsi(got))
+				}
+				if w := lipgloss.Width(got); w != width {
+					t.Errorf("width %d: Render() width = %d", width, w)
+				}
+				if !utf8.ValidString(got) {
+					t.Errorf("width %d: Render() is not valid UTF-8: %q", width, got)
+				}
+			}
+		})
 	}
 }
 
