@@ -508,3 +508,20 @@ func TestRenderHelpOverlay_FitsAtEverySize(t *testing.T) {
 		}
 	}
 }
+
+// Short screens: the smallest overlay is 10 rows (border, padding, title,
+// separator, one entry, footer), so from a 12-row screen up the footer and the
+// bottom border must stay.
+func TestRenderHelpOverlay_ShortScreensKeepFooter(t *testing.T) {
+	styles := widget.NewStyles()
+	for height := 12; height <= 30; height++ {
+		styles.Resize(80, height)
+		rows := strings.Split(widget.StripAnsi(renderHelpOverlay(styles, ViewDashboard, 80, height)), "\n")
+		if !strings.Contains(strings.Join(rows, "\n"), "Press ? or Esc to close") {
+			t.Errorf("height %d: the footer is gone", height)
+		}
+		if last := rows[len(rows)-1]; !strings.HasPrefix(last, "╰") && !strings.HasPrefix(last, "└") {
+			t.Errorf("height %d: last row %q is not the bottom border", height, last)
+		}
+	}
+}

@@ -267,8 +267,8 @@ func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeigh
 	footerLines := 3    // blank + separator + close hint
 	// The final clamp below keeps the overlay to screenHeight-2 rows, so the
 	// budget leaves out those 2 rows too; otherwise the clamp cuts the footer
-	// and the bottom border.
-	maxContentLines := max(screenHeight-2-dialogOverhead-headerLines-footerLines, 5)
+	// and the bottom border. One entry is the least it can show.
+	maxContentLines := max(screenHeight-2-dialogOverhead-headerLines-footerLines, 1)
 
 	contentLineCount := 0
 	for i, section := range sections {
