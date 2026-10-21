@@ -199,6 +199,21 @@ func formatAPR(apr types.Money) string {
 	return strconv.FormatFloat(apr.Float64(), 'f', -1, 64) + "%"
 }
 
+// headerExtraRows returns the rows the view draws between its title and its
+// separator: the stats block (2 lines with a full projection, else 1) and the
+// "Esc: back" hint. tableContentRowOffset uses it.
+func (s *amortizationViewState) headerExtraRows() int {
+	d := s.data
+	if d == nil {
+		return 0
+	}
+	stats := 1
+	if d.hasSchedule && d.aprValid && d.projErr == nil {
+		stats = 2
+	}
+	return stats + 1
+}
+
 // statsLine builds the header stats block. It is one line
 // (Balance / APR / P&I / Escrow) in the partial states and two lines with the
 // projection summary (Payments left / Payoff / Interest remaining) when a full

@@ -293,6 +293,20 @@ func formatLotDetailRow(lot *investment.LotDetail) []string {
 	return []string{purchaseDate, shares, costPerShare, costBasis, currentValue, gainLoss, glPct}
 }
 
+// headerExtraRows returns the rows the portfolio draws between its title and
+// its separator: the two summary lines once the valuation loads, then the
+// "Lots for <ticker>" sub-header in lots mode. tableContentRowOffset uses it.
+func (s *portfolioViewState) headerExtraRows() int {
+	n := 0
+	if s.data != nil && s.data.valuation != nil {
+		n += 2
+	}
+	if s.mode == portfolioViewLots {
+		n++
+	}
+	return n
+}
+
 // renderSummary renders the summary bar showing account totals.
 // Line 1 is the position snapshot (cash, value, cost, unrealized). Line 2
 // is the total-return breakdown — the same shape as the investment

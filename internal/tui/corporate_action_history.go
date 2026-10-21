@@ -239,7 +239,7 @@ func (s *corporateActionViewState) render(styles widget.Styles, height int) stri
 	} else {
 		filterLine = styles.Muted.Render("Press / to filter by ticker or type")
 	}
-	sections = append(sections, filterLine)
+	sections = append(sections, filterLine) // tableContentRowOffset counts this row
 
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))

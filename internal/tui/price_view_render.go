@@ -283,6 +283,15 @@ func (s *priceViewState) listCursorSecurityID() types.ID {
 	return s.data.latestPrices[cursor].SecurityID
 }
 
+// headerExtraRows returns the rows drawn between the title and the separator:
+// the "Esc: back to list" hint in detail mode. tableContentRowOffset uses it.
+func (s *priceViewState) headerExtraRows() int {
+	if s.data != nil && s.data.mode == pricesViewDetail {
+		return 1
+	}
+	return 0
+}
+
 // renderDetail renders the per-security price history (drill-in).
 func (s *priceViewState) renderDetail(styles widget.Styles, width, height int) string {
 	// Full-screen view — see comment in renderList above.
@@ -306,7 +315,7 @@ func (s *priceViewState) renderDetail(styles widget.Styles, width, height int) s
 	headerRow := styles.Title.Render(titleText) + strings.Repeat(" ", padding) + styles.Muted.Render(secInfo)
 	sections = append(sections, headerRow)
 
-	sections = append(sections, styles.Muted.Render("  Esc: back to list"))
+	sections = append(sections, styles.Muted.Render("  Esc: back to list")) // tableContentRowOffset counts this row
 
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
