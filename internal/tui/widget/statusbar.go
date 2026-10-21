@@ -6,10 +6,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // maxNotifications is the maximum number of notifications displayed in the status bar.
 const maxNotifications = 3
+
+// oneLine turns line breaks and tabs in the bar text into spaces: the bar is
+// one row, and lipgloss starts a new row at a line break and widens a tab
+// past the width it measured.
+var oneLine = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ")
 
 // ToastDuration is how long a toast stays visible before auto-clearing.
 // Phase 9 (TH-031): the user-facing default is ~5s; tests override the
@@ -216,7 +222,7 @@ func (sb *StatusBar) Render(styles Styles, width int) string {
 
 	left := sb.renderContext(styles, barBase)
 	right := sb.renderNotifications(styles, barBase)
-	center := sb.keyHints
+	center := oneLine.Replace(sb.keyHints)
 
 	// Calculate available space for key hints
 	leftWidth := lipgloss.Width(left)
@@ -234,13 +240,19 @@ func (sb *StatusBar) Render(styles Styles, width int) string {
 
 	// Padding from the StatusBar style (0, 1) = 2 chars horizontal padding
 	padding := 2
+	// A bar no wider than its padding has no room for text; paint the
+	// width with the bar background only.
+	if width <= padding {
+		return barBase.Render(strings.Repeat(" ", width))
+	}
 	usedWidth := leftWidth + rightWidth + separatorWidth + padding
 
-	// Truncate center hints if they don't fit
+	// Truncate center hints if they don't fit. ansi.Truncate counts cells
+	// and cuts whole characters: the hints hold multi-byte arrows.
 	availableCenter := max(width-usedWidth, 0)
 	if centerWidth > availableCenter {
 		if availableCenter > 3 {
-			center = center[:availableCenter-3] + "..."
+			center = ansi.Truncate(center, availableCenter, "...")
 		} else {
 			center = ""
 		}
@@ -270,11 +282,21 @@ func (sb *StatusBar) Render(styles Styles, width int) string {
 
 	content := strings.Join(parts, separator)
 
+	// With the hints gone, the context and the notifications can still be
+	// wider than the bar (a long toast, for example). Cut from the right:
+	// the outer style wraps text wider than Width, and a second row would
+	// push the frame past the terminal height. ansi.Truncate keeps the
+	// escape codes after the cut, so the segment bg stays intact.
+	contentWidth := lipgloss.Width(content)
+	innerWidth := width - padding
+	if contentWidth > innerWidth {
+		content = ansi.Truncate(content, innerWidth, "...")
+		contentWidth = lipgloss.Width(content)
+	}
+
 	// Pad to fill width with bg-painted spaces (accounting for the outer
 	// style's horizontal padding). Rendering the fill through barBase
 	// keeps the gray bg continuous to the right edge.
-	contentWidth := lipgloss.Width(content)
-	innerWidth := width - padding
 	if contentWidth < innerWidth {
 		content += barBase.Render(strings.Repeat(" ", innerWidth-contentWidth))
 	}
@@ -289,7 +311,7 @@ func (sb *StatusBar) renderContext(_ Styles, barBase lipgloss.Style) string {
 	if sb.context == "" {
 		return ""
 	}
-	return barBase.Bold(true).Render(sb.context)
+	return barBase.Bold(true).Render(oneLine.Replace(sb.context))
 }
 
 // renderNotifications renders the notification section (right side).
@@ -300,10 +322,11 @@ func (sb *StatusBar) renderNotifications(_ Styles, barBase lipgloss.Style) strin
 	alertStyle := barBase.Foreground(ColorAlert).Bold(true)
 
 	if sb.toast != nil {
+		text := oneLine.Replace(sb.toast.Text)
 		if sb.toast.Level == NotificationAlert {
-			return alertStyle.Render(sb.toast.Text)
+			return alertStyle.Render(text)
 		}
-		return barBase.Render(sb.toast.Text)
+		return barBase.Render(text)
 	}
 
 	queued := sb.notifications
@@ -316,11 +339,12 @@ func (sb *StatusBar) renderNotifications(_ Styles, barBase lipgloss.Style) strin
 
 	var parts []string
 	for _, n := range queued {
+		text := oneLine.Replace(n.Text)
 		switch n.Level {
 		case NotificationAlert:
-			parts = append(parts, alertStyle.Render(n.Text))
+			parts = append(parts, alertStyle.Render(text))
 		default:
-			parts = append(parts, barBase.Render(n.Text))
+			parts = append(parts, barBase.Render(text))
 		}
 	}
 
