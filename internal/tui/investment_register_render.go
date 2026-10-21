@@ -187,7 +187,7 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	// rows of vertical space for scanning the filtered list.
 	totalReturnLines := 0
 	if !filterActive {
-		if breakdown, total := s.renderTotalReturnLines(styles); breakdown != "" {
+		if breakdown, total := s.renderTotalReturnLines(styles, max(contentWidth-4, 1)); breakdown != "" {
 			sections = append(sections, breakdown)
 			sections = append(sections, total)
 			totalReturnLines = 2
@@ -245,12 +245,17 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 // when no valuation is loaded so the register still renders during the
 // initial load.
 //
+// Each line fits in width cells: the render and tableContentRowOffset count
+// exactly two rows, so a wrap would put a click on the wrong transaction. A
+// line that is too wide leaves out whole figures from the right; Unrealized,
+// Total return and Value stay longest.
+//
 // FeesPaid is stored as a positive magnitude on the valuation per the
 // total-return spec; the line negates it before formatting so the leading
 // minus sign visually reflects the subtraction in the total-return formula.
 // A nil TotalReturnPct (no buys ever — denominator is zero) renders as the
 // "—" placeholder so the line shape stays stable.
-func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Styles) (string, string) {
+func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Styles, width int) (string, string) {
 	if s.data == nil || s.data.valuation == nil {
 		return "", ""
 	}
@@ -290,7 +295,7 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 		styles.Muted.Render("Int") + " " + money(v.InterestReceived),
 		styles.Muted.Render("Fees") + " " + feeRendered,
 	}
-	breakdown := strings.Join(parts, " · ")
+	breakdown := widget.FitParts(parts, " · ", width, []int{4, 3, 2, 1})
 
 	// pct renders a percent, or the "—" placeholder when the figure is
 	// undefined, so every line keeps the same shape.
@@ -307,7 +312,7 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 	// IRR and TWR show the annual figure once the ledger spans a year;
 	// before that the holding-period figure is shown and marked "(cum.)".
 	perf := func(label string, annual, cumulative *float64) string {
-		str := " · " + styles.Muted.Render(label) + " "
+		str := styles.Muted.Render(label) + " "
 		if annual != nil {
 			return str + pct(annual)
 		}
@@ -317,13 +322,17 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 		}
 		return str
 	}
-	total += perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct)
-	total += perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct)
-	// Account value (cash + holdings market value) is appended after the
-	// optional (partial) marker: total value is independent of the
-	// realized-gain partiality that marker qualifies, so it must sit
-	// outside the marker's scope.
-	total += " · " + styles.Muted.Render("Value") + " " + money(v.TotalValue)
+	// Account value (cash + holdings market value) comes after the optional
+	// (partial) marker: total value is independent of the realized-gain
+	// partiality that marker qualifies, so it must sit outside the marker's
+	// scope.
+	segments := []string{
+		total,
+		perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct),
+		perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct),
+		styles.Muted.Render("Value") + " " + money(v.TotalValue),
+	}
 
-	return breakdown, total
+	// TWR goes first, then IRR, then Value; the total return always stays.
+	return breakdown, widget.FitParts(segments, " · ", width, []int{2, 1, 3})
 }

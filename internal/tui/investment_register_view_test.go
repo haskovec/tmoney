@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
@@ -35,7 +36,7 @@ func TestRenderInvestmentTotalReturnLines_PartialMarker(t *testing.T) {
 		}},
 	}
 
-	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles)
+	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles, 200)
 	if !strings.Contains(breakdown, "(partial)") {
 		t.Errorf("expected '(partial)' on breakdown line; got %q", breakdown)
 	}
@@ -63,7 +64,7 @@ func TestRenderInvestmentTotalReturnLines_NoPartialMarker(t *testing.T) {
 		}},
 	}
 
-	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles)
+	breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles, 200)
 	if strings.Contains(breakdown, "(partial)") {
 		t.Errorf("unexpected '(partial)' on breakdown line; got %q", breakdown)
 	}
@@ -1195,7 +1196,7 @@ func TestRenderInvestmentTotalReturnLines_PerformanceFallbacks(t *testing.T) {
 			},
 		}},
 	}
-	_, totalRaw := app.investmentRegister.renderTotalReturnLines(app.styles)
+	_, totalRaw := app.investmentRegister.renderTotalReturnLines(app.styles, 200)
 	total := widget.StripAnsi(totalRaw)
 	for _, want := range []string{"IRR 2.75% (cum.)", "TWR 3.20% (cum.)"} {
 		if !strings.Contains(total, want) {
@@ -1314,5 +1315,50 @@ func TestInvestmentRegister_RenderFitsTheScreen(t *testing.T) {
 	lines := strings.Split(e.render(app), "\n")
 	if len(lines) > app.height {
 		t.Errorf("render is %d lines on a %d-line screen", len(lines), app.height)
+	}
+}
+
+// Both total-return lines fit the pane: the render and tableContentRowOffset
+// count exactly two rows, so a wrap would put a click on the wrong
+// transaction. A line that is too wide leaves out whole figures from the
+// right; Unrealized, Total return and Value stay longest.
+func TestRenderInvestmentTotalReturnLines_FitTheWidth(t *testing.T) {
+	trPct, irr, twr := 12.34, 9.87, 8.76
+	app := &App{
+		styles: testStyles(),
+		investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
+			valuation: &investment.AccountValuation{
+				TotalGainLoss:                    types.MustNewMoney("23456.78"),
+				RealizedGain:                     types.MustNewMoney("1234.56"),
+				DividendsReceived:                types.MustNewMoney("567.89"),
+				InterestReceived:                 types.MustNewMoney("12.34"),
+				FeesPaid:                         types.MustNewMoney("45.67"),
+				TotalReturn:                      types.MustNewMoney("25225.90"),
+				TotalReturnPct:                   &trPct,
+				MoneyWeightedReturnAnnualizedPct: &irr,
+				TimeWeightedReturnAnnualizedPct:  &twr,
+				TotalValue:                       types.MustNewMoney("234567.89"),
+				AnyRealizedUnavailable:           true,
+			},
+		}},
+	}
+
+	for _, width := range []int{36, 56, 76, 96, 116} {
+		breakdown, total := app.investmentRegister.renderTotalReturnLines(app.styles, width)
+		for name, line := range map[string]string{"breakdown": breakdown, "total": total} {
+			if strings.Contains(line, "\n") || lipgloss.Width(line) > width {
+				t.Errorf("width %d: %s line %q is %d cells, want one row of at most %d",
+					width, name, widget.StripAnsi(line), lipgloss.Width(line), width)
+			}
+		}
+		if !strings.Contains(breakdown, "Unrealized") || !strings.Contains(total, "Total return") {
+			t.Errorf("width %d: lines %q / %q lost Unrealized or Total return",
+				width, widget.StripAnsi(breakdown), widget.StripAnsi(total))
+		}
+	}
+
+	_, total := app.investmentRegister.renderTotalReturnLines(app.styles, 64)
+	if got := widget.StripAnsi(total); !strings.Contains(got, "Value") || strings.Contains(got, "TWR") || strings.Contains(got, "IRR") {
+		t.Errorf("width 64: total line %q, want TWR and IRR left out before Value", got)
 	}
 }

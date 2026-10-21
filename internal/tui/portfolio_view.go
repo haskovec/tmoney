@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
@@ -297,6 +298,10 @@ func formatLotDetailRow(lot *investment.LotDetail) []string {
 // is the total-return breakdown — the same shape as the investment
 // register's TR row — so the user can see how realized gain, dividends,
 // interest, and fees combine into the account-level total return.
+//
+// Each line fits the pane: the table and tableContentRowOffset count exactly
+// two rows, so a wrap would put a click on the wrong holding. A line that is
+// too wide leaves out whole figures, least needed first.
 func (s *portfolioViewState) renderSummary(styles widget.Styles, contentWidth int) string {
 	if s.data == nil || s.data.valuation == nil {
 		return ""
@@ -334,8 +339,11 @@ func (s *portfolioViewState) renderSummary(styles widget.Styles, contentWidth in
 		parts = append(parts, labelStr+" "+valueStyle.Render(m.value))
 	}
 
-	line1 := strings.Join(parts, "  ")
-	line2 := s.renderTotalReturnLine(styles)
+	// Cost Basis goes first (Mkt Value less Gain/Loss gives it), then Cash,
+	// Mkt Value, G/L % and Gain/Loss. Total always stays.
+	lineWidth := max(contentWidth-4, 1) // Padding(1, 2) in render
+	line1 := widget.FitParts(parts, "  ", lineWidth, []int{3, 0, 1, 5, 4})
+	line2 := s.renderTotalReturnLine(styles, lineWidth)
 	if line2 == "" {
 		return line1
 	}
@@ -346,7 +354,10 @@ func (s *portfolioViewState) renderSummary(styles widget.Styles, contentWidth in
 // Realized · Div · Int · Fees · Total return $ (pct%). FeesPaid is stored
 // as a positive magnitude on the valuation per the total-return spec; we
 // negate it before formatting so the subtraction reads naturally.
-func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles) string {
+//
+// The line fits in width cells: the breakdown fields go from the right
+// until it fits, and the total return always stays.
+func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles, width int) string {
 	if s.data == nil || s.data.valuation == nil {
 		return ""
 	}
@@ -391,7 +402,11 @@ func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles) string 
 		total += " " + styles.Muted.Render("(partial)")
 	}
 
-	return strings.Join(parts, " · ") + "  " + total
+	breakdown := widget.FitParts(parts, " · ", width-lipgloss.Width(total)-2, []int{3, 2, 1, 0})
+	if breakdown == "" {
+		return ansi.Truncate(total, width, "…")
+	}
+	return breakdown + "  " + total
 }
 
 // render renders the portfolio view.

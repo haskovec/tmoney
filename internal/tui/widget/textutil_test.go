@@ -3,6 +3,8 @@ package widget
 import (
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestPadRight(t *testing.T) {
@@ -75,5 +77,38 @@ func TestOverlayDropdown_PreservesBackgroundANSI(t *testing.T) {
 	}
 	if !strings.Contains(row, blueBg) {
 		t.Errorf("dropdown row should preserve blue-bg ANSI on prefix/suffix, got %q", row)
+	}
+}
+
+func TestFitParts(t *testing.T) {
+	parts := []string{"Cash: $1.00", "Total: $22.00", "G/L: $333.00"}
+	drop := []int{0, 2} // Cash goes first, then G/L; Total stays
+	tests := []struct {
+		width int
+		want  string
+	}{
+		{100, "Cash: $1.00  Total: $22.00  G/L: $333.00"},
+		{40, "Cash: $1.00  Total: $22.00  G/L: $333.00"},
+		{39, "Total: $22.00  G/L: $333.00"},
+		{27, "Total: $22.00  G/L: $333.00"},
+		{26, "Total: $22.00"},
+		{13, "Total: $22.00"},
+		{9, "Total: $…"},
+		{0, ""},
+	}
+	for _, tt := range tests {
+		if got := FitParts(parts, "  ", tt.width, drop); got != tt.want {
+			t.Errorf("FitParts(width %d) = %q, want %q", tt.width, got, tt.want)
+		}
+	}
+
+	if got := FitParts([]string{"a", "b"}, " ", 0, []int{1, 0}); got != "" {
+		t.Errorf("FitParts with every part droppable = %q, want empty", got)
+	}
+
+	// Width counts cells, not bytes, and the styles of a whole part stay.
+	styled := []string{lipgloss.NewStyle().Bold(true).Render("Café"), "東京"}
+	if got := FitParts(styled, " ", 9, []int{1}); StripAnsi(got) != "Café 東京" {
+		t.Errorf("FitParts(styled, 9) = %q, want both parts", got)
 	}
 }

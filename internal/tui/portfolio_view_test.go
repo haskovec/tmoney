@@ -421,7 +421,7 @@ func TestPortfolioSummaryBar(t *testing.T) {
 		}},
 	}
 
-	summary := app.portfolio.renderSummary(app.styles, 100)
+	summary := app.portfolio.renderSummary(app.styles, 200)
 
 	// Line 1: position snapshot
 	for _, label := range []string{"Cash:", "Mkt Value:", "Total:", "Cost Basis:", "Gain/Loss:", "G/L %:"} {
@@ -480,7 +480,7 @@ func TestPortfolioSummaryBar_NilTotalReturnPct(t *testing.T) {
 		}},
 	}
 
-	summary := app.portfolio.renderSummary(app.styles, 100)
+	summary := app.portfolio.renderSummary(app.styles, 200)
 
 	if !strings.Contains(summary, "—") {
 		t.Error("nil TotalReturnPct should render as '—' placeholder")
@@ -510,7 +510,7 @@ func TestPortfolioSummaryBar_PartialRealizedMarker(t *testing.T) {
 		}},
 	}
 
-	summary := app.portfolio.renderSummary(app.styles, 100)
+	summary := app.portfolio.renderSummary(app.styles, 200)
 
 	if !strings.Contains(summary, "(partial)") {
 		t.Errorf("expected '(partial)' marker when AnyRealizedUnavailable=true; got %q", summary)
@@ -540,7 +540,7 @@ func TestPortfolioSummaryBar_NoPartialMarkerWhenAllAvailable(t *testing.T) {
 		}},
 	}
 
-	summary := app.portfolio.renderSummary(app.styles, 100)
+	summary := app.portfolio.renderSummary(app.styles, 200)
 
 	if strings.Contains(summary, "(partial)") {
 		t.Errorf("expected no '(partial)' marker when AnyRealizedUnavailable=false; got %q", summary)
@@ -553,7 +553,7 @@ func TestPortfolioSummaryBar_NilValuation(t *testing.T) {
 		portfolio: portfolioViewState{data: nil},
 	}
 
-	summary := app.portfolio.renderSummary(app.styles, 100)
+	summary := app.portfolio.renderSummary(app.styles, 200)
 	if summary != "" {
 		t.Errorf("summary should be empty for nil portfolio data, got %q", summary)
 	}
@@ -1398,5 +1398,52 @@ func TestPortfolioView_RenderFitsTheScreen(t *testing.T) {
 			t.Errorf("line %d is %d cells wide on a %d-cell screen", i, w, app.width)
 			break
 		}
+	}
+}
+
+// The summary is two rows at every pane width: the table height and the
+// mouse math (tableContentRowOffset) count exactly two. A line that does not
+// fit leaves out whole figures, Cost Basis first; Total and "Total return"
+// always stay.
+func TestPortfolioSummary_FitsThePane(t *testing.T) {
+	trPct := 12.5
+	app := &App{
+		styles: testStyles(),
+		portfolio: portfolioViewState{data: &portfolioViewData{
+			valuation: &investment.AccountValuation{
+				CashBalance:       types.MustNewMoney("123456.78"),
+				MarketValue:       types.MustNewMoney("234567.89"),
+				TotalValue:        types.MustNewMoney("358024.67"),
+				TotalCostBasis:    types.MustNewMoney("200000.00"),
+				TotalGainLoss:     types.MustNewMoney("34567.89"),
+				TotalGainPct:      17.28,
+				RealizedGain:      types.MustNewMoney("12345.67"),
+				DividendsReceived: types.MustNewMoney("4567.89"),
+				InterestReceived:  types.MustNewMoney("123.45"),
+				FeesPaid:          types.MustNewMoney("67.89"),
+				TotalReturn:       types.MustNewMoney("51536.12"),
+				TotalReturnPct:    &trPct,
+			},
+		}},
+	}
+
+	for _, contentWidth := range []int{40, 60, 80, 100, 120} {
+		lines := strings.Split(app.portfolio.renderSummary(app.styles, contentWidth), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("content width %d: summary has %d lines, want 2", contentWidth, len(lines))
+		}
+		for i, line := range lines {
+			if w := lipgloss.Width(line); w > contentWidth-4 {
+				t.Errorf("content width %d: line %d is %d cells, want at most %d", contentWidth, i+1, w, contentWidth-4)
+			}
+		}
+		if !strings.Contains(lines[0], "Total:") || !strings.Contains(lines[1], "Total return") {
+			t.Errorf("content width %d: summary %q lost Total or Total return", contentWidth, widget.StripAnsi(strings.Join(lines, " / ")))
+		}
+	}
+
+	line1 := strings.Split(app.portfolio.renderSummary(app.styles, 120), "\n")[0]
+	if strings.Contains(line1, "Cost Basis:") || !strings.Contains(line1, "Gain/Loss:") || !strings.Contains(line1, "G/L %:") {
+		t.Errorf("content width 120: line 1 = %q, want Cost Basis left out first", widget.StripAnsi(line1))
 	}
 }
