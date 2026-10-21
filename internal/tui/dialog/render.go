@@ -450,16 +450,22 @@ func WrapRows(text string, width int) []string {
 				if line != "" {
 					flush()
 				}
-				head := ansi.Truncate(word, room, "")
-				if head == "" {
-					break // a character wider than the row: keep it whole
+				// Each piece takes at least one visible character, so the
+				// loop always moves on: a character wider than the row, or
+				// one behind a zero-width character or an escape code, gets
+				// a row of its own.
+				n := room
+				head := ansi.Truncate(word, n, "")
+				for lipgloss.Width(head) == 0 {
+					n++
+					head = ansi.Truncate(word, n, "")
 				}
 				line = head
 				flush()
 				word = ansi.TruncateLeft(word, lipgloss.Width(head), "")
 			}
 			switch {
-			case word == "":
+			case lipgloss.Width(word) == 0: // nothing left to show
 			case line == "":
 				line = word
 			case lipgloss.Width(line)+1+lipgloss.Width(word) <= room:

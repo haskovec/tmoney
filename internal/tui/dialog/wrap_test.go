@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -193,5 +194,36 @@ func TestDialog_ScrollingLongMessage_ClickFocusesField(t *testing.T) {
 	}
 	if clickLabel(t, d, "Memo:", 100, 24); d.FocusedField() == nil || d.FocusedField().Label != "Memo" {
 		t.Errorf("click on Memo: focused %v, want Memo", d.FocusedField())
+	}
+}
+
+// A row with room for 1 cell must not stop the wrap: a zero-width character
+// or a bare escape code once made a step that took nothing, and the loop
+// never ended. A character wider than the row gets a row of its own.
+func TestWrapRows_NarrowRoomEnds(t *testing.T) {
+	tests := []struct {
+		text  string
+		width int
+	}{
+		{"\u200b東京", 1},
+		{"\x1b[31m東京\x1b[m", 1},
+		{"  \u200b東 x", 3},
+		{"東京", 1},
+		{" 東京", 2},
+	}
+	for _, tt := range tests {
+		done := make(chan []string, 1)
+		go func() { done <- WrapRows(tt.text, tt.width) }()
+		select {
+		case rows := <-done:
+			for _, row := range rows {
+				// One wide character may pass a 1-cell room by one cell.
+				if w := lipgloss.Width(row); w > tt.width+1 {
+					t.Errorf("WrapRows(%q, %d): row %q is %d cells", tt.text, tt.width, row, w)
+				}
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("WrapRows(%q, %d) does not return", tt.text, tt.width)
+		}
 	}
 }
