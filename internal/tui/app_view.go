@@ -2,9 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -128,9 +130,24 @@ func (a *App) getKeyHints() string {
 	return commonKeyHints
 }
 
-// renderError renders an error message.
+// renderError renders the error page. The text wraps to the screen width and
+// is cut to the screen height with a count of the rest, so the page never
+// grows past the terminal and the prompt always shows.
 func (a *App) renderError() string {
-	return a.styles.Error.Render(fmt.Sprintf("Error: %v\n\nPress any key to continue", a.err))
+	// Error has Padding(1, 2). An unknown size (0) leaves the text whole:
+	// ansi.Wrap does not wrap below a limit of 1.
+	inner := a.width - 4
+	wrap := func(s string) []string { return strings.Split(ansi.Wrap(s, inner, ""), "\n") }
+	prompt := wrap("Press any key to continue")
+	lines := wrap(fmt.Sprintf("Error: %v", a.err))
+	if a.height > 0 {
+		room := max(a.height-3-len(prompt), 1) // 2 padding rows and a blank row
+		if len(lines) > room {
+			keep := room - 1
+			lines = append(lines[:keep], fmt.Sprintf("… %d more lines", len(lines)-keep))
+		}
+	}
+	return a.styles.Error.Render(strings.Join(lines, "\n") + "\n\n" + strings.Join(prompt, "\n"))
 }
 
 // handleWindowSize records a new terminal size and rebuilds whichever register
