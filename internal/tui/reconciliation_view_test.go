@@ -1207,3 +1207,61 @@ func TestApp_MouseClick_ReconciliationView_LongAccountName(t *testing.T) {
 		})
 	}
 }
+
+// Reconciliation is full-screen, so it measures the whole width, and its
+// footer figures stay whole: a clipped "Difference: $123" for $1234.56 would
+// pass for a smaller amount.
+func TestRenderReconciliation_FitsTheWidth(t *testing.T) {
+	const name = "Contoso Fictional Credit Union Everyday Checking"
+	for _, width := range []int{60, 80, 100} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			txn := &transaction.Transaction{Status: transaction.StatusUncleared}
+			txn.ID = types.NewID()
+			txn.Amount = types.ZeroMoney
+			txn.Date = types.Today()
+			app := &App{
+				currentView: ViewReconciliation,
+				keys:        defaultKeyMap(),
+				menubar:     widget.NewMenuBar(),
+				sidebar:     sidebar.New(),
+				statusbar:   widget.NewStatusBar(),
+				styles:      widget.NewStyles(),
+				width:       width,
+				height:      24,
+				ready:       true,
+				reconciliation: reconciliationViewState{data: &reconciliationViewData{
+					session: &reconciliation.Session{
+						AccountID:        types.NewID(),
+						StatementDate:    types.Today(),
+						StatementBalance: types.MustNewMoney("12345.67"),
+					},
+					account:       &account.Account{Name: name},
+					candidates:    []*transaction.Transaction{txn},
+					checkedIDs:    make(map[types.ID]bool),
+					payeeNames:    make(map[types.ID]string),
+					categoryNames: make(map[types.ID]string),
+					accountNames:  make(map[types.ID]string),
+					clearedTotal:  types.MustNewMoney("11111.11"),
+				}},
+			}
+			app.styles.Resize(width, 24)
+			app.buildReconciliationTable()
+
+			frame := widget.StripAnsi(app.viewContent())
+			if !strings.Contains(frame, "Difference: $1234.56") {
+				t.Errorf("the difference is not whole:\n%s", frame)
+			}
+			if !strings.Contains(frame, "Checked: 0 of 1") {
+				t.Errorf("the checked count is gone:\n%s", frame)
+			}
+			for _, line := range strings.Split(frame, "\n") {
+				if strings.Contains(line, "Difference:") && strings.Contains(line, "…") {
+					t.Errorf("the balance line was cut: %q", line)
+				}
+			}
+			if width >= 100 && !strings.Contains(frame, name) {
+				t.Errorf("a %d-cell screen has room for the whole name:\n%s", width, frame)
+			}
+		})
+	}
+}
