@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1134,5 +1135,75 @@ func TestMenuReconcile_ClosedInvestmentAccountNotToldToReopen(t *testing.T) {
 	}
 	if a.reconDialog != nil {
 		t.Error("the statement dialog opened")
+	}
+}
+
+// A long account name must not wrap the header: the table would move down a
+// row, and a click would toggle the transaction below the pointer.
+func TestApp_MouseClick_ReconciliationView_LongAccountName(t *testing.T) {
+	payeeNames := map[types.ID]string{}
+	var txns []*transaction.Transaction
+	for _, name := range []string{"PayeeAlpha", "PayeeBravo", "PayeeCharlie"} {
+		txn := &transaction.Transaction{Status: transaction.StatusUncleared}
+		txn.ID = types.NewID()
+		txn.Amount = types.ZeroMoney
+		txn.Date = types.Today()
+		payeeID := types.NewID()
+		txn.PayeeID = types.NullableID{ID: payeeID, Valid: true}
+		payeeNames[payeeID] = name
+		txns = append(txns, txn)
+	}
+
+	for _, width := range []int{60, 80, 120} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			app := &App{
+				currentView: ViewReconciliation,
+				keys:        defaultKeyMap(),
+				menubar:     widget.NewMenuBar(),
+				sidebar:     sidebar.New(),
+				statusbar:   widget.NewStatusBar(),
+				styles:      widget.NewStyles(),
+				width:       width,
+				height:      24,
+				ready:       true,
+				reconciliation: reconciliationViewState{data: &reconciliationViewData{
+					session: &reconciliation.Session{
+						AccountID:        types.NewID(),
+						StatementDate:    types.Today(),
+						StatementBalance: types.ZeroMoney,
+					},
+					account:       &account.Account{Name: "Contoso Fictional Credit Union Everyday Checking"},
+					candidates:    txns,
+					checkedIDs:    make(map[types.ID]bool),
+					payeeNames:    payeeNames,
+					categoryNames: make(map[types.ID]string),
+					accountNames:  make(map[types.ID]string),
+				}},
+			}
+			app.styles.Resize(width, 24)
+			app.buildReconciliationTable()
+
+			frame := strings.Split(widget.StripAnsi(app.viewContent()), "\n")
+			date := types.Today().Time().Format("01/02/2006")
+			y := -1
+			for i, line := range frame {
+				if strings.Contains(line, "RECONCILE:") && !strings.Contains(line, "Statement Date: "+date) {
+					t.Errorf("header row %q lost the statement date", line)
+				}
+				if strings.Contains(line, "PayeeAlpha") {
+					y = i
+				}
+			}
+			if y < 0 {
+				t.Fatalf("PayeeAlpha not on screen:\n%s", strings.Join(frame, "\n"))
+			}
+
+			model, _ := app.Update(tea.MouseClickMsg{X: 10, Y: y, Button: tea.MouseLeft})
+			checked := model.(*App).reconciliation.data.checkedIDs
+			if !checked[txns[0].ID] || checked[txns[1].ID] || checked[txns[2].ID] {
+				t.Errorf("click on the PayeeAlpha row: checked alpha=%v bravo=%v charlie=%v, want only alpha",
+					checked[txns[0].ID], checked[txns[1].ID], checked[txns[2].ID])
+			}
+		})
 	}
 }
