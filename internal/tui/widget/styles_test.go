@@ -676,3 +676,18 @@ func TestRenderViewContent_ClipsWideLines(t *testing.T) {
 		}
 	}
 }
+
+// A view pads every line to its widest one, so when one line is too wide
+// the others pass the pane with blank cells only. Only a cut that drops text
+// gets "…"; a line that loses blank cells only is cut clean.
+func TestRenderViewContent_MarksOnlyCutText(t *testing.T) {
+	s := NewStyles()
+	in := lipgloss.NewStyle().Padding(1, 2).Render("short\n" + strings.Repeat("wide ", 10) + "\nalso short")
+	lines := strings.Split(StripAnsi(s.RenderViewContent(in, 30, 6)), "\n")
+	for i, line := range lines {
+		cut := strings.Contains(line, "wide")
+		if got := strings.HasSuffix(strings.TrimRight(line, " "), "…"); got != cut {
+			t.Errorf("row %d %q: ends in … = %v, want %v", i, line, got, cut)
+		}
+	}
+}
