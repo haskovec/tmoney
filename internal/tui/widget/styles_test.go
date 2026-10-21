@@ -649,3 +649,27 @@ func TestBreakpointConstants(t *testing.T) {
 			SidebarWidthLarge, SidebarWidthMedium)
 	}
 }
+
+// A view line wider than the pane is cut, not wrapped: the mouse code maps
+// one view line to one screen row, so a wrap moves every row below it down
+// and pushes the last rows off the pane.
+func TestRenderViewContent_ClipsWideLines(t *testing.T) {
+	s := NewStyles()
+	in := "title\n" + s.Bold.Render(strings.Repeat("wide ", 20)) + "\nnext\nlast"
+	out := s.RenderViewContent(in, 30, 5)
+
+	lines := strings.Split(out, "\n")
+	if len(lines) != 5 {
+		t.Fatalf("RenderViewContent() = %d rows, want 5:\n%s", len(lines), StripAnsi(out))
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w != 30 {
+			t.Errorf("row %d width = %d, want 30", i, w)
+		}
+	}
+	for i, want := range map[int]string{2: "next", 3: "last"} {
+		if got := strings.TrimSpace(StripAnsi(lines[i])); got != want {
+			t.Errorf("row %d = %q, want %q", i, got, want)
+		}
+	}
+}

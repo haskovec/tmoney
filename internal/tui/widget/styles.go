@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 )
 
@@ -606,12 +607,27 @@ func repaintDesktop(s string) string {
 // content area and push the status bar off the bottom of the screen. This
 // mirrors the sidebar's line-clipping and the register/scheduled views'
 // per-table height budgets — the content pane never exceeds its allotment.
+//
+// Lines wider than the pane are cut, not wrapped (see clipLines).
 func (s *Styles) RenderViewContent(viewContent string, width, height int) string {
 	return s.Content.
 		Width(width).
 		Height(height).
 		MaxHeight(height).
-		Render(repaintDesktop(viewContent))
+		Render(repaintDesktop(clipLines(viewContent, width)))
+}
+
+// clipLines cuts each line of s to width cells. lipgloss Width wraps a wider
+// line onto more rows, but the mouse code maps one view line to one screen
+// row, so a wrap would make a click land on the row below the pointer.
+func clipLines(s string, width int) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		if lipgloss.Width(l) > width {
+			lines[i] = ansi.Truncate(l, width, "")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Resize updates all width-dependent styles for the given terminal dimensions.
