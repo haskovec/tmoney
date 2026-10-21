@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -272,7 +273,7 @@ func TestApp_MouseClick_InvestmentRegister_TotalReturnLines_SelectsRow(t *testin
 		investmentRegister: investmentRegisterViewState{
 			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
 			data: &investmentRegisterData{
-				account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment},
+				account:   &account.Account{Name: "Brokerage", Type: account.TypeInvestment, Active: true},
 				valuation: &investment.AccountValuation{}, // non-nil triggers TR breakdown
 			},
 		},
@@ -316,7 +317,7 @@ func TestApp_MouseClick_InvestmentRegister_NoValuation_SelectsRow(t *testing.T) 
 		statusbar:   widget.NewStatusBar(),
 		investmentRegister: investmentRegisterViewState{
 			table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
-			data:  &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment}},
+			data:  &investmentRegisterData{account: &account.Account{Name: "Brokerage", Type: account.TypeInvestment, Active: true}},
 		},
 		width:  100,
 		height: 24,
@@ -791,5 +792,106 @@ func TestApp_MouseRelease_Ignored(t *testing.T) {
 
 	if updatedApp.menubar.IsActive() {
 		t.Error("mouse release should not activate menu")
+	}
+}
+
+// clickScreenRow renders the frame, finds the screen row that shows text,
+// and clicks it in the table area. The Y comes from the render, so the test
+// fails when the mouse math and the layout drift apart.
+func clickScreenRow(t *testing.T, app *App, text string) *App {
+	t.Helper()
+	frame := strings.Split(widget.StripAnsi(app.viewContent()), "\n")
+	for y, line := range frame {
+		if strings.Contains(line, text) {
+			model, _ := app.Update(tea.MouseClickMsg{X: app.styles.SidebarWidth() + 5, Y: y, Button: tea.MouseLeft})
+			return model.(*App)
+		}
+	}
+	t.Fatalf("%q not on screen:\n%s", text, strings.Join(frame, "\n"))
+	return nil
+}
+
+// The closed-account banner adds a row above the separator; a click must
+// still select the row under the pointer.
+func TestApp_MouseClick_Register_ClosedBanner_SelectsRow(t *testing.T) {
+	app := &App{
+		currentView: ViewRegister,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		sidebar:     sidebar.New(),
+		statusbar:   widget.NewStatusBar(),
+		styles:      widget.NewStyles(),
+		ready:       true,
+		register: registerViewState{
+			table: widget.NewTable([]widget.Column{{Header: "A", Width: 10}}),
+			data:  &registerData{account: &account.Account{Name: "Checking", Active: false}},
+		},
+		width:  140,
+		height: 24,
+	}
+	app.styles.Resize(140, 24)
+	app.sidebar.SetFocused(false)
+	app.register.table.SetRows([][]string{{"row1"}, {"row2"}, {"row3"}})
+
+	if got := clickScreenRow(t, app, "row2").register.table.Cursor(); got != 1 {
+		t.Errorf("table cursor = %d, want 1", got)
+	}
+}
+
+// The investment register draws the closed banner, then the two total-return
+// lines or, while a filter is on, one filter line in their place. A click
+// must select the row under the pointer in every case.
+func TestApp_MouseClick_InvestmentRegister_HeaderRows_SelectsRow(t *testing.T) {
+	secID := types.NewID()
+	var txns []*investment.Transaction
+	for range 3 {
+		txn := &investment.Transaction{}
+		txn.SecurityID = types.NullableID{ID: secID, Valid: true}
+		txns = append(txns, txn)
+	}
+	tests := []struct {
+		name  string
+		setup func(s *investmentRegisterViewState)
+	}{
+		{"closed with valuation", func(s *investmentRegisterViewState) { s.data.account.Active = false }},
+		{"locked filter", func(s *investmentRegisterViewState) { s.filterLockedSec = secID }},
+		{"filter searching", func(s *investmentRegisterViewState) { s.filterSearching = true }},
+		{"closed and filtered", func(s *investmentRegisterViewState) {
+			s.data.account.Active = false
+			s.filterLockedSec = secID
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{
+				currentView: ViewInvestmentRegister,
+				keys:        defaultKeyMap(),
+				menubar:     widget.NewMenuBar(),
+				sidebar:     sidebar.New(),
+				statusbar:   widget.NewStatusBar(),
+				styles:      widget.NewStyles(),
+				ready:       true,
+				investmentRegister: investmentRegisterViewState{
+					table: widget.NewTable([]widget.Column{{Header: "Date", Width: 10}}),
+					data: &investmentRegisterData{
+						account:           &account.Account{Name: "Brokerage", Type: account.TypeInvestment, Active: true},
+						transactions:      txns,
+						securityNames:     map[types.ID]string{secID: "EXMPL"},
+						securityFullNames: map[types.ID]string{secID: "Example Fund"},
+						valuation:         &investment.AccountValuation{},
+					},
+				},
+				width:  140,
+				height: 24,
+			}
+			app.styles.Resize(140, 24)
+			app.sidebar.SetFocused(false)
+			tt.setup(&app.investmentRegister)
+			app.investmentRegister.table.SetRows([][]string{{"r1"}, {"r2"}, {"r3"}})
+
+			if got := clickScreenRow(t, app, "r2").investmentRegister.table.Cursor(); got != 1 {
+				t.Errorf("investment table cursor = %d, want 1", got)
+			}
+		})
 	}
 }

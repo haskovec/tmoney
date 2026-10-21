@@ -169,9 +169,7 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	sections = append(sections, titleRow)
 
 	// Closed-account banner: a closed account's register is read-only.
-	closedBanner := 0
-	if s.data.account != nil && s.data.account.IsClosed() {
-		closedBanner = 1
+	if s.showsClosedBanner() {
 		label := "Closed · read-only"
 		if s.data.account.ClosedDate.Valid {
 			label = "Closed " + s.data.account.ClosedDate.Date.String() + " · read-only"
@@ -185,19 +183,13 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	// Suppressed while filtering — it is an account-wide summary and would be
 	// misleading next to a single-security row set. Hiding it also frees two
 	// rows of vertical space for scanning the filtered list.
-	totalReturnLines := 0
-	if !filterActive {
-		if breakdown, total := s.renderTotalReturnLines(styles, max(contentWidth-4, 1)); breakdown != "" {
-			sections = append(sections, breakdown)
-			sections = append(sections, total)
-			totalReturnLines = 2
-		}
+	if s.showsTotalReturn() {
+		breakdown, total := s.renderTotalReturnLines(styles, max(contentWidth-4, 1))
+		sections = append(sections, breakdown, total)
 	}
 
 	// Active-filter line (ticker + full security name, and the match count).
-	filterLine := 0
 	if filterActive {
-		filterLine = 1
 		sections = append(sections, styles.Bold.Render(s.filterStatusLine()))
 	}
 
@@ -208,9 +200,9 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2 + totalReturnLines + closedBanner + filterLine // title + separator (+ optional total-return breakdown, filter line, closed banner)
-	paddingHeight := 2                                              // top/bottom padding
-	scrollInfoHeight := 1                                           // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	titleHeight := 2 + s.headerExtraRows() // title + separator (+ closed banner, total-return breakdown or filter line)
+	paddingHeight := 2                     // top/bottom padding
+	scrollInfoHeight := 1                  // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	visibleCount := len(s.visibleTransactions())
@@ -234,6 +226,36 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
+}
+
+// showsClosedBanner reports whether the register draws the read-only banner
+// row under its title.
+func (s *investmentRegisterViewState) showsClosedBanner() bool {
+	return s.data != nil && s.data.account != nil && s.data.account.IsClosed()
+}
+
+// showsTotalReturn reports whether the register draws the two total-return
+// lines. They are hidden while a filter is on, and before the valuation
+// loads.
+func (s *investmentRegisterViewState) showsTotalReturn() bool {
+	return !s.filterActive() && s.data != nil && s.data.valuation != nil
+}
+
+// headerExtraRows returns the rows the register draws between its title and
+// its separator: the closed banner, then the two total-return lines or the
+// one filter line. render and tableContentRowOffset both use it, so the mouse
+// math follows the render.
+func (s *investmentRegisterViewState) headerExtraRows() int {
+	n := 0
+	if s.showsClosedBanner() {
+		n++
+	}
+	if s.filterActive() {
+		n++
+	} else if s.showsTotalReturn() {
+		n += 2
+	}
+	return n
 }
 
 // renderTotalReturnLines builds the two header lines that show the

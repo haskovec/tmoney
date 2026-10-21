@@ -34,16 +34,18 @@ func (a *App) refreshKeyHints() {
 // click handler to translate a screen-space Y into a table-space Y.
 //
 // Base layout: top padding (1) + title (1) + separator (1) = 3. Views
-// that render extra header rows (the investment register's two-line
-// total-return breakdown, the portfolio summary, the portfolio lots
-// sub-header) add to the base.
+// that render extra header rows (a register's closed-account banner, the
+// investment register's two-line total-return breakdown or filter line, the
+// portfolio summary, the portfolio lots sub-header) add to the base.
 func (a *App) tableContentRowOffset() int {
 	const baseOffset = 3
 	switch a.currentView {
-	case ViewInvestmentRegister:
-		if a.investmentRegister.data != nil && a.investmentRegister.data.valuation != nil {
-			return baseOffset + 2 // total-return breakdown (components + total)
+	case ViewRegister:
+		if a.registerShowsClosedBanner() {
+			return baseOffset + 1 // read-only banner
 		}
+	case ViewInvestmentRegister:
+		return baseOffset + a.investmentRegister.headerExtraRows()
 	case ViewPortfolio:
 		offset := baseOffset
 		if a.portfolio.data != nil && a.portfolio.data.valuation != nil {
