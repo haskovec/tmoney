@@ -73,6 +73,23 @@ func TestDialog_LongTitleAndErrors_DrawnRowsMatchHitTest(t *testing.T) {
 			d.AddListField("Account", []string{"One", "Two", "Three"}, 0, 3).Error = longFieldError
 			return d
 		}, "(01/15/2024)"},
+		{"tabs and a line break in the title", func() *Dialog {
+			d := NewDialog("Edit\tContoso\tStable\tValue\nFund\tPrice")
+			d.AddTextField("Price", "", "", 0)
+			return d
+		}, ""},
+		{"hyphen and negative amount in errors", func() *Dialog {
+			d := NewDialog("New Transaction")
+			d.AddTextField("Date", "01/01/2024", "", 0).Error = "Before Woodgrove Bank Everyday Checking - Joint opened (01/15/2024)"
+			d.SetErrorMsg("Lookup failed: bad response from the quote server - status 503; balance -5 now")
+			return d
+		}, "status 503; balance -5 now"},
+		{"CRLF and tabs in errors", func() *Dialog {
+			d := NewDialog("Add Price")
+			d.AddTextField("Price", "", "", 0).Error = "bad\tvalue\tin\tthe\tfield,\tsee\tthe\tlog"
+			d.SetErrorMsg("Lookup failed: HTTP 500\r\nInternal Server Error\rretry later")
+			return d
+		}, "retry later"},
 		{"scrolling with errors", func() *Dialog {
 			d := NewDialog("Many Fields")
 			for i := range 12 {
@@ -97,6 +114,12 @@ func TestDialog_LongTitleAndErrors_DrawnRowsMatchHitTest(t *testing.T) {
 				if d.maxHeight > 0 && lipgloss.Height(out) > d.maxHeight {
 					t.Errorf("drawn height = %d, want at most the bound %d", lipgloss.Height(out), d.maxHeight)
 				}
+				if w := lipgloss.Width(out); w != d.width {
+					t.Errorf("drawn width = %d, want the dialog width %d", w, d.width)
+				}
+				if strings.ContainsAny(out, "\r\t") {
+					t.Errorf("a CR or a tab reached the terminal: %q", out)
+				}
 				rows := strings.Split(widget.StripAnsi(out), "\n")
 				if !strings.Contains(rows[2], "[x]") {
 					t.Errorf("title row = %q, want [x] on it", rows[2])
@@ -118,5 +141,57 @@ func TestDialog_LongTitleAndErrors_DrawnRowsMatchHitTest(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A wrap breaks at spaces only: a break at a hyphen would split a negative
+// amount ("-" / "12.50"). No row is wider than the width, and an indent stays
+// on the continuation rows.
+func TestWrapRows(t *testing.T) {
+	text := "Before Woodgrove Bank Everyday Checking - Joint: payment -12.50 is due, balance -5"
+	for width := 5; width <= 60; width++ {
+		rows := WrapRows(text, width)
+		for i, row := range rows {
+			if w := lipgloss.Width(row); w > width {
+				t.Errorf("width %d: row %d %q is %d cells", width, i, row, w)
+			}
+			if strings.HasSuffix(row, "-") && i+1 < len(rows) && strings.HasPrefix(rows[i+1], "12.50") {
+				t.Errorf("width %d: the amount -12.50 was split: %q", width, rows)
+			}
+		}
+		if got := strings.ReplaceAll(strings.Join(rows, ""), " ", ""); got != strings.ReplaceAll(text, " ", "") {
+			t.Errorf("width %d: characters lost: %q", width, rows)
+		}
+		// From width 10 every word fits a row, so no word is cut.
+		if got := strings.Join(rows, " "); width >= 10 && strings.Join(strings.Fields(got), " ") != text {
+			t.Errorf("width %d: a word was cut: %q", width, rows)
+		}
+	}
+
+	rows := WrapRows("  Woodgrove Bank Everyday Checking: 10 shares", 20)
+	for i, row := range rows {
+		if !strings.HasPrefix(row, "  ") {
+			t.Errorf("row %d %q lost the indent", i, row)
+		}
+	}
+	if got := WrapRows("a\r\nb\rc\td", 10); strings.Join(got, "|") != "a|b|c d" {
+		t.Errorf("WrapRows(CR, tab) = %q, want [a b \"c d\"]", got)
+	}
+}
+
+// In scroll mode the message is in the scrolling body: the body rows and the
+// hit-test must count its wrapped rows the same way.
+func TestDialog_ScrollingLongMessage_ClickFocusesField(t *testing.T) {
+	d := NewDialog("Edit Transfer")
+	d.SetMessage("Woodgrove Bank Everyday Checking → Fabrikam High Yield Savings Account, joint")
+	for _, label := range []string{"Amount", "Date", "Memo", "Notes", "Ref", "Tag"} {
+		d.AddTextField(label, "", "", 0)
+	}
+	d.SetMaxHeight(18)
+	if !d.isScrolling() {
+		t.Fatal("the dialog should scroll at height 18")
+	}
+	if clickLabel(t, d, "Memo:", 100, 24); d.FocusedField() == nil || d.FocusedField().Label != "Memo" {
+		t.Errorf("click on Memo: focused %v, want Memo", d.FocusedField())
 	}
 }

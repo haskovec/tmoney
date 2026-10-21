@@ -877,3 +877,16 @@ func TestBuildBrowseDialog_TitleFitsInCells(t *testing.T) {
 		}
 	}
 }
+
+// A tab or a line break in a folder name is drawn as a space, so the title is
+// measured as drawn and stays one row.
+func TestBuildBrowseDialog_ControlCharsInPath(t *testing.T) {
+	const maxTitle = 60 - dialog.DialogHorizontalOverhead - 4
+	title := buildBrowseDialog("/Users/demo/Tax\tReturns/2026\nDrafts/Final\tCopies/Q4", []string{"a.tdb"}).Title()
+	if strings.ContainsAny(title, "\t\n\r") {
+		t.Errorf("title %q holds a control character", title)
+	}
+	if w := lipgloss.Width(title); w > maxTitle {
+		t.Errorf("title is %d cells, want at most %d", w, maxTitle)
+	}
+}

@@ -143,7 +143,7 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 
 	// Error.
 	if w.errorMsg != "" {
-		for _, row := range dialog.ErrorRows(w.errorMsg, contentWidth) {
+		for _, row := range dialog.WrapRows(w.errorMsg, contentWidth) {
 			addLine(styles.FieldError.Render(row))
 		}
 		addLine("")

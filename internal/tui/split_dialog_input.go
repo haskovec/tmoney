@@ -279,7 +279,7 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 	// error rows + blank), and a separator.
 	buttonsLine := addLine + 5
 	if sd.errorMsg != "" {
-		buttonsLine += len(dialog.ErrorRows(sd.errorMsg, contentWidth)) + 1
+		buttonsLine += len(dialog.WrapRows(sd.errorMsg, contentWidth)) + 1
 	}
 	if localY == buttonsLine {
 		return sd.hitTestButtonRow(localX, contentWidth)

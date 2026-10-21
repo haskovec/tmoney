@@ -132,7 +132,8 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 
 	// Neutral message body lines (non-interactive)
 	if d.message != "" {
-		msgRows := d.messageLineCount() + 1 // body lines + trailing blank
+		// Body rows, wrapped at the width the body rendered at, + a trailing blank.
+		msgRows := len(WrapRows(d.message, d.fieldWidth(contentWidth))) + 1
 		if y >= row && y < row+msgRows {
 			return none
 		}

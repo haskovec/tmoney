@@ -364,12 +364,13 @@ func buildBrowseDialog(dir string, entries []string) *dialog.Dialog {
 	const width = 60
 	const prefix = "Open File — "
 	maxTitle := width - dialog.DialogHorizontalOverhead - 4
-	title := prefix + dir
+	shown := dialog.OneLine(dir) // measure a tab or a line break as the space it draws as
+	title := prefix + shown
 	if over := lipgloss.Width(title) - maxTitle; over > 0 {
 		// TruncateLeft keeps a wide character that the cut falls inside, so
 		// cut one more cell when the title is still too wide.
 		for cut := over + 3; lipgloss.Width(title) > maxTitle; cut++ {
-			title = prefix + ansi.TruncateLeft(dir, cut, "...")
+			title = prefix + ansi.TruncateLeft(shown, cut, "...")
 		}
 	}
 
