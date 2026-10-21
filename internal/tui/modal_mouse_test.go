@@ -43,7 +43,7 @@ func snapshotInto(out map[string]bool, prefix string, v reflect.Value) {
 		f := v.Field(i)
 		name := prefix + t.Field(i).Name
 		switch f.Kind() {
-		case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Interface, reflect.Func:
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface, reflect.Func:
 			out[name] = f.IsNil()
 		case reflect.Struct:
 			snapshotInto(out, name+".", f)

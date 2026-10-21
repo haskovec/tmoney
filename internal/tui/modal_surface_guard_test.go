@@ -138,7 +138,7 @@ func surfaceStructTypes(t *testing.T) []reflect.Type {
 	var out []reflect.Type
 	for i := range appT.NumField() {
 		ft := appT.Field(i).Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() != reflect.Struct || ft.PkgPath() != appT.PkgPath() {
@@ -158,7 +158,7 @@ func servicePointerTypes() map[reflect.Type]bool {
 	out := map[reflect.Type]bool{}
 	svcT := reflect.TypeOf(app.Services{})
 	for i := range svcT.NumField() {
-		if f := svcT.Field(i); f.Type.Kind() == reflect.Ptr {
+		if f := svcT.Field(i); f.Type.Kind() == reflect.Pointer {
 			out[f.Type] = true
 		}
 	}
@@ -266,7 +266,13 @@ func (s *surfaceWithStoredDeps) IsVisible() bool { return s != nil && s.dlg.IsVi
 // only a call can catch it.
 type surfaceWithUnsafeIsVisible struct {
 	modalSurface
-	data int
 }
 
 func (s *surfaceWithUnsafeIsVisible) IsVisible() bool { return s.dlg.IsVisible() }
+
+// The fixture literals keep the linter from reporting the fields the
+// self-test finds by reflection as unused.
+var (
+	_ = surfaceWithAService{accounts: nil}
+	_ = surfaceWithStoredDeps{deps: transferDeps{}}
+)
