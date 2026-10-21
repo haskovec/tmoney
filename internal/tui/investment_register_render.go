@@ -190,7 +190,7 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 
 	// Active-filter line (ticker + full security name, and the match count).
 	if filterActive {
-		sections = append(sections, styles.Bold.Render(s.filterStatusLine()))
+		sections = append(sections, styles.Bold.Render(s.fittedFilterStatusLine(max(contentWidth-4, 1))))
 	}
 
 	// Separator
