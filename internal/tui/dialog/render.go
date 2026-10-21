@@ -64,7 +64,7 @@ func (d *Dialog) renderUnscrolled(styles widget.Styles) string {
 
 	// Dialog-level error message
 	if d.errorMsg != "" {
-		for _, row := range errorRows(d.errorMsg, contentWidth) {
+		for _, row := range ErrorRows(d.errorMsg, contentWidth) {
 			lines = append(lines, styles.FieldError.Render(row))
 		}
 		lines = append(lines, "")
@@ -144,7 +144,7 @@ func (d *Dialog) renderScrolled(styles widget.Styles) string {
 	// Pinned bottom: dialog-level error, separator + button row.
 	var bottom []string
 	if d.errorMsg != "" {
-		for _, row := range errorRows(d.errorMsg, contentWidth) {
+		for _, row := range ErrorRows(d.errorMsg, contentWidth) {
 			bottom = append(bottom, styles.FieldError.Render(row))
 		}
 		bottom = append(bottom, "")
@@ -415,10 +415,12 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 // fieldGap is the space between a field's "Label:" column and its content.
 const fieldGap = 2
 
-// errorRows wraps an error to width cells, one string per row. The render,
+// ErrorRows wraps an error to width cells, one string per row. The render,
 // ContentHeight and the hit-test all count an error through it, so a long
-// error that wraps cannot move the rows below it away from the mouse.
-func errorRows(msg string, width int) []string {
+// error that wraps cannot move the rows below it away from the mouse. The
+// split editor and the paycheck wizard, which keep their own hit math, use it
+// for the same reason.
+func ErrorRows(msg string, width int) []string {
 	return strings.Split(ansi.Wrap(msg, max(width, 1), ""), "\n")
 }
 
@@ -437,7 +439,7 @@ func fieldErrorRows(field *Field, labelWidth, width int) []string {
 	if field.Error == "" {
 		return nil
 	}
-	return errorRows(field.Error, width-fieldErrorIndent(field, labelWidth))
+	return ErrorRows(field.Error, width-fieldErrorIndent(field, labelWidth))
 }
 
 // renderFieldError renders a field's error rows, each indented under the
@@ -456,7 +458,7 @@ func (d *Dialog) dialogErrorRowCount() int {
 	if d.errorMsg == "" {
 		return 0
 	}
-	return len(errorRows(d.errorMsg, max(d.width-DialogHorizontalOverhead, 10)))
+	return len(ErrorRows(d.errorMsg, max(d.width-DialogHorizontalOverhead, 10)))
 }
 
 // fieldWidth returns the width the fields render at: the content width, less

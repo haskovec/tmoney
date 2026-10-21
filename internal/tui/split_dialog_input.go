@@ -276,10 +276,10 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 	}
 
 	// Button row sits after add-split, blank, imbalance, blank (+ optional
-	// error + blank), and a separator.
+	// error rows + blank), and a separator.
 	buttonsLine := addLine + 5
 	if sd.errorMsg != "" {
-		buttonsLine += 2
+		buttonsLine += len(dialog.ErrorRows(sd.errorMsg, contentWidth)) + 1
 	}
 	if localY == buttonsLine {
 		return sd.hitTestButtonRow(localX, contentWidth)
