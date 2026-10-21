@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -269,6 +270,41 @@ func TestAmortizationView_RenderFitsTheScreen(t *testing.T) {
 		if w := lipgloss.Width(l); w > env.app.width {
 			t.Errorf("line %d is %d cells wide on a %d-cell screen", i, w, env.app.width)
 			break
+		}
+	}
+}
+
+// Each figure shows whole or not at all: the stats lines leave out whole
+// figures to fit, and a long message wraps. The view clips over-wide lines
+// with "…", and a cut amount ("Interest remaining: $484") would pass for a
+// smaller one.
+func TestAmortizationView_FiguresStayWhole(t *testing.T) {
+	env := newLoanPreviewEnv(t, "380000", "6.5", "2401.86", types.NewDate(2026, time.August, 1))
+	loadAmort(t, env, env.loan.ID)
+	env.app.ready = true // viewContent shows "Loading..." until the first window size
+	for _, width := range []int{40, 60, 66, 70, 80, 100} {
+		env.app.width = width
+		env.app.styles.Resize(width, env.app.height)
+		frame := widget.StripAnsi(env.app.viewContent())
+		for _, line := range strings.Split(frame, "\n") {
+			if (strings.Contains(line, "Balance:") || strings.Contains(line, "Payoff:")) && strings.Contains(line, "…") {
+				t.Errorf("width %d: a stats line was cut: %q", width, line)
+			}
+		}
+		if strings.Contains(frame, "Interest remaining") && !strings.Contains(frame, "Interest remaining: $484667.97") {
+			t.Errorf("width %d: interest remaining is not whole:\n%s", width, frame)
+		}
+	}
+
+	env.app.amortization.data.projErr = errors.New("month-one SplitPayment: payment does not cover interest " +
+		"(negative amortization): P&I payment 1000 does not exceed interest 2058.33 on balance 380000")
+	for _, width := range []int{60, 100} {
+		env.app.width = width
+		env.app.styles.Resize(width, env.app.height)
+		frame := widget.StripAnsi(env.app.viewContent())
+		text := strings.Join(strings.Fields(frame), " ")
+		if !strings.Contains(text, "on balance 380000") {
+			t.Errorf("width %d: the projection error lost its end:\n%s", width, frame)
 		}
 	}
 }

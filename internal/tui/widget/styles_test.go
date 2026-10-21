@@ -667,6 +667,9 @@ func TestRenderViewContent_ClipsWideLines(t *testing.T) {
 			t.Errorf("row %d width = %d, want 30", i, w)
 		}
 	}
+	if got := strings.TrimSpace(StripAnsi(lines[1])); !strings.HasSuffix(got, "…") {
+		t.Errorf("cut row = %q, want it to end in \"…\" so a cut figure shows as cut", got)
+	}
 	for i, want := range map[int]string{2: "next", 3: "last"} {
 		if got := strings.TrimSpace(StripAnsi(lines[i])); got != want {
 			t.Errorf("row %d = %q, want %q", i, got, want)

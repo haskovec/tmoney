@@ -619,12 +619,14 @@ func (s *Styles) RenderViewContent(viewContent string, width, height int) string
 
 // clipLines cuts each line of s to width cells. lipgloss Width wraps a wider
 // line onto more rows, but the mouse code maps one view line to one screen
-// row, so a wrap would make a click land on the row below the pointer.
+// row, so a wrap would make a click land on the row below the pointer. The
+// cut ends in "…", so a cut amount cannot pass for a whole one; views fit
+// their own figures (widget.FitParts) so the clip is a last resort.
 func clipLines(s string, width int) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
 		if lipgloss.Width(l) > width {
-			lines[i] = ansi.Truncate(l, width, "")
+			lines[i] = ansi.Truncate(l, width, "…")
 		}
 	}
 	return strings.Join(lines, "\n")

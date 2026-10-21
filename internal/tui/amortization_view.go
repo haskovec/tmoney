@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/loan"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -203,7 +204,11 @@ func formatAPR(apr types.Money) string {
 // projection summary (Payments left / Payoff / Interest remaining) when a full
 // projection exists. Truncated projections render Payoff and Interest remaining
 // as "100y+" per the spec — never the cap row as if it were payoff.
-func (s *amortizationViewState) statsLine(styles widget.Styles) string {
+//
+// Each line fits in width cells by leaving out whole figures: line 1 keeps
+// Balance longest, line 2 keeps Payoff. The stats sit above the table, so a
+// wrap would put a click on the wrong row.
+func (s *amortizationViewState) statsLine(styles widget.Styles, width int) string {
 	d := s.data
 	pair := func(l, v string) string { return styles.Muted.Render(l+":") + " " + styles.Bold.Render(v) }
 
@@ -222,7 +227,11 @@ func (s *amortizationViewState) statsLine(styles widget.Styles) string {
 			line1Parts = append(line1Parts, pair("Escrow", formatDashboardMoney(d.escrowTotal)))
 		}
 	}
-	line1 := strings.Join(line1Parts, "  ")
+	var drop1 []int // Escrow, P&I, then APR go; Balance stays
+	for i := len(line1Parts) - 1; i > 0; i-- {
+		drop1 = append(drop1, i)
+	}
+	line1 := widget.FitParts(line1Parts, "  ", width, drop1)
 
 	if !d.hasSchedule || !d.aprValid || d.projErr != nil {
 		return line1
@@ -241,11 +250,11 @@ func (s *amortizationViewState) statsLine(styles widget.Styles) string {
 		payoff = st.PayoffDate.String()
 		interestRem = formatDashboardMoney(st.TotalInterestRemaining)
 	}
-	line2 := strings.Join([]string{
+	line2 := widget.FitParts([]string{
 		pair("Payments left", paymentsLeft),
 		pair("Payoff", payoff),
 		pair("Interest remaining", interestRem),
-	}, "  ")
+	}, "  ", width, []int{0, 2})
 
 	return line1 + "\n" + line2
 }
@@ -269,7 +278,7 @@ func (s *amortizationViewState) render(styles widget.Styles, width, height int) 
 	sections = append(sections, styles.Title.Render(acctName+titleSuffix))
 
 	// Stats block (1 or 2 lines).
-	statsBlock := s.statsLine(styles)
+	statsBlock := s.statsLine(styles, contentWidth)
 	sections = append(sections, statsBlock)
 
 	// Back hint + separator.
@@ -277,21 +286,27 @@ func (s *amortizationViewState) render(styles widget.Styles, width, height int) 
 	sepWidth := max(contentWidth-4, 1)
 	sections = append(sections, styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
+	// note wraps a message under the separator. No table follows a message,
+	// so it may take more rows, and a clipped line would lose its end.
+	note := func(style lipgloss.Style, msg string) {
+		for _, row := range strings.Split(ansi.Wrap(msg, contentWidth-2, ""), "\n") {
+			sections = append(sections, style.Render("  "+row))
+		}
+	}
 	switch {
 	case !d.hasSchedule:
 		sections = append(sections, "")
-		sections = append(sections, styles.Muted.Render("  No loan payment schedule targets this account."))
-		sections = append(sections, styles.Muted.Render("  Create one via Accounts → New Loan…, or adopt an existing monthly"))
-		sections = append(sections, styles.Muted.Render("  transfer schedule with Edit as loan on the Scheduled view."))
+		note(styles.Muted, "No loan payment schedule targets this account.")
+		note(styles.Muted, "Create one via Accounts → New Loan…, or adopt an existing monthly transfer schedule with Edit as loan on the Scheduled view.")
 	case !d.aprValid:
 		sections = append(sections, "")
-		sections = append(sections, styles.Muted.Render("  This loan account has no interest rate set — set an APR to project payments."))
+		note(styles.Muted, "This loan account has no interest rate set — set an APR to project payments.")
 	case d.projErr != nil:
 		sections = append(sections, "")
-		sections = append(sections, styles.Negative.Render("  Projection unavailable: "+d.projErr.Error()))
+		note(styles.Negative, "Projection unavailable: "+d.projErr.Error())
 	case len(d.projection.Rows) == 0:
 		sections = append(sections, "")
-		sections = append(sections, styles.Muted.Render("  Loan is paid off — no remaining payments."))
+		note(styles.Muted, "Loan is paid off — no remaining payments.")
 	default:
 		statsHeight := strings.Count(statsBlock, "\n") + 1
 		headerHeight := 1
