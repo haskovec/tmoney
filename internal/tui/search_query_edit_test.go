@@ -15,6 +15,7 @@ import (
 	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // queryInputs are typed into each search, then one Backspace must remove one
@@ -146,6 +147,7 @@ func querySites() []querySite {
 					sidebar:     sb,
 					menubar:     widget.NewMenuBar(),
 					statusbar:   widget.NewStatusBar(),
+					undoManager: undo.NewManager(),
 					investmentRegister: investmentRegisterViewState{data: &investmentRegisterData{
 						account:           &account.Account{BaseModel: types.BaseModel{ID: acct}, Name: "Example 401k", Type: account.TypeInvestment, Active: true},
 						transactions:      txns,

@@ -371,6 +371,20 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// searchTakesKey reports whether an open search or filter takes msg. It takes
+// its text and its own keys. The commands that work everywhere are left to the
+// global bindings: quit, undo and redo, and the menu keys; and a menu that is
+// open (a mouse click opens one too) takes every key. None of these keys
+// types text, so the search loses nothing.
+func (a *App) searchTakesKey(msg tea.KeyPressMsg) bool {
+	if a.menubar.IsActive() {
+		return false
+	}
+	k := a.keys
+	return !key.Matches(msg, k.Quit, k.Undo, k.Redo, k.Menu, k.MenuFile, k.MenuAccounts,
+		k.MenuTransactions, k.MenuSecurities, k.MenuEdit, k.MenuView, k.MenuReports, k.MenuHelp)
+}
+
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If an error is displayed, any key press dismisses it
@@ -386,26 +400,20 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return e.onKey(a, msg)
 	}
 
-	// While typing the investment register's security filter, capture every
-	// key so global bindings (view-switch digits, Esc, Alt+menu) don't steal
-	// keystrokes from the query.
-	if a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching {
-		return a.handleInvestmentRegisterKeys(msg)
-	}
-
-	// The same for the Corporate Actions filter: while it is being typed, a
-	// digit or "?" is filter text, and Esc ends the entry.
-	if a.currentView == ViewCorporateActions && a.corporateActions.filterEditing {
-		return a.handleCorporateActionViewKeys(msg)
-	}
-
-	// The same for the Prices and Securities searches: a digit, "?" or Esc
-	// typed there is search text or closes the search, not a global key.
-	if a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching {
-		return a.handlePriceViewKeys(msg)
-	}
-	if a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching {
-		return a.handleSecurityViewKeys(msg)
+	// While a search or filter is being typed, it gets its keys first, so a
+	// view-switch digit, "?" or Esc is query text or ends the entry, not a
+	// global key (see searchTakesKey for the keys it leaves alone).
+	if a.searchTakesKey(msg) {
+		switch {
+		case a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching:
+			return a.handleInvestmentRegisterKeys(msg)
+		case a.currentView == ViewCorporateActions && a.corporateActions.filterEditing:
+			return a.handleCorporateActionViewKeys(msg)
+		case a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching:
+			return a.handlePriceViewKeys(msg)
+		case a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching:
+			return a.handleSecurityViewKeys(msg)
+		}
 	}
 
 	// Undo/redo key bindings (handled before menus since they should
