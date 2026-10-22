@@ -632,3 +632,24 @@ func TestHoldings_Hints(t *testing.T) {
 		t.Error("the net worth report has a table for the mouse")
 	}
 }
+
+// On a narrow screen the hint line leaves out whole hints instead of being
+// clipped mid-word; "enter accounts" and "esc back" stay longest.
+func TestRenderHoldings_HintLineFits(t *testing.T) {
+	for _, width := range []int{50, 60, 70} {
+		app := newHoldingsApp(width, 40)
+		view := widget.StripAnsi(app.reports.render(app.styles, app.height))
+		var hint string
+		for line := range strings.Lines(view) {
+			if strings.Contains(line, "enter accounts") {
+				hint = strings.TrimRight(line, " \n")
+			}
+		}
+		if hint == "" || strings.Contains(hint, "…") || !strings.HasSuffix(hint, "esc back") {
+			t.Errorf("width %d: hint line %q, want whole hints ending in esc back", width, hint)
+		}
+		if w := lipgloss.Width(hint); w > app.styles.ContentWidth() {
+			t.Errorf("width %d: hint line is %d cells, wider than the %d of the pane", width, w, app.styles.ContentWidth())
+		}
+	}
+}
