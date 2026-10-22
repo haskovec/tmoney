@@ -112,3 +112,11 @@ func TestFitParts(t *testing.T) {
 		t.Errorf("FitParts(styled, 9) = %q, want both parts", got)
 	}
 }
+
+// A drop index that is out of range is skipped, so a parts slice that later
+// loses an entry cannot make a render panic.
+func TestFitParts_SkipsBadDropIndex(t *testing.T) {
+	if got := FitParts([]string{"aa", "bb"}, " ", 2, []int{5, -1, 1}); got != "aa" {
+		t.Errorf("FitParts = %q, want %q", got, "aa")
+	}
+}

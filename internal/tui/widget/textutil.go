@@ -41,7 +41,7 @@ func TruncateRunes(s string, maxLen int) string {
 
 // FitParts joins parts with sep in their order, leaving out parts until the
 // line fits in width cells. drop names the parts, by index, in the order they
-// go; a part not in drop always stays. A part is never split, so a figure is
+// go; a part not in drop always stays, and an index out of range is skipped. A part is never split, so a figure is
 // whole or absent. If the parts that must stay still do not fit, the line is
 // cut with "…".
 func FitParts(parts []string, sep string, width int, drop []int) string {
@@ -62,6 +62,9 @@ func FitParts(parts []string, sep string, width int, drop []int) string {
 	for _, i := range drop {
 		if lipgloss.Width(line) <= width {
 			return line
+		}
+		if i < 0 || i >= len(parts) {
+			continue
 		}
 		keep[i] = false
 		line = join()
