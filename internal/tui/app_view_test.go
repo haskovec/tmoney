@@ -455,7 +455,8 @@ func TestRenderError_FitsTheScreen(t *testing.T) {
 			[]string{"Press any key to continue", "more lines"}},
 		{"one long line", errors.New(strings.Repeat("dial tcp: lookup query1.example.com: ", 5) + "no such host"), 80, 24,
 			[]string{"Press any key to continue", "no such host"}},
-		{"tiny screen", errors.New(strings.Join(many, "\n")), 20, 6, nil},
+		{"tiny screen", errors.New(strings.Join(many, "\n")), 20, 6, []string{"Error:"}},
+		{"short screen", errors.New(strings.Join(many, "\n")), 20, 9, []string{"Error:", "more"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -464,10 +465,8 @@ func TestRenderError_FitsTheScreen(t *testing.T) {
 			if h := lipgloss.Height(frame); h > tt.height {
 				t.Errorf("error page is %d rows, want at most %d", h, tt.height)
 			}
-			if tt.height >= 24 {
-				if w := lipgloss.Width(frame); w > tt.width {
-					t.Errorf("error page is %d cells wide, want at most %d", w, tt.width)
-				}
+			if w := lipgloss.Width(frame); w > tt.width {
+				t.Errorf("error page is %d cells wide, want at most %d", w, tt.width)
 			}
 			stripped := strings.Join(strings.Fields(widget.StripAnsi(frame)), " ")
 			for _, want := range tt.want {

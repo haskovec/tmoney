@@ -142,9 +142,17 @@ func (a *App) renderError() string {
 	lines := wrap(fmt.Sprintf("Error: %v", a.err))
 	if a.height > 0 {
 		room := max(a.height-3-len(prompt), 1) // 2 padding rows and a blank row
-		if len(lines) > room {
+		switch {
+		case len(lines) <= room:
+		case room == 1:
+			lines = lines[:1] // the start of the error tells more than a count
+		default:
 			keep := room - 1
-			lines = append(lines[:keep], fmt.Sprintf("… %d more lines", len(lines)-keep))
+			more := fmt.Sprintf("… %d more lines", len(lines)-keep)
+			if inner > 0 {
+				more = ansi.Truncate(more, inner, "")
+			}
+			lines = append(lines[:keep], more)
 		}
 	}
 	return a.styles.Error.Render(strings.Join(lines, "\n") + "\n\n" + strings.Join(prompt, "\n"))
