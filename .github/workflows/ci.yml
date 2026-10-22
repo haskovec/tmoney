@@ -1,0 +1,50 @@
+# Runs the tests and the linter on every pull request and on each push to
+# main. The tools come from mise.toml (the pinned Go and golangci-lint), the
+# same as `mise run test` on a dev machine.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels the run that is still going for it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Installs and caches the tools in mise.toml. The DuckDB bindings are
+      # cgo; the runner's gcc builds them, and mise.toml sets CGO_ENABLED=1.
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+
+      - name: Find the Go caches
+        id: go-env
+        run: |
+          echo "modcache=$(mise exec -- go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "buildcache=$(mise exec -- go env GOCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.go-env.outputs.modcache }}
+            ${{ steps.go-env.outputs.buildcache }}
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'mise.toml') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Test
+        run: mise run test
+
+      - name: Lint
+        run: mise exec -- golangci-lint run ./...
