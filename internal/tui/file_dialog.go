@@ -319,6 +319,22 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	)
 }
 
+// nearestExistingDir returns dir when it is a directory, else its nearest
+// parent that is one. It returns the filesystem root when nothing on the path
+// exists, and listDirectoryEntries then reports the real error.
+func nearestExistingDir(dir string) string {
+	for {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir
+		}
+		dir = parent
+	}
+}
+
 // listDirectoryEntries returns entries for a file browser dialog.
 // Returns sorted: "../" first, then directories (with "/" suffix), then .tdb files.
 // Hidden files/directories (starting with ".") are excluded.
@@ -410,7 +426,11 @@ func (a *App) browseDialogListHit(msg tea.MouseMsg) int {
 }
 
 // openBrowseDialog builds and sets the browse dialog for the given directory.
+// A directory that does not exist (a new install has no ~/Documents/TMoney
+// yet) gives way to its nearest parent that does, so the browser opens and
+// not the error page.
 func (a *App) openBrowseDialog(dir string) {
+	dir = nearestExistingDir(dir)
 	entries, err := listDirectoryEntries(dir)
 	if err != nil {
 		a.err = fmt.Errorf("failed to read directory: %w", err)

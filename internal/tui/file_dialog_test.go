@@ -499,6 +499,10 @@ func TestApp_HandleMenuAction_NewFile(t *testing.T) {
 }
 
 func TestApp_HandleMenuAction_OpenFile(t *testing.T) {
+	home := t.TempDir() // never the real home: its folders differ by machine
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
 	app := &App{
 		currentView: ViewDashboard,
 		keys:        defaultKeyMap(),
@@ -888,5 +892,36 @@ func TestBuildBrowseDialog_ControlCharsInPath(t *testing.T) {
 	}
 	if w := lipgloss.Width(title); w > maxTitle {
 		t.Errorf("title is %d cells, want at most %d", w, maxTitle)
+	}
+}
+
+// A new install has no ~/Documents/TMoney yet: Open File opens the browser at
+// the nearest folder that exists, not the error page. The default folder
+// stays the start when it exists (see ..._AlwaysStartsInDefaultDir).
+func TestApp_HandleMenuAction_OpenFile_MissingDefaultDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.Mkdir(filepath.Join(home, "Documents"), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	app := &App{
+		currentView: ViewDashboard,
+		keys:        defaultKeyMap(),
+		menubar:     widget.NewMenuBar(),
+		statusbar:   widget.NewStatusBar(),
+		sidebar:     sidebar.New(),
+	}
+	app.handleMenuAction(widget.MenuActionOpenFile, "")
+
+	if app.err != nil {
+		t.Fatalf("Open File showed an error: %v", app.err)
+	}
+	if app.file.dlg == nil || app.file.mode != fileDialogModeBrowse {
+		t.Fatal("Open File should open the browse dialog")
+	}
+	if want := filepath.Join(home, "Documents"); app.file.browseDir != want {
+		t.Errorf("browseDir = %q, want the nearest folder that exists, %q", app.file.browseDir, want)
 	}
 }
