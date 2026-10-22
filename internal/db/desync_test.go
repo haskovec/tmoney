@@ -1,7 +1,10 @@
 package db
 
 import (
+	"crypto/sha256"
+	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -314,7 +317,141 @@ func TestHealAfterFatalDoesNotBlockOnOpenRows(t *testing.T) {
 // Close (quit, backup, restore) in that window must win, so the reconnect must
 // not publish its new pool and clear closed underneath a file copy.
 func TestReconnectYieldsToCloseDuringBlockedOpen(t *testing.T) {
+	shortHealTimeout(t)
 	database := desyncedIndexFixture(t)
+	rows := seedAndHoldCursor(t, database)
+	defer rows.Close()
+	tripBlockedHeal(t, database)
+
+	// The reconnect now waits for the cursor. Close on purpose, then free it.
+	if err := database.Close(); err != nil {
+		_ = rows.Close()
+		waitForHeal(t, database)
+		t.Fatalf("Close() error = %v", err)
+	}
+	_ = rows.Close()
+	waitForHeal(t, database)
+
+	if !database.isClosed() {
+		t.Error("the background reconnect reopened the database after an intentional Close")
+	}
+}
+
+// TestWithFileClosedWaitsForBlockedHeal covers a backup or restore that starts
+// while a heal is blocked behind a reader. It must wait for the heal: then the
+// heal publishes a healthy instance, Close checkpoints it, only one open of the
+// file runs at a time, and nothing opens the file under fn. Before, both opens
+// raced for the file when the reader let go, and DuckDB attaches only one: when
+// the heal won, the session was left with no working pool.
+func TestWithFileClosedWaitsForBlockedHeal(t *testing.T) {
+	for _, freeCursor := range []string{"before", "while waiting"} {
+		t.Run("cursor freed "+freeCursor, func(t *testing.T) {
+			shortHealTimeout(t)
+			database := desyncedIndexFixture(t)
+			rows := seedAndHoldCursor(t, database)
+			defer rows.Close()
+			tripBlockedHeal(t, database)
+
+			if freeCursor == "before" {
+				_ = rows.Close()
+			} else {
+				go func() { time.Sleep(100 * time.Millisecond); _ = rows.Close() }()
+			}
+
+			var before, after string
+			done := make(chan error, 1)
+			go func() {
+				done <- database.WithFileClosed(func(path string) error {
+					before = fileSnapshot(path)
+					time.Sleep(400 * time.Millisecond) // the window a copy takes
+					after = fileSnapshot(path)
+					return nil
+				})
+			}()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("WithFileClosed() error = %v", err)
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatal("WithFileClosed hung")
+			}
+			if before != after {
+				t.Errorf("the file changed under fn: before %s, after %s", before, after)
+			}
+			waitForHeal(t, database)
+			requireHealthy(t, database)
+
+			// A later fatal still heals.
+			err := advanceND(database)
+			requireDesync(t, err)
+			if errors.Is(err, errHealBlocked) {
+				t.Fatalf("the second heal was blocked: %v", err)
+			}
+			waitForHeal(t, database)
+			requireHealthy(t, database)
+		})
+	}
+}
+
+// TestCloseAndSettle covers the backup on quit: Close, then a copy of the file.
+// A reconnect that a heal left blocked must finish before the copy, or its open
+// changes the file under it; CloseAndSettle waits for it, and gives up when the
+// reader never lets go, so a quit cannot hang.
+func TestCloseAndSettle(t *testing.T) {
+	t.Run("reader lets go", func(t *testing.T) {
+		shortHealTimeout(t)
+		database := desyncedIndexFixture(t)
+		rows := seedAndHoldCursor(t, database)
+		defer rows.Close()
+		tripBlockedHeal(t, database)
+
+		go func() { time.Sleep(100 * time.Millisecond); _ = rows.Close() }()
+		settled, err := database.CloseAndSettle(10 * time.Second)
+		if err != nil || !settled {
+			t.Fatalf("CloseAndSettle() = %v, %v; want true, nil", settled, err)
+		}
+		before := fileSnapshot(database.Path())
+		time.Sleep(300 * time.Millisecond)
+		if after := fileSnapshot(database.Path()); before != after {
+			t.Errorf("the file changed after CloseAndSettle: before %s, after %s", before, after)
+		}
+		if !database.isClosed() {
+			t.Error("the database reopened after CloseAndSettle")
+		}
+	})
+
+	t.Run("reader holds on", func(t *testing.T) {
+		shortHealTimeout(t)
+		database := desyncedIndexFixture(t)
+		rows := seedAndHoldCursor(t, database)
+		defer rows.Close()
+		tripBlockedHeal(t, database)
+
+		start := time.Now()
+		settled, err := database.CloseAndSettle(200 * time.Millisecond)
+		if err != nil || settled {
+			t.Errorf("CloseAndSettle() = %v, %v; want false, nil while the reader holds on", settled, err)
+		}
+		if waited := time.Since(start); waited > 5*time.Second {
+			t.Errorf("CloseAndSettle waited %v, want about its 200ms limit", waited)
+		}
+		_ = rows.Close()
+		waitForHeal(t, database)
+	})
+
+	t.Run("no heal in flight", func(t *testing.T) {
+		database := desyncedIndexFixture(t)
+		if settled, err := database.CloseAndSettle(time.Second); err != nil || !settled {
+			t.Errorf("CloseAndSettle() = %v, %v; want true, nil", settled, err)
+		}
+	})
+}
+
+// seedAndHoldCursor fills the heal table and returns a cursor that has read one
+// row, so its connection stays checked out of the pool.
+func seedAndHoldCursor(t *testing.T, database *DB) *sql.Rows {
+	t.Helper()
 	for i := range 200 {
 		if _, err := database.Conn().Exec(
 			`INSERT INTO `+healTable+` (id, v) VALUES (?, ?)`, i, "row"); err != nil {
@@ -325,27 +462,70 @@ func TestReconnectYieldsToCloseDuringBlockedOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
-	defer rows.Close()
 	if !rows.Next() {
+		_ = rows.Close()
 		t.Fatal("expected at least one row to hold the cursor open")
 	}
+	return rows
+}
 
-	err = advanceND(database)
-	requireDesync(t, err)
-	if !errors.Is(err, errHealBlocked) {
-		t.Fatalf("advanceND() = %v, want errHealBlocked while the cursor is open", err)
+// tripBlockedHeal trips the fatal through WithTx while a cursor is held, so the
+// heal's reconnect is left blocked in the background. It fails, rather than
+// hangs, if the heal waits for the reconnect inline again.
+func tripBlockedHeal(t *testing.T, database *DB) {
+	t.Helper()
+	result := make(chan error, 1)
+	go func() { result <- advanceND(database) }()
+	select {
+	case err := <-result:
+		requireDesync(t, err)
+		if !errors.Is(err, errHealBlocked) {
+			t.Fatalf("advanceND() = %v, want errHealBlocked while the cursor is open", err)
+		}
+	case <-time.After(healReconnectTimeout + 15*time.Second):
+		t.Fatal("healAfterFatal blocked on an open cursor instead of giving up")
 	}
+}
 
-	// The reconnect now waits for the cursor. Close on purpose, then free it.
-	if err := database.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
+// requireHealthy fails unless the handle is open, settled, and can read and
+// write.
+func requireHealthy(t *testing.T, database *DB) {
+	t.Helper()
+	if database.isClosed() {
+		t.Fatal("the handle is closed, want it open")
 	}
-	_ = rows.Close()
-	waitForHeal(t, database)
+	var n int
+	if err := database.Conn().QueryRow(`SELECT COUNT(*) FROM ` + healTable).Scan(&n); err != nil {
+		t.Fatalf("read after the heal settled: %v", err)
+	}
+	if err := database.WithTx(func(tx Queryer) error {
+		_, err := tx.Exec(`INSERT INTO `+healTable+` (id, v) VALUES (?, ?)`, 9999, "after")
+		return err
+	}); err != nil {
+		t.Fatalf("write after the heal settled: %v", err)
+	}
+}
 
-	if !database.isClosed() {
-		t.Error("the background reconnect reopened the database after an intentional Close")
+// fileSnapshot returns the size and hash of the database file and its WAL, to
+// show whether anything wrote to them.
+func fileSnapshot(path string) string {
+	state := func(p string) string {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return "absent"
+		}
+		return fmt.Sprintf("%d:%x", len(data), sha256.Sum256(data))
 	}
+	return "db=" + state(path) + " wal=" + state(path+".wal")
+}
+
+// shortHealTimeout shortens the heal's bounded wait for one test. The db tests
+// do not run in parallel, so changing the package value is safe.
+func shortHealTimeout(t *testing.T) {
+	t.Helper()
+	old := healReconnectTimeout
+	healReconnectTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { healReconnectTimeout = old })
 }
 
 // waitForHeal waits until the reconnect that healAfterFatal started in the
