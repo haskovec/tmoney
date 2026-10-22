@@ -301,6 +301,65 @@ func TestHealAfterFatalDoesNotBlockOnOpenRows(t *testing.T) {
 	case <-time.After(healReconnectTimeout + 15*time.Second):
 		t.Fatal("healAfterFatal blocked on an open cursor instead of giving up")
 	}
+
+	// The reconnect goes on in the background until the cursor closes. Let it
+	// finish, or it reopens the file while the test cleanup removes the folder.
+	_ = rows.Close()
+	waitForHeal(t, database)
+}
+
+// TestReconnectYieldsToCloseDuringBlockedOpen covers the window the bounded
+// heal leaves: the background reconnect checks closed before its open, but the
+// open blocks until the last cursor of the old instance closes. An intentional
+// Close (quit, backup, restore) in that window must win, so the reconnect must
+// not publish its new pool and clear closed underneath a file copy.
+func TestReconnectYieldsToCloseDuringBlockedOpen(t *testing.T) {
+	database := desyncedIndexFixture(t)
+	for i := range 200 {
+		if _, err := database.Conn().Exec(
+			`INSERT INTO `+healTable+` (id, v) VALUES (?, ?)`, i, "row"); err != nil {
+			t.Fatalf("seeding %s: %v", healTable, err)
+		}
+	}
+	rows, err := database.Conn().Query(`SELECT id, v FROM ` + healTable)
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("expected at least one row to hold the cursor open")
+	}
+
+	err = advanceND(database)
+	requireDesync(t, err)
+	if !errors.Is(err, errHealBlocked) {
+		t.Fatalf("advanceND() = %v, want errHealBlocked while the cursor is open", err)
+	}
+
+	// The reconnect now waits for the cursor. Close on purpose, then free it.
+	if err := database.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	_ = rows.Close()
+	waitForHeal(t, database)
+
+	if !database.isClosed() {
+		t.Error("the background reconnect reopened the database after an intentional Close")
+	}
+}
+
+// waitForHeal waits until the reconnect that healAfterFatal started in the
+// background has finished, so it cannot touch the database files after the
+// test returns.
+func waitForHeal(t *testing.T, db *DB) {
+	t.Helper()
+	deadline := time.Now().Add(healReconnectTimeout + 30*time.Second)
+	for db.healing.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("the background reconnect did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // TestReconnectKeepsPoolPublishedWhenReopenFails covers the other way the heal

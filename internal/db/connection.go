@@ -36,8 +36,12 @@ type DB struct {
 	// to reopen while it is set, so healAfterFatal cannot resurrect a handle
 	// that a backup or restore closed on purpose. WithFileClosed clears it.
 	closed bool
-	path   string
-	txMu   sync.Mutex // serializes WithTx: single-writer discipline
+	// closeGen counts intentional Closes, guarded by connMu. reconnect's open
+	// can block for as long as a reader holds a cursor on the old instance, so
+	// reconnect publishes its new pool only if no Close landed in the meantime.
+	closeGen uint64
+	path     string
+	txMu     sync.Mutex // serializes WithTx: single-writer discipline
 }
 
 // ErrClosed is returned by operations on a DB after Close.
@@ -177,6 +181,7 @@ func (db *DB) Close() error {
 	defer db.connMu.Unlock()
 
 	db.closed = true
+	db.closeGen++
 	if db.conn == nil {
 		return nil
 	}
@@ -240,10 +245,12 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 //
 // It refuses after an intentional Close: a backup or restore that closed the
 // handle must not have it reopened underneath the file copy by a concurrent
-// failure's heal. WithFileClosed reopens through openPool directly.
+// failure's heal. That holds for a Close that lands while the open is blocked
+// too: the new pool is then dropped, not published. WithFileClosed reopens
+// through openPool directly.
 func (db *DB) reconnect() error {
 	db.connMu.Lock()
-	old, closed := db.conn, db.closed
+	old, closed, gen := db.conn, db.closed, db.closeGen
 	db.connMu.Unlock()
 
 	if closed {
@@ -254,28 +261,48 @@ func (db *DB) reconnect() error {
 			return &DatabaseError{Op: "close for reconnect", Err: err}
 		}
 	}
-	return db.openPool()
+
+	conn, err := db.openConn()
+	if err != nil {
+		return err
+	}
+	db.connMu.Lock()
+	defer db.connMu.Unlock()
+	if db.closeGen != gen {
+		_ = conn.Close() // a Close won the race; keep the handle closed
+		return ErrClosed
+	}
+	db.conn = conn
+	db.closed = false
+	return nil
 }
 
 // openPool opens a fresh pool on db.path and publishes it, clearing closed.
 // The previous pool must already be closed. See reconnect for why connMu is not
 // held across the open.
 func (db *DB) openPool() error {
-	conn, err := sql.Open("duckdb", db.path)
+	conn, err := db.openConn()
 	if err != nil {
-		return &DatabaseError{Op: "reconnect", Err: err}
+		return err
 	}
-
-	if err := conn.Ping(); err != nil {
-		_ = conn.Close()
-		return &DatabaseError{Op: "reconnect ping", Err: err}
-	}
-
 	db.connMu.Lock()
 	db.conn = conn
 	db.closed = false
 	db.connMu.Unlock()
 	return nil
+}
+
+// openConn opens and pings a fresh pool on db.path, without publishing it.
+func (db *DB) openConn() (*sql.DB, error) {
+	conn, err := sql.Open("duckdb", db.path)
+	if err != nil {
+		return nil, &DatabaseError{Op: "reconnect", Err: err}
+	}
+	if err := conn.Ping(); err != nil {
+		_ = conn.Close()
+		return nil, &DatabaseError{Op: "reconnect ping", Err: err}
+	}
+	return conn, nil
 }
 
 // Conn returns the underlying sql.DB connection for direct queries.
