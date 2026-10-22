@@ -169,9 +169,7 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	sections = append(sections, titleRow)
 
 	// Closed-account banner: a closed account's register is read-only.
-	closedBanner := 0
-	if s.data.account != nil && s.data.account.IsClosed() {
-		closedBanner = 1
+	if s.showsClosedBanner() {
 		label := "Closed · read-only"
 		if s.data.account.ClosedDate.Valid {
 			label = "Closed " + s.data.account.ClosedDate.Date.String() + " · read-only"
@@ -185,20 +183,14 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	// Suppressed while filtering — it is an account-wide summary and would be
 	// misleading next to a single-security row set. Hiding it also frees two
 	// rows of vertical space for scanning the filtered list.
-	totalReturnLines := 0
-	if !filterActive {
-		if breakdown, total := s.renderTotalReturnLines(styles); breakdown != "" {
-			sections = append(sections, breakdown)
-			sections = append(sections, total)
-			totalReturnLines = 2
-		}
+	if s.showsTotalReturn() {
+		breakdown, total := s.renderTotalReturnLines(styles, max(contentWidth-4, 1))
+		sections = append(sections, breakdown, total)
 	}
 
 	// Active-filter line (ticker + full security name, and the match count).
-	filterLine := 0
 	if filterActive {
-		filterLine = 1
-		sections = append(sections, styles.Bold.Render(s.filterStatusLine()))
+		sections = append(sections, styles.Bold.Render(s.fittedFilterStatusLine(max(contentWidth-4, 1))))
 	}
 
 	// Separator
@@ -208,9 +200,9 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 	// widget.Table
 	headerHeight := 1
 	statusBarHeight := 1
-	titleHeight := 2 + totalReturnLines + closedBanner + filterLine // title + separator (+ optional total-return breakdown, filter line, closed banner)
-	paddingHeight := 2                                              // top/bottom padding
-	scrollInfoHeight := 1                                           // reserve a row for the scroll info line so a long list doesn't overflow the status bar
+	titleHeight := 2 + s.headerExtraRows() // title + separator (+ closed banner, total-return breakdown or filter line)
+	paddingHeight := 2                     // top/bottom padding
+	scrollInfoHeight := 1                  // reserve a row for the scroll info line so a long list doesn't overflow the status bar
 	tableHeight := max(height-headerHeight-statusBarHeight-titleHeight-paddingHeight-scrollInfoHeight, 1)
 
 	visibleCount := len(s.visibleTransactions())
@@ -236,6 +228,36 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 		Render(strings.Join(sections, "\n"))
 }
 
+// showsClosedBanner reports whether the register draws the read-only banner
+// row under its title.
+func (s *investmentRegisterViewState) showsClosedBanner() bool {
+	return s.data != nil && s.data.account != nil && s.data.account.IsClosed()
+}
+
+// showsTotalReturn reports whether the register draws the two total-return
+// lines. They are hidden while a filter is on, and before the valuation
+// loads.
+func (s *investmentRegisterViewState) showsTotalReturn() bool {
+	return !s.filterActive() && s.data != nil && s.data.valuation != nil
+}
+
+// headerExtraRows returns the rows the register draws between its title and
+// its separator: the closed banner, then the two total-return lines or the
+// one filter line. render and tableContentRowOffset both use it, so the mouse
+// math follows the render.
+func (s *investmentRegisterViewState) headerExtraRows() int {
+	n := 0
+	if s.showsClosedBanner() {
+		n++
+	}
+	if s.filterActive() {
+		n++
+	} else if s.showsTotalReturn() {
+		n += 2
+	}
+	return n
+}
+
 // renderTotalReturnLines builds the two header lines that show the
 // total-return breakdown for the investment account: a components line
 // (Unrealized · Realized · Div · Int · Fees) and a summary line
@@ -245,12 +267,17 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 // when no valuation is loaded so the register still renders during the
 // initial load.
 //
+// Each line fits in width cells: the render and tableContentRowOffset count
+// exactly two rows, so a wrap would put a click on the wrong transaction. A
+// line that is too wide leaves out whole figures from the right; Unrealized,
+// Total return and Value stay longest.
+//
 // FeesPaid is stored as a positive magnitude on the valuation per the
 // total-return spec; the line negates it before formatting so the leading
 // minus sign visually reflects the subtraction in the total-return formula.
 // A nil TotalReturnPct (no buys ever — denominator is zero) renders as the
 // "—" placeholder so the line shape stays stable.
-func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Styles) (string, string) {
+func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Styles, width int) (string, string) {
 	if s.data == nil || s.data.valuation == nil {
 		return "", ""
 	}
@@ -290,7 +317,7 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 		styles.Muted.Render("Int") + " " + money(v.InterestReceived),
 		styles.Muted.Render("Fees") + " " + feeRendered,
 	}
-	breakdown := strings.Join(parts, " · ")
+	breakdown := widget.FitParts(parts, " · ", width, []int{4, 3, 2, 1})
 
 	// pct renders a percent, or the "—" placeholder when the figure is
 	// undefined, so every line keeps the same shape.
@@ -307,7 +334,7 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 	// IRR and TWR show the annual figure once the ledger spans a year;
 	// before that the holding-period figure is shown and marked "(cum.)".
 	perf := func(label string, annual, cumulative *float64) string {
-		str := " · " + styles.Muted.Render(label) + " "
+		str := styles.Muted.Render(label) + " "
 		if annual != nil {
 			return str + pct(annual)
 		}
@@ -317,13 +344,17 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 		}
 		return str
 	}
-	total += perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct)
-	total += perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct)
-	// Account value (cash + holdings market value) is appended after the
-	// optional (partial) marker: total value is independent of the
-	// realized-gain partiality that marker qualifies, so it must sit
-	// outside the marker's scope.
-	total += " · " + styles.Muted.Render("Value") + " " + money(v.TotalValue)
+	// Account value (cash + holdings market value) comes after the optional
+	// (partial) marker: total value is independent of the realized-gain
+	// partiality that marker qualifies, so it must sit outside the marker's
+	// scope.
+	segments := []string{
+		total,
+		perf("IRR", v.MoneyWeightedReturnAnnualizedPct, v.MoneyWeightedReturnPct),
+		perf("TWR", v.TimeWeightedReturnAnnualizedPct, v.TimeWeightedReturnPct),
+		styles.Muted.Render("Value") + " " + money(v.TotalValue),
+	}
 
-	return breakdown, total
+	// TWR goes first, then IRR, then Value; the total return always stays.
+	return breakdown, widget.FitParts(segments, " · ", width, []int{2, 1, 3})
 }

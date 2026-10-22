@@ -83,10 +83,11 @@ func (d *Dialog) hitTestBottom(x, by, contentWidth int) DialogHitResult {
 	none := DialogHitResult{Zone: DialogHitNone, ListItemIndex: -1}
 	row := 0
 	if d.errorMsg != "" {
-		if by == row || by == row+1 { // error line + blank
+		errRows := d.dialogErrorRowCount() + 1 // error rows + blank
+		if by < row+errRows {
 			return none
 		}
-		row += 2
+		row += errRows
 	}
 	if len(d.buttons) > 0 {
 		if by == row { // separator
@@ -111,6 +112,7 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 	}
 
 	row := 0
+	labelWidth := d.maxLabelWidth()
 
 	// Title row (row 0)
 	if y == row {
@@ -130,7 +132,8 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 
 	// Neutral message body lines (non-interactive)
 	if d.message != "" {
-		msgRows := d.messageLineCount() + 1 // body lines + trailing blank
+		// Body rows, wrapped at the width the body rendered at, + a trailing blank.
+		msgRows := len(WrapRows(d.message, d.fieldWidth(contentWidth))) + 1
 		if y >= row && y < row+msgRows {
 			return none
 		}
@@ -178,12 +181,12 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 		}
 		row += contentRows
 
-		// Error row
-		if field.Error != "" {
-			if y == row {
+		// Error rows, wrapped at the width the field rendered at
+		if errRows := len(fieldErrorRows(field, labelWidth, d.fieldWidth(contentWidth))); errRows > 0 {
+			if y >= row && y < row+errRows {
 				return DialogHitResult{Zone: DialogHitField, FieldIndex: i, ListItemIndex: -1, ContentX: x}
 			}
-			row++
+			row += errRows
 		}
 	}
 
@@ -197,11 +200,11 @@ func (d *Dialog) hitTestContentFull(x, y, contentWidth int) DialogHitResult {
 
 	// Dialog-level error
 	if d.errorMsg != "" {
-		// Error line + blank line
-		if y == row || y == row+1 {
+		errRows := d.dialogErrorRowCount() + 1 // error rows + blank line
+		if y >= row && y < row+errRows {
 			return none
 		}
-		row += 2
+		row += errRows
 	}
 
 	// Separator before buttons

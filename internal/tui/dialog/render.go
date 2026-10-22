@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -41,9 +42,7 @@ func (d *Dialog) renderUnscrolled(styles widget.Styles) string {
 	// the button separator when there are no fields), with no special
 	// styling so it doesn't read as an error.
 	if d.message != "" {
-		for ln := range strings.SplitSeq(d.message, "\n") {
-			lines = append(lines, ln)
-		}
+		lines = append(lines, WrapRows(d.message, contentWidth)...)
 		lines = append(lines, "")
 	}
 
@@ -63,7 +62,9 @@ func (d *Dialog) renderUnscrolled(styles widget.Styles) string {
 
 	// Dialog-level error message
 	if d.errorMsg != "" {
-		lines = append(lines, styles.FieldError.Render(d.errorMsg))
+		for _, row := range WrapRows(d.errorMsg, contentWidth) {
+			lines = append(lines, styles.FieldError.Render(row))
+		}
 		lines = append(lines, "")
 	}
 
@@ -114,7 +115,7 @@ const scrollPinnedTopRows = 2
 func (d *Dialog) bottomRowCount() int {
 	rows := 0
 	if d.errorMsg != "" {
-		rows += 2 // error line + blank
+		rows += d.dialogErrorRowCount() + 1 // error rows + blank
 	}
 	if len(d.buttons) > 0 {
 		rows += 2 // separator + button row
@@ -141,7 +142,9 @@ func (d *Dialog) renderScrolled(styles widget.Styles) string {
 	// Pinned bottom: dialog-level error, separator + button row.
 	var bottom []string
 	if d.errorMsg != "" {
-		bottom = append(bottom, styles.FieldError.Render(d.errorMsg))
+		for _, row := range WrapRows(d.errorMsg, contentWidth) {
+			bottom = append(bottom, styles.FieldError.Render(row))
+		}
 		bottom = append(bottom, "")
 	}
 	if len(d.buttons) > 0 {
@@ -158,9 +161,7 @@ func (d *Dialog) renderScrolled(styles widget.Styles) string {
 	// the message length.
 	var body []string
 	if d.message != "" {
-		for ln := range strings.SplitSeq(d.message, "\n") {
-			body = append(body, ln)
-		}
+		body = append(body, WrapRows(d.message, fieldWidth)...)
 		body = append(body, "")
 	}
 	msgLen := len(body)
@@ -316,11 +317,14 @@ func (d *Dialog) maxLabelWidth() int {
 	return maxW
 }
 
+// renderTitle renders the title row. A long title is cut so the row stays
+// one row with [x] at its end: ContentHeight and the hit-test count one row.
 func (d *Dialog) renderTitle(styles widget.Styles, contentWidth int) string {
-	title := styles.DialogTitle.Render(d.title)
-	titleWidth := lipgloss.Width(title)
 	closeBtn := styles.Muted.Render("[x]")
 	closeBtnWidth := lipgloss.Width(closeBtn)
+	maxTitle := max(contentWidth-closeBtnWidth-1, 1)
+	title := styles.DialogTitle.Render(ansi.Truncate(OneLine(d.title), maxTitle, "…"))
+	titleWidth := lipgloss.Width(title)
 
 	gap := max(contentWidth-titleWidth-closeBtnWidth, 1)
 
@@ -331,7 +335,7 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 	if field.Type == FieldCheckbox {
 		line := d.renderCheckboxField(styles, field, focused)
 		if field.Error != "" {
-			line += "\n" + styles.FieldError.Render(field.Error)
+			line += "\n" + d.renderFieldError(styles, field, labelWidth, contentWidth)
 		}
 		return line
 	}
@@ -352,8 +356,7 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 
 	// Available width for field content area
 	labelColWidth := labelWidth + 1 // label + colon
-	gap := 2
-	available := max(contentWidth-labelColWidth-gap, 5)
+	available := max(contentWidth-labelColWidth-fieldGap, 5)
 
 	var fieldContent string
 	switch field.Type {
@@ -371,8 +374,7 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 		listContent := d.renderListFieldContent(field, focused, available)
 		line := paddedLabel + "\n" + listContent
 		if field.Error != "" {
-			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
-			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+			line += "\n" + d.renderFieldError(styles, field, labelWidth, contentWidth)
 		}
 		return line
 	case FieldCombo:
@@ -390,8 +392,7 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 		panel := field.RenderComboPanel(available)
 		line := paddedLabel + "  " + header + "\n" + panel
 		if field.Error != "" {
-			errorIndent := strings.Repeat(" ", labelWidth+1+gap)
-			line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+			line += "\n" + d.renderFieldError(styles, field, labelWidth, contentWidth)
 		}
 		return line
 	case FieldRadio:
@@ -402,11 +403,132 @@ func (d *Dialog) renderField(styles widget.Styles, field *Field, focused bool, l
 
 	line := paddedLabel + "  " + fieldContent
 	if field.Error != "" {
-		// Indent the error to align under the field content
-		errorIndent := strings.Repeat(" ", labelWidth+1+gap)
-		line += "\n" + errorIndent + styles.FieldError.Render(field.Error)
+		line += "\n" + d.renderFieldError(styles, field, labelWidth, contentWidth)
 	}
 	return line
+}
+
+// fieldGap is the space between a field's "Label:" column and its content.
+const fieldGap = 2
+
+// plainText makes outside text measure the way it draws: a CRLF or a lone
+// CR is a line break, and a tab is a space (ansi counts a tab as 0 cells,
+// lipgloss draws 4). A bare CR would also send the cursor to column 0.
+var plainText = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\t", " ")
+
+// OneLine turns line breaks and tabs into spaces, for text that must stay
+// one row, such as a title.
+func OneLine(s string) string {
+	return strings.ReplaceAll(plainText.Replace(s), "\n", " ")
+}
+
+// WrapRows wraps text to width cells, one string per row. It breaks only at
+// spaces, because a break at a hyphen would split a negative amount ("-" /
+// "12.50"), and it cuts a word only when the word is wider than a row. A
+// paragraph's leading indent stays on each of its rows, and a line that fits
+// comes back as it is, so spacing that aligns columns stays. The dialog render,
+// ContentHeight and the hit-test all count wrapped text through it, so a
+// long error or message cannot move the rows below it away from the mouse.
+// The split editor and the paycheck wizard, which keep their own hit math,
+// use it for the same reason.
+func WrapRows(text string, width int) []string {
+	width = max(width, 1)
+	var rows []string
+	for _, para := range strings.Split(plainText.Replace(text), "\n") {
+		if lipgloss.Width(para) <= width {
+			rows = append(rows, para)
+			continue
+		}
+		body := strings.TrimLeft(para, " ")
+		indent := para[:len(para)-len(body)]
+		if len(indent) >= width {
+			indent = ""
+		}
+		room := width - len(indent)
+		line := ""
+		flush := func() {
+			rows = append(rows, indent+line)
+			line = ""
+		}
+		for _, word := range strings.Fields(body) {
+			for lipgloss.Width(word) > room {
+				if line != "" {
+					flush()
+				}
+				// Each piece takes at least one visible character, so the
+				// loop always moves on: a character wider than the row, or
+				// one behind a zero-width character or an escape code, gets
+				// a row of its own.
+				n := room
+				head := ansi.Truncate(word, n, "")
+				for lipgloss.Width(head) == 0 {
+					n++
+					head = ansi.Truncate(word, n, "")
+				}
+				line = head
+				flush()
+				word = ansi.TruncateLeft(word, lipgloss.Width(head), "")
+			}
+			switch {
+			case lipgloss.Width(word) == 0: // nothing left to show
+			case line == "":
+				line = word
+			case lipgloss.Width(line)+1+lipgloss.Width(word) <= room:
+				line += " " + word
+			default:
+				flush()
+				line = word
+			}
+		}
+		rows = append(rows, indent+line)
+	}
+	return rows
+}
+
+// fieldErrorIndent returns the column of a field's error: under the field
+// content, or the left edge for a checkbox.
+func fieldErrorIndent(field *Field, labelWidth int) int {
+	if field.Type == FieldCheckbox {
+		return 0
+	}
+	return labelWidth + 1 + fieldGap
+}
+
+// fieldErrorRows returns a field's error wrapped to the width left after its
+// indent, one string per row, or nil when the field has no error.
+func fieldErrorRows(field *Field, labelWidth, width int) []string {
+	if field.Error == "" {
+		return nil
+	}
+	return WrapRows(field.Error, width-fieldErrorIndent(field, labelWidth))
+}
+
+// renderFieldError renders a field's error rows, each indented under the
+// field content.
+func (d *Dialog) renderFieldError(styles widget.Styles, field *Field, labelWidth, width int) string {
+	indent := strings.Repeat(" ", fieldErrorIndent(field, labelWidth))
+	rows := fieldErrorRows(field, labelWidth, width)
+	for i, row := range rows {
+		rows[i] = indent + styles.FieldError.Render(row)
+	}
+	return strings.Join(rows, "\n")
+}
+
+// dialogErrorRowCount returns the rows the dialog-level error takes.
+func (d *Dialog) dialogErrorRowCount() int {
+	if d.errorMsg == "" {
+		return 0
+	}
+	return len(WrapRows(d.errorMsg, max(d.width-DialogHorizontalOverhead, 10)))
+}
+
+// fieldWidth returns the width the fields render at: the content width, less
+// the scrollbar gutter while the dialog scrolls (see renderScrolled).
+func (d *Dialog) fieldWidth(contentWidth int) int {
+	if d.isScrolling() {
+		return max(contentWidth-2, 5)
+	}
+	return contentWidth
 }
 
 func (d *Dialog) renderTextFieldContent(styles widget.Styles, field *Field, focused bool, available int) string {
@@ -744,6 +866,8 @@ const dialogVerticalOverhead = 4
 
 // ContentHeight returns the number of content lines inside the dialog (excluding border and padding).
 func (d *Dialog) ContentHeight() int {
+	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
+	labelWidth := d.maxLabelWidth()
 	h := 0
 	// Title row
 	h++
@@ -764,10 +888,8 @@ func (d *Dialog) ContentHeight() int {
 		h++
 		// Field content rows
 		h += d.fieldContentRows(field)
-		// Error row
-		if field.Error != "" {
-			h++
-		}
+		// Error rows
+		h += len(fieldErrorRows(field, labelWidth, contentWidth))
 	}
 	// Blank line after all fields (if any visible fields exist)
 	if d.hasVisibleFields() {
@@ -776,7 +898,7 @@ func (d *Dialog) ContentHeight() int {
 
 	// Dialog-level error
 	if d.errorMsg != "" {
-		h += 2 // error line + blank line
+		h += d.dialogErrorRowCount() + 1 // error rows + blank line
 	}
 
 	// Separator + button row (both omitted when the dialog has no buttons,
@@ -788,23 +910,15 @@ func (d *Dialog) ContentHeight() int {
 	return h
 }
 
-// messageLineCount returns the number of rendered rows the neutral body message
-// occupies, counting soft-wrapping: a line longer than the content width wraps
-// to multiple rows when lipgloss renders it into the fixed-width dialog box.
-// Counting only newline-separated lines under-reports the height, which throws
-// off ContentHeight/RenderedHeight and therefore the mouse hit-test geometry
-// (clicks on the bottom button row would fall outside the computed bounds).
-// Returns 0 when the message is empty.
+// messageLineCount returns the rows the neutral body message takes in the
+// unscrolled layout, or 0 when it is empty. The message wraps through
+// WrapRows, so a line wider than the content takes more rows, and
+// ContentHeight/RenderedHeight and the mouse hit-test count them.
 func (d *Dialog) messageLineCount() int {
 	if d.message == "" {
 		return 0
 	}
-	contentWidth := max(d.width-DialogHorizontalOverhead, 10)
-	rows := 0
-	for seg := range strings.SplitSeq(d.message, "\n") {
-		rows += lipgloss.Height(lipgloss.NewStyle().Width(contentWidth).Render(seg))
-	}
-	return rows
+	return len(WrapRows(d.message, max(d.width-DialogHorizontalOverhead, 10)))
 }
 
 // hasVisibleFields returns true if any field is not hidden.

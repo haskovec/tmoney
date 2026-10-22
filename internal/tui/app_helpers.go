@@ -29,46 +29,20 @@ func (a *App) refreshKeyHints() {
 	}
 }
 
+// baseTableRowOffset is the content rows above a table in the plain layout:
+// top padding (1) + title (1) + separator (1).
+const baseTableRowOffset = 3
+
 // tableContentRowOffset returns the number of content rows that precede
 // the active table's first y in the current view. Used by the mouse
-// click handler to translate a screen-space Y into a table-space Y.
-//
-// Base layout: top padding (1) + title (1) + separator (1) = 3. Views
-// that render extra header rows (the investment register's two-line
-// total-return breakdown, the portfolio summary, the portfolio lots
-// sub-header) add to the base.
+// click handler to translate a screen-space Y into a table-space Y. A view
+// that draws more rows between its title and its separator counts them in
+// its tableRowOffset entry (views.go).
 func (a *App) tableContentRowOffset() int {
-	const baseOffset = 3
-	switch a.currentView {
-	case ViewInvestmentRegister:
-		if a.investmentRegister.data != nil && a.investmentRegister.data.valuation != nil {
-			return baseOffset + 2 // total-return breakdown (components + total)
-		}
-	case ViewPortfolio:
-		offset := baseOffset
-		if a.portfolio.data != nil && a.portfolio.data.valuation != nil {
-			offset += 2 // summary line 1 (snapshot) + line 2 (TR breakdown)
-		}
-		if a.portfolio.mode == portfolioViewLots {
-			offset++ // "Lots for <ticker>" sub-header
-		}
-		return offset
-	case ViewAmortization:
-		// The amortization view inserts a stats block (2 lines with a full
-		// projection, else 1) plus the "Esc: back" hint between the title and
-		// the separator that baseOffset already covers.
-		offset := baseOffset
-		if a.amortization.data != nil {
-			statsLines := 1
-			d := a.amortization.data
-			if d.hasSchedule && d.aprValid && d.projErr == nil {
-				statsLines = 2
-			}
-			offset += statsLines + 1
-		}
-		return offset
+	if e, ok := viewFor(a.currentView); ok && e.tableRowOffset != nil {
+		return e.tableRowOffset(a)
 	}
-	return baseOffset
+	return baseTableRowOffset
 }
 
 // activeTable returns the currently active table for the current view, or nil.

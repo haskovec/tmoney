@@ -545,6 +545,14 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	return []string{dateStr, status, payee, category, amount}
 }
 
+// registerShowsClosedBanner reports whether the register draws the read-only
+// banner row under its title. renderRegister and tableContentRowOffset both
+// use it, so the mouse math follows the render.
+func (a *App) registerShowsClosedBanner() bool {
+	d := a.register.data
+	return d != nil && d.account != nil && d.account.IsClosed()
+}
+
 // renderRegister renders the account register view.
 func (a *App) renderRegister() string {
 	if a.register.data == nil {
@@ -578,9 +586,8 @@ func (a *App) renderRegister() string {
 	sections = append(sections, titleRow)
 
 	// Closed-account banner: a closed account's register is read-only.
-	closedBanner := false
-	if a.register.data.account != nil && a.register.data.account.IsClosed() {
-		closedBanner = true
+	closedBanner := a.registerShowsClosedBanner()
+	if closedBanner {
 		label := "Closed · read-only"
 		if a.register.data.account.ClosedDate.Valid {
 			label = "Closed " + a.register.data.account.ClosedDate.Date.String() + " · read-only"

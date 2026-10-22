@@ -649,3 +649,45 @@ func TestBreakpointConstants(t *testing.T) {
 			SidebarWidthLarge, SidebarWidthMedium)
 	}
 }
+
+// A view line wider than the pane is cut, not wrapped: the mouse code maps
+// one view line to one screen row, so a wrap moves every row below it down
+// and pushes the last rows off the pane.
+func TestRenderViewContent_ClipsWideLines(t *testing.T) {
+	s := NewStyles()
+	in := "title\n" + s.Bold.Render(strings.Repeat("wide ", 20)) + "\nnext\nlast"
+	out := s.RenderViewContent(in, 30, 5)
+
+	lines := strings.Split(out, "\n")
+	if len(lines) != 5 {
+		t.Fatalf("RenderViewContent() = %d rows, want 5:\n%s", len(lines), StripAnsi(out))
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w != 30 {
+			t.Errorf("row %d width = %d, want 30", i, w)
+		}
+	}
+	if got := strings.TrimSpace(StripAnsi(lines[1])); !strings.HasSuffix(got, "…") {
+		t.Errorf("cut row = %q, want it to end in \"…\" so a cut figure shows as cut", got)
+	}
+	for i, want := range map[int]string{2: "next", 3: "last"} {
+		if got := strings.TrimSpace(StripAnsi(lines[i])); got != want {
+			t.Errorf("row %d = %q, want %q", i, got, want)
+		}
+	}
+}
+
+// A view pads every line to its widest one, so when one line is too wide
+// the others pass the pane with blank cells only. Only a cut that drops text
+// gets "…"; a line that loses blank cells only is cut clean.
+func TestRenderViewContent_MarksOnlyCutText(t *testing.T) {
+	s := NewStyles()
+	in := lipgloss.NewStyle().Padding(1, 2).Render("short\n" + strings.Repeat("wide ", 10) + "\nalso short")
+	lines := strings.Split(StripAnsi(s.RenderViewContent(in, 30, 6)), "\n")
+	for i, line := range lines {
+		cut := strings.Contains(line, "wide")
+		if got := strings.HasSuffix(strings.TrimRight(line, " "), "…"); got != cut {
+			t.Errorf("row %d %q: ends in … = %v, want %v", i, line, got, cut)
+		}
+	}
+}

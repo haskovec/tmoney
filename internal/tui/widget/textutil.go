@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // PadRight pads a string with spaces to the given width.
@@ -36,6 +37,42 @@ func TruncateRunes(s string, maxLen int) string {
 		return string(runes[:maxLen])
 	}
 	return string(runes[:maxLen-3]) + "..."
+}
+
+// FitParts joins parts with sep in their order, leaving out parts until the
+// line fits in width cells. drop names the parts, by index, in the order they
+// go; a part not in drop always stays, and an index out of range is skipped. A part is never split, so a figure is
+// whole or absent. If the parts that must stay still do not fit, the line is
+// cut with "…".
+func FitParts(parts []string, sep string, width int, drop []int) string {
+	keep := make([]bool, len(parts))
+	for i := range keep {
+		keep[i] = true
+	}
+	join := func() string {
+		var kept []string
+		for i, p := range parts {
+			if keep[i] {
+				kept = append(kept, p)
+			}
+		}
+		return strings.Join(kept, sep)
+	}
+	line := join()
+	for _, i := range drop {
+		if lipgloss.Width(line) <= width {
+			return line
+		}
+		if i < 0 || i >= len(parts) {
+			continue
+		}
+		keep[i] = false
+		line = join()
+	}
+	if lipgloss.Width(line) <= width {
+		return line
+	}
+	return ansi.Truncate(line, width, "…")
 }
 
 // OverlayDropdown places a dropdown string on top of the layout at the given row and column offset.

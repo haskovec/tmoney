@@ -9,6 +9,8 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
@@ -120,28 +122,46 @@ func (s *investmentRegisterViewState) securityDisplayName(id types.ID) string {
 // filterStatusLine builds the one-line filter indicator shown under
 // the register title while a filter is active.
 func (s *investmentRegisterViewState) filterStatusLine() string {
+	head, tail := s.filterStatusParts()
+	return head + tail
+}
+
+// fittedFilterStatusLine fits the filter line in width cells. The line sits
+// above the table, so it must stay one row; the query and the security name
+// are cut with "…", so the count stays in view.
+func (s *investmentRegisterViewState) fittedFilterStatusLine(width int) string {
+	head, tail := s.filterStatusParts()
+	if lipgloss.Width(head+tail) <= width {
+		return head + tail
+	}
+	return ansi.Truncate(head, max(width-lipgloss.Width(tail), 0), "…") + tail
+}
+
+// filterStatusParts returns the filter line as a head that may be cut (the
+// query and the security name) and a tail that must stay (the count).
+func (s *investmentRegisterViewState) filterStatusParts() (head, tail string) {
 	if s.data == nil {
-		return ""
+		return "", ""
 	}
 	total := len(s.data.transactions)
 	n := len(s.visibleTransactions())
 
 	if !s.filterLockedSec.IsNil() {
-		return fmt.Sprintf("Filter: %s  (%d of %d)", s.securityDisplayName(s.filterLockedSec), n, total)
+		return "Filter: " + s.securityDisplayName(s.filterLockedSec), fmt.Sprintf("  (%d of %d)", n, total)
 	}
 
 	q := strings.TrimSpace(s.filterQuery)
 	if q == "" {
-		return "Filter: (type a ticker or name — Enter locks · Esc clears)"
+		return "Filter: (type a ticker or name — Enter locks · Esc clears)", ""
 	}
 	matched := s.filterMatchedSecurities()
 	switch len(matched) {
 	case 0:
-		return fmt.Sprintf("Filter: %s  →  no matches", q)
+		return "Filter: " + q, "  →  no matches"
 	case 1:
-		return fmt.Sprintf("Filter: %s  →  %s (%d rows)", q, s.securityDisplayName(matched[0]), n)
+		return "Filter: " + q + "  →  " + s.securityDisplayName(matched[0]), fmt.Sprintf(" (%d rows)", n)
 	default:
-		return fmt.Sprintf("Filter: %s  →  %d securities, %d rows", q, len(matched), n)
+		return "Filter: " + q, fmt.Sprintf("  →  %d securities, %d rows", len(matched), n)
 	}
 }
 

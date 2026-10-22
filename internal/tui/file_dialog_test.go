@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -841,5 +843,50 @@ func TestApp_BrowseDialog_DoubleClickOnSubdir_NavigatesIn(t *testing.T) {
 
 	if app.file.browseDir != subdir {
 		t.Errorf("after double-click on sub/, browseDir = %q, want %q", app.file.browseDir, subdir)
+	}
+}
+
+// The browse title counts cells, not bytes: a non-ASCII path must not be cut
+// inside a character, a path that fits must not be cut, and a long path keeps
+// its end in view.
+func TestBuildBrowseDialog_TitleFitsInCells(t *testing.T) {
+	const maxTitle = 60 - dialog.DialogHorizontalOverhead - 4 // gap + [x]
+	tests := []struct {
+		dir     string
+		wantCut bool
+	}{
+		{"/Users/demo/Bücher/Finanzen/Haushalt/2026/Steuern1", true},
+		{"/Users/demo/Documents/TMoney/Archive/2026", true},
+		{"/Users/demo/Documents/TMoney/Archiv", false}, // 35 cells: the title is 47
+		{"/Users/démo/Bücher/Café/Ünïcödé", false},     // short in cells, long in bytes
+		{"/Users/demo/" + strings.Repeat("東京", 12), true},
+	}
+	for _, tt := range tests {
+		title := buildBrowseDialog(tt.dir, []string{"a.tdb"}).Title()
+		if !utf8.ValidString(title) {
+			t.Errorf("dir %q: title %q is not valid UTF-8", tt.dir, title)
+		}
+		if w := lipgloss.Width(title); w > maxTitle {
+			t.Errorf("dir %q: title is %d cells, want at most %d", tt.dir, w, maxTitle)
+		}
+		if cut := strings.Contains(title, "…"); cut != tt.wantCut {
+			t.Errorf("dir %q: title %q cut = %v, want %v", tt.dir, title, cut, tt.wantCut)
+		}
+		if r := []rune(tt.dir); !strings.HasSuffix(title, string(r[len(r)-6:])) {
+			t.Errorf("dir %q: title %q lost the end of the path", tt.dir, title)
+		}
+	}
+}
+
+// A tab or a line break in a folder name is drawn as a space, so the title is
+// measured as drawn and stays one row.
+func TestBuildBrowseDialog_ControlCharsInPath(t *testing.T) {
+	const maxTitle = 60 - dialog.DialogHorizontalOverhead - 4
+	title := buildBrowseDialog("/Users/demo/Tax\tReturns/2026\nDrafts/Final\tCopies/Q4", []string{"a.tdb"}).Title()
+	if strings.ContainsAny(title, "\t\n\r") {
+		t.Errorf("title %q holds a control character", title)
+	}
+	if w := lipgloss.Width(title); w > maxTitle {
+		t.Errorf("title is %d cells, want at most %d", w, maxTitle)
 	}
 }

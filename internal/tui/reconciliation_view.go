@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/reconciliation"
 	"github.com/haskovec/tmoney/internal/transaction"
@@ -415,15 +416,21 @@ func (a *App) renderReconciliation() string {
 			Render("Loading reconciliation...")
 	}
 
-	contentWidth := a.styles.ContentWidth()
+	// Reconciliation is full-screen: it takes the whole width, not
+	// ContentWidth, which leaves out a sidebar this view does not show.
+	contentWidth := a.width
 
 	var sections []string
 
 	// Header: RECONCILE: <account name>    Statement Date: <date>
 	acctName := a.reconciliation.data.account.Name
 	stmtDate := a.reconciliation.data.session.StatementDate.Time().Format("01/02/2006")
-	leftHeader := "RECONCILE: " + acctName
+	const leftPrefix = "RECONCILE: "
 	rightHeader := "Statement Date: " + stmtDate
+	// Cut the name so the header stays one row with the date in view: a
+	// wrapped header would move the table down a row under the mouse.
+	maxNameWidth := max(contentWidth-4-lipgloss.Width(leftPrefix)-lipgloss.Width(rightHeader)-1, 10)
+	leftHeader := leftPrefix + ansi.Truncate(acctName, maxNameWidth, "…")
 	padding := max(contentWidth-lipgloss.Width(leftHeader)-lipgloss.Width(rightHeader)-4, 1)
 	headerRow := a.styles.Title.Render(leftHeader) + strings.Repeat(" ", padding) + a.styles.Muted.Render(rightHeader)
 	sections = append(sections, headerRow)
@@ -473,12 +480,23 @@ func (a *App) renderReconciliation() string {
 		}
 	}
 
-	balanceLine := fmt.Sprintf("Statement: %s  Cleared: %s  Difference: ", stmtBal, clrTotal)
-	balanceLine = a.styles.Bold.Render(balanceLine) + diffStyle.Render(diffStr)
+	// The footer fits by leaving out whole items: a clipped amount would pass
+	// for a smaller one. Cleared, then Statement go; Difference stays. The
+	// hints go from the right (the status bar shows them too).
+	lineWidth := max(contentWidth-4, 1)
+	balanceLine := widget.FitParts([]string{
+		a.styles.Bold.Render("Statement: " + stmtBal),
+		a.styles.Bold.Render("Cleared: " + clrTotal),
+		a.styles.Bold.Render("Difference: ") + diffStyle.Render(diffStr),
+	}, "  ", lineWidth, []int{1, 0})
 	sections = append(sections, balanceLine)
 
 	countLine := fmt.Sprintf("Checked: %d of %d", checkedCount, totalCount)
-	hintLine := countLine + "    Space toggle  Enter finish  Esc cancel  a all  u uncheck"
+	hints := []string{"Space toggle", "Enter finish", "Esc cancel", "a all", "u uncheck"}
+	hintLine := countLine
+	if fit := widget.FitParts(hints, "  ", lineWidth-lipgloss.Width(countLine)-4, []int{4, 3, 2, 1, 0}); fit != "" {
+		hintLine += "    " + fit
+	}
 	sections = append(sections, a.styles.Muted.Render(hintLine))
 
 	return lipgloss.NewStyle().

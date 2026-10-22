@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -199,7 +200,8 @@ func TestRenderHelpOverlay(t *testing.T) {
 	})
 
 	t.Run("renders for corporate actions view", func(t *testing.T) {
-		stripped := widget.StripAnsi(renderHelpOverlay(styles, ViewCorporateActions, 120, 50))
+		// 70 rows: the full help (about 62 rows) fits, so no entry is cut.
+		stripped := widget.StripAnsi(renderHelpOverlay(styles, ViewCorporateActions, 120, 70))
 		for _, want := range []string{"Corporate Actions", "Filter actions", "Show details", "Reverse and delete action"} {
 			if !strings.Contains(stripped, want) {
 				t.Errorf("overlay should contain %q for the corporate actions view", want)
@@ -473,5 +475,53 @@ func TestApp_HelpKeyBinding(t *testing.T) {
 	// Verify the ? key binding exists
 	if !key.Matches(tea.KeyPressMsg{Code: '?', Text: "?"}, km.Help) {
 		t.Error("? should match the Help key binding")
+	}
+}
+
+// On every view and size, each entry stays one row and the footer and the
+// bottom border stay drawn. A wrapped entry used to push them past the final
+// height clamp, so a narrow terminal lost "Press ? or Esc to close".
+func TestRenderHelpOverlay_FitsAtEverySize(t *testing.T) {
+	styles := widget.NewStyles()
+	for _, vc := range viewConstants(t) {
+		for _, size := range [][2]int{{40, 30}, {50, 30}, {64, 24}, {120, 30}, {120, 60}} {
+			width, height := size[0], size[1]
+			t.Run(fmt.Sprintf("%s/%dx%d", vc.Name, width, height), func(t *testing.T) {
+				styles.Resize(width, height)
+				rows := strings.Split(widget.StripAnsi(renderHelpOverlay(styles, vc.Value, width, height)), "\n")
+				if len(rows) > height-2 {
+					t.Errorf("overlay is %d rows, want at most %d", len(rows), height-2)
+				}
+				overlayWidth := lipgloss.Width(rows[0])
+				for i, row := range rows {
+					if w := lipgloss.Width(row); w != overlayWidth {
+						t.Errorf("row %d is %d cells, want %d: %q", i, w, overlayWidth, row)
+					}
+				}
+				if !strings.Contains(strings.Join(rows, "\n"), "Press ? or Esc to close") {
+					t.Error("the footer is gone")
+				}
+				if last := rows[len(rows)-1]; !strings.HasPrefix(last, "╰") && !strings.HasPrefix(last, "└") {
+					t.Errorf("last row %q is not the bottom border", last)
+				}
+			})
+		}
+	}
+}
+
+// Short screens: the smallest overlay is 10 rows (border, padding, title,
+// separator, one entry, footer), so from a 12-row screen up the footer and the
+// bottom border must stay.
+func TestRenderHelpOverlay_ShortScreensKeepFooter(t *testing.T) {
+	styles := widget.NewStyles()
+	for height := 12; height <= 30; height++ {
+		styles.Resize(80, height)
+		rows := strings.Split(widget.StripAnsi(renderHelpOverlay(styles, ViewDashboard, 80, height)), "\n")
+		if !strings.Contains(strings.Join(rows, "\n"), "Press ? or Esc to close") {
+			t.Errorf("height %d: the footer is gone", height)
+		}
+		if last := rows[len(rows)-1]; !strings.HasPrefix(last, "╰") && !strings.HasPrefix(last, "└") {
+			t.Errorf("height %d: last row %q is not the bottom border", height, last)
+		}
 	}
 }

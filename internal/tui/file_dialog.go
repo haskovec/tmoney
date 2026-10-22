@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -357,14 +359,23 @@ func listDirectoryEntries(dir string) ([]string, error) {
 
 // buildBrowseDialog creates a file browser dialog for the given directory.
 func buildBrowseDialog(dir string, entries []string) *dialog.Dialog {
-	// widget.Truncate long directory paths for the title
-	title := "Open File — " + dir
-	if len(title) > 52 {
-		title = "Open File — ..." + dir[len(dir)-37:]
+	// Cut a long path from the left, in cells, so its end stays in view. The
+	// title shares its row with a 1-cell gap and the [x] close button.
+	const width = 60
+	const prefix = "Open File — "
+	maxTitle := width - dialog.DialogHorizontalOverhead - 4
+	shown := dialog.OneLine(dir) // measure a tab or a line break as the space it draws as
+	title := prefix + shown
+	if over := lipgloss.Width(title) - maxTitle; over > 0 {
+		// TruncateLeft keeps a wide character that the cut falls inside, so
+		// cut one more cell when the title is still too wide.
+		for cut := over + 1; lipgloss.Width(title) > maxTitle; cut++ {
+			title = prefix + ansi.TruncateLeft(shown, cut, "…")
+		}
 	}
 
 	d := dialog.NewDialog(title)
-	d.SetWidth(60)
+	d.SetWidth(width)
 	d.AddListField("File", entries, 0, 12)
 	d.SetButtons([]dialog.DialogButton{
 		{Label: "Open", Primary: true},

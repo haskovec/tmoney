@@ -28,6 +28,12 @@ type viewEntry struct {
 	// by mode. It is nil for a view with no table.
 	table func(*App) *widget.Table
 
+	// tableRowOffset returns the content rows above the table: the base
+	// (baseTableRowOffset) plus any rows the view draws between its title and
+	// its separator. The mouse code turns a click's Y into a table row with
+	// it, so it must count what render draws. It is nil for the base layout.
+	tableRowOffset func(*App) int
+
 	// reload returns the commands that refresh this view in place, after
 	// reloadCurrentView's sidebar reload. It returns none while the view has
 	// nothing on screen to refresh yet. Every view has one.
@@ -83,6 +89,12 @@ func init() {
 			},
 			shortcuts: registerShortcuts,
 			table:     func(a *App) *widget.Table { return a.register.table },
+			tableRowOffset: func(a *App) int {
+				if a.registerShowsClosedBanner() {
+					return baseTableRowOffset + 1 // read-only banner
+				}
+				return baseTableRowOffset
+			},
 			reload: func(a *App) []tea.Cmd {
 				accountID := a.sidebar.SelectedAccountID()
 				return []tea.Cmd{a.loadRegisterData(accountID)}
@@ -221,7 +233,8 @@ func init() {
 				}
 				return a.prices.table
 			},
-			reload: func(a *App) []tea.Cmd { return []tea.Cmd{a.prices.load(a.priceDeps())} },
+			tableRowOffset: func(a *App) int { return baseTableRowOffset + a.prices.headerExtraRows() },
+			reload:         func(a *App) []tea.Cmd { return []tea.Cmd{a.prices.load(a.priceDeps())} },
 			focus: func(a *App) {
 				// Prices is full-screen, no sidebar
 				a.sidebar.SetFocused(false)
@@ -238,8 +251,9 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
 			},
-			shortcuts: investmentRegisterShortcuts,
-			table:     func(a *App) *widget.Table { return a.investmentRegister.table },
+			shortcuts:      investmentRegisterShortcuts,
+			table:          func(a *App) *widget.Table { return a.investmentRegister.table },
+			tableRowOffset: func(a *App) int { return baseTableRowOffset + a.investmentRegister.headerExtraRows() },
 			reload: func(a *App) []tea.Cmd {
 				if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
 					return []tea.Cmd{a.investmentRegister.load(a.investmentRegisterDeps(), a.investmentRegister.data.account.ID)}
@@ -272,6 +286,7 @@ func init() {
 				}
 				return nil
 			},
+			tableRowOffset: func(a *App) int { return baseTableRowOffset + a.portfolio.headerExtraRows() },
 			reload: func(a *App) []tea.Cmd {
 				if a.portfolio.data != nil && a.portfolio.data.account != nil {
 					return []tea.Cmd{a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)}
@@ -295,8 +310,9 @@ func init() {
 			hints: func(*App) string {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},
-			shortcuts: corporateActionShortcuts,
-			table:     func(a *App) *widget.Table { return a.corporateActions.table },
+			shortcuts:      corporateActionShortcuts,
+			table:          func(a *App) *widget.Table { return a.corporateActions.table },
+			tableRowOffset: func(*App) int { return baseTableRowOffset + 1 }, // the filter or the "Press / to filter" hint
 			reload: func(a *App) []tea.Cmd {
 				return []tea.Cmd{a.corporateActions.load(a.corporateActionDeps())}
 			},
@@ -330,9 +346,10 @@ func init() {
 				a.amortization.handleKey(msg, a.keys, a.height)
 				return a, nil
 			},
-			hints:     func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
-			shortcuts: amortizationShortcuts,
-			table:     func(a *App) *widget.Table { return a.amortization.table },
+			hints:          func(*App) string { return "↑↓ navigate  g/G first/last  esc back  " + commonKeyHints },
+			shortcuts:      amortizationShortcuts,
+			table:          func(a *App) *widget.Table { return a.amortization.table },
+			tableRowOffset: func(a *App) int { return baseTableRowOffset + a.amortization.headerExtraRows() },
 			reload: func(a *App) []tea.Cmd {
 				if a.amortization.data != nil && a.amortization.data.account != nil {
 					return []tea.Cmd{a.amortization.load(a.amortizationDeps(), a.amortization.data.account.ID)}

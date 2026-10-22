@@ -114,7 +114,9 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 
 	// Error message
 	if sd.errorMsg != "" {
-		lines = append(lines, styles.Error.Render(sd.errorMsg))
+		for _, row := range dialog.WrapRows(sd.errorMsg, contentWidth) {
+			lines = append(lines, styles.FieldError.Render(row))
+		}
 		lines = append(lines, "")
 	}
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/tui/theme"
 )
 
@@ -606,12 +607,37 @@ func repaintDesktop(s string) string {
 // content area and push the status bar off the bottom of the screen. This
 // mirrors the sidebar's line-clipping and the register/scheduled views'
 // per-table height budgets — the content pane never exceeds its allotment.
+//
+// Lines wider than the pane are cut, not wrapped (see clipLines).
 func (s *Styles) RenderViewContent(viewContent string, width, height int) string {
 	return s.Content.
 		Width(width).
 		Height(height).
 		MaxHeight(height).
-		Render(repaintDesktop(viewContent))
+		Render(repaintDesktop(clipLines(viewContent, width)))
+}
+
+// clipLines cuts each line of s to width cells. lipgloss Width wraps a wider
+// line onto more rows, but the mouse code maps one view line to one screen
+// row, so a wrap would make a click land on the row below the pointer. The
+// cut ends in "…", so a cut amount cannot pass for a whole one; views fit
+// their own figures (widget.FitParts) so the clip is a last resort. A view
+// pads every line to its widest one, so a line that loses only blank cells
+// is cut clean, without the mark.
+func clipLines(s string, width int) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		w := lipgloss.Width(l)
+		if w <= width {
+			continue
+		}
+		tail := ""
+		if strings.TrimSpace(ansi.Strip(ansi.Cut(l, width, w))) != "" {
+			tail = "…"
+		}
+		lines[i] = ansi.Truncate(l, width, tail)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Resize updates all width-dependent styles for the given terminal dimensions.

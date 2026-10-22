@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/sidebar"
@@ -543,5 +544,30 @@ func TestInvestmentFilter_PageDownWhileTypingMovesAPage(t *testing.T) {
 	press(app, tea.KeyPressMsg{Code: tea.KeyPgDown})
 	if got, want := app.investmentRegister.table.Cursor(), app.height-6; got != want {
 		t.Errorf("cursor after PgDn = %d, want %d (a page is height−6 rows)", got, want)
+	}
+}
+
+// A long security name is cut so the count stays: the filter line sits above
+// the table and must stay one row, and the clip would cut the count first.
+func TestInvestmentFilter_StatusLineFitKeepsCount(t *testing.T) {
+	app, _ := newFilterTestApp(t, 0)
+	typeFilter(app, "fx") // one match: "... → FXAIX — <name> (3 rows)"
+	for _, width := range []int{24, 30, 40} {
+		line := app.investmentRegister.fittedFilterStatusLine(width)
+		if w := lipgloss.Width(line); w > width {
+			t.Errorf("width %d: line %q is %d cells", width, line, w)
+		}
+		if !strings.HasSuffix(line, "(3 rows)") || !strings.Contains(line, "…") {
+			t.Errorf("width %d: line %q, want the name cut and the count kept", width, line)
+		}
+	}
+
+	app.handleInvestmentRegisterKeys(enterKey()) // lock FXAIX
+	line := app.investmentRegister.fittedFilterStatusLine(30)
+	if lipgloss.Width(line) > 30 || !strings.HasSuffix(line, "(3 of 7)") {
+		t.Errorf("locked: line %q, want at most 30 cells ending in the count", line)
+	}
+	if full := app.investmentRegister.fittedFilterStatusLine(200); full != app.investmentRegister.filterStatusLine() {
+		t.Errorf("a line that fits must not change: %q vs %q", full, app.investmentRegister.filterStatusLine())
 	}
 }

@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
@@ -256,9 +256,7 @@ func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeigh
 	maxKeyWidth := 0
 	for _, section := range sections {
 		for _, entry := range section.Entries {
-			if len(entry.Key) > maxKeyWidth {
-				maxKeyWidth = len(entry.Key)
-			}
+			maxKeyWidth = max(maxKeyWidth, lipgloss.Width(entry.Key))
 		}
 	}
 
@@ -267,7 +265,10 @@ func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeigh
 	dialogOverhead := 4 // border and padding
 	headerLines := 2    // title + separator (already in lines)
 	footerLines := 3    // blank + separator + close hint
-	maxContentLines := max(screenHeight-dialogOverhead-headerLines-footerLines, 5)
+	// The final clamp below keeps the overlay to screenHeight-2 rows, so the
+	// budget leaves out those 2 rows too; otherwise the clamp cuts the footer
+	// and the bottom border. One entry is the least it can show.
+	maxContentLines := max(screenHeight-2-dialogOverhead-headerLines-footerLines, 1)
 
 	contentLineCount := 0
 	for i, section := range sections {
@@ -288,8 +289,11 @@ func renderHelpOverlay(styles widget.Styles, view View, screenWidth, screenHeigh
 			if contentLineCount >= maxContentLines {
 				break
 			}
-			keyStr := fmt.Sprintf("  %-*s", maxKeyWidth+2, entry.Key)
-			line := styles.Positive.Render(keyStr) + styles.Muted.Render("  "+entry.Description)
+			// Cut the description to the room left, so the entry is one row:
+			// the budget above counts one row per entry.
+			keyStr := ansi.Truncate("  "+widget.PadRight(entry.Key, maxKeyWidth+2), contentWidth, "")
+			desc := ansi.Truncate("  "+entry.Description, contentWidth-lipgloss.Width(keyStr), "…")
+			line := styles.Positive.Render(keyStr) + styles.Muted.Render(desc)
 			lines = append(lines, line)
 			contentLineCount++
 		}

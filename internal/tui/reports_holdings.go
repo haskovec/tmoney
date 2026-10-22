@@ -435,7 +435,10 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 		reportTitleRow(styles, "HOLDINGS", "As of: "+rpt.AsOfDate.Time().Format("Jan 2, 2006"), tableWidth),
 		styles.Muted.Render(strings.Repeat("═", tableWidth)),
 	}
-	hint := styles.Muted.Render("  enter accounts  n net worth  s spending  i holdings  esc back")
+	// The hint leaves out whole hints to fit, the current view's first; "esc
+	// back" and "enter accounts" stay longest.
+	hints := []string{"enter accounts", "n net worth", "s spending", "i holdings", "esc back"}
+	hint := styles.Muted.Render("  " + widget.FitParts(hints, "  ", tableWidth-2, []int{3, 2, 1, 0}))
 	if len(rpt.Sections) == 0 && len(rpt.Failed) == 0 {
 		empty := "  No holdings in the investment accounts."
 		if rpt.AccountCount == 0 {

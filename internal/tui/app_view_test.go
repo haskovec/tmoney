@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -433,5 +434,46 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 	}
 	if !strings.Contains(lastLine, "Dashboard") {
 		t.Errorf("status bar should still show the 'Dashboard' context, got %q", lastLine)
+	}
+}
+
+// The error page fits the screen: long lines wrap, a long list is cut with a
+// count of the rest, and the prompt always shows. A CSV import with many bad
+// rows used to push the prompt off the bottom.
+func TestRenderError_FitsTheScreen(t *testing.T) {
+	var many []string
+	for i := range 30 {
+		many = append(many, fmt.Sprintf("row %d: invalid date %q in column Date (want MM/DD/YYYY)", i+2, "13/45/2026"))
+	}
+	tests := []struct {
+		name          string
+		err           error
+		width, height int
+		want          []string
+	}{
+		{"many lines", errors.New("import completed with 30 errors:\n" + strings.Join(many, "\n")), 80, 24,
+			[]string{"Press any key to continue", "more lines"}},
+		{"one long line", errors.New(strings.Repeat("dial tcp: lookup query1.example.com: ", 5) + "no such host"), 80, 24,
+			[]string{"Press any key to continue", "no such host"}},
+		{"tiny screen", errors.New(strings.Join(many, "\n")), 20, 6, []string{"Error:"}},
+		{"short screen", errors.New(strings.Join(many, "\n")), 20, 9, []string{"Error:", "more"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{ready: true, err: tt.err, width: tt.width, height: tt.height, styles: widget.NewStyles()}
+			frame := app.viewContent()
+			if h := lipgloss.Height(frame); h > tt.height {
+				t.Errorf("error page is %d rows, want at most %d", h, tt.height)
+			}
+			if w := lipgloss.Width(frame); w > tt.width {
+				t.Errorf("error page is %d cells wide, want at most %d", w, tt.width)
+			}
+			stripped := strings.Join(strings.Fields(widget.StripAnsi(frame)), " ")
+			for _, want := range tt.want {
+				if !strings.Contains(stripped, want) {
+					t.Errorf("error page lost %q:\n%s", want, widget.StripAnsi(frame))
+				}
+			}
+		})
 	}
 }
