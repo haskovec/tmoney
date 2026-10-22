@@ -227,3 +227,14 @@ func TestWrapRows_NarrowRoomEnds(t *testing.T) {
 		}
 	}
 }
+
+// A line that fits comes back as it is: spacing that aligns columns stays.
+// Only a line that wraps has its spaces rebuilt.
+func TestWrapRows_KeepsLinesThatFit(t *testing.T) {
+	text := "Cost:    $10.00\n  Shares:   10\nPrice:\t$5"
+	got := WrapRows(text, 40)
+	want := []string{"Cost:    $10.00", "  Shares:   10", "Price: $5"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("WrapRows = %q, want %q", got, want)
+	}
+}

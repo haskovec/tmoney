@@ -425,7 +425,8 @@ func OneLine(s string) string {
 // WrapRows wraps text to width cells, one string per row. It breaks only at
 // spaces, because a break at a hyphen would split a negative amount ("-" /
 // "12.50"), and it cuts a word only when the word is wider than a row. A
-// paragraph's leading indent stays on each of its rows. The dialog render,
+// paragraph's leading indent stays on each of its rows, and a line that fits
+// comes back as it is, so spacing that aligns columns stays. The dialog render,
 // ContentHeight and the hit-test all count wrapped text through it, so a
 // long error or message cannot move the rows below it away from the mouse.
 // The split editor and the paycheck wizard, which keep their own hit math,
@@ -434,6 +435,10 @@ func WrapRows(text string, width int) []string {
 	width = max(width, 1)
 	var rows []string
 	for _, para := range strings.Split(plainText.Replace(text), "\n") {
+		if lipgloss.Width(para) <= width {
+			rows = append(rows, para)
+			continue
+		}
 		body := strings.TrimLeft(para, " ")
 		indent := para[:len(para)-len(body)]
 		if len(indent) >= width {
