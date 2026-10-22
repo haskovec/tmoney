@@ -399,6 +399,15 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.handleCorporateActionViewKeys(msg)
 	}
 
+	// The same for the Prices and Securities searches: a digit, "?" or Esc
+	// typed there is search text or closes the search, not a global key.
+	if a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching {
+		return a.handlePriceViewKeys(msg)
+	}
+	if a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching {
+		return a.handleSecurityViewKeys(msg)
+	}
+
 	// Undo/redo key bindings (handled before menus since they should
 	// work from any non-dialog context)
 	switch {
