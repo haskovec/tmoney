@@ -41,6 +41,9 @@ type DB struct {
 	// can block for as long as a reader holds a cursor on the old instance, so
 	// reconnect publishes its new pool only if no Close landed in the meantime.
 	closeGen uint64
+	// final records CloseAndSettle, guarded by connMu: the database is closed
+	// for good, so WithFileClosed refuses to run and reopen.
+	final bool
 	// reopenMu serializes the opens of the file. reconnect holds it from the
 	// close of the old pool to the publish of the new one, and WithFileClosed
 	// holds it across its Close, fn and reopen, so a backup or restore waits
@@ -197,27 +200,49 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
-// SettleTimeout is how long the backup on quit waits in CloseAndSettle.
+// SettleTimeout is how long CloseAndSettle waits before the last backup: on
+// quit in the TUI, and after each CLI command that changes data.
 const SettleTimeout = 5 * time.Second
 
-// CloseAndSettle closes the database for good, like Close, and then waits up to
-// timeout for a reconnect that a heal left blocked in the background (see
-// healAfterFatal). Once closed is set no new reconnect starts, so when it
-// returns true nothing opens the file again and a copy of it sees a still file.
-// It returns false when the wait ran out: a reader still holds a cursor, and
-// the reconnect may open the file when it lets go, so do not copy it then.
+// CloseAndSettle closes the database for good before a last copy of the file:
+// the backup on quit, and the one after a CLI command. It first waits up to
+// timeout for the work that can still touch the file: a write or a file
+// operation in flight (WithFileClosed, which a backup or restore runs), and a
+// reconnect that a heal left blocked in the background. Then it closes, and
+// from then on WithFileClosed and reconnect refuse to reopen, so the copy sees
+// a still file. It returns false when the wait ran out: the database is
+// closed, but something may still touch the file, so do not copy it then.
 func (db *DB) CloseAndSettle(timeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	// The same order as WithFileClosed: txMu, then reopenMu, which reconnect
+	// holds for as long as a heal is in flight.
+	settled := lockBy(&db.txMu, deadline)
+	if settled {
+		defer db.txMu.Unlock()
+		settled = lockBy(&db.reopenMu, deadline)
+		if settled {
+			defer db.reopenMu.Unlock()
+		}
+	}
+
+	db.connMu.Lock()
+	db.final = true
+	db.connMu.Unlock()
 	if err := db.Close(); err != nil {
 		return false, err
 	}
-	deadline := time.Now().Add(timeout)
-	for db.healing.Load() {
+	return settled, nil
+}
+
+// lockBy locks mu if it can before deadline, and reports whether it did.
+func lockBy(mu *sync.Mutex, deadline time.Time) bool {
+	for !mu.TryLock() {
 		if time.Now().After(deadline) {
-			return false, nil
+			return false
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	return true, nil
+	return true
 }
 
 // isClosed reports whether Close was called and no reopen has followed.
@@ -246,6 +271,13 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 	// reopen below.
 	db.reopenMu.Lock()
 	defer db.reopenMu.Unlock()
+
+	db.connMu.RLock()
+	final := db.final
+	db.connMu.RUnlock()
+	if final {
+		return ErrClosed // CloseAndSettle closed it for good; never reopen
+	}
 
 	if err := db.Close(); err != nil {
 		return &DatabaseError{Op: "close for file operation", Err: err}

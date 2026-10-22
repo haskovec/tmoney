@@ -344,7 +344,7 @@ func TestReconnectYieldsToCloseDuringBlockedOpen(t *testing.T) {
 // raced for the file when the reader let go, and DuckDB attaches only one: when
 // the heal won, the session was left with no working pool.
 func TestWithFileClosedWaitsForBlockedHeal(t *testing.T) {
-	for _, freeCursor := range []string{"before", "while waiting"} {
+	for _, freeCursor := range []string{"before", "while waiting", "after a short fn"} {
 		t.Run("cursor freed "+freeCursor, func(t *testing.T) {
 			shortHealTimeout(t)
 			database := desyncedIndexFixture(t)
@@ -352,10 +352,18 @@ func TestWithFileClosedWaitsForBlockedHeal(t *testing.T) {
 			defer rows.Close()
 			tripBlockedHeal(t, database)
 
-			if freeCursor == "before" {
+			// "after a short fn": without the wait, fn ends at once and the
+			// reopen blocks behind the cursor next to the heal's open; when the
+			// cursor goes, both opens race for the file.
+			fnTime := 400 * time.Millisecond // the window a copy takes
+			switch freeCursor {
+			case "before":
 				_ = rows.Close()
-			} else {
+			case "while waiting":
 				go func() { time.Sleep(100 * time.Millisecond); _ = rows.Close() }()
+			case "after a short fn":
+				fnTime = 0
+				go func() { time.Sleep(200 * time.Millisecond); _ = rows.Close() }()
 			}
 
 			var before, after string
@@ -363,7 +371,7 @@ func TestWithFileClosedWaitsForBlockedHeal(t *testing.T) {
 			go func() {
 				done <- database.WithFileClosed(func(path string) error {
 					before = fileSnapshot(path)
-					time.Sleep(400 * time.Millisecond) // the window a copy takes
+					time.Sleep(fnTime)
 					after = fileSnapshot(path)
 					return nil
 				})
@@ -444,6 +452,60 @@ func TestCloseAndSettle(t *testing.T) {
 		database := desyncedIndexFixture(t)
 		if settled, err := database.CloseAndSettle(time.Second); err != nil || !settled {
 			t.Errorf("CloseAndSettle() = %v, %v; want true, nil", settled, err)
+		}
+	})
+
+	// A backup or restore that waits behind the heal must finish, fn and
+	// reopen both, before CloseAndSettle closes for good: otherwise its fn
+	// overlaps the copy on quit and its reopen undoes the Close.
+	t.Run("file operation in flight", func(t *testing.T) {
+		shortHealTimeout(t)
+		database := desyncedIndexFixture(t)
+		rows := seedAndHoldCursor(t, database)
+		defer rows.Close()
+		tripBlockedHeal(t, database)
+
+		wfcDone := make(chan struct{})
+		go func() {
+			defer close(wfcDone)
+			_ = database.WithFileClosed(func(string) error { return nil })
+		}()
+		time.Sleep(50 * time.Millisecond) // let it park behind the heal
+		go func() { time.Sleep(100 * time.Millisecond); _ = rows.Close() }()
+
+		settled, err := database.CloseAndSettle(10 * time.Second)
+		if err != nil || !settled {
+			t.Fatalf("CloseAndSettle() = %v, %v; want true, nil", settled, err)
+		}
+		select {
+		case <-wfcDone:
+		default:
+			t.Error("CloseAndSettle returned before the file operation in flight finished")
+		}
+		before := fileSnapshot(database.Path())
+		time.Sleep(300 * time.Millisecond)
+		if after := fileSnapshot(database.Path()); before != after {
+			t.Errorf("the file changed after CloseAndSettle: before %s, after %s", before, after)
+		}
+		if !database.isClosed() {
+			t.Error("the database reopened after CloseAndSettle")
+		}
+	})
+
+	// Closed for good: a file operation that comes later must not run fn or
+	// reopen the file.
+	t.Run("later file operation refused", func(t *testing.T) {
+		database := desyncedIndexFixture(t)
+		if settled, err := database.CloseAndSettle(time.Second); err != nil || !settled {
+			t.Fatalf("CloseAndSettle() = %v, %v; want true, nil", settled, err)
+		}
+		ran := false
+		err := database.WithFileClosed(func(string) error { ran = true; return nil })
+		if !errors.Is(err, ErrClosed) || ran {
+			t.Errorf("WithFileClosed after CloseAndSettle: err %v, fn ran %v; want ErrClosed and no fn", err, ran)
+		}
+		if !database.isClosed() {
+			t.Error("WithFileClosed reopened the database after CloseAndSettle")
 		}
 	})
 }
