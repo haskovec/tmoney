@@ -344,8 +344,8 @@ func (a *App) handleCorporateActionViewKeys(msg tea.KeyPressMsg) (tea.Model, tea
 			a.corporateActions.filterEditing = false
 		default:
 			if msg.String() == "backspace" {
-				if len(a.corporateActions.filter) > 0 {
-					a.corporateActions.filter = a.corporateActions.filter[:len(a.corporateActions.filter)-1]
+				if a.corporateActions.filter != "" {
+					a.corporateActions.filter = widget.DropLastGrapheme(a.corporateActions.filter)
 					a.corporateActions.buildTable()
 				}
 			} else if msg.Text != "" {

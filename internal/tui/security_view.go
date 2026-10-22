@@ -404,8 +404,8 @@ func (a *App) handleSecuritySearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		a.securities.data.searching = false
 		// Keep the search query active
 	case msg.String() == "backspace":
-		if len(a.securities.data.searchQuery) > 0 {
-			a.securities.data.searchQuery = a.securities.data.searchQuery[:len(a.securities.data.searchQuery)-1]
+		if a.securities.data.searchQuery != "" {
+			a.securities.data.searchQuery = widget.DropLastGrapheme(a.securities.data.searchQuery)
 			a.buildSecurityTable()
 		}
 	case msg.Text != "":

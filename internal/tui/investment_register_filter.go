@@ -210,8 +210,8 @@ func (s *investmentRegisterViewState) handleSearchKey(msg tea.KeyPressMsg, keys 
 	case msg.String() == "end":
 		s.table.MoveToBottom()
 	case msg.Code == tea.KeyBackspace:
-		if r := []rune(s.filterQuery); len(r) > 0 {
-			s.filterQuery = string(r[:len(r)-1])
+		if s.filterQuery != "" {
+			s.filterQuery = widget.DropLastGrapheme(s.filterQuery)
 			rebuildTop()
 		}
 	case msg.Text != "":
