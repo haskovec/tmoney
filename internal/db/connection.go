@@ -11,8 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 // FileExtension is the standard extension for TMoney database files.
@@ -80,7 +78,7 @@ func Open(path string) (*DB, error) {
 	}
 
 	// Open DuckDB connection
-	conn, err := sql.Open("duckdb", path)
+	conn, err := openPoolAt(path)
 	if err != nil {
 		return nil, &DatabaseError{Op: "open", Err: err}
 	}
@@ -136,7 +134,7 @@ func Create(path string) (*DB, error) {
 	}
 
 	// Create DuckDB connection (creates file)
-	conn, err := sql.Open("duckdb", path)
+	conn, err := openPoolAt(path)
 	if err != nil {
 		return nil, &DatabaseError{Op: "create", Err: err}
 	}
@@ -306,8 +304,8 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 // before a reopen can hand back a fresh instance. Hence close-then-open, in that
 // order.
 //
-// It does NOT hold connMu across the reopen, and that is load-bearing. duckdb-go
-// implements driver.DriverContext, so sql.Open really opens the file, and DuckDB
+// It does NOT hold connMu across the reopen, and that is load-bearing.
+// duckdb.NewConnector (see openPoolAt) really opens the file, and DuckDB
 // blocks there on its instance lock until every connection of the OLD instance
 // has been released — which lasts as long as some reader holds an open
 // *sql.Rows. Holding connMu across that blocked call would park every reader on
@@ -382,7 +380,7 @@ func (db *DB) openPool() error {
 
 // openConn opens and pings a fresh pool on db.path, without publishing it.
 func (db *DB) openConn() (*sql.DB, error) {
-	conn, err := sql.Open("duckdb", db.path)
+	conn, err := openPoolAt(db.path)
 	if err != nil {
 		return nil, &DatabaseError{Op: "reconnect", Err: err}
 	}
