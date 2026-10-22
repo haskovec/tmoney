@@ -1500,3 +1500,40 @@ func TestDashboardTRAndHoldings_UseAccountCurrency(t *testing.T) {
 		t.Errorf("holdings = %q, want euros", holdings)
 	}
 }
+
+// A name of wide characters (2 cells each) is cut and padded in cells: fmt
+// padding counts runes, so the row would pass the column and the LIABILITIES
+// column would move right.
+func TestRenderAssetLiabilityColumns_WideNamesFit(t *testing.T) {
+	const width = 60
+	colWidth := max((width-6)/2, 20)
+	styles := widget.NewStyles()
+	styles.Resize(width+20, 40)
+	m := types.MustNewMoney
+	nw := &report.NetWorth{
+		Assets: []report.AccountBalance{
+			{Name: "東京銀行普通預金口座の長い名前", Type: "savings", Currency: "USD", Balance: m("12345.67")},
+			{Name: "東京銀行", Type: "checking", Currency: "USD", Balance: m("100.00")},
+		},
+		Liabilities: []report.AccountBalance{
+			{Name: "架空カード会社のクレジットカード", Type: "credit_card", Currency: "USD", Balance: m("-30.00")},
+		},
+		Totals: []report.CurrencyTotal{
+			{Currency: "USD", Assets: m("12445.67"), Liabilities: m("-30.00"), NetWorth: m("12415.67"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
+		},
+	}
+	app := &App{styles: styles}
+	out := widget.StripAnsi(renderAssetLiabilityColumns(app.styles, nw, width, &app.dashboard, nil))
+	for _, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w > 2*colWidth+2 {
+			t.Errorf("row is %d cells, over %d: %q", w, 2*colWidth+2, line)
+		}
+		for _, amount := range []string{"$12345.67", "$100.00"} {
+			if before, _, ok := strings.Cut(line, amount); ok {
+				if end := lipgloss.Width(before) + len(amount); end > colWidth {
+					t.Errorf("assets row ends at cell %d, past the %d-cell column: %q", end, colWidth, line)
+				}
+			}
+		}
+	}
+}

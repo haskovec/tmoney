@@ -164,3 +164,22 @@ func TestTruncate_CountsCells(t *testing.T) {
 		}
 	}
 }
+
+// A keycap emoji ("1" + U+FE0F + U+20E3) is one 2-cell character. ansi.Truncate
+// counts its "1" and the rest as separate characters, so a cut through it
+// came out wider than the limit.
+func TestTruncate_KeycapEmojiFit(t *testing.T) {
+	for _, tt := range []struct {
+		in    string
+		width int
+	}{
+		{"1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣ Fund", 10},
+		{"#️⃣ Savings Account Long", 10},
+		{"Goal 1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣ House Fund Savings", 36},
+	} {
+		got := Truncate(tt.in, tt.width)
+		if w := lipgloss.Width(got); w > tt.width || !utf8.ValidString(got) {
+			t.Errorf("Truncate(%+q, %d) = %+q, %d cells", tt.in, tt.width, got, w)
+		}
+	}
+}
