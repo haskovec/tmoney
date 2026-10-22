@@ -120,6 +120,7 @@ func TestConnectorCloseWaitsForConnect(t *testing.T) {
 		t.Fatalf("NewConnector() error = %v", err)
 	}
 	c := &connector{inner: inner}
+	t.Cleanup(func() { _ = c.Close() }) // Close is idempotent; frees inner on a failure too
 	conn, err := c.Connect(context.Background())
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
@@ -174,6 +175,7 @@ func TestCheckedOutConnSurvivesPoolClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openPoolAt() error = %v", err)
 	}
+	t.Cleanup(func() { _ = pool.Close() }) // Close is idempotent; frees the file on a failure too
 	if _, err := pool.Exec(`CREATE TABLE probe AS SELECT range AS id FROM range(1000)`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -183,6 +185,7 @@ func TestCheckedOutConnSurvivesPoolClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Conn() error = %v", err)
 	}
+	t.Cleanup(func() { _ = pinned.Close() })
 	rows, err := pinned.QueryContext(ctx, `SELECT id FROM probe ORDER BY id`)
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)

@@ -397,17 +397,27 @@ so a fatal there still leaves the session needing a restart.
 
 Two properties of the heal matter more than they look:
 
-- It **does not hold `connMu` across the reopen.** duckdb-go opens the file
-  inside `sql.Open`, and DuckDB blocks there on its instance lock until every
-  connection to the old instance is released — which lasts as long as a reader
-  holds an open `*sql.Rows`. Holding the lock across that parked every reader
-  too, hanging the app; an app that hangs is a worse failure than the one being
-  repaired.
+- It **does not hold `connMu` across the reopen.** `duckdb.NewConnector`
+  (called by `openPoolAt`) opens the file, and DuckDB blocks there on its
+  instance lock until every connection to the old instance is released — which
+  lasts as long as a reader holds an open `*sql.Rows`. Holding the lock across
+  that parked every reader too, hanging the app; an app that hangs is a worse
+  failure than the one being repaired.
 - The inline wait is **bounded** (`healReconnectTimeout`), and a timed-out
   attempt keeps running in the background so it can still publish the new pool
   once the reader lets go. On a failed reopen the previous pool stays published,
   closed, so callers get `sql: database is closed` rather than a nil `*sql.DB`
   they would dereference into a panic.
+
+**The pool opens through a connector wrapper** (`internal/db/connector.go`).
+`database/sql` calls `Connector.Connect` with no lock, and `sql.DB.Close` does
+not wait for it before it calls `Connector.Close`. duckdb-go guards neither, so
+a query that opened a new connection while a backup, restore, heal or quit
+closed the pool crashed the process with `SIGSEGV` in `duckdb_connect`
+(reported upstream as duckdb/duckdb-go#219). The wrapper's `Close` takes a
+write lock and its `Connect` a read lock, so `Close` waits for a `Connect` in
+flight, and a later `Connect` fails as `sql: database is closed`. Remove the
+wrapper when duckdb-go guards its own connector.
 
 ### Avoiding the rewrite in the first place
 
