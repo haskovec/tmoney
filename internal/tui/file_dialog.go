@@ -369,8 +369,8 @@ func buildBrowseDialog(dir string, entries []string) *dialog.Dialog {
 	if over := lipgloss.Width(title) - maxTitle; over > 0 {
 		// TruncateLeft keeps a wide character that the cut falls inside, so
 		// cut one more cell when the title is still too wide.
-		for cut := over + 3; lipgloss.Width(title) > maxTitle; cut++ {
-			title = prefix + ansi.TruncateLeft(shown, cut, "...")
+		for cut := over + 1; lipgloss.Width(title) > maxTitle; cut++ {
+			title = prefix + ansi.TruncateLeft(shown, cut, "…")
 		}
 	}
 

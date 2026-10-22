@@ -430,7 +430,7 @@ func (a *App) renderReconciliation() string {
 	// Cut the name so the header stays one row with the date in view: a
 	// wrapped header would move the table down a row under the mouse.
 	maxNameWidth := max(contentWidth-4-lipgloss.Width(leftPrefix)-lipgloss.Width(rightHeader)-1, 10)
-	leftHeader := leftPrefix + ansi.Truncate(acctName, maxNameWidth, "...")
+	leftHeader := leftPrefix + ansi.Truncate(acctName, maxNameWidth, "…")
 	padding := max(contentWidth-lipgloss.Width(leftHeader)-lipgloss.Width(rightHeader)-4, 1)
 	headerRow := a.styles.Title.Render(leftHeader) + strings.Repeat(" ", padding) + a.styles.Muted.Render(rightHeader)
 	sections = append(sections, headerRow)
@@ -494,7 +494,7 @@ func (a *App) renderReconciliation() string {
 	countLine := fmt.Sprintf("Checked: %d of %d", checkedCount, totalCount)
 	hints := []string{"Space toggle", "Enter finish", "Esc cancel", "a all", "u uncheck"}
 	hintLine := countLine
-	if fit := widget.FitParts(hints, "  ", lineWidth-len(countLine)-4, []int{4, 3, 2, 1, 0}); fit != "" {
+	if fit := widget.FitParts(hints, "  ", lineWidth-lipgloss.Width(countLine)-4, []int{4, 3, 2, 1, 0}); fit != "" {
 		hintLine += "    " + fit
 	}
 	sections = append(sections, a.styles.Muted.Render(hintLine))

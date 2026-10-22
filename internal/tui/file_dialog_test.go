@@ -869,7 +869,7 @@ func TestBuildBrowseDialog_TitleFitsInCells(t *testing.T) {
 		if w := lipgloss.Width(title); w > maxTitle {
 			t.Errorf("dir %q: title is %d cells, want at most %d", tt.dir, w, maxTitle)
 		}
-		if cut := strings.Contains(title, "..."); cut != tt.wantCut {
+		if cut := strings.Contains(title, "…"); cut != tt.wantCut {
 			t.Errorf("dir %q: title %q cut = %v, want %v", tt.dir, title, cut, tt.wantCut)
 		}
 		if r := []rune(tt.dir); !strings.HasSuffix(title, string(r[len(r)-6:])) {
