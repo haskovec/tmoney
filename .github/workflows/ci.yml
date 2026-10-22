@@ -12,9 +12,10 @@ permissions:
   contents: read
 
 # A new push to a pull request cancels the run that is still going for it.
+# Runs on main are never cancelled, so every merged commit gets a result.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -23,6 +24,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Installs and caches the tools in mise.toml. The DuckDB bindings are
       # cgo; the runner's gcc builds them, and mise.toml sets CGO_ENABLED=1.
@@ -34,17 +37,33 @@ jobs:
           echo "modcache=$(mise exec -- go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
           echo "buildcache=$(mise exec -- go env GOCACHE)" >> "$GITHUB_OUTPUT"
 
+      # The module cache (large: the DuckDB bindings) changes only with
+      # go.sum, so it keeps one key. A saved key is never written again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-env.outputs.modcache }}
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: gomod-${{ runner.os }}-
+
+      # The build and lint caches change with the code, so each commit saves
+      # a fresh copy and the restore keys find the newest one. GitHub evicts
+      # old entries past the repo's cache size limit.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ${{ steps.go-env.outputs.modcache }}
             ${{ steps.go-env.outputs.buildcache }}
             ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'mise.toml') }}
-          restore-keys: go-${{ runner.os }}-
+          key: gobuild-${{ runner.os }}-${{ hashFiles('go.sum', 'mise.toml') }}-${{ github.sha }}
+          restore-keys: |
+            gobuild-${{ runner.os }}-${{ hashFiles('go.sum', 'mise.toml') }}-
+            gobuild-${{ runner.os }}-
 
       - name: Test
+        id: test
         run: mise run test
 
+      # Lint runs after failed tests too, so one run reports both; it is left
+      # out only when the tests did not run (a setup step failed).
       - name: Lint
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
         run: mise exec -- golangci-lint run ./...
