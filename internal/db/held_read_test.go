@@ -210,6 +210,51 @@ func TestFailedBackgroundReopenHealsLater(t *testing.T) {
 	}
 }
 
+// TestReopenNeverCreatesAMissingFile: DuckDB creates a new, empty database at a
+// path with no file. When the file is gone at the reopen (moved, deleted, a
+// share that dropped), the handle must not open such an empty database: it
+// would show no data, and the quit backup would copy it.
+func TestReopenNeverCreatesAMissingFile(t *testing.T) {
+	away := func(t *testing.T, path string) {
+		t.Helper()
+		for _, suffix := range []string{"", ".wal"} {
+			if err := os.Rename(path+suffix, path+".away"+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	t.Run("reopen after fn", func(t *testing.T) {
+		database, err := Create(filepath.Join(t.TempDir(), "gone.tdb"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = database.Close() })
+		err = database.WithFileClosed(func(p string) error { away(t, p); return nil })
+		var notFound *FileNotFoundError
+		if !errors.As(err, &notFound) {
+			t.Errorf("WithFileClosed() = %v, want a FileNotFoundError from the reopen", err)
+		}
+		if _, err := os.Stat(database.Path()); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the reopen created a file at the path of the moved database: %v", err)
+		}
+	})
+
+	t.Run("background reopen", func(t *testing.T) {
+		shortReopenWait(t)
+		database, rows := walOnlyRow(t)
+		if err := withFileClosedBy(t, database, rows, func(string) error { return nil }); !errors.Is(err, errFileBusy) {
+			t.Fatalf("WithFileClosed() = %v, want errFileBusy", err)
+		}
+		away(t, database.Path())
+		_ = rows.Close()
+		waitForReopen(t, database)
+		if _, err := os.Stat(database.Path()); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the background reopen created a file at the path of the moved database: %v", err)
+		}
+	})
+}
+
 // TestCloseAndSettleWaitsForAHeldRead covers the backup on quit and after a
 // CLI command: it copies the file right after CloseAndSettle reports true.
 func TestCloseAndSettleWaitsForAHeldRead(t *testing.T) {

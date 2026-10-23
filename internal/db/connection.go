@@ -362,7 +362,9 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 		go func() {
 			defer db.fileBusy.Store(false) // after the unlock: a call that timed out sees it
 			defer db.reopenMu.Unlock()
-			_ = db.openPool(gen)
+			if db.awaitDrain(pool, gen) {
+				_ = db.openPool(gen)
+			}
 		}()
 		return &DatabaseError{Op: "close for file operation", Err: errFileBusy}
 	}
@@ -382,14 +384,14 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 // before a reopen can hand back a fresh instance. Hence close-then-open, in that
 // order.
 //
-// It does NOT hold connMu across the reopen, and that is load-bearing.
-// duckdb.NewConnector (see openPoolAt) really opens the file, and DuckDB
-// blocks there on its instance lock until every connection of the OLD instance
-// has been released — which lasts as long as some reader holds an open
-// *sql.Rows. Holding connMu across that blocked call would park every reader on
-// the same lock and freeze the whole app. database/sql's Close, by contrast, is
-// prompt: it marks the pool closed and closes idle connections, leaving a
-// checked-out one to close when its caller returns it.
+// It does NOT hold connMu across the reopen, and that is load-bearing. The
+// open cannot start until every connection of the OLD instance has been
+// released — which lasts as long as some reader holds an open *sql.Rows — so
+// reconnect waits for that first (awaitDrain) and then opens. Holding connMu
+// across that wait would park every reader on the same lock and freeze the
+// whole app. database/sql's Close, by contrast, is prompt: it marks the pool
+// closed and closes idle connections, leaving a checked-out one to close when
+// its caller returns it.
 //
 // On a failed reopen the previous pool stays published, closed. Callers then get
 // "sql: database is closed" — an error they can surface — instead of the nil
@@ -399,10 +401,10 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 // It refuses after an intentional Close: a backup or restore that closed the
 // handle must not have it reopened underneath the file copy by a concurrent
 // failure's heal. reconnect holds reopenMu throughout, so WithFileClosed waits
-// for it rather than racing it. A plain Close can still land while the open is
-// blocked; the new pool is then dropped, not published, and CloseAndSettle
-// waits for that open to finish before a copy. WithFileClosed reopens through
-// openPool directly.
+// for it rather than racing it. A plain Close can still land while reconnect
+// waits; it then does not open at all, or drops the new pool rather than
+// publish it, and CloseAndSettle waits for it to finish before a copy.
+// WithFileClosed reopens through openPool directly.
 func (db *DB) reconnect() error {
 	db.reopenMu.Lock()
 	defer db.reopenMu.Unlock()
@@ -419,6 +421,9 @@ func (db *DB) reconnect() error {
 			return &DatabaseError{Op: "close for reconnect", Err: err}
 		}
 	}
+	if !db.awaitDrain(old, gen) {
+		return ErrClosed // a Close won the race; keep the handle closed
+	}
 
 	conn, err := db.openConn()
 	if err != nil {
@@ -433,6 +438,28 @@ func (db *DB) reconnect() error {
 	db.conn = conn
 	db.closed = false
 	return nil
+}
+
+// awaitDrain waits until pool, which is closed, has no open connection (see
+// drained), with no time limit, and reports whether the handle is still to be
+// reopened: false when a Close or CloseAndSettle came after the close that gen
+// counts. An open of the file blocks until the old instance is gone, so the
+// opens wait here, not inside DuckDB: an open that waited inside DuckDB would
+// find the file as it was when the open began, and if the file was gone by
+// then, DuckDB would create a new, empty database (see openConn).
+func (db *DB) awaitDrain(pool *sql.DB, gen uint64) bool {
+	for {
+		db.connMu.RLock()
+		current := !db.final && db.closeGen == gen
+		db.connMu.RUnlock()
+		if !current {
+			return false
+		}
+		if pool == nil || pool.Stats().OpenConnections == 0 {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // openPool opens a fresh pool on db.path and publishes it, clearing closed.
@@ -465,7 +492,18 @@ func (db *DB) openPool(gen uint64) error {
 }
 
 // openConn opens and pings a fresh pool on db.path, without publishing it.
+//
+// It fails when the file is gone. DuckDB creates a new, empty database at a
+// path with no file, and a reopen must never do that: the file was moved or
+// deleted, or a share dropped, and an empty database in its place would show
+// no data, and the quit backup would copy it.
 func (db *DB) openConn() (*sql.DB, error) {
+	if _, err := os.Stat(db.path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, &FileNotFoundError{Path: db.path}
+		}
+		return nil, &DatabaseError{Op: "reconnect", Err: err}
+	}
 	conn, err := openPoolAt(db.path)
 	if err != nil {
 		return nil, &DatabaseError{Op: "reconnect", Err: err}
