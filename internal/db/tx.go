@@ -91,7 +91,9 @@ func (db *DB) WithTx(fn func(tx Queryer) error) error {
 // froze the caller — a worse failure than the one being repaired, since the app
 // hangs instead of reporting an error. On timeout the attempt is left running:
 // it publishes the new pool when the reader finally lets go, so the session can
-// still recover a moment later without another write having to fail first.
+// still recover a moment later without another write having to fail first. An
+// intentional Close in the meantime wins: the attempt then drops its pool (see
+// reconnect), and WithFileClosed waits for the attempt to finish.
 func (db *DB) healAfterFatal(cause error) error {
 	if db.isClosed() {
 		return cause // closed on purpose (backup, restore, quit); never reopen
@@ -123,8 +125,8 @@ func (db *DB) healAfterFatal(cause error) error {
 
 // healReconnectTimeout bounds the inline wait in healAfterFatal. It only has to
 // cover a reopen that is not blocked behind a reader, which is near-instant; the
-// point of the bound is to never hang the caller.
-const healReconnectTimeout = 5 * time.Second
+// point of the bound is to never hang the caller. A var so tests can shorten it.
+var healReconnectTimeout = 5 * time.Second
 
 // errHealBlocked reports that the connection could not be restored in time
 // because something else still holds the old one open.

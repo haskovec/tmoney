@@ -52,11 +52,19 @@ func OpenServices(file string) (*db.DB, *app.Services, error) {
 }
 
 // AutoBackupAfterModification creates an auto-backup after a data-modifying CLI
-// command. It closes the database first (see db.DB.Close), so call it as the
-// command's last database action; the deferred Close is then a no-op.
+// command. It closes the database first and waits for a heal in flight (see
+// db.DB.CloseAndSettle), so call it as the command's last database action; the
+// deferred Close is then a no-op.
 func AutoBackupAfterModification(database *db.DB) {
-	// Best-effort: don't fail the CLI command if the close or backup fails
-	if err := database.Close(); err != nil {
+	// Best-effort: don't fail the CLI command if the close or backup fails, and
+	// skip the backup while a heal could still open the file under the copy.
+	settled, err := database.CloseAndSettle(db.SettleTimeout)
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "warning: auto-backup skipped: %v\n", err)
+		return
+	case !settled:
+		fmt.Fprintf(os.Stderr, "warning: auto-backup skipped: the database was still busy\n")
 		return
 	}
 	_, _ = backup.CreateAutoBackup(database.Path())
