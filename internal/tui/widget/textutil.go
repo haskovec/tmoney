@@ -16,15 +16,45 @@ func PadRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-// Truncate truncates a string to maxLen characters, adding "..." if needed.
+// Truncate cuts s to at most maxLen cells, ending it with "..." when it is
+// cut. A cut never splits a character, so the result is always valid UTF-8.
+// It walks whole characters itself, with the widths StringWidth uses:
+// ansi.Truncate counts the "1" of a keycap emoji ("1" + U+FE0F + U+20E3) as a
+// character of its own, so its cut could come out wider than maxLen.
 func Truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if ansi.StringWidth(s) <= maxLen {
 		return s
 	}
+	tail := "..."
 	if maxLen <= 3 {
-		return s[:maxLen]
+		tail = ""
 	}
-	return s[:maxLen-3] + "..."
+	room := maxLen - len(tail)
+	cut, width := 0, 0
+	for cut < len(s) {
+		g, w := ansi.FirstGraphemeCluster(s[cut:], ansi.GraphemeWidth)
+		if width+w > room {
+			break
+		}
+		width += w
+		cut += max(len(g), 1)
+	}
+	return s[:cut] + tail
+}
+
+// DropLastGrapheme returns s without its last character as the user sees it
+// (a grapheme cluster), so "e" + U+0301, "👍🏽", a ZWJ family or a flag goes as
+// one. Backspace in a search calls it: one press removes one visible
+// character, even when that character arrived as several keys, and never
+// leaves half a character or invalid UTF-8. An empty s stays empty.
+func DropLastGrapheme(s string) string {
+	last := 0
+	for i := 0; i < len(s); {
+		last = i
+		g, _ := ansi.FirstGraphemeCluster(s[i:], ansi.GraphemeWidth)
+		i += max(len(g), 1) // a cluster is never empty; never loop forever
+	}
+	return s[:last]
 }
 
 // TruncateRunes truncates a string to maxLen runes, adding "..." if needed.

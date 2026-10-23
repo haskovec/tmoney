@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // handlePriceViewKeys dispatches key presses to the list- or detail-mode
@@ -207,9 +208,7 @@ func (s *priceViewState) handleSearchKey(d priceDeps, msg tea.KeyPressMsg, keys 
 		}
 		s.data.searchQuery = ""
 	case msg.String() == "backspace":
-		if len(s.data.searchQuery) > 0 {
-			s.data.searchQuery = s.data.searchQuery[:len(s.data.searchQuery)-1]
-		}
+		s.data.searchQuery = widget.DropLastGrapheme(s.data.searchQuery)
 	case msg.Text != "":
 		s.data.searchQuery += msg.Text
 	}

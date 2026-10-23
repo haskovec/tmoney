@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
 // handleComboNavigationKey processes the combo-specific navigation keys that
@@ -345,8 +346,7 @@ func (f *Field) comboQueryBackspace() {
 	if f.Type != FieldCombo || f.Query == "" {
 		return
 	}
-	runes := []rune(f.Query)
-	f.Query = string(runes[:len(runes)-1])
+	f.Query = widget.DropLastGrapheme(f.Query)
 	if f.Query == "" {
 		f.ComboHighlight = f.SelectedIndex
 	} else {

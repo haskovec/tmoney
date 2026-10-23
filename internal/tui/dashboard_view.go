@@ -352,7 +352,9 @@ func renderAssetLiabilityColumns(styles widget.Styles, report *report.NetWorth, 
 			// than the column wraps and shifts the hit-test rows.
 			nameWidth := max(colWidth-lipgloss.Width(amount)-lipgloss.Width(prefix)-2, 1)
 			name := widget.Truncate(acct.Name, nameWidth)
-			line := fmt.Sprintf("%s%-*s %s", prefix, nameWidth, name, netWorthRowStyle(styles, acct).Render(amount))
+			// PadRight pads in cells; fmt's %-*s counts runes, so a name of
+			// wide characters would push the row past the column.
+			line := prefix + widget.PadRight(name, nameWidth) + " " + netWorthRowStyle(styles, acct).Render(amount)
 			if expandable && expandableRows != nil {
 				if headerIdxToID == nil {
 					headerIdxToID = map[int]types.ID{}
@@ -390,7 +392,7 @@ func renderAssetLiabilityColumns(styles widget.Styles, report *report.NetWorth, 
 			amount := netWorthRowAmount(acct)
 			nameWidth := max(colWidth-lipgloss.Width(amount)-4, 1)
 			name := widget.Truncate(acct.Name, nameWidth)
-			line := fmt.Sprintf("  %-*s %s", nameWidth, name, netWorthRowStyle(styles, acct).Render(amount))
+			line := "  " + widget.PadRight(name, nameWidth) + " " + netWorthRowStyle(styles, acct).Render(amount)
 			liabLines = append(liabLines, line)
 		}
 	}
@@ -580,11 +582,13 @@ func (s *dashboardViewState) renderHoldings(styles widget.Styles, accountID type
 			}
 		}
 		amount := formatDashboardMoneyIn(h.MarketValue, currency)
-		ticker = widget.Truncate(ticker, max(colWidth-lipgloss.Width(amount)-6, 1))
 		if !h.HasPricing {
 			amount = "~" + amount
 		}
-		line := fmt.Sprintf("    %-*s %s", max(colWidth-lipgloss.Width(amount)-6, 1), ticker, styles.Muted.Render(amount))
+		// One width, measured after the "~", for both the cut and the pad, so
+		// every row ends its amount in the same column.
+		tickerWidth := max(colWidth-lipgloss.Width(amount)-6, 1)
+		line := "    " + widget.PadRight(widget.Truncate(ticker, tickerWidth), tickerWidth) + " " + styles.Muted.Render(amount)
 		lines = append(lines, line)
 	}
 

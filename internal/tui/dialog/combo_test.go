@@ -562,3 +562,27 @@ func TestFieldCombo_AddNewLabel_TabOnActionRowDoesNotTriggerAddNew(t *testing.T)
 }
 
 // FieldDate ISO format (TD-015) tests
+
+// One Backspace removes one character as the user sees it, also when the
+// character is several runes (a skin tone, a ZWJ family, a flag).
+func TestFieldCombo_BackspaceRemovesOneCharacter(t *testing.T) {
+	tests := []struct{ text, want string }{
+		{"Café", "Caf"},
+		{"Café", "Caf"},
+		{"東京", "東"},
+		{"a👍🏽", "a"},
+		{"a👨‍👩‍👧", "a"},
+		{"a🇺🇸", "a"},
+	}
+	for _, tt := range tests {
+		d := NewDialog("Test")
+		f := d.AddComboField("Category", []string{"x"}, 0)
+		for _, r := range tt.text {
+			d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		if f.Query != tt.want {
+			t.Errorf("typed %+q, Backspace: Query = %+q, want %+q", tt.text, f.Query, tt.want)
+		}
+	}
+}

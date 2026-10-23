@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 )
@@ -118,5 +119,67 @@ func TestFitParts(t *testing.T) {
 func TestFitParts_SkipsBadDropIndex(t *testing.T) {
 	if got := FitParts([]string{"aa", "bb"}, " ", 2, []int{5, -1, 1}); got != "aa" {
 		t.Errorf("FitParts = %q, want %q", got, "aa")
+	}
+}
+
+// One Backspace removes one character as the user sees it: a grapheme
+// cluster, which can be several runes ("e" + U+0301, a skin tone, a ZWJ
+// family, a flag). The result is always valid UTF-8.
+func TestDropLastGrapheme(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"", ""},
+		{"Acme", "Acm"},
+		{"Café", "Caf"},
+		{"Café", "Caf"},
+		{"東京", "東"},
+		{"👍🏽", ""},
+		{"a👨‍👩‍👧", "a"},
+		{"a🇺🇸🇨🇦", "a🇺🇸"},
+		{"1️⃣", ""},
+	}
+	for _, tt := range tests {
+		got := DropLastGrapheme(tt.in)
+		if got != tt.want || !utf8.ValidString(got) {
+			t.Errorf("DropLastGrapheme(%+q) = %+q, want %+q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// Truncate counts cells and never splits a character.
+func TestTruncate_CountsCells(t *testing.T) {
+	tests := []struct {
+		in    string
+		width int
+		want  string
+	}{
+		{"Café", 4, "Café"},         // 5 bytes, 4 cells: fits
+		{"ÉÉÉÉÉÉÉÉ", 8, "ÉÉÉÉÉÉÉÉ"}, // 16 bytes, 8 cells: fits
+		{"ÉÉÉÉÉÉÉÉ", 6, "ÉÉÉ..."},   // cut on a character, not a byte
+		{"東京銀行普通", 7, "東京..."},      // 2-cell characters
+	}
+	for _, tt := range tests {
+		got := Truncate(tt.in, tt.width)
+		if got != tt.want || !utf8.ValidString(got) {
+			t.Errorf("Truncate(%q, %d) = %q, want %q", tt.in, tt.width, got, tt.want)
+		}
+	}
+}
+
+// A keycap emoji ("1" + U+FE0F + U+20E3) is one 2-cell character. ansi.Truncate
+// counts its "1" and the rest as separate characters, so a cut through it
+// came out wider than the limit.
+func TestTruncate_KeycapEmojiFit(t *testing.T) {
+	for _, tt := range []struct {
+		in    string
+		width int
+	}{
+		{"1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣ Fund", 10},
+		{"#️⃣ Savings Account Long", 10},
+		{"Goal 1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣ House Fund Savings", 36},
+	} {
+		got := Truncate(tt.in, tt.width)
+		if w := lipgloss.Width(got); w > tt.width || !utf8.ValidString(got) {
+			t.Errorf("Truncate(%+q, %d) = %+q, %d cells", tt.in, tt.width, got, w)
+		}
 	}
 }

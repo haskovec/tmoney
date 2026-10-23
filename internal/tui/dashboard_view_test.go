@@ -1500,3 +1500,77 @@ func TestDashboardTRAndHoldings_UseAccountCurrency(t *testing.T) {
 		t.Errorf("holdings = %q, want euros", holdings)
 	}
 }
+
+// A name of wide characters (2 cells each) is cut and padded in cells: fmt
+// padding counts runes, so the row would pass the column and the LIABILITIES
+// column would move right.
+func TestRenderAssetLiabilityColumns_WideNamesFit(t *testing.T) {
+	const width = 60
+	colWidth := max((width-6)/2, 20)
+	styles := widget.NewStyles()
+	styles.Resize(width+20, 40)
+	m := types.MustNewMoney
+	nw := &report.NetWorth{
+		Assets: []report.AccountBalance{
+			{Name: "東京銀行普通預金口座の長い名前", Type: "savings", Currency: "USD", Balance: m("12345.67")},
+			{Name: "東京銀行", Type: "checking", Currency: "USD", Balance: m("100.00")},
+		},
+		Liabilities: []report.AccountBalance{
+			{Name: "架空カード会社のクレジットカード", Type: "credit_card", Currency: "USD", Balance: m("-30.00")},
+		},
+		Totals: []report.CurrencyTotal{
+			{Currency: "USD", Assets: m("12445.67"), Liabilities: m("-30.00"), NetWorth: m("12415.67"), Available: true, AssetsAvailable: true, LiabilitiesAvailable: true},
+		},
+	}
+	app := &App{styles: styles}
+	out := widget.StripAnsi(renderAssetLiabilityColumns(app.styles, nw, width, &app.dashboard, nil))
+	for _, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w > 2*colWidth+2 {
+			t.Errorf("row is %d cells, over %d: %q", w, 2*colWidth+2, line)
+		}
+		for _, amount := range []string{"$12345.67", "$100.00"} {
+			if before, _, ok := strings.Cut(line, amount); ok {
+				if end := lipgloss.Width(before) + len(amount); end > colWidth {
+					t.Errorf("assets row ends at cell %d, past the %d-cell column: %q", end, colWidth, line)
+				}
+			}
+		}
+	}
+}
+
+// Every holdings row ends its amount in the same column, also when the
+// holding has no price and its amount gets a "~": the ticker is cut and
+// padded to one width, measured after the "~" is added.
+func TestRenderHoldings_AmountsLineUp(t *testing.T) {
+	const colWidth = 30
+	acctID := types.NewID()
+	priced, unpriced := types.NewID(), types.NewID()
+	s := dashboardViewState{data: &dashboardData{
+		investmentHoldings: map[types.ID]*investment.AccountValuation{
+			acctID: {Holdings: []investment.Holding{
+				{SecurityID: priced, MarketValue: types.MustNewMoney("2000.00"), HasPricing: true},
+				{SecurityID: unpriced, MarketValue: types.MustNewMoney("1000.00"), HasPricing: false},
+			}},
+		},
+		securityTickers: map[types.ID]string{
+			priced:   "EXAMPLE TOTAL MARKET INDEX FUND",
+			unpriced: "EXAMPLE INTERNATIONAL INDEX FUND",
+		},
+	}}
+
+	lines := s.renderHoldings(widget.NewStyles(), acctID, "USD", colWidth)
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2: %q", len(lines), lines)
+	}
+	ends := map[int]bool{}
+	for _, line := range lines {
+		plain := widget.StripAnsi(line)
+		if w := lipgloss.Width(plain); w > colWidth {
+			t.Errorf("row is %d cells, over the %d-cell column: %q", w, colWidth, plain)
+		}
+		ends[lipgloss.Width(strings.TrimRight(plain, " "))] = true
+	}
+	if len(ends) != 1 {
+		t.Errorf("the amounts end in different columns %v:\n%s", ends, widget.StripAnsi(strings.Join(lines, "\n")))
+	}
+}
