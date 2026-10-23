@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/haskovec/tmoney/internal/db"
 )
 
 // TestAutoBackupRemovesStalePartials: a killed copy leaves a partial file that
@@ -35,6 +37,13 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 		"test.tdb.tmoney-partial-":                                           {old, false},        // no digits
 		"test.tdb.partial-2025":                                              {old, false},        // a user's file, named by year
 		"test.tdb.partial-20251023":                                          {old, false},        // a user's file, named by date
+		"test.tdb.tmoney-partial-112.wal":                                    {old, true},         // the log of a killed copy
+		"test.tdb.tmoney-partial-113.wal-old":                                {old, true},         // a killed Restore's moved log
+		"test.tdb.tmoney-partial-114.wal.checkpoint":                         {old, true},         // the checkpoint log of a killed copy
+		"test.tdb.tmoney-partial-115.wal.recovery-old":                       {old, true},         // a killed Restore's moved log
+		"test.tdb.tmoney-partial-116.walrus":                                 {old, false},        // not a log
+		"test.tdb.partial-2025.wal":                                          {old, false},        // the log of a user's file
+		"test.tdb.partial-2025.wal-old":                                      {old, false},        // a user's file
 		"test.tdb.manual-backup.2024-03-15T14-30-00":                         {old, false},        // a backup
 	}
 	for name, f := range files {
@@ -71,24 +80,39 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 }
 
 // TestPartialNamesMatchTheSweep: the sweep finds the leftover of a killed
-// copy by its name only, so each name that copyToTemp writes must be a name
-// that isPartialOf knows.
+// copy by its name only, so each name that a copy writes must be a name that
+// isPartialOf knows: the partial file, the raw copies of the logs beside it,
+// and the names to which Restore moves the logs of the database.
 func TestPartialNamesMatchTheSweep(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := createTestDB(t, dir)
+	for _, suffix := range db.WALSuffixes {
+		if err := os.WriteFile(dbPath+suffix, []byte("fictional log"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, dst := range []string{
 		dbPath, // Restore
 		dbPath + AutoBackupInfix + "2026-01-01T09-00-00",
 		dbPath + ManualBackupInfix + "2026-01-01T09-00-00",
 	} {
-		temp, err := copyToTemp(dbPath, dst, dbPath)
+		temp, err := copyToTemp(dbPath, dst, dbPath, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !isPartialOf(filepath.Base(dbPath), filepath.Base(temp)) {
-			t.Errorf("the copy to %s is %s, which the sweep does not know", filepath.Base(dst), filepath.Base(temp))
+		names := []string{temp}
+		for _, suffix := range db.WALSuffixes {
+			if _, err := os.Stat(temp + suffix); err != nil {
+				t.Errorf("no raw copy of the log %s: %v", suffix, err)
+			}
+			names = append(names, temp+suffix, temp+suffix+"-old")
 		}
-		_ = os.Remove(temp)
+		for _, name := range names {
+			if !isPartialOf(filepath.Base(dbPath), filepath.Base(name)) {
+				t.Errorf("a copy to %s writes %s, which the sweep does not know", filepath.Base(dst), filepath.Base(name))
+			}
+		}
+		removeCopy(temp)
 	}
 }
 
@@ -380,5 +404,30 @@ func TestNamesAheadOfTheClockKeepTheNewBackup(t *testing.T) {
 	}
 	if backups, _ := ListBackups(dbPath); backups[0].Path != path {
 		t.Errorf("the newest backup is %s, want the one just made, %s", filepath.Base(backups[0].Path), filepath.Base(path))
+	}
+}
+
+// TestRetentionDeletesTheRawLogsOfABackup: a raw safety backup (see
+// createRawSafetyBackup) has copies of the old logs beside it. They go with it.
+func TestRetentionDeletesTheRawLogsOfABackup(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	at := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	oldest, err := createAutoBackupAt(dbPath, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldest+".wal", []byte("fictional raw log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := range MaxAutoBackups {
+		if _, err := createAutoBackupAt(dbPath, at.Add(time.Duration(i+1)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{oldest, oldest + ".wal"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s is still there after retention deleted its backup", filepath.Base(path))
+		}
 	}
 }

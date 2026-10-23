@@ -4,10 +4,29 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// WALSuffixes name the files beside a DuckDB database file that can hold
+// committed rows that the file does not: the write-ahead log, and the logs that
+// DuckDB 1.5 keeps beside it while a checkpoint runs (<path>.wal.checkpoint)
+// and while it recovers (<path>.wal.recovery). A crash, a kill, or a fatal
+// error that invalidates the instance can leave any of them, and the next open
+// reads them.
+var WALSuffixes = []string{".wal", ".wal.checkpoint", ".wal.recovery"}
+
+// HasWAL reports whether any of the WAL files of the database at path exists.
+func HasWAL(path string) bool {
+	for _, suffix := range WALSuffixes {
+		if _, err := os.Lstat(path + suffix); err == nil {
+			return true
+		}
+	}
+	return false
+}
 
 // The functions in this file work on a database file that is not open in this
 // process: a backup, or the backup package's own copy of a database. They open
@@ -125,4 +144,38 @@ func IsLockedElsewhere(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "Could not set lock on file") || // POSIX
 		strings.Contains(msg, "being used by another process") // Windows
+}
+
+// CheckpointFile writes the WAL files beside the DuckDB file at path (see
+// WALSuffixes) into the file, so that the file alone holds what an open of it
+// shows. The open replays them, as every open does, and CHECKPOINT writes the
+// rows to the file and removes the logs. The backup package calls it on its
+// own copy of a database whose logs still hold committed rows, and Restore on
+// the database it replaces: a crash, or an instance that a fatal error
+// invalidated, skips the checkpoint at close.
+//
+// DuckDB ignores a log that does not read as one (all zeros after a crash, or
+// garbage) and leaves it beside the file, also after CHECKPOINT. The file then
+// already holds what the open showed, so CheckpointFile removes such logs. A
+// log that DuckDB cannot replay (damaged, or the log of another file) fails
+// the open, and CheckpointFile returns that error and changes nothing.
+func CheckpointFile(path string) error {
+	conn, err := openPoolAt(path)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Exec(`CHECKPOINT`)
+	// No connection is checked out, so Close ends the instance now.
+	if cerr := conn.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	for _, suffix := range WALSuffixes {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }

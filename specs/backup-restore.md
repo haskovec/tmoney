@@ -201,19 +201,29 @@ To prevent data loss if restore fails:
    that this user cannot read, or that another program has open, is refused
    with that reason: it is not called invalid.
 2. Copy the backup to a temporary file (`<db>.tmoney-partial-<n>`) in the same
-   directory, with the permissions of the current database
+   directory, with the permissions of the current database. If the backup has
+   write-ahead log files beside it, apply them to the copy.
 3. Verify the temp file the same way: it is what goes in place
-4. Create the safety backup of the current state
-5. Rename the temp file over the database name in one step. If the process
+4. Apply the write-ahead log files of the current database (`<db>.wal`,
+   `<db>.wal.checkpoint`, `<db>.wal.recovery`) to it, in place, so that the
+   file alone holds every committed row
+5. Create the safety backup of the current state
+6. Rename the temp file over the database name in one step. If the process
    dies before the rename, the database is as it was; after it, the database
    is the complete copy.
 
-Every backup is written the same way: a temp file beside the final name,
-flushed to disk, then renamed. A crash during a backup leaves only a
-`.tmoney-partial-<n>` file, which no listing shows. The next auto-backup deletes
-such a file when it is more than an hour old. The sweep finds these files by
-name only, so the name has "tmoney" in it: a file of the user is not likely to
-have such a name.
+If DuckDB cannot apply the log files of the current database (a damaged log,
+or the log of another file), it cannot open the database either. Then the
+safety backup is the file alone with raw copies of the logs beside it
+(`<safety backup>.wal`), and the logs move aside before the rename (and back
+if the rename fails), because DuckDB would replay them onto the restored file.
+
+Every backup is written the same way: a temp file beside the final name, with
+the write-ahead log files of the source applied to it, flushed to disk, then
+renamed. A crash during a backup leaves only a `.tmoney-partial-<n>` file,
+which no listing shows. The next auto-backup deletes such a file when it is
+more than an hour old. The sweep finds these files by name only, so the name
+has "tmoney" in it: a file of the user is not likely to have such a name.
 
 ## Validation Rules
 

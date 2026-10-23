@@ -72,7 +72,7 @@ func CreateAutoBackup(dbPath string) (string, error) {
 // testability. keep names files that the retention pass must not delete;
 // Restore passes the backup it is restoring from and its own copy of it.
 func createAutoBackupAt(dbPath string, now time.Time, keep ...string) (string, error) {
-	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) })
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, true)
 	if err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
@@ -91,11 +91,26 @@ func CreateManualBackup(dbPath string) (string, error) {
 
 // createManualBackupAt is the internal implementation that accepts a timestamp for testability.
 func createManualBackupAt(dbPath string, now time.Time) (string, error) {
-	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, ManualBackupInfix, now) })
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, ManualBackupInfix, now) }, true)
 	if err != nil {
 		return "", fmt.Errorf("failed to create manual backup: %w", err)
 	}
 
+	return backupPath, nil
+}
+
+// createRawSafetyBackup is the safety backup of Restore when the WAL files of
+// the database cannot be applied (DuckDB cannot open the database with them
+// either): an auto-backup of the file alone, with raw copies of the WAL files
+// beside it (<backup>.wal and so on), so that no byte of the current state is
+// lost. A restore of that backup refuses it while the damaged log is beside
+// it; with the log moved away, the file alone restores.
+func createRawSafetyBackup(dbPath string, now time.Time, keep ...string) (string, error) {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to create backup: %w", err)
+	}
+	_ = enforceRetention(dbPath, keep...)
 	return backupPath, nil
 }
 
@@ -147,9 +162,12 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 // retention pass never deletes backupPath, so the source of a restore survives
 // whatever happens next.
 //
-// The rename is the only step that changes the database file, and it replaces
-// it in one step: if the process dies, dbPath holds the old database or the
-// complete copy, never a part of one and never nothing.
+// The rename replaces the database file in one step: if the process dies,
+// dbPath holds the old database or the complete copy, never a part of one and
+// never nothing. Before it, the WAL files of the current database (see
+// db.WALSuffixes) are folded into it, so that the old database is whole by
+// itself; DuckDB would replay them onto the restored file. If they cannot be
+// applied, the safety backup keeps raw copies of them, and they move aside.
 //
 // The database at dbPath must be closed while this runs (see db.DB.Close and
 // db.DB.WithFileClosed).
@@ -170,13 +188,13 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// 2. Copy the backup beside the database, with the mode of the database
 	//    (not of the backup, which can be read-only), before anything can
 	//    touch the set of backups.
-	tempPath, err := copyToTemp(backupPath, dbPath, dbPath)
+	tempPath, err := copyToTemp(backupPath, dbPath, dbPath, true)
 	if err != nil {
 		return "", fmt.Errorf("failed to copy backup to temp file: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			_ = os.Remove(tempPath)
+			removeCopy(tempPath)
 		}
 	}()
 
@@ -185,18 +203,46 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 		return "", checkFailed("the copy of backup file "+backupPath, err)
 	}
 
-	// 4. Safety backup of the current state. Its retention pass keeps
+	// 4. Fold the WAL files of the current database into it, in place: then
+	//    the file alone holds every committed row, and a kill before the
+	//    rename below leaves the database whole. DuckDB cannot apply a log
+	//    that is damaged or belongs to another file, and then cannot open the
+	//    database either; the safety backup then keeps raw copies of the logs.
+	var foldErr error
+	if db.HasWAL(dbPath) {
+		foldErr = db.CheckpointFile(dbPath)
+	}
+
+	// 5. Safety backup of the current state. Its retention pass keeps
 	//    backupPath and the copy.
-	safetyPath, err := createAutoBackupAt(dbPath, time.Now(), backupPath, tempPath)
+	var safetyPath string
+	if foldErr == nil {
+		safetyPath, err = createAutoBackupAt(dbPath, time.Now(), backupPath, tempPath)
+	} else {
+		safetyPath, err = createRawSafetyBackup(dbPath, time.Now(), backupPath, tempPath)
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
 	}
 
-	// 5. Rename the copy over the database.
+	// 6. Move the logs that the fold could not apply aside, rename the copy
+	//    over the database, and delete the moved logs: the safety backup has
+	//    them. If the rename fails, the logs move back.
+	moved, err := moveWALAside(dbPath, tempPath)
+	if err != nil {
+		return safetyPath, fmt.Errorf("failed to move the write-ahead log of the current database aside: %w", err)
+	}
+	if beforeSwap != nil {
+		beforeSwap(dbPath)
+	}
 	if err := os.Rename(tempPath, dbPath); err != nil {
+		moveBack(moved)
 		return safetyPath, fmt.Errorf("failed to move restored file into place: %w", err)
 	}
 	syncDir(filepath.Dir(dbPath))
+	for to := range moved {
+		_ = os.Remove(to)
+	}
 
 	return safetyPath, nil
 }
@@ -219,6 +265,36 @@ func checkFailed(file string, err error) error {
 		return fmt.Errorf("%s is open in another program; close it and try again: %w", file, err)
 	default:
 		return fmt.Errorf("%s is not a valid TMoney database: %w", file, err)
+	}
+}
+
+// beforeSwap, when set, runs right before Restore renames its copy over the
+// database. A test hook (see export_test.go).
+var beforeSwap func(dbPath string)
+
+// moveWALAside renames the WAL files of dbPath to <tempPath><suffix>-old and
+// returns the moves, as a map from the new name to the old one. On an error
+// it moves back what it moved.
+func moveWALAside(dbPath, tempPath string) (map[string]string, error) {
+	moved := map[string]string{}
+	for _, suffix := range db.WALSuffixes {
+		from, to := dbPath+suffix, tempPath+suffix+"-old"
+		if err := os.Rename(from, to); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			moveBack(moved)
+			return nil, err
+		}
+		moved[to] = from
+	}
+	return moved, nil
+}
+
+// moveBack undoes moveWALAside.
+func moveBack(moved map[string]string) {
+	for to, from := range moved {
+		_ = os.Rename(to, from)
 	}
 }
 
@@ -324,6 +400,9 @@ func enforceRetention(dbPath string, keep ...string) error {
 		if err := os.Remove(b.Path); err != nil {
 			return fmt.Errorf("failed to remove old backup %s: %w", b.Path, err)
 		}
+		for _, suffix := range db.WALSuffixes { // raw logs of a raw safety backup
+			_ = os.Remove(b.Path + suffix)
+		}
 	}
 
 	return nil
@@ -380,11 +459,23 @@ func removeStalePartials(dbPath string, now time.Time, keep ...string) {
 
 // isPartialOf reports whether name is a partial file of a copy to dbBase
 // (Restore) or to one of dbBase's backups: exactly
-// <final>.tmoney-partial-<digits>. Any other text after the infix is a file of
-// the user, such as another database named "<dbBase>.tmoney-partial-2025.tdb".
+// <final>.tmoney-partial-<digits>, or a log beside one (<partial>.wal and the
+// other db.WALSuffixes, and Restore's moved <partial>.wal-old). Any other text
+// after the infix is a file of the user, such as another database named
+// "<dbBase>.tmoney-partial-2025.tdb".
 func isPartialOf(dbBase, name string) bool {
 	i := strings.LastIndex(name, partialInfix)
-	if i < 0 || !isDigits(name[i+len(partialInfix):]) {
+	if i < 0 {
+		return false
+	}
+	tail := strings.TrimSuffix(name[i+len(partialInfix):], "-old")
+	for _, suffix := range db.WALSuffixes {
+		if t, ok := strings.CutSuffix(tail, suffix); ok {
+			tail = t
+			break
+		}
+	}
+	if !isDigits(tail) {
 		return false
 	}
 	final := name[:i]
@@ -418,24 +509,36 @@ func isDigits(s string) bool {
 // copy: copyDatabase writes a partial file beside it (see copyToTemp) and then
 // gives it the name (publish). If the process dies first, only the partial
 // file is left. If another process takes the name first, next names the
-// backup again.
-func copyDatabase(src string, next func() string) (string, error) {
+// backup again. With fold false, raw copies of the WAL files of src go beside
+// the backup (see createRawSafetyBackup).
+func copyDatabase(src string, next func() string, fold bool) (string, error) {
 	dst := next()
-	tempPath, err := copyToTemp(src, dst, src)
+	tempPath, err := copyToTemp(src, dst, src, fold)
 	if err != nil {
 		return "", err
 	}
 	for tries := 1; ; tries++ {
 		err := publish(tempPath, dst)
 		if err == nil {
+			for _, suffix := range db.WALSuffixes { // only after fold false
+				_ = os.Rename(tempPath+suffix, dst+suffix)
+			}
 			syncDir(filepath.Dir(dst))
 			return dst, nil
 		}
 		if !errors.Is(err, os.ErrExist) || tries == 10 {
-			_ = os.Remove(tempPath)
+			removeCopy(tempPath)
 			return "", err
 		}
 		dst = next()
+	}
+}
+
+// removeCopy deletes the partial file at tempPath and the logs beside it.
+func removeCopy(tempPath string) {
+	_ = os.Remove(tempPath)
+	for _, suffix := range db.WALSuffixes {
+		_ = os.Remove(tempPath + suffix)
 	}
 }
 
@@ -461,8 +564,12 @@ func publish(tempPath, dst string) error {
 
 // copyToTemp copies the database at src to a new partial file beside dst,
 // flushed to disk and closed, with the permissions of the file at modeOf, and
-// returns its path. On error it removes what it wrote.
-func copyToTemp(src, dst, modeOf string) (_ string, err error) {
+// returns its path. When src has WAL files (see db.WALSuffixes), they hold
+// committed rows that are not in src yet: copyToTemp copies them beside the
+// partial file and, with fold, checkpoints them into it (db.CheckpointFile),
+// so the copy is one complete file and src does not change. Without fold the
+// raw copies stay beside the partial file. On error it removes what it wrote.
+func copyToTemp(src, dst, modeOf string, fold bool) (_ string, err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return "", err
@@ -481,15 +588,9 @@ func copyToTemp(src, dst, modeOf string) (_ string, err error) {
 	defer func() {
 		if err != nil {
 			_ = out.Close()
-			_ = os.Remove(tempPath)
+			removeCopy(tempPath)
 		}
 	}()
-	// CreateTemp makes the file 0600. Give it the permissions of modeOf, as
-	// the copy had before it went through a temp file. Best effort: a network
-	// share can refuse a chmod, and 0600 still opens.
-	if modeInfo, err := os.Stat(modeOf); err == nil {
-		_ = out.Chmod(modeInfo.Mode().Perm())
-	}
 	n, err := io.Copy(out, in)
 	if err != nil {
 		return "", err
@@ -505,7 +606,47 @@ func copyToTemp(src, dst, modeOf string) (_ string, err error) {
 	if err := out.Close(); err != nil {
 		return "", err
 	}
+
+	if db.HasWAL(src) {
+		for _, suffix := range db.WALSuffixes {
+			err := copyPlain(src+suffix, tempPath+suffix)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return "", err
+			}
+		}
+		if fold {
+			if err := db.CheckpointFile(tempPath); err != nil {
+				return "", fmt.Errorf("the write-ahead log of %s cannot be applied: %w", src, err)
+			}
+		}
+	}
+
+	// CreateTemp makes the file 0600. Give it the permissions of modeOf, as
+	// the copy had before it went through a temp file; after the fold, which
+	// must write the file. Best effort: a network share can refuse a chmod,
+	// and 0600 still opens.
+	if modeInfo, err := os.Stat(modeOf); err == nil {
+		_ = os.Chmod(tempPath, modeInfo.Mode().Perm())
+	}
 	return tempPath, nil
+}
+
+// copyPlain copies src to a new file dst.
+func copyPlain(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // syncDir flushes the directory dir, so that a rename into it is on disk too.
