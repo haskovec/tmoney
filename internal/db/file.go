@@ -2,12 +2,15 @@ package db
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 // The functions in this file work on a database file that is not open in this
-// process: the backup package's own copy of a database. DuckDB caches one
-// instance per path, so path must not be open here.
+// process: a backup, or the backup package's own copy of a database. They open
+// the file with a new DuckDB instance, and on POSIX systems the close of that
+// instance's file handle releases every lock that this process holds on the
+// file, so another process could then open a database that is open here.
 
 // ValidateFile checks, without changing the file, that path is a complete
 // TMoney database this app can open: DuckDB attaches it read-only, the
@@ -22,7 +25,11 @@ import (
 // The file is attached to an in-memory database by a SQL string, not opened by
 // a DSN: duckdb-go parses a DSN as a URL, so a "#" in a folder name moved the
 // read-only option into the URL fragment (a read-write open), and a "%" failed
-// the parse.
+// the parse. The attach names the DuckDB storage and an absolute path, so a
+// file name that starts like an extension prefix ("md:", "sqlite:") is a plain
+// file, and a SQLite file with the right tables is not a TMoney database; and
+// the instance installs and loads no extensions, so no check goes to the
+// network.
 func ValidateFile(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -35,9 +42,21 @@ func ValidateFile(path string) error {
 		return &DatabaseError{Op: "validate", Err: err}
 	}
 	defer func() { _ = conn.Close() }()
-	conn.SetMaxOpenConns(1) // USE below applies to one connection
-	quoted := "'" + strings.ReplaceAll(path, "'", "''") + "'"
-	if _, err := conn.Exec(`ATTACH ` + quoted + ` AS checked (READ_ONLY)`); err != nil {
+	conn.SetMaxOpenConns(1) // the settings and USE below apply to one connection
+	for _, q := range []string{
+		`SET autoinstall_known_extensions = false`,
+		`SET autoload_known_extensions = false`,
+	} {
+		if _, err := conn.Exec(q); err != nil {
+			return &DatabaseError{Op: "validate", Err: err}
+		}
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return &DatabaseError{Op: "validate", Err: err}
+	}
+	quoted := "'" + strings.ReplaceAll(abs, "'", "''") + "'"
+	if _, err := conn.Exec(`ATTACH ` + quoted + ` AS checked (TYPE DUCKDB, READ_ONLY)`); err != nil {
 		return &CorruptedFileError{Path: path, Err: err}
 	}
 	if _, err := conn.Exec(`USE checked`); err != nil {

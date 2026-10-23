@@ -70,9 +70,8 @@ func CreateAutoBackup(dbPath string) (string, error) {
 // testability. keep names files that the retention pass must not delete ("" for
 // none); Restore passes the backup it is restoring from and its own copy of it.
 func createAutoBackupAt(dbPath string, now time.Time, keep ...string) (string, error) {
-	backupPath := freeBackupPath(dbPath, AutoBackupInfix, now)
-
-	if err := copyDatabase(dbPath, backupPath); err != nil {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) })
+	if err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
 
@@ -90,9 +89,8 @@ func CreateManualBackup(dbPath string) (string, error) {
 
 // createManualBackupAt is the internal implementation that accepts a timestamp for testability.
 func createManualBackupAt(dbPath string, now time.Time) (string, error) {
-	backupPath := freeBackupPath(dbPath, ManualBackupInfix, now)
-
-	if err := copyDatabase(dbPath, backupPath); err != nil {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, ManualBackupInfix, now) })
+	if err != nil {
 		return "", fmt.Errorf("failed to create manual backup: %w", err)
 	}
 
@@ -205,18 +203,30 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 }
 
 // freeBackupPath returns the name of a new backup of dbPath of the kind that
-// infix marks (AutoBackupInfix or ManualBackupInfix), at the time now. Names
-// have one-second resolution. When a backup of that name exists (a second
-// backup in the same second), it takes the next free second: a backup never
-// replaces another one, such as the safety backup of a restore.
+// infix marks (AutoBackupInfix or ManualBackupInfix): at the time now, or one
+// second after the newest backup of that kind if that is later. Names have
+// one-second resolution and retention deletes by name order, so a new backup
+// must sort after all the others: a name in a second that retention freed
+// would sort as the oldest, and its own retention pass would delete it. More
+// than one backup per second therefore pushes the names ahead of the clock.
+// With publish, a backup never replaces another one, such as the safety backup
+// of a restore.
 func freeBackupPath(dbPath, infix string, now time.Time) string {
-	for {
-		path := dbPath + infix + now.Format(TimestampFormat)
-		if _, err := os.Lstat(path); err != nil {
-			return path // free, or the copy reports why it cannot write there
+	at := now.Truncate(time.Second)
+	prefix := filepath.Base(dbPath) + infix
+	entries, _ := os.ReadDir(filepath.Dir(dbPath))
+	for _, entry := range entries {
+		ts, ok := strings.CutPrefix(entry.Name(), prefix)
+		if !ok {
+			continue
 		}
-		now = now.Add(time.Second)
+		// The names hold the wall clock of now's location.
+		t, err := time.ParseInLocation(TimestampFormat, ts, now.Location())
+		if err == nil && !t.Before(at) {
+			at = t.Add(time.Second)
+		}
 	}
+	return dbPath + infix + at.Format(TimestampFormat)
 }
 
 // parseBackupFilename checks if a filename is a backup of the given base name
@@ -364,21 +374,50 @@ func isDigits(s string) bool {
 	return true
 }
 
-// copyDatabase copies the database at src to dst so that dst is never a part
-// of a copy: it writes a partial file beside dst (see copyToTemp) and renames
-// it to dst. If the process dies first, dst is as it was and only the partial
-// file is left.
-func copyDatabase(src, dst string) error {
+// copyDatabase copies the database at src to a new backup, named by next
+// (freeBackupPath), and returns its path. The backup is never a part of a
+// copy: copyDatabase writes a partial file beside it (see copyToTemp) and then
+// gives it the name (publish). If the process dies first, only the partial
+// file is left. If another process takes the name first, next names the
+// backup again.
+func copyDatabase(src string, next func() string) (string, error) {
+	dst := next()
 	tempPath, err := copyToTemp(src, dst, src)
 	if err != nil {
+		return "", err
+	}
+	for tries := 1; ; tries++ {
+		err := publish(tempPath, dst)
+		if err == nil {
+			syncDir(filepath.Dir(dst))
+			return dst, nil
+		}
+		if !errors.Is(err, os.ErrExist) || tries == 10 {
+			_ = os.Remove(tempPath)
+			return "", err
+		}
+		dst = next()
+	}
+}
+
+// publish gives the complete copy at tempPath the name dst, but never over an
+// existing file: then it fails with an error that wraps os.ErrExist. A hard
+// link does both in one step. A file system with no hard links (FAT, some
+// network shares) gets a check and a rename, which a second process can still
+// race.
+func publish(tempPath, dst string) error {
+	err := os.Link(tempPath, dst)
+	if err == nil {
+		_ = os.Remove(tempPath) // a leftover is only a stale partial
+		return nil
+	}
+	if errors.Is(err, os.ErrExist) {
 		return err
 	}
-	if err := os.Rename(tempPath, dst); err != nil {
-		_ = os.Remove(tempPath)
-		return err
+	if _, statErr := os.Lstat(dst); statErr == nil {
+		return &os.LinkError{Op: "publish", Old: tempPath, New: dst, Err: os.ErrExist}
 	}
-	syncDir(filepath.Dir(dst))
-	return nil
+	return os.Rename(tempPath, dst)
 }
 
 // copyToTemp copies the database at src to a new partial file beside dst,

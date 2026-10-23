@@ -179,9 +179,14 @@ func TestListBackups(t *testing.T) {
 			time.Date(2024, 3, 10, 8, 0, 0, 0, time.UTC),
 		}
 
-		createAutoBackupAt(dbPath, times[0], "")
-		createManualBackupAt(dbPath, times[1])
-		createAutoBackupAt(dbPath, times[2], "")
+		// Written by name: a backup made now always sorts after the existing
+		// ones (see freeBackupPath), and this test is about the sort.
+		for i, infix := range []string{AutoBackupInfix, ManualBackupInfix, AutoBackupInfix} {
+			name := dbPath + infix + times[i].Format(TimestampFormat)
+			if err := os.WriteFile(name, []byte("fictional backup"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {

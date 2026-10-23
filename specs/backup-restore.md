@@ -24,8 +24,11 @@ personal.tdb.backup.2024-03-13T18-45-12
 ```
 
 Timestamp format: `YYYY-MM-DDTHH-MM-SS` (using hyphens instead of colons for filesystem compatibility).
-A backup never replaces another one: when a backup of the same name exists (a
-second backup in the same second), the new one takes the next free second.
+A new backup is always the newest of its kind, and it never replaces another
+one: it takes the time now, or one second after the newest backup of its kind
+if that is later. More than one backup per second therefore gives names ahead
+of the clock. Retention deletes by name order, so a new backup is never the one
+it deletes.
 
 ### Backup Location
 
@@ -174,8 +177,8 @@ Safety: the current state is always backed up before restoring.
 | Error | Handling |
 |-------|----------|
 | Backup file not found | `"Error: Backup file not found: <path>"` |
-| Backup file corrupted | `"Error: Backup file <path> is not a valid TMoney database: <reason>"` |
-| Backup of a newer TMoney | `"Error: cannot restore <path>: file was created with a newer version of TMoney ..."` |
+| Backup file corrupted | `"Error: failed to restore: backup file <path> is not a valid TMoney database: <reason>"` |
+| Backup of a newer TMoney | `"Error: failed to restore: cannot restore <path>: file was created with a newer version of TMoney (file: v<n>, app: v<m>)"` |
 | Disk full during backup | `"Error: Not enough disk space to create backup"` |
 | Permission denied | `"Error: Cannot write to backup location"` |
 | Restore fails mid-copy | Original file is preserved (copy to temp first, then rename) |

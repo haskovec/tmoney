@@ -58,3 +58,19 @@ func walOnlyFile(t *testing.T, path string) string {
 	}
 	return path
 }
+
+// TestValidateFileReadsAPlainPath: DuckDB reads "<name>:" at the start of a
+// path as the prefix of a storage extension (md:, sqlite:, postgres:), and
+// installs a known one from the network. A file whose name starts that way is
+// still a plain DuckDB file to ValidateFile.
+func TestValidateFileReadsAPlainPath(t *testing.T) {
+	dir := t.TempDir()
+	src := walOnlyFile(t, filepath.Join(t.TempDir(), "src.tdb"))
+	for _, suffix := range []string{"", ".wal"} {
+		copyFileTo(t, src+suffix, filepath.Join(dir, "abc:fin.tdb"+suffix))
+	}
+	t.Chdir(dir)
+	if err := ValidateFile("abc:fin.tdb"); err != nil {
+		t.Errorf("ValidateFile(abc:fin.tdb) error = %v, want a valid TMoney file", err)
+	}
+}

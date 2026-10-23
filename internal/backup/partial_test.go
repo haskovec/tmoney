@@ -1,6 +1,8 @@
 package backup
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -192,5 +194,89 @@ func TestRestoreKeepsItsOwnCopyFromTheSweep(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(dbPath); string(got) != "test database content" {
 		t.Errorf("database = %q after the restore, want the backup", got)
+	}
+}
+
+// TestBurstOfAutoBackupsKeepsTheNewest: more than one auto-backup per second
+// (a CLI script) pushes the names ahead of the clock. Each new backup must
+// still be the newest one: a name in a second that retention freed would sort
+// as the oldest, and its own retention pass would delete it at once. A
+// restore's safety backup was lost this way.
+func TestBurstOfAutoBackupsKeepsTheNewest(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	at := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	for i := range 2*MaxAutoBackups + 2 {
+		state := fmt.Sprintf("fictional state %d", i)
+		if err := os.WriteFile(dbPath, []byte(state), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		path, err := createAutoBackupAt(dbPath, at, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := os.ReadFile(path); err != nil || string(got) != state {
+			t.Fatalf("backup %d: %s holds %q (%v), want %q", i, filepath.Base(path), got, err, state)
+		}
+		backups, err := ListBackups(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if backups[0].Path != path {
+			t.Fatalf("backup %d: the newest backup is %s, want the one just made, %s",
+				i, filepath.Base(backups[0].Path), filepath.Base(path))
+		}
+	}
+}
+
+// TestPublishNeverReplaces: two processes can pick the same free name at the
+// same time (the quit backup of the TUI and the auto-backup of a CLI command).
+// The second one must not replace the first one's backup.
+func TestPublishNeverReplaces(t *testing.T) {
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "test.tdb.manual-backup.2026-01-01T09-00-00")
+	for i, content := range []string{"first", "second"} {
+		temp := filepath.Join(dir, fmt.Sprintf("temp-%d", i))
+		if err := os.WriteFile(temp, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := publish(temp, dst)
+		if i == 0 && err != nil {
+			t.Fatalf("publish() error = %v", err)
+		}
+		if i == 1 && !errors.Is(err, os.ErrExist) {
+			t.Errorf("publish() over an existing backup = %v, want os.ErrExist", err)
+		}
+	}
+	if got, _ := os.ReadFile(dst); string(got) != "first" {
+		t.Errorf("the backup holds %q, want %q", got, "first")
+	}
+}
+
+// TestRestoreAfterABurstKeepsTheSafetyBackup is the case that the burst lost:
+// a restore right after many auto-backups, whose names are ahead of the clock.
+func TestRestoreAfterABurstKeepsTheSafetyBackup(t *testing.T) {
+	skipValidation(t)
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	saved, err := CreateManualBackup(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for range MaxAutoBackups + 2 {
+		if _, err := createAutoBackupAt(dbPath, now, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(dbPath, []byte("fictional state before the restore"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	safety, err := Restore(dbPath, saved)
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if got, err := os.ReadFile(safety); err != nil || string(got) != "fictional state before the restore" {
+		t.Errorf("the safety backup %s holds %q (%v), want the state before the restore", filepath.Base(safety), got, err)
 	}
 }
