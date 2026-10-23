@@ -243,9 +243,27 @@ func (a *App) submitNewFile(path string) tea.Cmd {
 	}
 }
 
+// fileAlreadyOpenMsg is sent when File > Open names the file that is open.
+type fileAlreadyOpenMsg struct {
+	path string
+}
+
 // submitOpenFile returns a command that opens an existing database file.
+//
+// It never opens a second handle on a file this app has open. DuckDB caches one
+// instance per path, so the second handle shares the first one's instance: a
+// backup or restore through it closes only its own pool, the instance lives on,
+// and the backup misses the rows still in <path>.wal. The open file stays as it
+// is, and the kept handle of the previous file (prevDB) closes first.
 func (a *App) submitOpenFile(path string) tea.Cmd {
+	current, prev := a.db, a.prevDB
 	return func() tea.Msg {
+		if current != nil && sameFile(path, current.Path()) {
+			return fileAlreadyOpenMsg{path: path}
+		}
+		if prev != nil && sameFile(path, prev.Path()) {
+			_ = prev.Close() // idempotent; switchDatabase closes it again
+		}
 		database, err := db.Open(path)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to open database: %w", err)}
@@ -253,6 +271,22 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
+}
+
+// reportAlreadyOpen tells the user that File > Open named the open file.
+func (a *App) reportAlreadyOpen(path string) {
+	a.statusbar.AddNotification(
+		fmt.Sprintf("%s is already open", filepath.Base(path)),
+		widget.NotificationInfo,
+	)
+}
+
+// sameFile reports whether a and b name the same file, also through a symlink
+// or another spelling of the path. It is false if either one cannot be read.
+func sameFile(a, b string) bool {
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 // switchDatabase closes the old database, sets the new one, reinitializes

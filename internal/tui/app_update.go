@@ -282,6 +282,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fileDialogSavedMsg:
 		return a.switchDatabase(msg.db)
 
+	case fileAlreadyOpenMsg:
+		a.reportAlreadyOpen(msg.path)
+		return a, nil
+
 	case backupCreatedMsg:
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Backup created: %s", backupFilename(msg.path)),
