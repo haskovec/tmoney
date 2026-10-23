@@ -22,18 +22,20 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 		age  time.Time
 		gone bool
 	}{
-		"test.tdb.partial-111":                                        {old, true},         // a killed Restore
-		"test.tdb.backup.2024-03-15T14-30-00.partial-222":             {old, true},         // a killed auto-backup
-		"test.tdb.manual-backup.2024-03-15T14-30-00.partial-3":        {old, true},         // a killed manual backup
-		"tmoney-restore-444.tmp":                                      {old, true},         // a killed Restore of an older version
-		"test.tdb.partial-555":                                        {time.Now(), false}, // a copy that runs now
-		"other.tdb.partial-666":                                       {old, false},        // another database's copy
-		"test.tdb.notes.partial-777":                                  {old, false},        // not a backup name
-		"test.tdb.partial-2025.tdb":                                   {old, false},        // another database
-		"test.tdb.partial-2025.tdb.manual-backup.2024-03-15T14-30-00": {old, false},        // its backup
-		"test.tdb.partial-notes.txt":                                  {old, false},        // a user's file
-		"test.tdb.partial-":                                           {old, false},        // no digits
-		"test.tdb.manual-backup.2024-03-15T14-30-00":                  {old, false},        // a backup
+		"test.tdb.tmoney-partial-111":                                        {old, true},         // a killed Restore
+		"test.tdb.backup.2024-03-15T14-30-00.tmoney-partial-222":             {old, true},         // a killed auto-backup
+		"test.tdb.manual-backup.2024-03-15T14-30-00.tmoney-partial-3":        {old, true},         // a killed manual backup
+		"tmoney-restore-444.tmp":                                             {old, true},         // a killed Restore of an older version
+		"test.tdb.tmoney-partial-555":                                        {time.Now(), false}, // a copy that runs now
+		"other.tdb.tmoney-partial-666":                                       {old, false},        // another database's copy
+		"test.tdb.notes.tmoney-partial-777":                                  {old, false},        // not a backup name
+		"test.tdb.tmoney-partial-2025.tdb":                                   {old, false},        // another database
+		"test.tdb.tmoney-partial-2025.tdb.manual-backup.2024-03-15T14-30-00": {old, false},        // its backup
+		"test.tdb.tmoney-partial-notes.txt":                                  {old, false},        // a user's file
+		"test.tdb.tmoney-partial-":                                           {old, false},        // no digits
+		"test.tdb.partial-2025":                                              {old, false},        // a user's file, named by year
+		"test.tdb.partial-20251023":                                          {old, false},        // a user's file, named by date
+		"test.tdb.manual-backup.2024-03-15T14-30-00":                         {old, false},        // a backup
 	}
 	for name, f := range files {
 		path := filepath.Join(dir, name)
@@ -45,7 +47,7 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 		}
 	}
 	// A directory with a partial name is not a copy.
-	dirName := filepath.Join(dir, "test.tdb.partial-888")
+	dirName := filepath.Join(dir, "test.tdb.tmoney-partial-888")
 	if err := os.Mkdir(dirName, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +67,28 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 	}
 	if _, err := os.Stat(dirName); err != nil {
 		t.Errorf("the directory with a partial name was deleted: %v", err)
+	}
+}
+
+// TestPartialNamesMatchTheSweep: the sweep finds the leftover of a killed
+// copy by its name only, so each name that copyToTemp writes must be a name
+// that isPartialOf knows.
+func TestPartialNamesMatchTheSweep(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	for _, dst := range []string{
+		dbPath, // Restore
+		dbPath + AutoBackupInfix + "2026-01-01T09-00-00",
+		dbPath + ManualBackupInfix + "2026-01-01T09-00-00",
+	} {
+		temp, err := copyToTemp(dbPath, dst, dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !isPartialOf(filepath.Base(dbPath), filepath.Base(temp)) {
+			t.Errorf("the copy to %s is %s, which the sweep does not know", filepath.Base(dst), filepath.Base(temp))
+		}
+		_ = os.Remove(temp)
 	}
 }
 
@@ -131,7 +155,7 @@ func TestRestoreKeepsTheDatabaseMode(t *testing.T) {
 // restore would otherwise replace with the restored state.
 func TestSameSecondBackupsKeepBoth(t *testing.T) {
 	for name, create := range map[string]func(string, time.Time) (string, error){
-		"auto":   func(p string, at time.Time) (string, error) { return createAutoBackupAt(p, at, "") },
+		"auto":   func(p string, at time.Time) (string, error) { return createAutoBackupAt(p, at) },
 		"manual": createManualBackupAt,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -211,7 +235,7 @@ func TestBurstOfAutoBackupsKeepsTheNewest(t *testing.T) {
 		if err := os.WriteFile(dbPath, []byte(state), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		path, err := createAutoBackupAt(dbPath, at, "")
+		path, err := createAutoBackupAt(dbPath, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -265,7 +289,7 @@ func TestRestoreAfterABurstKeepsTheSafetyBackup(t *testing.T) {
 	}
 	now := time.Now()
 	for range MaxAutoBackups + 2 {
-		if _, err := createAutoBackupAt(dbPath, now, ""); err != nil {
+		if _, err := createAutoBackupAt(dbPath, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -297,11 +321,11 @@ func TestBackupNamesInTheRepeatedHour(t *testing.T) {
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 		for _, minute := range []int{10, 20, 30, 40, 50} {
-			if _, err := createAutoBackupAt(dbPath, firstPass(minute), ""); err != nil {
+			if _, err := createAutoBackupAt(dbPath, firstPass(minute)); err != nil {
 				t.Fatal(err)
 			}
 		}
-		path, err := createAutoBackupAt(dbPath, secondPass(5), "")
+		path, err := createAutoBackupAt(dbPath, secondPass(5))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -329,4 +353,32 @@ func TestBackupNamesInTheRepeatedHour(t *testing.T) {
 			t.Errorf("both backups are at %s", filepath.Base(first))
 		}
 	})
+}
+
+// TestNamesAheadOfTheClockKeepTheNewBackup: names can be ahead of the clock
+// (a clock that was set back, a move to a time zone to the west, a backup
+// copied in from another machine). A new backup must still be the newest one,
+// also when MaxAutoBackups names are ahead: a name at the time now would sort
+// after them, and its own retention pass would delete it, also the safety
+// backup of a restore. So a new name follows the newest one, not the clock.
+func TestNamesAheadOfTheClockKeepTheNewBackup(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	at := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	for i := range MaxAutoBackups {
+		ahead := dbPath + AutoBackupInfix + at.AddDate(1, 0, i).Format(TimestampFormat)
+		if err := os.WriteFile(ahead, []byte("fictional backup from a clock that was ahead"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path, err := createAutoBackupAt(dbPath, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the new backup is gone: %v", err)
+	}
+	if backups, _ := ListBackups(dbPath); backups[0].Path != path {
+		t.Errorf("the newest backup is %s, want the one just made, %s", filepath.Base(backups[0].Path), filepath.Base(path))
+	}
 }

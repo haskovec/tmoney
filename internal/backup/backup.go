@@ -28,11 +28,13 @@ const (
 	MaxAutoBackups = 5
 
 	// partialInfix marks a file that a copy is still writing: the copy writes
-	// <final name>.partial-<digits> (os.CreateTemp puts random digits for its
-	// "*") and renames it to <final name> only when it is complete and on disk.
-	// Such a name never parses as a backup (see parseBackupFilename), so
-	// ListBackups and retention skip it.
-	partialInfix = ".partial-"
+	// <final name>.tmoney-partial-<digits> (os.CreateTemp puts random digits
+	// for its "*") and renames it to <final name> only when it is complete and
+	// on disk. Such a name never parses as a backup (see parseBackupFilename),
+	// so ListBackups and retention skip it. The sweep of stale partial files
+	// deletes by name, so the infix names the app: a user can name a file
+	// "<db>.partial-2025", but not likely "<db>.tmoney-partial-2025".
+	partialInfix = ".tmoney-partial-"
 
 	// stalePartialAge is how old a partial file must be before enforceRetention
 	// deletes it as the leftover of a killed copy.
@@ -63,12 +65,12 @@ type BackupInfo struct {
 // CreateAutoBackup creates an auto-backup of the given database file and
 // enforces rolling retention (keeping at most MaxAutoBackups auto-backups).
 func CreateAutoBackup(dbPath string) (string, error) {
-	return createAutoBackupAt(dbPath, time.Now(), "")
+	return createAutoBackupAt(dbPath, time.Now())
 }
 
 // createAutoBackupAt is the internal implementation that accepts a timestamp for
-// testability. keep names files that the retention pass must not delete ("" for
-// none); Restore passes the backup it is restoring from and its own copy of it.
+// testability. keep names files that the retention pass must not delete;
+// Restore passes the backup it is restoring from and its own copy of it.
 func createAutoBackupAt(dbPath string, now time.Time, keep ...string) (string, error) {
 	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) })
 	if err != nil {
@@ -158,14 +160,11 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	}
 
 	// 1. Check the backup: a backup cut short by a crash, a file that is not a
-	//    TMoney database, or one of a newer app version stops here, and the
+	//    TMoney database, one of a newer app version, one that this user
+	//    cannot read, or one that another program has open stops here, and the
 	//    reason names the file the user chose.
 	if err := validateDatabase(backupPath); err != nil {
-		var newer *db.VersionMismatchError
-		if errors.As(err, &newer) {
-			return "", fmt.Errorf("cannot restore %s: %w", backupPath, err)
-		}
-		return "", fmt.Errorf("backup file %s is not a valid TMoney database: %w", backupPath, err)
+		return "", checkFailed("backup file "+backupPath, err)
 	}
 
 	// 2. Copy the backup beside the database, with the mode of the database
@@ -183,7 +182,7 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 
 	// 3. Check the copy too, which is what goes in place.
 	if err := validateDatabase(tempPath); err != nil {
-		return "", fmt.Errorf("the copy of backup file %s is not a valid TMoney database: %w", backupPath, err)
+		return "", checkFailed("the copy of backup file "+backupPath, err)
 	}
 
 	// 4. Safety backup of the current state. Its retention pass keeps
@@ -202,6 +201,27 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	return safetyPath, nil
 }
 
+// checkFailed is the error of Restore when the check of a file fails. file
+// says which file, by the backup that the user chose. Only a file that is not
+// a TMoney database is called invalid: a backup of a newer app needs a newer
+// TMoney, one that this user cannot read needs other permissions, and one
+// that another program has open needs that program closed.
+func checkFailed(file string, err error) error {
+	var newer *db.VersionMismatchError
+	var unreadable *db.UnreadableFileError
+	var locked *db.LockedFileError
+	switch {
+	case errors.As(err, &newer):
+		return fmt.Errorf("cannot restore %s: %w", file, err)
+	case errors.As(err, &unreadable):
+		return fmt.Errorf("cannot read %s: %w", file, err)
+	case errors.As(err, &locked):
+		return fmt.Errorf("%s is open in another program; close it and try again: %w", file, err)
+	default:
+		return fmt.Errorf("%s is not a valid TMoney database: %w", file, err)
+	}
+}
+
 // freeBackupPath returns the name of a new backup of dbPath of the kind that
 // infix marks (AutoBackupInfix or ManualBackupInfix): at the time now, or one
 // second after the newest backup of that kind if that is later. Names have
@@ -212,8 +232,14 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 // With publish, a backup never replaces another one, such as the safety backup
 // of a restore.
 //
-// A clock that was ahead and then went back makes the new names follow the
-// newest one, a little ahead of their real time, until the clock passes it.
+// A name that is ahead of the clock makes the new names follow it, ahead of
+// their real time, until the clock passes it: a clock that was ahead and went
+// back, a move to a time zone to the west (the names hold the local wall
+// clock), or a backup copied in from another machine. Only the times in the
+// list are wrong; to make them right again, rename or delete the names of that
+// kind that are ahead of the clock. A cap that ignores names far ahead would
+// lose backups: with MaxAutoBackups auto-backups ahead, a new one would sort
+// as the oldest, and its own retention pass would delete it.
 func freeBackupPath(dbPath, infix string, now time.Time) string {
 	// The names hold the wall clock, and ListBackups and retention order them
 	// as text (time.Parse reads them as UTC). Compare in that frame too: in
@@ -316,7 +342,7 @@ func isKept(path string, keep []string) bool {
 // samePath reports whether a and b name the same file, tolerating a relative
 // spelling on one side. It is a cleaned-path comparison, not an inode check.
 func samePath(a, b string) bool {
-	if b == "" {
+	if b == "" { // no file; filepath.Abs("") would give the working directory
 		return false
 	}
 	absA, errA := filepath.Abs(a)
@@ -353,9 +379,9 @@ func removeStalePartials(dbPath string, now time.Time, keep ...string) {
 }
 
 // isPartialOf reports whether name is a partial file of a copy to dbBase
-// (Restore) or to one of dbBase's backups: exactly <final>.partial-<digits>.
-// Any other text after the infix is a file of the user, such as another
-// database named "<dbBase>.partial-2025.tdb".
+// (Restore) or to one of dbBase's backups: exactly
+// <final>.tmoney-partial-<digits>. Any other text after the infix is a file of
+// the user, such as another database named "<dbBase>.tmoney-partial-2025.tdb".
 func isPartialOf(dbBase, name string) bool {
 	i := strings.LastIndex(name, partialInfix)
 	if i < 0 || !isDigits(name[i+len(partialInfix):]) {

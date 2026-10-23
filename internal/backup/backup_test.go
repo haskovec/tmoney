@@ -22,7 +22,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		dbPath := createTestDB(t, dir)
 		now := time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC)
 
-		backupPath, err := createAutoBackupAt(dbPath, now, "")
+		backupPath, err := createAutoBackupAt(dbPath, now)
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
@@ -53,7 +53,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		baseTime := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
 		for i := range 7 {
 			ts := baseTime.Add(time.Duration(i) * 24 * time.Hour)
-			_, err := createAutoBackupAt(dbPath, ts, "")
+			_, err := createAutoBackupAt(dbPath, ts)
 			if err != nil {
 				t.Fatalf("createAutoBackupAt() error on backup %d: %v", i, err)
 			}
@@ -114,7 +114,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		autoBase := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
 		for i := range 6 {
 			ts := autoBase.Add(time.Duration(i) * 24 * time.Hour)
-			_, err := createAutoBackupAt(dbPath, ts, "")
+			_, err := createAutoBackupAt(dbPath, ts)
 			if err != nil {
 				t.Fatalf("createAutoBackupAt() error: %v", err)
 			}
@@ -237,7 +237,7 @@ func TestListBackups(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "test.tdb.somethingelse"), []byte("unrelated"), 0644)
 
 		// Create one real backup
-		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {
@@ -253,7 +253,7 @@ func TestListBackups(t *testing.T) {
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 
-		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {
@@ -287,7 +287,7 @@ func TestRestore(t *testing.T) {
 		dbPath := createTestDB(t, dir)
 
 		// Create a backup
-		backupPath, err := createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		backupPath, err := createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
@@ -338,13 +338,13 @@ func TestRestore(t *testing.T) {
 		// Fill the retention window: MaxAutoBackups auto-backups already exist.
 		// The oldest one holds the content we want back.
 		baseTime := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
-		oldest, err := createAutoBackupAt(dbPath, baseTime, "")
+		oldest, err := createAutoBackupAt(dbPath, baseTime)
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
 		os.WriteFile(dbPath, []byte("modified content"), 0644)
 		for i := 1; i < MaxAutoBackups; i++ {
-			if _, err := createAutoBackupAt(dbPath, baseTime.Add(time.Duration(i)*24*time.Hour), ""); err != nil {
+			if _, err := createAutoBackupAt(dbPath, baseTime.Add(time.Duration(i)*24*time.Hour)); err != nil {
 				t.Fatalf("createAutoBackupAt() error = %v", err)
 			}
 		}
