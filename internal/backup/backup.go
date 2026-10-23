@@ -65,14 +65,30 @@ type BackupInfo struct {
 // CreateAutoBackup creates an auto-backup of the given database file and
 // enforces rolling retention (keeping at most MaxAutoBackups auto-backups).
 func CreateAutoBackup(dbPath string) (string, error) {
-	return createAutoBackupAt(dbPath, time.Now())
+	return createAutoBackup(dbPath, time.Now(), true)
 }
 
-// createAutoBackupAt is the internal implementation that accepts a timestamp for
-// testability. keep names files that the retention pass must not delete;
-// Restore passes the backup it is restoring from and its own copy of it.
-func createAutoBackupAt(dbPath string, now time.Time, keep ...string) (string, error) {
-	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, true)
+// createAutoBackupAt is CreateAutoBackup at the time now, for tests.
+func createAutoBackupAt(dbPath string, now time.Time) (string, error) {
+	return createAutoBackup(dbPath, now, true)
+}
+
+// createAutoBackup copies dbPath to a new auto-backup at the time now and
+// enforces retention. keep names files that the retention pass must not
+// delete; Restore passes the backup it is restoring from and its own copy of
+// it.
+//
+// fold is false only for the safety backup of Restore when the WAL files of
+// the database cannot be folded into it (a damaged log, which DuckDB cannot
+// open the database with either, a damaged database file, or a read-only
+// file), or when a log that DuckDB ignored is still there after the fold. The backup is then the file
+// alone, with raw copies of the WAL files beside it (<backup>.wal and so on),
+// so that no byte of the current state is lost. A restore of that backup
+// applies a good log; it refuses a damaged one and says to move it away, and
+// then the file alone restores. Retention deletes the raw copies with their
+// backup.
+func createAutoBackup(dbPath string, now time.Time, fold bool, keep ...string) (string, error) {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, fold)
 	if err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
@@ -96,22 +112,6 @@ func createManualBackupAt(dbPath string, now time.Time) (string, error) {
 		return "", fmt.Errorf("failed to create manual backup: %w", err)
 	}
 
-	return backupPath, nil
-}
-
-// createRawSafetyBackup is the safety backup of Restore when the WAL files of
-// the database cannot be folded into it (a damaged log, which DuckDB cannot
-// open the database with either, or a read-only file): an auto-backup of the
-// file alone, with raw copies of the WAL files beside it (<backup>.wal and so
-// on), so that no byte of the current state is lost. A restore of that backup
-// applies a good log; it refuses a damaged one and says to move it away, and
-// then the file alone restores.
-func createRawSafetyBackup(dbPath string, now time.Time, keep ...string) (string, error) {
-	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, false)
-	if err != nil {
-		return "", fmt.Errorf("failed to create backup: %w", err)
-	}
-	_ = enforceRetention(dbPath, keep...)
 	return backupPath, nil
 }
 
@@ -168,8 +168,13 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 // never nothing. Before it, the WAL files of the current database (see
 // db.WALSuffixes) are folded into it, so that the old database is whole by
 // itself; DuckDB would replay them onto the restored file. If they cannot be
-// folded, the safety backup keeps raw copies of them, and they move aside.
-// Restore refuses a database that another process has open.
+// folded, or DuckDB ignored a log, the safety backup keeps raw copies of them,
+// and they move aside. Restore refuses a database that is not there, and one
+// that another process has open.
+//
+// When dbPath is a symbolic link, the rename replaces the file at the end of
+// the link, and the link stays; the backups keep their names beside dbPath,
+// where ListBackups looks (see db.FilePath).
 //
 // The database at dbPath must be closed while this runs (see db.DB.Close and
 // db.DB.WithFileClosed).
@@ -178,6 +183,17 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("backup file not found: %s", backupPath)
 	}
+	// The database must be there: the fold in step 4 opens it read-write, and
+	// DuckDB creates a missing file. The safety backup would then be an empty
+	// file that counts toward retention. A wrong path stops here, before any
+	// write.
+	if _, err := os.Stat(dbPath); err != nil {
+		return "", fmt.Errorf("cannot read database file %s: %w", dbPath, err)
+	}
+	// The file that a link at dbPath leads to, or dbPath itself. The copy goes
+	// beside it, so that the rename stays on one file system, and the rename
+	// replaces it, not the link.
+	file := db.FilePath(dbPath)
 
 	// 1. Check the backup: a backup cut short by a crash, a file that is not a
 	//    TMoney database, one of a newer app version, one that this user
@@ -190,7 +206,7 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// 2. Copy the backup beside the database, with the mode of the database
 	//    (not of the backup, which can be read-only), before anything can
 	//    touch the set of backups.
-	tempPath, err := copyToTemp(backupPath, dbPath, dbPath, true)
+	tempPath, err := copyToTemp(backupPath, file, file, true)
 	if err != nil {
 		return "", fmt.Errorf("failed to copy backup to temp file: %w", err)
 	}
@@ -211,45 +227,87 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	//    shows another process that has the database open (a TMoney in
 	//    another terminal): a swap under it would lose its later writes, so
 	//    Restore stops here, before it changes anything. A damaged log, which
-	//    DuckDB cannot open the database with either, or a read-only file
-	//    fails the fold; the safety backup then keeps raw copies of the logs.
+	//    DuckDB cannot open the database with either, a damaged database file,
+	//    or a read-only file fails the fold; when no other process has the
+	//    file, the safety backup then keeps raw copies of the logs.
 	foldErr := db.CheckpointFile(dbPath)
-	if db.IsLockedElsewhere(foldErr) {
-		return "", fmt.Errorf("the database is open in another program; close it and try again: %w", foldErr)
+	if foldErr != nil {
+		if err := refuseIfOpenElsewhere(file, foldErr); err != nil {
+			return "", err
+		}
 	}
 
 	// 5. Safety backup of the current state. Its retention pass keeps
-	//    backupPath and the copy.
-	var safetyPath string
-	if foldErr == nil {
-		safetyPath, err = createAutoBackupAt(dbPath, time.Now(), backupPath, tempPath)
-	} else {
-		safetyPath, err = createRawSafetyBackup(dbPath, time.Now(), backupPath, tempPath)
-	}
+	//    backupPath and the copy. It is raw when the fold failed, and when a
+	//    log is still there after the fold: DuckDB ignored it as torn, but
+	//    its bytes can hold committed rows.
+	raw := foldErr != nil || db.HasWAL(dbPath)
+	before := stateOf(file)
+	safetyPath, err := createAutoBackup(dbPath, time.Now(), !raw, backupPath, tempPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
+	}
+	if afterSafetyBackup != nil {
+		afterSafetyBackup(file)
+	}
+	// A program that opened the database after the check in step 4 and wrote
+	// to it changed the file or a log. The safety backup does not have that
+	// write, and the swap would lose it, so stop. The safety backup stays.
+	if stateOf(file) != before {
+		return safetyPath, fmt.Errorf("the database changed during the restore, so another program has it open; close it and try again")
+	}
+	// A program that only opened it changed nothing yet, but after the swap
+	// it writes to the old file, and its log goes beside the restored one,
+	// where the next open replays it. Ask the operating system again.
+	if held, err := heldElsewhere(file); err != nil {
+		return safetyPath, fmt.Errorf("cannot check whether another program has the database open: %w", err)
+	} else if held {
+		return safetyPath, errors.New("the database is open in another program; close it and try again")
 	}
 
 	// 6. Move the logs that the fold could not apply aside, rename the copy
 	//    over the database, and delete the moved logs: the safety backup has
-	//    them. If the rename fails, the logs move back.
-	moved, err := moveWALAside(dbPath, tempPath)
+	//    them, since nothing changed after it. If the rename fails, the logs
+	//    move back.
+	moved, err := moveWALAside(file, tempPath)
 	if err != nil {
 		return safetyPath, fmt.Errorf("failed to move the write-ahead log of the current database aside: %w", err)
 	}
 	if beforeSwap != nil {
-		beforeSwap(dbPath)
+		beforeSwap(file)
 	}
-	if err := os.Rename(tempPath, dbPath); err != nil {
+	if err := os.Rename(tempPath, file); err != nil {
 		moveBack(moved)
 		return safetyPath, fmt.Errorf("failed to move restored file into place: %w", err)
 	}
-	syncDir(filepath.Dir(dbPath))
+	syncDir(filepath.Dir(file))
 	for to := range moved {
 		_ = os.Remove(to)
 	}
 
 	return safetyPath, nil
+}
+
+// refuseIfOpenElsewhere is the check of Restore after a failed fold. The
+// read-write open of the fold shows another program that has the database
+// open by DuckDB's lock error. But the fold can fail first for another reason
+// (a file made read-only while that program has it open), and the text of the
+// lock error is DuckDB's, not an API. So it asks the operating system too
+// (db.HeldElsewhere): a swap under that program loses its later writes. If
+// that check fails, Restore cannot tell, and stops.
+func refuseIfOpenElsewhere(file string, foldErr error) error {
+	const open = "the database is open in another program; close it and try again: %w"
+	if db.IsLockedElsewhere(foldErr) {
+		return fmt.Errorf(open, foldErr)
+	}
+	held, err := heldElsewhere(file)
+	if err != nil {
+		return fmt.Errorf("cannot check whether another program has the database open (%v), and the database cannot be opened for writing: %w", err, foldErr)
+	}
+	if held {
+		return fmt.Errorf(open, foldErr)
+	}
+	return nil
 }
 
 // checkFailed is the error of Restore when the check of a file fails. file
@@ -274,19 +332,40 @@ func checkFailed(file string, err error, hint string) error {
 	}
 }
 
-// walHint is the hint of checkFailed for a backup with a log beside it: a
-// raw safety backup keeps a log that could not be applied, and without it the
-// file alone restores.
+// walHint is the hint of checkFailed for a backup with logs beside it: a raw
+// safety backup keeps logs that could not be applied, and without them the
+// file alone restores. It names every log there: DuckDB also reads
+// <backup>.wal.checkpoint, and its error can name that file.
 func walHint(backupPath string) string {
-	if !db.HasWAL(backupPath) {
+	logs := db.WALFiles(backupPath)
+	if len(logs) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("; if its write-ahead log cannot be applied, move %s.wal away to restore the file alone", backupPath)
+	return fmt.Sprintf("; if the error is about a write-ahead log, move %s away to restore the file alone", strings.Join(logs, " and "))
 }
 
 // beforeSwap, when set, runs right before Restore renames its copy over the
-// database. A test hook (see export_test.go).
-var beforeSwap func(dbPath string)
+// database, and afterSafetyBackup right after the safety backup. Test hooks
+// (see export_test.go).
+var (
+	beforeSwap        func(dbPath string)
+	afterSafetyBackup func(file string)
+)
+
+// heldElsewhere is db.HeldElsewhere; a test can make it fail.
+var heldElsewhere = db.HeldElsewhere
+
+// stateOf returns the size and the modification time of the database file
+// and of each of its WAL files: a write to the database changes one of them.
+func stateOf(file string) string {
+	var b strings.Builder
+	for _, suffix := range append([]string{""}, db.WALSuffixes...) {
+		if info, err := os.Stat(file + suffix); err == nil {
+			fmt.Fprintf(&b, "%s %d %d\n", suffix, info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	return b.String()
+}
 
 // moveWALAside renames the WAL files of dbPath to <tempPath><suffix>-old and
 // returns the moves, as a map from the new name to the old one. On an error
@@ -456,7 +535,16 @@ func samePath(a, b string) bool {
 // progress an old time. Best effort: a file it cannot delete stays, and is
 // harmless, because no listing shows it.
 func removeStalePartials(dbPath string, now time.Time, keep ...string) {
-	dir, base := filepath.Dir(dbPath), filepath.Base(dbPath)
+	sweepPartials(dbPath, now, keep)
+	// Through a link, Restore writes its copy beside the real file.
+	if file := db.FilePath(dbPath); file != dbPath {
+		sweepPartials(file, now, keep)
+	}
+}
+
+// sweepPartials is removeStalePartials for the folder and the name of path.
+func sweepPartials(path string, now time.Time, keep []string) {
+	dir, base := filepath.Dir(path), filepath.Base(path)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -530,7 +618,7 @@ func isDigits(s string) bool {
 // gives it the name (publish). If the process dies first, only the partial
 // file is left. If another process takes the name first, next names the
 // backup again. With fold false, raw copies of the WAL files of src go beside
-// the backup (see createRawSafetyBackup).
+// the backup (see createAutoBackup).
 func copyDatabase(src string, next func() string, fold bool) (string, error) {
 	dst := next()
 	tempPath, err := copyToTemp(src, dst, src, fold)
@@ -601,9 +689,11 @@ func publish(tempPath, dst string) error {
 // flushed to disk and closed, with the permissions of the file at modeOf, and
 // returns its path. When src has WAL files (see db.WALSuffixes), they hold
 // committed rows that are not in src yet: copyToTemp copies them beside the
-// partial file and, with fold, checkpoints them into it (db.CheckpointFile),
-// so the copy is one complete file and src does not change. Without fold the
-// raw copies stay beside the partial file. On error it removes what it wrote.
+// partial file and, with fold, checkpoints them into it (db.CheckpointFile)
+// and removes a log that DuckDB ignored, so the copy is one complete file and
+// src does not change. Without fold the raw copies stay beside the partial
+// file. The logs of a link are beside the file at its end (db.FilePath). On
+// error it removes what it wrote.
 func copyToTemp(src, dst, modeOf string, fold bool) (_ string, err error) {
 	in, err := os.Open(src)
 	if err != nil {
@@ -643,8 +733,9 @@ func copyToTemp(src, dst, modeOf string, fold bool) (_ string, err error) {
 	}
 
 	if db.HasWAL(src) {
+		logs := db.FilePath(src)
 		for _, suffix := range db.WALSuffixes {
-			err := copyPlain(src+suffix, tempPath+suffix)
+			err := copyPlain(logs+suffix, tempPath+suffix)
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
 				return "", err
 			}
@@ -652,6 +743,9 @@ func copyToTemp(src, dst, modeOf string, fold bool) (_ string, err error) {
 		if fold {
 			if err := db.CheckpointFile(tempPath); err != nil {
 				return "", fmt.Errorf("the write-ahead log of %s cannot be applied: %w", src, err)
+			}
+			if err := db.RemoveWAL(tempPath); err != nil {
+				return "", err
 			}
 		}
 	}

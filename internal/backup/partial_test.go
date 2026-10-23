@@ -117,6 +117,37 @@ func TestPartialNamesMatchTheSweep(t *testing.T) {
 	}
 }
 
+// TestSweepFindsPartialsBesideTheLinkedFile: through a link, Restore writes
+// its copy beside the real file, where the rename stays on one file system.
+// The sweep must find the leftover of a killed restore there too.
+func TestSweepFindsPartialsBesideTheLinkedFile(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"link", "real"} {
+		if err := os.Mkdir(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real := createTestDB(t, filepath.Join(root, "real"))
+	link := filepath.Join(root, "link", filepath.Base(real))
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	leftover := real + partialInfix + "123456"
+	if err := os.WriteFile(leftover, []byte("fictional partial copy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * stalePartialAge)
+	if err := os.Chtimes(leftover, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateAutoBackup(link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Errorf("the leftover beside the real file is still there (%v)", err)
+	}
+}
+
 // TestBackupKeepsSourcePermissions: the copy goes through a temp file, which
 // os.CreateTemp makes 0600; the backup must keep the mode of the database.
 func TestBackupKeepsSourcePermissions(t *testing.T) {
@@ -409,7 +440,8 @@ func TestNamesAheadOfTheClockKeepTheNewBackup(t *testing.T) {
 }
 
 // TestRetentionDeletesTheRawLogsOfABackup: a raw safety backup (see
-// createRawSafetyBackup) has copies of the old logs beside it. They go with it.
+// createAutoBackup without fold) has copies of the old logs beside it. They
+// go with it.
 func TestRetentionDeletesTheRawLogsOfABackup(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := createTestDB(t, dir)
