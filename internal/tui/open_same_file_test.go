@@ -3,8 +3,12 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/dbtest"
 )
@@ -149,5 +153,162 @@ func TestFailedOpenEndsTheFileOperation(t *testing.T) {
 	}
 	if a.submitOpenFile(missing) == nil {
 		t.Error("the failed open blocked the next file operation")
+	}
+}
+
+// TestOpenThePreviousFileWaitsForItsReads: Close ends only the idle
+// connections of the kept handle. A load of the old session that still holds
+// one keeps the DuckDB instance, and a new handle would share it. The open
+// must wait for that read, and say "try again" if it holds on.
+func TestOpenThePreviousFileWaitsForItsReads(t *testing.T) {
+	saved := prevDrainTimeout
+	prevDrainTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { prevDrainTimeout = saved })
+
+	first, path := dbtest.NewFile(t, "first.tdb")
+	t.Cleanup(func() { _ = first.Close() })
+	rows, err := first.Conn().Query(`SELECT key FROM _metadata`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows.Next() {
+		t.Fatal("no row")
+	}
+	t.Cleanup(func() { _ = rows.Close() })
+	a := NewApp(first, &config.Config{})
+	a.switchDatabase(dbtest.New(t))
+
+	msg := a.submitOpenFile(path)()
+	if saved, ok := msg.(fileDialogSavedMsg); ok {
+		_ = saved.db.Close()
+		t.Fatal("the open ran while a read held the kept handle of the file")
+	}
+	failed, ok := msg.(fileOpFailedMsg)
+	if !ok || !strings.Contains(failed.err.Error(), "try again") {
+		t.Fatalf("submitOpenFile() = %#v, want a fileOpFailedMsg that says try again", msg)
+	}
+	a.Update(msg)
+
+	_ = rows.Close()
+	saved2, ok := a.submitOpenFile(path)().(fileDialogSavedMsg)
+	if !ok {
+		t.Fatal("the open after the read let go did not open the file")
+	}
+	_ = saved2.db.Close()
+}
+
+// TestOpenWithATildeIsTheOpenFile: the dialog passes the text as typed. "~/x"
+// names the open file as much as its full path does.
+func TestOpenWithATildeIsTheOpenFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	database, _ := dbtest.NewFileIn(t, home, "fin.tdb")
+	t.Cleanup(func() { _ = database.Close() })
+	a := NewApp(database, &config.Config{})
+
+	msg := a.submitOpenFile("~/fin.tdb")()
+	if saved, ok := msg.(fileDialogSavedMsg); ok {
+		_ = saved.db.Close()
+		t.Fatal("File > Open of ~/fin.tdb made a second handle on the open file")
+	}
+	if _, ok := msg.(fileAlreadyOpenMsg); !ok {
+		t.Errorf("submitOpenFile(~/fin.tdb)() = %T, want fileAlreadyOpenMsg", msg)
+	}
+}
+
+// TestNewFileUnderTheHomeFolder: File > New of "~/x" creates x.tdb in the home
+// folder, and no folder named "~" in the working folder.
+func TestNewFileUnderTheHomeFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	work := t.TempDir()
+	t.Chdir(work)
+	a := NewApp(dbtest.New(t), &config.Config{})
+
+	saved, ok := a.submitNewFile("~/fictional-new")().(fileDialogSavedMsg)
+	if !ok {
+		t.Fatal("File > New of ~/fictional-new did not create the file")
+	}
+	t.Cleanup(func() { _ = saved.db.Close() })
+	if want := filepath.Join(home, "fictional-new.tdb"); saved.db.Path() != want {
+		t.Errorf("the new database is at %s, want %s", saved.db.Path(), want)
+	}
+	if _, err := os.Stat(filepath.Join(work, "~")); err == nil {
+		t.Error("File > New made a folder named ~ in the working folder")
+	}
+}
+
+// TestNewFileWithoutTheExtensionIsTheSameFile: Create adds ".tdb", so File >
+// New of "x" while an open of "x.tdb" is in flight is an operation on the same
+// file.
+func TestNewFileWithoutTheExtensionIsTheSameFile(t *testing.T) {
+	_, other := dbtest.NewFile(t, "other.tdb")
+	a := NewApp(dbtest.New(t), &config.Config{})
+	if a.submitOpenFile(other) == nil {
+		t.Fatal("the open did not start")
+	}
+	if a.submitNewFile(strings.TrimSuffix(other, ".tdb")) != nil {
+		t.Error("File > New of the path without .tdb started while an open of the file was in flight")
+	}
+}
+
+// TestOpenThePreviousFileWaitsForItsRestore: a restore of file A still runs
+// when the user switches to B and then opens A again. The new handle must not
+// open A before the restore has replaced it: it would show the old data, and
+// its writes would go to the replaced file and be lost.
+func TestOpenThePreviousFileWaitsForItsRestore(t *testing.T) {
+	saved := prevDrainTimeout
+	prevDrainTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { prevDrainTimeout = saved })
+
+	first, path := dbtest.NewFile(t, "first.tdb")
+	t.Cleanup(func() { _ = first.Close() })
+	if err := first.SetMetadata("fictional_state", "before"); err != nil {
+		t.Fatal(err)
+	}
+	bk, bkPath := dbtest.NewFile(t, "fictional-backup.tdb")
+	if err := bk.SetMetadata("fictional_state", "restored"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bk.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	a := NewApp(first, &config.Config{})
+	inRestore, proceed := make(chan struct{}), make(chan struct{})
+	result := make(chan tea.Msg, 1)
+	go func() {
+		result <- restoreFile(first, bkPath, func(dbPath, backupPath string) (string, error) {
+			close(inRestore)
+			<-proceed
+			return backup.Restore(dbPath, backupPath)
+		})
+	}()
+	<-inRestore
+	a.switchDatabase(dbtest.New(t)) // File > Open B: A is the kept handle now
+
+	msg := a.submitOpenFile(path)() // File > Open A while its restore runs
+	if opened, ok := msg.(fileDialogSavedMsg); ok {
+		_ = opened.db.Close()
+		close(proceed)
+		<-result
+		t.Fatal("File > Open of the previous file opened it while its restore ran")
+	}
+	if failed, ok := msg.(fileOpFailedMsg); !ok || !strings.Contains(failed.err.Error(), "try again") {
+		t.Errorf("submitOpenFile() = %#v, want a fileOpFailedMsg that says try again", msg)
+	}
+	a.Update(msg)
+	close(proceed)
+	<-result
+
+	opened, ok := a.submitOpenFile(path)().(fileDialogSavedMsg)
+	if !ok {
+		t.Fatal("the open after the restore did not open the file")
+	}
+	defer func() { _ = opened.db.Close() }()
+	if got, err := opened.db.GetMetadata("fictional_state"); err != nil || got != "restored" {
+		t.Errorf("the new handle shows fictional_state = %q (%v), want the restored %q", got, err, "restored")
 	}
 }

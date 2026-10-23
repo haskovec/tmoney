@@ -272,7 +272,15 @@ func sameTarget(a, b string) bool {
 
 // submitNewFile returns a command that creates a new database file, or nil
 // while another file operation is in flight (see startFileOperation).
+//
+// The path is the text of the dialog. It names the file that db.Create makes:
+// with a leading "~" expanded (or MkdirAll made a folder named "~" in the
+// working folder) and ".tdb" added, so that the same-file checks see that file.
 func (a *App) submitNewFile(path string) tea.Cmd {
+	path = db.ExpandHome(path)
+	if !strings.HasSuffix(path, db.FileExtension) {
+		path += db.FileExtension
+	}
 	if !a.startFileOperation(path) {
 		return nil
 	}
@@ -292,6 +300,10 @@ func (a *App) submitNewFile(path string) tea.Cmd {
 	}
 }
 
+// prevDrainTimeout bounds the wait of submitOpenFile for the work that still
+// holds the kept handle of the previous file. A var so tests can shorten it.
+var prevDrainTimeout = db.SettleTimeout
+
 // fileAlreadyOpenMsg is sent when File > Open names the file of db, the open
 // database when the command started.
 type fileAlreadyOpenMsg struct {
@@ -306,8 +318,17 @@ type fileAlreadyOpenMsg struct {
 // instance per path, so the second handle shares the first one's instance: a
 // backup or restore through it closes only its own pool, the instance lives on,
 // and the backup misses the rows still in <path>.wal. The open file stays as it
-// is, and the kept handle of the previous file (prevDB) closes first.
+// is. The kept handle of the previous file (prevDB) closes for good first
+// (db.DB.CloseAndSettle): the open waits for a backup or restore that still
+// runs on it, or the new handle would open the file that the restore replaces,
+// and for the reads that still hold it, as an open of the file blocks inside
+// DuckDB until they let go, with no time limit. If they hold on, the open
+// fails with "try again".
+//
+// The path is the text of the dialog, so a leading "~" is expanded first, as
+// db.Open does, or the same-file checks would miss the open file.
 func (a *App) submitOpenFile(path string) tea.Cmd {
+	path = db.ExpandHome(path)
 	if !a.startFileOperation(path) {
 		return nil
 	}
@@ -317,7 +338,11 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 			return fileAlreadyOpenMsg{path: path, db: current}
 		}
 		if prev != nil && sameFile(path, prev.Path()) {
-			_ = prev.Close() // idempotent; switchDatabase closes it again
+			// switchDatabase closes it again, which does nothing more.
+			if settled, err := prev.CloseAndSettle(prevDrainTimeout); err != nil || !settled {
+				return fileOpFailedMsg{path: path,
+					err: fmt.Errorf("%s is still busy with a load of the last session; try again in a moment", filepath.Base(path))}
+			}
 		}
 		database, err := db.Open(path)
 		if err != nil {
