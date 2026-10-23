@@ -55,6 +55,14 @@ type DB struct {
 	// WithFileClosed that times out on reopenMu meanwhile gives the same "try
 	// again" answer (errFileBusy), not the blocked heal's.
 	fileBusy atomic.Bool
+	// stale is set while the closed pool is still published after a failed
+	// reopen (openPool, reconnect), although nothing closed the handle on
+	// purpose. Each use of the handle then starts a reconnect (see healStale).
+	stale atomic.Bool
+	// lastHeal is the time of the last reconnect that healStale started, as
+	// nanoseconds on the monotonic clock (see monoNow), so that a burst of
+	// reads tries at most once a second.
+	lastHeal atomic.Int64
 	path     string
 	txMu     sync.Mutex // serializes WithTx: single-writer discipline
 }
@@ -70,15 +78,57 @@ var ErrClosed = errors.New("database is closed")
 // documented as per-call.
 func (db *DB) live() *sql.DB {
 	db.connMu.RLock()
-	defer db.connMu.RUnlock()
-	return db.conn
+	conn := db.conn
+	db.connMu.RUnlock()
+	if db.stale.Load() {
+		db.healStale()
+	}
+	return conn
+}
+
+// healStale starts a reconnect in the background, at most once a second, while
+// the handle is stale. The call that starts it still gets "sql: database is
+// closed"; a later call gets the new pool. Before, only the heal of a failed
+// write (healAfterFatal) tried the open again, so the reads of every view
+// failed until the user wrote something, and nobody had seen the error of the
+// failed reopen.
+//
+// The reconnect can wait for reopenMu behind a file operation (WithFileClosed),
+// whose reopen clears stale. So it checks stale again once it holds reopenMu,
+// or it would close the pool that the file operation just opened.
+func (db *DB) healStale() {
+	now, last := monoNow(), db.lastHeal.Load()
+	if (last != 0 && now-last < int64(time.Second)) || !db.lastHeal.CompareAndSwap(last, now) {
+		return
+	}
+	if !db.healing.CompareAndSwap(false, true) {
+		return // a heal is in flight already
+	}
+	go func() {
+		defer db.healing.Store(false)
+		db.reopenMu.Lock()
+		defer db.reopenMu.Unlock()
+		if db.stale.Load() {
+			_ = db.reconnectLocked()
+		}
+	}()
+}
+
+// monoStart anchors monoNow.
+var monoStart = time.Now()
+
+// monoNow returns nanoseconds since monoStart on the monotonic clock, which a
+// change of the wall clock does not move. A wall-clock time would stop the
+// heals for as long as the clock stepped back.
+func monoNow() int64 {
+	return int64(time.Since(monoStart))
 }
 
 // Open opens an existing TMoney database file.
 // Returns an error if the file doesn't exist, isn't a valid DuckDB file,
 // or isn't a TMoney database.
 func Open(path string) (*DB, error) {
-	path = expandHome(path)
+	path = ExpandHome(path)
 
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -125,7 +175,7 @@ func Open(path string) (*DB, error) {
 // Create creates a new TMoney database file at the specified path.
 // Returns an error if the file already exists.
 func Create(path string) (*DB, error) {
-	path = expandHome(path)
+	path = ExpandHome(path)
 
 	// Ensure path has correct extension
 	if !strings.HasSuffix(path, FileExtension) {
@@ -186,19 +236,24 @@ func Create(path string) (*DB, error) {
 	return db, nil
 }
 
-// expandHome replaces a leading "~" (alone, or before a path separator) with
+// ExpandHome replaces a leading "~" (alone, or before a path separator) with
 // the home folder. DuckDB does that itself when it opens a path, but the os
 // calls on the path do not: the checks of Open, Create and the reopen, and
 // every backup. So the handle keeps the expanded path, and both see one file.
-func expandHome(path string) string {
-	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+//
+// DuckDB expands any leading "~", also in "~user/x", which the os reads as a
+// folder "~user" in the working folder. Such a path gets "./" in front, so
+// DuckDB opens that folder too.
+func ExpandHome(path string) string {
+	if !strings.HasPrefix(path, "~") {
 		return path
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[1:])
+		}
 	}
-	return filepath.Join(home, path[1:])
+	return "." + string(filepath.Separator) + path
 }
 
 // Close closes the database connection.
@@ -227,6 +282,7 @@ func (db *DB) close() (*sql.DB, uint64, error) {
 
 	db.closed = true
 	db.closeGen++
+	db.stale.Store(false) // closed on purpose: nothing to heal
 	if db.conn == nil {
 		return nil, db.closeGen, nil
 	}
@@ -335,9 +391,14 @@ func (db *DB) isClosed() bool {
 // handle reopens in the background when the read lets go.
 //
 // fn's error is returned after the reopen. A failed reopen is joined onto it.
-// The handle then stays on the closed pool, and the heal of the next failed
-// write (healAfterFatal) tries the open again.
+// The handle then stays on the closed pool, and its next use tries the open
+// again (see healStale).
 func (db *DB) WithFileClosed(fn func(path string) error) error {
+	// The reopen of an earlier call still waits for a held read: say so at
+	// once, rather than hold the writer lock for the whole wait below.
+	if db.fileBusy.Load() {
+		return &DatabaseError{Op: "close for file operation", Err: errFileBusy}
+	}
 	db.txMu.Lock()
 	defer db.txMu.Unlock()
 	// Wait for a heal in flight: it publishes a healthy instance, so the Close
@@ -427,7 +488,11 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 func (db *DB) reconnect() error {
 	db.reopenMu.Lock()
 	defer db.reopenMu.Unlock()
+	return db.reconnectLocked()
+}
 
+// reconnectLocked is reconnect for a caller that holds reopenMu.
+func (db *DB) reconnectLocked() error {
 	db.connMu.Lock()
 	old, closed, gen := db.conn, db.closed, db.closeGen
 	db.connMu.Unlock()
@@ -446,6 +511,7 @@ func (db *DB) reconnect() error {
 
 	conn, err := db.openConn()
 	if err != nil {
+		db.stale.Store(true) // the closed pool stays published; see healStale
 		return err
 	}
 	db.connMu.Lock()
@@ -456,6 +522,7 @@ func (db *DB) reconnect() error {
 	}
 	db.conn = conn
 	db.closed = false
+	db.stale.Store(false)
 	return nil
 }
 
@@ -489,8 +556,8 @@ func (db *DB) awaitDrain(pool *sql.DB, gen uint64) bool {
 //
 // If the open fails (the file is gone, or a network share dropped), the closed
 // pool stays published, as after a failed reconnect, but the handle no longer
-// counts as closed on purpose: the close was only for the file operation. So
-// the heal of the next failed write (healAfterFatal) tries the open again,
+// counts as closed on purpose: the close was only for the file operation. The
+// handle is stale, and its next use tries the open again (see healStale),
 // instead of a session that stays closed for good.
 func (db *DB) openPool(gen uint64) error {
 	conn, err := db.openConn()
@@ -504,9 +571,11 @@ func (db *DB) openPool(gen uint64) error {
 	}
 	db.closed = false
 	if err != nil {
+		db.stale.Store(true)
 		return err
 	}
 	db.conn = conn
+	db.stale.Store(false)
 	return nil
 }
 
