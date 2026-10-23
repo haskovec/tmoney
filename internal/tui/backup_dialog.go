@@ -20,6 +20,9 @@ type backupCreatedMsg struct {
 // is unchanged (see db.DB.WithFileClosed); only its contents are new.
 type restoreConfirmedMsg struct {
 	safetyBackupPath string
+	// reopenErr is set when the restore replaced the file but the handle did
+	// not reopen on it.
+	reopenErr error
 }
 
 // buildRestoreBackupDialog creates a dialog for selecting a backup to restore from.
@@ -140,22 +143,34 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 	backupPath := selectedBackup.Path
 	database := a.db
 	a.showConfirmDialog("Confirm Restore", msg, func() tea.Msg {
-		// The file is swapped with the database closed and the same handle
-		// reopened after (see db.DB.WithFileClosed). On failure Restore has put
-		// the original file back, so the reopened handle is the untouched data.
-		var safetyPath string
-		err := database.WithFileClosed(func(path string) error {
-			var err error
-			safetyPath, err = backup.Restore(path, backupPath)
-			return err
-		})
-		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to restore: %w", err)}
-		}
-		return restoreConfirmedMsg{safetyBackupPath: safetyPath}
+		return restoreFile(database, backupPath, backup.Restore)
 	})
 
 	return a, nil
+}
+
+// restoreFile runs restore (backup.Restore) on the file of database, with the
+// file closed and the same handle reopened after (see db.DB.WithFileClosed),
+// and reports the outcome to Update.
+//
+// A failed restore leaves the old data, and the reopened handle shows it. But
+// when restore succeeded and only the reopen failed, the file is the restored
+// one all the same: the message is restoreConfirmedMsg, so the session drops
+// what it derived from the old file (see afterRestore). A later heal or file
+// operation reopens the handle on the restored data.
+func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backupPath string) (string, error)) tea.Msg {
+	var safetyPath string
+	restored := false
+	err := database.WithFileClosed(func(path string) error {
+		var err error
+		safetyPath, err = restore(path, backupPath)
+		restored = err == nil
+		return err
+	})
+	if err != nil && !restored {
+		return errMsg{err: fmt.Errorf("failed to restore: %w", err)}
+	}
+	return restoreConfirmedMsg{safetyBackupPath: safetyPath, reopenErr: err}
 }
 
 // reloadAfterRestore discards everything derived from the old file contents —
@@ -198,11 +213,17 @@ func backupFilename(path string) string {
 }
 
 // afterRestore rebuilds the app over the restored database and reports where
-// the pre-restore safety copy went.
-func (a *App) afterRestore(safetyBackupPath string) (tea.Model, tea.Cmd) {
+// the pre-restore safety copy went. When the handle did not reopen, the views
+// cannot load: it reports that error, and the views load at the next refresh.
+func (a *App) afterRestore(msg restoreConfirmedMsg) (tea.Model, tea.Cmd) {
 	model, cmd := a.reloadAfterRestore()
+	if msg.reopenErr != nil {
+		a.err = fmt.Errorf("restored from backup (safety backup: %s), but the database did not open again: %w. Restart tmoney if it does not come back",
+			backupFilename(msg.safetyBackupPath), msg.reopenErr)
+		return model, nil
+	}
 	a.statusbar.AddNotification(
-		fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(safetyBackupPath)),
+		fmt.Sprintf("Restored from backup (safety backup: %s)", backupFilename(msg.safetyBackupPath)),
 		widget.NotificationInfo,
 	)
 	return model, cmd

@@ -280,10 +280,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.afterAccountDialogSave()
 
 	case fileDialogSavedMsg:
+		a.endFileOperation()
 		return a.switchDatabase(msg.db)
 
 	case fileAlreadyOpenMsg:
+		a.endFileOperation()
 		a.reportAlreadyOpen(msg.path)
+		return a, nil
+
+	case fileOpFailedMsg:
+		a.endFileOperation()
+		a.err = msg.err
 		return a, nil
 
 	case backupCreatedMsg:
@@ -294,7 +301,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case restoreConfirmedMsg:
-		return a.afterRestore(msg.safetyBackupPath)
+		return a.afterRestore(msg)
 
 	case reconciliationStartedMsg:
 		// Session started, switch to reconciliation view and load data

@@ -76,3 +76,44 @@ func TestOpenThePreviousFile_ClosesItsKeptHandleFirst(t *testing.T) {
 		t.Fatalf("WithFileClosed() error = %v", err)
 	}
 }
+
+// TestOneFileOperationAtATime: a second File > Open or New while the first one
+// is still opening (a slow share) must not run. Two opens of one file gave two
+// handles on it, and two creates of one path let the loser delete the file
+// that the winner uses.
+func TestOneFileOperationAtATime(t *testing.T) {
+	first := dbtest.New(t)
+	_, other := dbtest.NewFile(t, "other.tdb")
+	a := NewApp(first, &config.Config{})
+
+	cmd := a.submitOpenFile(other)
+	if cmd == nil {
+		t.Fatal("the first open did not start")
+	}
+	if a.submitOpenFile(other) != nil {
+		t.Error("a second open started while the first one was in flight")
+	}
+	if a.submitNewFile(filepath.Join(t.TempDir(), "new.tdb")) != nil {
+		t.Error("a create started while an open was in flight")
+	}
+
+	a.Update(cmd())
+	t.Cleanup(func() { _ = a.db.Close() })
+	if a.submitOpenFile(other) == nil {
+		t.Error("no file operation can start after the first one ended")
+	}
+}
+
+// TestFailedOpenEndsTheFileOperation: an open that fails reports its error and
+// does not block the next File > Open.
+func TestFailedOpenEndsTheFileOperation(t *testing.T) {
+	a := NewApp(dbtest.New(t), &config.Config{})
+	missing := filepath.Join(t.TempDir(), "missing.tdb")
+	a.Update(a.submitOpenFile(missing)())
+	if a.err == nil {
+		t.Error("the failed open reported no error")
+	}
+	if a.submitOpenFile(missing) == nil {
+		t.Error("the failed open blocked the next file operation")
+	}
+}

@@ -225,18 +225,50 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// submitNewFile returns a command that creates a new database file.
+// fileOpFailedMsg is sent when File > New or Open fails.
+type fileOpFailedMsg struct {
+	err error
+}
+
+// startFileOperation records that a File > New or Open of path starts. When one
+// is still in flight it reports false and tells the user to wait: one runs at a
+// time. Two opens of one file gave two handles on it (see submitOpenFile), two
+// creates of one path let the loser delete the file that the winner uses, and a
+// switch in flight made the same-file check of a later open stale. The message
+// of the command ends the operation (endFileOperation).
+func (a *App) startFileOperation(path string) bool {
+	if a.fileInFlight != "" {
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Wait: %s is still opening", filepath.Base(a.fileInFlight)),
+			widget.NotificationInfo,
+		)
+		return false
+	}
+	a.fileInFlight = path
+	return true
+}
+
+// endFileOperation records that the File > New or Open in flight reported.
+func (a *App) endFileOperation() {
+	a.fileInFlight = ""
+}
+
+// submitNewFile returns a command that creates a new database file, or nil
+// while another file operation is in flight (see startFileOperation).
 func (a *App) submitNewFile(path string) tea.Cmd {
+	if !a.startFileOperation(path) {
+		return nil
+	}
 	return func() tea.Msg {
 		// Create the directory if needed
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return errMsg{err: fmt.Errorf("failed to create directory: %w", err)}
+			return fileOpFailedMsg{err: fmt.Errorf("failed to create directory: %w", err)}
 		}
 
 		database, err := db.Create(path)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create database: %w", err)}
+			return fileOpFailedMsg{err: fmt.Errorf("failed to create database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
@@ -248,7 +280,8 @@ type fileAlreadyOpenMsg struct {
 	path string
 }
 
-// submitOpenFile returns a command that opens an existing database file.
+// submitOpenFile returns a command that opens an existing database file, or nil
+// while another file operation is in flight (see startFileOperation).
 //
 // It never opens a second handle on a file this app has open. DuckDB caches one
 // instance per path, so the second handle shares the first one's instance: a
@@ -256,6 +289,9 @@ type fileAlreadyOpenMsg struct {
 // and the backup misses the rows still in <path>.wal. The open file stays as it
 // is, and the kept handle of the previous file (prevDB) closes first.
 func (a *App) submitOpenFile(path string) tea.Cmd {
+	if !a.startFileOperation(path) {
+		return nil
+	}
 	current, prev := a.db, a.prevDB
 	return func() tea.Msg {
 		if current != nil && sameFile(path, current.Path()) {
@@ -266,7 +302,7 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 		}
 		database, err := db.Open(path)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to open database: %w", err)}
+			return fileOpFailedMsg{err: fmt.Errorf("failed to open database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
