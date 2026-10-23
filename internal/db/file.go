@@ -1,6 +1,9 @@
 package db
 
 import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +25,13 @@ import (
 // header says, so a backup cut short by a crash during its copy fails here, not
 // after the swap.
 //
+// A file that this process cannot read gives an *UnreadableFileError, and one
+// that another process has open gives a *LockedFileError, not a
+// *CorruptedFileError: each can be a good database. DuckDB reports both as an
+// "IO Error", the same as a file that a crash cut short, so ValidateFile opens
+// the file for reading before the attach, and looks for DuckDB's lock error
+// after it.
+//
 // The file is attached to an in-memory database by a SQL string, not opened by
 // a DSN: duckdb-go parses a DSN as a URL, so a "#" in a folder name moved the
 // read-only option into the URL fragment (a read-write open), and a "%" failed
@@ -31,42 +41,37 @@ import (
 // the instance installs and loads no extensions, so no check goes to the
 // network.
 func ValidateFile(path string) error {
-	if _, err := os.Stat(path); err != nil {
+	f, err := os.Open(path)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return &FileNotFoundError{Path: path}
 		}
-		return &DatabaseError{Op: "validate", Err: err}
-	}
-	conn, err := openPoolAt(":memory:")
-	if err != nil {
-		return &DatabaseError{Op: "validate", Err: err}
-	}
-	defer func() { _ = conn.Close() }()
-	conn.SetMaxOpenConns(1) // the settings and USE below apply to one connection
-	for _, q := range []string{
-		`SET autoinstall_known_extensions = false`,
-		`SET autoload_known_extensions = false`,
-	} {
-		if _, err := conn.Exec(q); err != nil {
-			return &DatabaseError{Op: "validate", Err: err}
+		if IsLockedElsewhere(err) { // Windows: DuckDB opens a file with no sharing
+			return &LockedFileError{Path: path, Err: err}
 		}
+		return &UnreadableFileError{Path: path, Err: err}
 	}
+	_ = f.Close()
 	// EvalSymlinks before Abs: Abs cleans "link/.." away as text, but the os
 	// resolves the link first, and so does the copy of the file.
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return &DatabaseError{Op: "validate", Err: err}
+		return &UnreadableFileError{Path: path, Err: err}
 	}
 	abs, err := filepath.Abs(resolved)
 	if err != nil {
 		return &DatabaseError{Op: "validate", Err: err}
 	}
-	quoted := "'" + strings.ReplaceAll(abs, "'", "''") + "'"
-	if _, err := conn.Exec(`ATTACH ` + quoted + ` AS checked (TYPE DUCKDB, READ_ONLY)`); err != nil {
-		return &CorruptedFileError{Path: path, Err: err}
-	}
-	if _, err := conn.Exec(`USE checked`); err != nil {
+	conn, err := openChecked(abs)
+	if err != nil {
 		return &DatabaseError{Op: "validate", Err: err}
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.Ping(); err != nil { // the first connection attaches the file
+		if IsLockedElsewhere(err) {
+			return &LockedFileError{Path: path, Err: err}
+		}
+		return &CorruptedFileError{Path: path, Err: err}
 	}
 
 	file := &DB{conn: conn, path: path}
@@ -81,4 +86,43 @@ func ValidateFile(path string) error {
 		return &VersionMismatchError{FileVersion: version, AppVersion: CurrentSchemaVersion}
 	}
 	return nil
+}
+
+// openChecked opens a pool on an in-memory DuckDB instance whose connections
+// see the file at abs, attached read-only as "checked", as their default
+// database. validateTMoneyFile and SchemaVersion then read it with their
+// usual queries.
+//
+// Every connection gets the same state, so that the checks do not depend on
+// database/sql giving back one connection: it can replace a connection at any
+// call. The extension settings are instance options in the DSN, which apply
+// before the first connection. The ATTACH is for the whole instance, so a
+// connection after the first one finds it there. USE is for one connection
+// only, so each new connection runs it again.
+func openChecked(abs string) (*sql.DB, error) {
+	quoted := "'" + strings.ReplaceAll(abs, "'", "''") + "'"
+	return openPoolInit(":memory:?autoinstall_known_extensions=false&autoload_known_extensions=false",
+		func(c driver.ExecerContext) error {
+			for _, q := range []string{
+				`ATTACH IF NOT EXISTS ` + quoted + ` AS checked (TYPE DUCKDB, READ_ONLY)`,
+				`USE checked`,
+			} {
+				if _, err := c.ExecContext(context.Background(), q, nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+}
+
+// IsLockedElsewhere reports whether err is DuckDB's report that another
+// process holds the lock on the database file: another TMoney, or another
+// DuckDB client, has it open.
+func IsLockedElsewhere(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Could not set lock on file") || // POSIX
+		strings.Contains(msg, "being used by another process") // Windows
 }

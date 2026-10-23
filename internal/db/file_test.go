@@ -1,9 +1,13 @@
 package db
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 )
 
 // TestValidateFileChangesNothing: ValidateFile opens the file read-only, also
@@ -92,5 +96,61 @@ func TestValidateFileThroughALinkAndDotDot(t *testing.T) {
 	}
 	if err := ValidateFile(filepath.Join(root, "link") + string(filepath.Separator) + ".." + string(filepath.Separator) + "b.tdb"); err != nil {
 		t.Errorf("ValidateFile(link/../b.tdb) error = %v, want the valid file real/b.tdb", err)
+	}
+}
+
+// TestValidateFileUnreadable: a file that this process cannot read can still
+// be a good database (a backup that another user made of a database with mode
+// 0600: a backup takes the mode of its database). DuckDB reports it as an "IO
+// Error", the same as a file that a crash cut short, so ValidateFile must find
+// it before the attach.
+func TestValidateFileUnreadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has only a read-only attribute, no permission bits")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file of any mode")
+	}
+	path := walOnlyFile(t, filepath.Join(t.TempDir(), "fin.tdb"))
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	err := ValidateFile(path)
+	var unreadable *UnreadableFileError
+	if !errors.As(err, &unreadable) || !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("ValidateFile(mode 000) error = %v (%T), want an *UnreadableFileError for fs.ErrPermission", err, err)
+	}
+}
+
+// TestCheckedPoolOnEveryConnection: USE holds for one connection only, and
+// database/sql can replace the connection of a pool at any call. Each
+// connection of the pool of ValidateFile must read the attached file, with no
+// extension install or load. Here the pool closes each connection after its
+// use.
+func TestCheckedPoolOnEveryConnection(t *testing.T) {
+	path := walOnlyFile(t, filepath.Join(t.TempDir(), "fin.tdb"))
+	pool, err := openChecked(path)
+	if err != nil {
+		t.Fatalf("openChecked() error = %v", err)
+	}
+	defer func() { _ = pool.Close() }()
+	pool.SetConnMaxLifetime(time.Nanosecond)
+
+	file := &DB{conn: pool, path: path}
+	for i := range 3 {
+		if err := file.validateTMoneyFile(); err != nil {
+			t.Fatalf("pass %d: validateTMoneyFile() error = %v", i, err)
+		}
+		if _, err := file.SchemaVersion(); err != nil {
+			t.Fatalf("pass %d: SchemaVersion() error = %v", i, err)
+		}
+		for _, setting := range []string{"autoinstall_known_extensions", "autoload_known_extensions"} {
+			var on bool
+			if err := pool.QueryRow(`SELECT current_setting('` + setting + `')`).Scan(&on); err != nil || on {
+				t.Errorf("pass %d: %s = %v, %v; want false", i, setting, on, err)
+			}
+		}
 	}
 }

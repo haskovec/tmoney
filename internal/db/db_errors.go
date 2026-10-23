@@ -44,6 +44,39 @@ func (e *CorruptedFileError) Unwrap() error {
 	return e.Err
 }
 
+// UnreadableFileError indicates that this process cannot read the file, such
+// as for lack of permission. The file itself can be a good database. Its text
+// is that of Err, an os error, which names the file and the reason.
+type UnreadableFileError struct {
+	Path string
+	Err  error
+}
+
+func (e *UnreadableFileError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *UnreadableFileError) Unwrap() error {
+	return e.Err
+}
+
+// LockedFileError indicates that another process has the file open, so DuckDB
+// cannot attach it (see IsLockedElsewhere). The file itself can be a good
+// database. Its text is that of Err, which names the file and, on POSIX, the
+// process.
+type LockedFileError struct {
+	Path string
+	Err  error
+}
+
+func (e *LockedFileError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *LockedFileError) Unwrap() error {
+	return e.Err
+}
+
 // DatabaseError is a general database operation error.
 type DatabaseError struct {
 	Op  string
