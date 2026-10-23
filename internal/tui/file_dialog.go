@@ -225,32 +225,49 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// fileOpFailedMsg is sent when File > New or Open fails.
+// fileOpFailedMsg is sent when File > New or Open of path fails.
 type fileOpFailedMsg struct {
-	err error
+	path string
+	err  error
 }
 
 // startFileOperation records that a File > New or Open of path starts. When one
-// is still in flight it reports false and tells the user to wait: one runs at a
-// time. Two opens of one file gave two handles on it (see submitOpenFile), two
-// creates of one path let the loser delete the file that the winner uses, and a
-// switch in flight made the same-file check of a later open stale. The message
-// of the command ends the operation (endFileOperation).
+// on the same file is still in flight it reports false and tells the user to
+// wait: two opens of one file gave two handles on it (see submitOpenFile), and
+// two creates of one path let the loser delete the file that the winner uses.
+// Operations on other files still run, so an open that never returns (a share
+// that hangs) blocks only its own file. The message of the command ends the
+// operation (endFileOperation).
 func (a *App) startFileOperation(path string) bool {
-	if a.fileInFlight != "" {
-		a.statusbar.AddNotification(
-			fmt.Sprintf("Wait: %s is still opening", filepath.Base(a.fileInFlight)),
-			widget.NotificationInfo,
-		)
-		return false
+	for _, busy := range a.filesInFlight {
+		if sameTarget(busy, path) {
+			a.statusbar.AddNotification(
+				fmt.Sprintf("Wait: %s is still opening", filepath.Base(busy)),
+				widget.NotificationInfo,
+			)
+			return false
+		}
 	}
-	a.fileInFlight = path
+	a.filesInFlight = append(a.filesInFlight, path)
 	return true
 }
 
-// endFileOperation records that the File > New or Open in flight reported.
-func (a *App) endFileOperation() {
-	a.fileInFlight = ""
+// endFileOperation records that the File > New or Open of path reported.
+func (a *App) endFileOperation(path string) {
+	for i, busy := range a.filesInFlight {
+		if busy == path {
+			a.filesInFlight = append(a.filesInFlight[:i], a.filesInFlight[i+1:]...)
+			return
+		}
+	}
+}
+
+// sameTarget reports whether paths a and b name one file, also one that does
+// not exist yet (File > New).
+func sameTarget(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return (errA == nil && errB == nil && absA == absB) || sameFile(a, b)
 }
 
 // submitNewFile returns a command that creates a new database file, or nil
@@ -263,21 +280,23 @@ func (a *App) submitNewFile(path string) tea.Cmd {
 		// Create the directory if needed
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fileOpFailedMsg{err: fmt.Errorf("failed to create directory: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to create directory: %w", err)}
 		}
 
 		database, err := db.Create(path)
 		if err != nil {
-			return fileOpFailedMsg{err: fmt.Errorf("failed to create database: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to create database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
 }
 
-// fileAlreadyOpenMsg is sent when File > Open names the file that is open.
+// fileAlreadyOpenMsg is sent when File > Open names the file of db, the open
+// database when the command started.
 type fileAlreadyOpenMsg struct {
 	path string
+	db   *db.DB
 }
 
 // submitOpenFile returns a command that opens an existing database file, or nil
@@ -295,26 +314,33 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 	current, prev := a.db, a.prevDB
 	return func() tea.Msg {
 		if current != nil && sameFile(path, current.Path()) {
-			return fileAlreadyOpenMsg{path: path}
+			return fileAlreadyOpenMsg{path: path, db: current}
 		}
 		if prev != nil && sameFile(path, prev.Path()) {
 			_ = prev.Close() // idempotent; switchDatabase closes it again
 		}
 		database, err := db.Open(path)
 		if err != nil {
-			return fileOpFailedMsg{err: fmt.Errorf("failed to open database: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to open database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
 }
 
-// reportAlreadyOpen tells the user that File > Open named the open file.
-func (a *App) reportAlreadyOpen(path string) {
+// alreadyOpen handles the report that File > Open named the open file. When
+// another open switched the database in the meantime, the file is not the open
+// one any more, so the open runs again against the new state.
+func (a *App) alreadyOpen(msg fileAlreadyOpenMsg) tea.Cmd {
+	a.endFileOperation(msg.path)
+	if msg.db != a.db {
+		return a.submitOpenFile(msg.path)
+	}
 	a.statusbar.AddNotification(
-		fmt.Sprintf("%s is already open", filepath.Base(path)),
+		fmt.Sprintf("%s is already open", filepath.Base(msg.path)),
 		widget.NotificationInfo,
 	)
+	return nil
 }
 
 // sameFile reports whether a and b name the same file, also through a symlink

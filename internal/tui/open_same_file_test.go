@@ -77,13 +77,15 @@ func TestOpenThePreviousFile_ClosesItsKeptHandleFirst(t *testing.T) {
 	}
 }
 
-// TestOneFileOperationAtATime: a second File > Open or New while the first one
-// is still opening (a slow share) must not run. Two opens of one file gave two
-// handles on it, and two creates of one path let the loser delete the file
-// that the winner uses.
-func TestOneFileOperationAtATime(t *testing.T) {
+// TestOneOperationPerFile: a second File > Open or New of a file while the
+// first one is still opening (a slow share) must not run. Two opens of one
+// file gave two handles on it, and two creates of one path let the loser
+// delete the file that the winner uses. Another file still opens, so an open
+// that never returns blocks only its own file.
+func TestOneOperationPerFile(t *testing.T) {
 	first := dbtest.New(t)
 	_, other := dbtest.NewFile(t, "other.tdb")
+	_, third := dbtest.NewFile(t, "third.tdb")
 	a := NewApp(first, &config.Config{})
 
 	cmd := a.submitOpenFile(other)
@@ -91,17 +93,49 @@ func TestOneFileOperationAtATime(t *testing.T) {
 		t.Fatal("the first open did not start")
 	}
 	if a.submitOpenFile(other) != nil {
-		t.Error("a second open started while the first one was in flight")
+		t.Error("a second open of the file started while the first one was in flight")
 	}
-	if a.submitNewFile(filepath.Join(t.TempDir(), "new.tdb")) != nil {
-		t.Error("a create started while an open was in flight")
+	if a.submitNewFile(other) != nil {
+		t.Error("a create of the path started while an open of it was in flight")
+	}
+	if a.submitOpenFile(third) == nil {
+		t.Error("an open of another file was refused while one was in flight")
 	}
 
 	a.Update(cmd())
 	t.Cleanup(func() { _ = a.db.Close() })
 	if a.submitOpenFile(other) == nil {
-		t.Error("no file operation can start after the first one ended")
+		t.Error("no operation on the file can start after the first one ended")
 	}
+}
+
+// TestAlreadyOpenAfterASwitchOpensAgain: the open of file A started while A was
+// open, so its command reported "already open". But an open of B that was in
+// flight switched to B first. A is not open any more, so the request must not
+// be dropped: the open runs again.
+func TestAlreadyOpenAfterASwitchOpensAgain(t *testing.T) {
+	firstDB, firstPath := dbtest.NewFile(t, "first.tdb")
+	t.Cleanup(func() { _ = firstDB.Close() })
+	_, secondPath := dbtest.NewFile(t, "second.tdb")
+	a := NewApp(firstDB, &config.Config{})
+
+	toSecond := a.submitOpenFile(secondPath)
+	stale := a.submitOpenFile(firstPath)()
+	if _, ok := stale.(fileAlreadyOpenMsg); !ok {
+		t.Fatalf("submitOpenFile(first)() = %T, want fileAlreadyOpenMsg", stale)
+	}
+	a.Update(toSecond())
+	t.Cleanup(func() { _ = a.db.Close() })
+
+	_, again := a.Update(stale)
+	if again == nil {
+		t.Fatal("the stale report dropped the open of the first file")
+	}
+	saved, ok := again().(fileDialogSavedMsg)
+	if !ok {
+		t.Fatal("the open of the first file ran again but did not open it")
+	}
+	_ = saved.db.Close()
 }
 
 // TestFailedOpenEndsTheFileOperation: an open that fails reports its error and

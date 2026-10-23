@@ -59,9 +59,9 @@ type App struct {
 	// Database connection
 	db     *db.DB
 	prevDB *db.DB // deferred close: kept alive until next switch so in-flight goroutines don't hit a nil conn
-	// fileInFlight is the path of the File > New or Open whose command has
-	// not reported yet ("" for none); see startFileOperation.
-	fileInFlight string
+	// filesInFlight are the paths of the File > New and Open commands that
+	// have not reported yet; see startFileOperation.
+	filesInFlight []string
 
 	// Current view state
 	currentView  View

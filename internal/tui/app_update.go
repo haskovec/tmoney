@@ -280,16 +280,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.afterAccountDialogSave()
 
 	case fileDialogSavedMsg:
-		a.endFileOperation()
+		a.endFileOperation(msg.path)
 		return a.switchDatabase(msg.db)
 
 	case fileAlreadyOpenMsg:
-		a.endFileOperation()
-		a.reportAlreadyOpen(msg.path)
-		return a, nil
+		return a, a.alreadyOpen(msg)
 
 	case fileOpFailedMsg:
-		a.endFileOperation()
+		a.endFileOperation(msg.path)
 		a.err = msg.err
 		return a, nil
 

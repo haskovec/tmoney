@@ -19,6 +19,9 @@ type backupCreatedMsg struct {
 // restoreConfirmedMsg is sent when a restore is complete. The database handle
 // is unchanged (see db.DB.WithFileClosed); only its contents are new.
 type restoreConfirmedMsg struct {
+	// db is the handle whose file was restored. File > Open can switch to
+	// another file while the restore runs.
+	db               *db.DB
 	safetyBackupPath string
 	// reopenErr is set when the restore replaced the file but the handle did
 	// not reopen on it.
@@ -170,7 +173,7 @@ func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backup
 	if err != nil && !restored {
 		return errMsg{err: fmt.Errorf("failed to restore: %w", err)}
 	}
-	return restoreConfirmedMsg{safetyBackupPath: safetyPath, reopenErr: err}
+	return restoreConfirmedMsg{db: database, safetyBackupPath: safetyPath, reopenErr: err}
 }
 
 // reloadAfterRestore discards everything derived from the old file contents —
@@ -216,8 +219,22 @@ func backupFilename(path string) string {
 // the pre-restore safety copy went. When the handle did not reopen, the views
 // cannot load: it reports that error, and the views load at the next refresh.
 func (a *App) afterRestore(msg restoreConfirmedMsg) (tea.Model, tea.Cmd) {
+	if msg.db != a.db {
+		// The restored file is not the open one any more: nothing here
+		// derives from it.
+		a.statusbar.AddNotification(
+			fmt.Sprintf("Restored %s from backup (safety backup: %s)",
+				backupFilename(msg.db.Path()), backupFilename(msg.safetyBackupPath)),
+			widget.NotificationInfo,
+		)
+		return a, nil
+	}
 	model, cmd := a.reloadAfterRestore()
 	if msg.reopenErr != nil {
+		// The loads cannot run on a closed handle, so the sidebar and the due
+		// count would keep the old file's data until some later reload.
+		a.sidebar.SetAccounts(nil)
+		a.applyScheduledDueCount(0)
 		a.err = fmt.Errorf("restored from backup (safety backup: %s), but the database did not open again: %w. Restart tmoney if it does not come back",
 			backupFilename(msg.safetyBackupPath), msg.reopenErr)
 		return model, nil
