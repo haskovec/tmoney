@@ -225,34 +225,155 @@ func (a *App) submitFileDialog() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// submitNewFile returns a command that creates a new database file.
+// fileOpFailedMsg is sent when File > New or Open of path fails.
+type fileOpFailedMsg struct {
+	path string
+	err  error
+}
+
+// startFileOperation records that a File > New or Open of path starts. When one
+// on the same file is still in flight it reports false and tells the user to
+// wait: two opens of one file gave two handles on it (see submitOpenFile), and
+// two creates of one path let the loser delete the file that the winner uses.
+// Operations on other files still run, so an open that never returns (a share
+// that hangs) blocks only its own file. The message of the command ends the
+// operation (endFileOperation).
+func (a *App) startFileOperation(path string) bool {
+	for _, busy := range a.filesInFlight {
+		if sameTarget(busy, path) {
+			a.statusbar.AddNotification(
+				fmt.Sprintf("Wait: %s is still opening", filepath.Base(busy)),
+				widget.NotificationInfo,
+			)
+			return false
+		}
+	}
+	a.filesInFlight = append(a.filesInFlight, path)
+	return true
+}
+
+// endFileOperation records that the File > New or Open of path reported.
+func (a *App) endFileOperation(path string) {
+	for i, busy := range a.filesInFlight {
+		if busy == path {
+			a.filesInFlight = append(a.filesInFlight[:i], a.filesInFlight[i+1:]...)
+			return
+		}
+	}
+}
+
+// sameTarget reports whether paths a and b name one file, also one that does
+// not exist yet (File > New).
+func sameTarget(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return (errA == nil && errB == nil && absA == absB) || sameFile(a, b)
+}
+
+// submitNewFile returns a command that creates a new database file, or nil
+// while another file operation is in flight (see startFileOperation).
+//
+// The path is the text of the dialog. It names the file that db.Create makes:
+// with a leading "~" expanded (or MkdirAll made a folder named "~" in the
+// working folder) and ".tdb" added, so that the same-file checks see that file.
 func (a *App) submitNewFile(path string) tea.Cmd {
+	path = db.ExpandHome(path)
+	if !strings.HasSuffix(path, db.FileExtension) {
+		path += db.FileExtension
+	}
+	if !a.startFileOperation(path) {
+		return nil
+	}
 	return func() tea.Msg {
 		// Create the directory if needed
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return errMsg{err: fmt.Errorf("failed to create directory: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to create directory: %w", err)}
 		}
 
 		database, err := db.Create(path)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to create database: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to create database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
 }
 
-// submitOpenFile returns a command that opens an existing database file.
+// prevDrainTimeout bounds the wait of submitOpenFile for the work that still
+// holds the kept handle of the previous file. A var so tests can shorten it.
+var prevDrainTimeout = db.SettleTimeout
+
+// fileAlreadyOpenMsg is sent when File > Open names the file of db, the open
+// database when the command started.
+type fileAlreadyOpenMsg struct {
+	path string
+	db   *db.DB
+}
+
+// submitOpenFile returns a command that opens an existing database file, or nil
+// while another file operation is in flight (see startFileOperation).
+//
+// It never opens a second handle on a file this app has open. DuckDB caches one
+// instance per path, so the second handle shares the first one's instance: a
+// backup or restore through it closes only its own pool, the instance lives on,
+// and the backup misses the rows still in <path>.wal. The open file stays as it
+// is. The kept handle of the previous file (prevDB) closes for good first
+// (db.DB.CloseAndSettle): the open waits for a backup or restore that still
+// runs on it, or the new handle would open the file that the restore replaces,
+// and for the reads that still hold it, as an open of the file blocks inside
+// DuckDB until they let go, with no time limit. If they hold on, the open
+// fails with "try again".
+//
+// The path is the text of the dialog, so a leading "~" is expanded first, as
+// db.Open does, or the same-file checks would miss the open file.
 func (a *App) submitOpenFile(path string) tea.Cmd {
+	path = db.ExpandHome(path)
+	if !a.startFileOperation(path) {
+		return nil
+	}
+	current, prev := a.db, a.prevDB
 	return func() tea.Msg {
+		if current != nil && sameFile(path, current.Path()) {
+			return fileAlreadyOpenMsg{path: path, db: current}
+		}
+		if prev != nil && sameFile(path, prev.Path()) {
+			// switchDatabase closes it again, which does nothing more.
+			if settled, err := prev.CloseAndSettle(prevDrainTimeout); err != nil || !settled {
+				return fileOpFailedMsg{path: path,
+					err: fmt.Errorf("%s is still busy with a load of the last session; try again in a moment", filepath.Base(path))}
+			}
+		}
 		database, err := db.Open(path)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to open database: %w", err)}
+			return fileOpFailedMsg{path: path, err: fmt.Errorf("failed to open database: %w", err)}
 		}
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
+}
+
+// alreadyOpen handles the report that File > Open named the open file. When
+// another open switched the database in the meantime, the file is not the open
+// one any more, so the open runs again against the new state.
+func (a *App) alreadyOpen(msg fileAlreadyOpenMsg) tea.Cmd {
+	a.endFileOperation(msg.path)
+	if msg.db != a.db {
+		return a.submitOpenFile(msg.path)
+	}
+	a.statusbar.AddNotification(
+		fmt.Sprintf("%s is already open", filepath.Base(msg.path)),
+		widget.NotificationInfo,
+	)
+	return nil
+}
+
+// sameFile reports whether a and b name the same file, also through a symlink
+// or another spelling of the path. It is false if either one cannot be read.
+func sameFile(a, b string) bool {
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 // switchDatabase closes the old database, sets the new one, reinitializes
