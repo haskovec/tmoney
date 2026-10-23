@@ -200,6 +200,10 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+// reopenWaitTimeout bounds WithFileClosed's wait for a heal in flight. A var so
+// tests can shorten it.
+var reopenWaitTimeout = SettleTimeout
+
 // SettleTimeout is how long CloseAndSettle waits before the last backup: on
 // quit in the TUI, and after each CLI command that changes data.
 const SettleTimeout = 5 * time.Second
@@ -268,8 +272,12 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 	defer db.txMu.Unlock()
 	// Wait for a heal in flight: it publishes a healthy instance, so the Close
 	// below can checkpoint it, and nothing else opens the file until the
-	// reopen below.
-	db.reopenMu.Lock()
+	// reopen below. The wait is bounded: a heal blocked behind a reader that
+	// never lets go must not hang the backup, with every write queued behind
+	// txMu. errHealBlocked tells the caller to retry; nothing has changed yet.
+	if !lockBy(&db.reopenMu, time.Now().Add(reopenWaitTimeout)) {
+		return &DatabaseError{Op: "close for file operation", Err: errHealBlocked}
+	}
 	defer db.reopenMu.Unlock()
 
 	db.connMu.RLock()
@@ -353,16 +361,22 @@ func (db *DB) reconnect() error {
 
 // openPool opens a fresh pool on db.path and publishes it, clearing closed.
 // The previous pool must already be closed. See reconnect for why connMu is not
-// held across the open.
+// held across the open. On a final database (CloseAndSettle gave up waiting
+// while a WithFileClosed ran its fn) it drops the new pool instead: the close
+// for good wins.
 func (db *DB) openPool() error {
 	conn, err := db.openConn()
 	if err != nil {
 		return err
 	}
 	db.connMu.Lock()
+	defer db.connMu.Unlock()
+	if db.final {
+		_ = conn.Close()
+		return ErrClosed
+	}
 	db.conn = conn
 	db.closed = false
-	db.connMu.Unlock()
 	return nil
 }
 

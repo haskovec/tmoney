@@ -470,7 +470,7 @@ func TestCloseAndSettle(t *testing.T) {
 			defer close(wfcDone)
 			_ = database.WithFileClosed(func(string) error { return nil })
 		}()
-		time.Sleep(50 * time.Millisecond) // let it park behind the heal
+		waitForTxMuHeld(t, database) // it parks behind the heal with txMu held
 		go func() { time.Sleep(100 * time.Millisecond); _ = rows.Close() }()
 
 		settled, err := database.CloseAndSettle(10 * time.Second)
@@ -508,6 +508,85 @@ func TestCloseAndSettle(t *testing.T) {
 			t.Error("WithFileClosed reopened the database after CloseAndSettle")
 		}
 	})
+}
+
+// TestWithFileClosedGivesUpOnALongBlockedHeal covers a reader that keeps the
+// old instance busy: a backup or restore waits for the heal only so long,
+// then fails with errHealBlocked, which the user can retry, rather than hang
+// with txMu held and every write queued behind it. It changes nothing.
+func TestWithFileClosedGivesUpOnALongBlockedHeal(t *testing.T) {
+	shortHealTimeout(t)
+	shortReopenWait(t)
+	database := desyncedIndexFixture(t)
+	rows := seedAndHoldCursor(t, database)
+	defer rows.Close()
+	tripBlockedHeal(t, database)
+
+	ran := false
+	err := database.WithFileClosed(func(string) error { ran = true; return nil })
+	if !errors.Is(err, errHealBlocked) || ran {
+		t.Errorf("WithFileClosed() = %v, fn ran %v; want errHealBlocked and no fn", err, ran)
+	}
+	if database.isClosed() {
+		t.Error("WithFileClosed closed the database although it gave up")
+	}
+
+	_ = rows.Close()
+	waitForHeal(t, database)
+	requireHealthy(t, database)
+}
+
+// TestWithFileClosedDropsItsReopenAfterCloseAndSettle covers CloseAndSettle
+// giving up on txMu because a WithFileClosed is already in fn: the database is
+// final then, so that call's reopen must drop its pool, not undo the close.
+func TestWithFileClosedDropsItsReopenAfterCloseAndSettle(t *testing.T) {
+	database := desyncedIndexFixture(t)
+
+	inFn, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- database.WithFileClosed(func(string) error {
+			close(inFn)
+			<-release
+			return nil
+		})
+	}()
+	<-inFn
+
+	if settled, err := database.CloseAndSettle(200 * time.Millisecond); err != nil || settled {
+		t.Errorf("CloseAndSettle() = %v, %v; want false, nil while fn runs", settled, err)
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, ErrClosed) {
+		t.Errorf("WithFileClosed() = %v, want ErrClosed: its reopen must not publish", err)
+	}
+	if !database.isClosed() {
+		t.Error("WithFileClosed reopened the database after CloseAndSettle")
+	}
+}
+
+// waitForTxMuHeld waits until something holds txMu, so a test knows a
+// WithFileClosed started in a goroutine is parked inside it.
+func waitForTxMuHeld(t *testing.T, db *DB) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for db.txMu.TryLock() {
+		db.txMu.Unlock()
+		if time.Now().After(deadline) {
+			t.Fatal("nothing took txMu")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// shortReopenWait shortens WithFileClosed's wait for a heal in flight for one
+// test. The db tests do not run in parallel, so changing the package value is
+// safe.
+func shortReopenWait(t *testing.T) {
+	t.Helper()
+	old := reopenWaitTimeout
+	reopenWaitTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { reopenWaitTimeout = old })
 }
 
 // seedAndHoldCursor fills the heal table and returns a cursor that has read one
