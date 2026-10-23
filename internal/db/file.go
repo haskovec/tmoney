@@ -157,8 +157,12 @@ func IsLockedElsewhere(err error) bool {
 // DuckDB ignores a log that does not read as one (all zeros after a crash, or
 // garbage) and leaves it beside the file, also after CHECKPOINT. The file then
 // already holds what the open showed, so CheckpointFile removes such logs. A
-// log that DuckDB cannot replay (damaged, or the log of another file) fails
-// the open, and CheckpointFile returns that error and changes nothing.
+// damaged log fails the open, and CheckpointFile returns that error and
+// changes nothing. DuckDB has no check that a log belongs to the file: it
+// replays the log of another file as it would at any open of the database.
+//
+// The read-write open also fails when another process has the database open:
+// DuckDB locks the file (see IsLockedElsewhere).
 func CheckpointFile(path string) error {
 	conn, err := openPoolAt(path)
 	if err != nil {

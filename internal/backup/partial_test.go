@@ -42,6 +42,7 @@ func TestAutoBackupRemovesStalePartials(t *testing.T) {
 		"test.tdb.tmoney-partial-114.wal.checkpoint":                         {old, true},         // the checkpoint log of a killed copy
 		"test.tdb.tmoney-partial-115.wal.recovery-old":                       {old, true},         // a killed Restore's moved log
 		"test.tdb.tmoney-partial-116.walrus":                                 {old, false},        // not a log
+		"test.tdb.tmoney-partial-2025-old":                                   {old, false},        // a user's file, no log suffix
 		"test.tdb.partial-2025.wal":                                          {old, false},        // the log of a user's file
 		"test.tdb.partial-2025.wal-old":                                      {old, false},        // a user's file
 		"test.tdb.manual-backup.2024-03-15T14-30-00":                         {old, false},        // a backup
@@ -429,5 +430,30 @@ func TestRetentionDeletesTheRawLogsOfABackup(t *testing.T) {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("%s is still there after retention deleted its backup", filepath.Base(path))
 		}
+	}
+}
+
+// TestRawLogRenameFailureStopsTheBackup: the raw copies of the logs must reach
+// their names beside the backup. If one cannot, the backup is not complete:
+// it fails, it leaves nothing under a backup name, and the source keeps its
+// logs.
+func TestRawLogRenameFailureStopsTheBackup(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createTestDB(t, dir)
+	if err := os.WriteFile(dbPath+".wal", []byte("fictional raw log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dst := dbPath + AutoBackupInfix + "2026-01-01T09-00-00"
+	if err := os.Mkdir(dst+".wal", 0o755); err != nil { // the rename of the log fails
+		t.Fatal(err)
+	}
+	if _, err := copyDatabase(dbPath, func() string { return dst }, false); err == nil {
+		t.Error("copyDatabase() = nil, but the raw log did not reach its name")
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Errorf("a backup without its log is under the name %s", filepath.Base(dst))
+	}
+	if got, _ := os.ReadFile(dbPath + ".wal"); string(got) != "fictional raw log" {
+		t.Errorf("the log of the source changed: %q", got)
 	}
 }

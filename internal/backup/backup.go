@@ -100,11 +100,12 @@ func createManualBackupAt(dbPath string, now time.Time) (string, error) {
 }
 
 // createRawSafetyBackup is the safety backup of Restore when the WAL files of
-// the database cannot be applied (DuckDB cannot open the database with them
-// either): an auto-backup of the file alone, with raw copies of the WAL files
-// beside it (<backup>.wal and so on), so that no byte of the current state is
-// lost. A restore of that backup refuses it while the damaged log is beside
-// it; with the log moved away, the file alone restores.
+// the database cannot be folded into it (a damaged log, which DuckDB cannot
+// open the database with either, or a read-only file): an auto-backup of the
+// file alone, with raw copies of the WAL files beside it (<backup>.wal and so
+// on), so that no byte of the current state is lost. A restore of that backup
+// applies a good log; it refuses a damaged one and says to move it away, and
+// then the file alone restores.
 func createRawSafetyBackup(dbPath string, now time.Time, keep ...string) (string, error) {
 	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) }, false)
 	if err != nil {
@@ -167,7 +168,8 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 // never nothing. Before it, the WAL files of the current database (see
 // db.WALSuffixes) are folded into it, so that the old database is whole by
 // itself; DuckDB would replay them onto the restored file. If they cannot be
-// applied, the safety backup keeps raw copies of them, and they move aside.
+// folded, the safety backup keeps raw copies of them, and they move aside.
+// Restore refuses a database that another process has open.
 //
 // The database at dbPath must be closed while this runs (see db.DB.Close and
 // db.DB.WithFileClosed).
@@ -182,7 +184,7 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	//    cannot read, or one that another program has open stops here, and the
 	//    reason names the file the user chose.
 	if err := validateDatabase(backupPath); err != nil {
-		return "", checkFailed("backup file "+backupPath, err)
+		return "", checkFailed("backup file "+backupPath, err, walHint(backupPath))
 	}
 
 	// 2. Copy the backup beside the database, with the mode of the database
@@ -200,17 +202,20 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 
 	// 3. Check the copy too, which is what goes in place.
 	if err := validateDatabase(tempPath); err != nil {
-		return "", checkFailed("the copy of backup file "+backupPath, err)
+		return "", checkFailed("the copy of backup file "+backupPath, err, "")
 	}
 
 	// 4. Fold the WAL files of the current database into it, in place: then
 	//    the file alone holds every committed row, and a kill before the
-	//    rename below leaves the database whole. DuckDB cannot apply a log
-	//    that is damaged or belongs to another file, and then cannot open the
-	//    database either; the safety backup then keeps raw copies of the logs.
-	var foldErr error
-	if db.HasWAL(dbPath) {
-		foldErr = db.CheckpointFile(dbPath)
+	//    rename below leaves the database whole. The read-write open also
+	//    shows another process that has the database open (a TMoney in
+	//    another terminal): a swap under it would lose its later writes, so
+	//    Restore stops here, before it changes anything. A damaged log, which
+	//    DuckDB cannot open the database with either, or a read-only file
+	//    fails the fold; the safety backup then keeps raw copies of the logs.
+	foldErr := db.CheckpointFile(dbPath)
+	if db.IsLockedElsewhere(foldErr) {
+		return "", fmt.Errorf("the database is open in another program; close it and try again: %w", foldErr)
 	}
 
 	// 5. Safety backup of the current state. Its retention pass keeps
@@ -251,8 +256,9 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 // says which file, by the backup that the user chose. Only a file that is not
 // a TMoney database is called invalid: a backup of a newer app needs a newer
 // TMoney, one that this user cannot read needs other permissions, and one
-// that another program has open needs that program closed.
-func checkFailed(file string, err error) error {
+// that another program has open needs that program closed. hint follows the
+// error of an invalid file only.
+func checkFailed(file string, err error, hint string) error {
 	var newer *db.VersionMismatchError
 	var unreadable *db.UnreadableFileError
 	var locked *db.LockedFileError
@@ -264,8 +270,18 @@ func checkFailed(file string, err error) error {
 	case errors.As(err, &locked):
 		return fmt.Errorf("%s is open in another program; close it and try again: %w", file, err)
 	default:
-		return fmt.Errorf("%s is not a valid TMoney database: %w", file, err)
+		return fmt.Errorf("%s is not a valid TMoney database: %w%s", file, err, hint)
 	}
+}
+
+// walHint is the hint of checkFailed for a backup with a log beside it: a
+// raw safety backup keeps a log that could not be applied, and without it the
+// file alone restores.
+func walHint(backupPath string) string {
+	if !db.HasWAL(backupPath) {
+		return ""
+	}
+	return fmt.Sprintf("; if its write-ahead log cannot be applied, move %s.wal away to restore the file alone", backupPath)
 }
 
 // beforeSwap, when set, runs right before Restore renames its copy over the
@@ -468,9 +484,13 @@ func isPartialOf(dbBase, name string) bool {
 	if i < 0 {
 		return false
 	}
-	tail := strings.TrimSuffix(name[i+len(partialInfix):], "-old")
+	tail := name[i+len(partialInfix):]
 	for _, suffix := range db.WALSuffixes {
 		if t, ok := strings.CutSuffix(tail, suffix); ok {
+			tail = t
+			break
+		}
+		if t, ok := strings.CutSuffix(tail, suffix+"-old"); ok {
 			tail = t
 			break
 		}
@@ -520,8 +540,10 @@ func copyDatabase(src string, next func() string, fold bool) (string, error) {
 	for tries := 1; ; tries++ {
 		err := publish(tempPath, dst)
 		if err == nil {
-			for _, suffix := range db.WALSuffixes { // only after fold false
-				_ = os.Rename(tempPath+suffix, dst+suffix)
+			if err := publishRawLogs(tempPath, dst); err != nil {
+				removeCopy(dst)
+				removeCopy(tempPath)
+				return "", fmt.Errorf("the raw copy of a write-ahead log of %s did not get its name: %w", src, err)
 			}
 			syncDir(filepath.Dir(dst))
 			return dst, nil
@@ -532,6 +554,19 @@ func copyDatabase(src string, next func() string, fold bool) (string, error) {
 		}
 		dst = next()
 	}
+}
+
+// publishRawLogs gives the raw copies of the logs beside the partial file at
+// tempPath (copyToTemp without fold) their names beside the backup at dst.
+// A backup without them would miss rows, so a failure is an error.
+func publishRawLogs(tempPath, dst string) error {
+	for _, suffix := range db.WALSuffixes {
+		err := os.Rename(tempPath+suffix, dst+suffix)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // removeCopy deletes the partial file at tempPath and the logs beside it.
@@ -643,6 +678,9 @@ func copyPlain(src, dst string) error {
 		return err
 	}
 	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync() // a raw copy is the only copy once Restore deletes the log
+	}
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}

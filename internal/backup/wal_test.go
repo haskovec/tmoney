@@ -269,6 +269,13 @@ func TestRestoreWithAnUnreadableWAL(t *testing.T) {
 	if got, _ := os.ReadFile(safety + ".wal"); !bytes.Equal(got, wal) {
 		t.Errorf("the safety backup has no raw copy of the old WAL beside it")
 	}
+
+	// The safety backup is listed like any other. A restore of it refuses it
+	// while the damaged log is beside it, and says what to do.
+	_, err = backup.Restore(path, safety)
+	if err == nil || !strings.Contains(err.Error(), "move "+safety+".wal away") {
+		t.Errorf("Restore of the raw safety backup: %v, want a refusal that says to move %s.wal away", err, filepath.Base(safety))
+	}
 }
 
 // TestBackupOfAReadOnlyDatabaseWithAWAL: the copy takes the mode of the
@@ -410,4 +417,42 @@ func copyFile(t *testing.T, src, dst string) {
 	if err := os.WriteFile(dst, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestRestoreRefusesADatabaseOpenElsewhere: `tmoney db restore` while another
+// TMoney process has the database open (a TUI in another terminal) swapped the
+// file under that process: its later writes went to the old file and were
+// lost. DuckDB's lock on the file shows the other process, so Restore must stop
+// before it changes anything.
+func TestRestoreRefusesADatabaseOpenElsewhere(t *testing.T) {
+	path := newDBFile(t)
+	addRows(t, path, 1, false)
+	good, err := backup.CreateManualBackup(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	holdOpenElsewhere(t, path)
+
+	before := dirNames(t, filepath.Dir(path))
+	_, err = backup.Restore(path, good)
+	if err == nil || !strings.Contains(err.Error(), "open in another program") {
+		t.Errorf("Restore while another process has the database open: %v, want a refusal", err)
+	}
+	if after := dirNames(t, filepath.Dir(path)); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Errorf("the refused restore changed the folder: %v, was %v", after, before)
+	}
+}
+
+func dirNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }

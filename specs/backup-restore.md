@@ -206,17 +206,24 @@ To prevent data loss if restore fails:
 3. Verify the temp file the same way: it is what goes in place
 4. Apply the write-ahead log files of the current database (`<db>.wal`,
    `<db>.wal.checkpoint`, `<db>.wal.recovery`) to it, in place, so that the
-   file alone holds every committed row
+   file alone holds every committed row. This open also shows another program
+   that has the database open (DuckDB locks the file): then stop with
+   `"Error: failed to restore: the database is open in another program; close
+   it and try again: ..."`, before anything changes.
 5. Create the safety backup of the current state
 6. Rename the temp file over the database name in one step. If the process
    dies before the rename, the database is as it was; after it, the database
    is the complete copy.
 
-If DuckDB cannot apply the log files of the current database (a damaged log,
-or the log of another file), it cannot open the database either. Then the
+If the log files cannot be applied in place (a damaged log, which DuckDB
+cannot open the database with either, or a read-only database file), the
 safety backup is the file alone with raw copies of the logs beside it
 (`<safety backup>.wal`), and the logs move aside before the rename (and back
 if the rename fails), because DuckDB would replay them onto the restored file.
+A restore of such a safety backup applies a good log; it refuses a damaged one
+and says to move `<safety backup>.wal` away to restore the file alone. DuckDB
+has no check that a log belongs to its file: it replays the log of another
+file at any open, so step 4 applies it too.
 
 Every backup is written the same way: a temp file beside the final name, with
 the write-ahead log files of the source applied to it, flushed to disk, then
