@@ -100,6 +100,28 @@ var badBackups = map[string]func(t *testing.T, path string, good []byte){
 	},
 }
 
+// checkRefusal checks the text of Restore's refusal of the bad backup at path:
+// it names that backup, and never Restore's copy of it, which is gone by the
+// time the user reads the message. A backup of a newer app version is not
+// called invalid: the user only needs a newer TMoney.
+func checkRefusal(t *testing.T, kind string, err error, path string) {
+	t.Helper()
+	msg := err.Error()
+	want := "not a valid TMoney database"
+	if strings.Contains(kind, "newer app version") {
+		want = "newer version of TMoney"
+	}
+	if !strings.Contains(msg, want) {
+		t.Errorf("refusal = %q, want it to say %q", msg, want)
+	}
+	if !strings.Contains(msg, path) {
+		t.Errorf("refusal = %q, want it to name the backup %s", msg, path)
+	}
+	if strings.Contains(msg, ".partial-") {
+		t.Errorf("refusal = %q names Restore's deleted copy, not the backup", msg)
+	}
+}
+
 func writeFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -127,8 +149,8 @@ func TestRestoreRefusesBadBackup(t *testing.T) {
 			t.Logf("Restore: safety=%q err=%v", filepath.Base(safety), err)
 			if err == nil {
 				t.Errorf("Restore took the bad backup without an error")
-			} else if !strings.Contains(err.Error(), "not a valid TMoney database") {
-				t.Errorf("Restore error = %v, want one that says the backup is not a valid TMoney database", err)
+			} else {
+				checkRefusal(t, name, err, bad)
 			}
 
 			now, _ := os.ReadFile(dbPath)
@@ -138,8 +160,10 @@ func TestRestoreRefusesBadBackup(t *testing.T) {
 			if after := names(t, dir); strings.Join(after, ",") != strings.Join(before, ",") {
 				t.Errorf("the folder changed: %v, was %v", after, before)
 			}
-			if _, err := db.Open(dbPath); err != nil {
+			if reopened, err := db.Open(dbPath); err != nil {
 				t.Errorf("db.Open after the refused restore: %v", err)
+			} else {
+				_ = reopened.Close()
 			}
 		})
 	}
@@ -168,8 +192,10 @@ func TestRestoreRefusesBadBackupWhileOpen(t *testing.T) {
 				return err
 			})
 			t.Logf("WithFileClosed(Restore): %v", err)
-			if err == nil || !strings.Contains(err.Error(), "not a valid TMoney database") {
-				t.Errorf("err = %v, want the refusal of the backup", err)
+			if err == nil {
+				t.Errorf("WithFileClosed(Restore) took the bad backup without an error")
+			} else {
+				checkRefusal(t, name, err, bad)
 			}
 			v, err := database.GetMetadata(marker)
 			t.Logf("then the open handle reads %s: %q, %v", marker, v, err)

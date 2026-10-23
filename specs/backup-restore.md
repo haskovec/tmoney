@@ -24,6 +24,8 @@ personal.tdb.backup.2024-03-13T18-45-12
 ```
 
 Timestamp format: `YYYY-MM-DDTHH-MM-SS` (using hyphens instead of colons for filesystem compatibility).
+A backup never replaces another one: when a backup of the same name exists (a
+second backup in the same second), the new one takes the next free second.
 
 ### Backup Location
 
@@ -172,7 +174,8 @@ Safety: the current state is always backed up before restoring.
 | Error | Handling |
 |-------|----------|
 | Backup file not found | `"Error: Backup file not found: <path>"` |
-| Backup file corrupted | `"Error: Backup file is not a valid TMoney database"` |
+| Backup file corrupted | `"Error: Backup file <path> is not a valid TMoney database: <reason>"` |
+| Backup of a newer TMoney | `"Error: cannot restore <path>: file was created with a newer version of TMoney ..."` |
 | Disk full during backup | `"Error: Not enough disk space to create backup"` |
 | Permission denied | `"Error: Cannot write to backup location"` |
 | Restore fails mid-copy | Original file is preserved (copy to temp first, then rename) |
@@ -181,18 +184,20 @@ Safety: the current state is always backed up before restoring.
 
 To prevent data loss if restore fails:
 
-1. Copy the backup to a temporary file (`<db>.partial-<n>`) in the same directory
-2. Verify the temp file is a valid TMoney database (open it read-only, check the
+1. Verify the backup is a valid TMoney database (attach it read-only, check the
    metadata, refuse a newer schema version)
-3. Create the safety backup of the current state
-4. Rename the temp file over the database name in one step. If the process
+2. Copy the backup to a temporary file (`<db>.partial-<n>`) in the same
+   directory, with the permissions of the current database
+3. Verify the temp file the same way: it is what goes in place
+4. Create the safety backup of the current state
+5. Rename the temp file over the database name in one step. If the process
    dies before the rename, the database is as it was; after it, the database
    is the complete copy.
 
 Every backup is written the same way: a temp file beside the final name,
 flushed to disk, then renamed. A crash during a backup leaves only a
-`.partial-<n>` file, which no listing shows and retention deletes after an
-hour.
+`.partial-<n>` file, which no listing shows. The next auto-backup deletes such
+a file when it is more than an hour old.
 
 ## Validation Rules
 

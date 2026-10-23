@@ -23,30 +23,7 @@ import (
 // copy blocks halfway with that part already in its output file. Then the
 // parent kills the child and looks at what is left.
 
-const (
-	killChildPathEnv = "TMONEY_KILL_CHILD_DB"
-	killChildSrcEnv  = "TMONEY_KILL_CHILD_SRC"
-	killChildKindEnv = "TMONEY_KILL_CHILD_KIND"
-)
-
-// TestKillChild is the child half of the kill tests. It is skipped in a normal
-// run. It never returns on its own: the parent kills it in the copy.
-func TestKillChild(t *testing.T) {
-	dbPath := os.Getenv(killChildPathEnv)
-	if dbPath == "" {
-		t.Skip("helper process for the kill tests")
-	}
-	var err error
-	switch os.Getenv(killChildKindEnv) {
-	case "manual":
-		_, err = backup.CreateManualBackup(dbPath)
-	case "auto":
-		_, err = backup.CreateAutoBackup(dbPath)
-	case "restore":
-		_, err = backup.Restore(dbPath, os.Getenv(killChildSrcEnv))
-	}
-	t.Fatalf("the copy returned (err=%v); the parent should have killed this process first", err)
-}
+// The child half, TestKillChild, is in kill_child_test.go.
 
 // fictionalLedger is the part of the source that reaches the child before the
 // kill. 8 KiB fits in a pipe buffer, so the parent's write does not block.
@@ -62,7 +39,7 @@ func killHalfway(t *testing.T, kind, dbPath, srcPath, fifo, dir string, skip map
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestKillChild$", "-test.count=1")
 	cmd.Env = append(os.Environ(),
-		killChildPathEnv+"="+dbPath, killChildSrcEnv+"="+srcPath, killChildKindEnv+"="+kind)
+		backup.KillChildPathEnv+"="+dbPath, backup.KillChildSrcEnv+"="+srcPath, backup.KillChildKindEnv+"="+kind)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start child: %v", err)
 	}
