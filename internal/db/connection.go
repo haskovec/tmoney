@@ -78,6 +78,8 @@ func (db *DB) live() *sql.DB {
 // Returns an error if the file doesn't exist, isn't a valid DuckDB file,
 // or isn't a TMoney database.
 func Open(path string) (*DB, error) {
+	path = expandHome(path)
+
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, &FileNotFoundError{Path: path}
@@ -123,6 +125,8 @@ func Open(path string) (*DB, error) {
 // Create creates a new TMoney database file at the specified path.
 // Returns an error if the file already exists.
 func Create(path string) (*DB, error) {
+	path = expandHome(path)
+
 	// Ensure path has correct extension
 	if !strings.HasSuffix(path, FileExtension) {
 		path = path + FileExtension
@@ -180,6 +184,21 @@ func Create(path string) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+// expandHome replaces a leading "~" (alone, or before a path separator) with
+// the home folder. DuckDB does that itself when it opens a path, but the os
+// calls on the path do not: the checks of Open, Create and the reopen, and
+// every backup. So the handle keeps the expanded path, and both see one file.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[1:])
 }
 
 // Close closes the database connection.
