@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,6 +109,25 @@ func TestWithFileClosedGivesUpOnAHeldRead(t *testing.T) {
 	insertProbe(t, database, "after") // reopened in the background
 }
 
+// withFileClosedBy runs WithFileClosed with fn and fails the test if it does
+// not return within 5 seconds, so a call that waits for the read the test
+// itself holds fails instead of hanging the package run. On a hang it lets the
+// read go, so the call can return.
+func withFileClosedBy(t *testing.T, database *DB, rows *sql.Rows, fn func(string) error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- database.WithFileClosed(fn) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		_ = rows.Close()
+		<-done
+		t.Fatal("WithFileClosed hung on a read that holds rows")
+		return nil
+	}
+}
+
 // TestBackgroundReopenYieldsToALaterClose: after a WithFileClosed that gave up,
 // a Close (the CLI's deferred Close) or CloseAndSettle (quit) must win over the
 // reopen that waits for the read in the background.
@@ -119,7 +139,7 @@ func TestBackgroundReopenYieldsToALaterClose(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			shortReopenWait(t)
 			database, rows := walOnlyRow(t)
-			if err := database.WithFileClosed(func(string) error { return nil }); err == nil {
+			if err := withFileClosedBy(t, database, rows, func(string) error { return nil }); err == nil {
 				t.Fatal("WithFileClosed() = nil while a read holds the instance")
 			}
 			closeIt(database)
@@ -129,6 +149,64 @@ func TestBackgroundReopenYieldsToALaterClose(t *testing.T) {
 				t.Error("the background reopen undid the later close")
 			}
 		})
+	}
+}
+
+// TestWithFileClosedRetryWhileTheReadHolds: the user follows "try again" while
+// the read still holds and the first call's reopen still waits for it. The
+// retry must give the same "try again" answer, not the heal's "restart tmoney".
+func TestWithFileClosedRetryWhileTheReadHolds(t *testing.T) {
+	shortReopenWait(t)
+	database, rows := walOnlyRow(t)
+	for i := range 2 {
+		err := withFileClosedBy(t, database, rows, func(string) error { return nil })
+		if !errors.Is(err, errFileBusy) {
+			t.Fatalf("call %d: WithFileClosed() = %v, want errFileBusy", i+1, err)
+		}
+	}
+	_ = rows.Close()
+	waitForReopen(t, database)
+	insertProbe(t, database, "after")
+}
+
+// TestFailedBackgroundReopenHealsLater: the reopen that waits for the read in
+// the background fails (here the file is gone when the read lets go; in use, a
+// network share that dropped). Nobody sees that error, so the handle must not
+// stay closed for good: when the file is back, the heal of the next failed
+// write opens it again.
+func TestFailedBackgroundReopenHealsLater(t *testing.T) {
+	shortReopenWait(t)
+	database, rows := walOnlyRow(t)
+	path := database.Path()
+	if err := withFileClosedBy(t, database, rows, func(string) error { return nil }); !errors.Is(err, errFileBusy) {
+		t.Fatalf("WithFileClosed() = %v, want errFileBusy", err)
+	}
+
+	// A folder in place of the file makes the reopen fail.
+	if err := os.Rename(path, path+".away"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = rows.Close()
+	waitForReopen(t, database)
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path+".away", path); err != nil {
+		t.Fatal(err)
+	}
+	write := func() error {
+		return database.WithTx(func(tx Queryer) error {
+			_, err := tx.Exec(`INSERT INTO _metadata (key, value) VALUES ('healed', 'present')`)
+			return err
+		})
+	}
+	_ = write() // finds the closed pool and starts the heal
+	if err := write(); err != nil {
+		t.Fatalf("the handle did not heal after the file came back: %v", err)
 	}
 }
 

@@ -45,10 +45,16 @@ type DB struct {
 	// reopenMu serializes the opens of the file. reconnect holds it from the
 	// close of the old pool to the publish of the new one, and WithFileClosed
 	// holds it across its Close, fn and reopen, so a backup or restore waits
-	// for a heal in flight. DuckDB attaches a file only once, so two opens
-	// racing for it leave one failed; and a heal that opens under fn would
-	// change the file while it is copied. Take it after txMu, never before.
+	// for a heal in flight. When WithFileClosed gives up on a held read, the
+	// reopen it leaves in the background keeps it until that open ends.
+	// DuckDB attaches a file only once, so two opens racing for it leave one
+	// failed; and a heal that opens under fn would change the file while it
+	// is copied. Take it after txMu, never before.
 	reopenMu sync.Mutex
+	// fileBusy is set while that background reopen waits for the read, so a
+	// WithFileClosed that times out on reopenMu meanwhile gives the same "try
+	// again" answer (errFileBusy), not the blocked heal's.
+	fileBusy atomic.Bool
 	path     string
 	txMu     sync.Mutex // serializes WithTx: single-writer discipline
 }
@@ -189,15 +195,23 @@ func Create(path string) (*DB, error) {
 // The closed pool stays published so a late caller gets "sql: database is
 // closed" rather than a nil-pointer panic. Close is idempotent.
 func (db *DB) Close() error {
+	_, _, err := db.close()
+	return err
+}
+
+// close is Close. It also returns the pool it closed and closeGen after this
+// close, read under the same lock, so a later Close always shows as a change
+// of closeGen.
+func (db *DB) close() (*sql.DB, uint64, error) {
 	db.connMu.Lock()
 	defer db.connMu.Unlock()
 
 	db.closed = true
 	db.closeGen++
 	if db.conn == nil {
-		return nil
+		return nil, db.closeGen, nil
 	}
-	return db.conn.Close()
+	return db.conn, db.closeGen, db.conn.Close()
 }
 
 // reopenWaitTimeout bounds WithFileClosed's waits: for a heal in flight, and
@@ -260,8 +274,12 @@ func lockBy(mu *sync.Mutex, deadline time.Time) bool {
 // <path>.wal into the file, it checkpoints into the file when the read lets go,
 // and an open of the file blocks until then. database/sql counts a connection
 // out only after the driver closed it, so at zero the instance is gone and the
-// file is still. An instance that a fatal error invalidated leaves its WAL; the
-// backup package copies it with the file.
+// file is still.
+//
+// Two limits. The count is of this pool only: a second *DB on the same path
+// shares the cached instance, which then lives on, so the app keeps one handle
+// per file (see the TUI's submitOpenFile). And an instance that a fatal error
+// invalidated cannot checkpoint, so its WAL stays beside the file.
 func drained(pool *sql.DB, deadline time.Time) bool {
 	return pool == nil || waitUntil(deadline, func() bool { return pool.Stats().OpenConnections == 0 })
 }
@@ -293,10 +311,13 @@ func (db *DB) isClosed() bool {
 // trigger a reconnect through healAfterFatal — while the file is closed. A read
 // that races the window gets "sql: database is closed" and can be retried.
 // After the Close it waits for the reads that still hold a connection (see
-// drained), so fn sees a still file that holds every committed row.
+// drained), so fn sees a still file that holds every committed row. If a read
+// holds on past the wait, fn does not run and the error wraps errFileBusy; the
+// handle reopens in the background when the read lets go.
 //
-// fn's error is returned after the reopen. A failed reopen is joined onto it;
-// the handle then stays closed and callers should tell the user to restart.
+// fn's error is returned after the reopen. A failed reopen is joined onto it.
+// The handle then stays on the closed pool, and the heal of the next failed
+// write (healAfterFatal) tries the open again.
 func (db *DB) WithFileClosed(fn func(path string) error) error {
 	db.txMu.Lock()
 	defer db.txMu.Unlock()
@@ -307,6 +328,9 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 	// txMu. errHealBlocked tells the caller to retry; nothing has changed yet.
 	deadline := time.Now().Add(reopenWaitTimeout)
 	if !lockBy(&db.reopenMu, deadline) {
+		if db.fileBusy.Load() {
+			return &DatabaseError{Op: "close for file operation", Err: errFileBusy}
+		}
 		return &DatabaseError{Op: "close for file operation", Err: errHealBlocked}
 	}
 	unlock := true // false when a background reopen takes reopenMu over
@@ -323,18 +347,20 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 		return ErrClosed // CloseAndSettle closed it for good; never reopen
 	}
 
-	if err := db.Close(); err != nil {
+	pool, gen, err := db.close()
+	if err != nil {
 		return &DatabaseError{Op: "close for file operation", Err: err}
 	}
-	db.connMu.RLock()
-	pool, gen := db.conn, db.closeGen
-	db.connMu.RUnlock()
 	if !drained(pool, deadline) {
 		// fn does not run. The reopen blocks until the read lets go, so it
 		// runs in the background and keeps reopenMu, as a blocked heal does;
-		// until it publishes, calls get "sql: database is closed".
+		// until it publishes, calls get "sql: database is closed". No one
+		// waits for its error: a failure leaves the handle to the next heal
+		// (see openPool).
 		unlock = false
+		db.fileBusy.Store(true)
 		go func() {
+			defer db.fileBusy.Store(false) // after the unlock: a call that timed out sees it
 			defer db.reopenMu.Unlock()
 			_ = db.openPool(gen)
 		}()
@@ -414,19 +440,27 @@ func (db *DB) reconnect() error {
 // held across the open. gen is closeGen after the caller's own Close. On a
 // final database (CloseAndSettle gave up waiting while a WithFileClosed ran its
 // fn), or after a later Close, it drops the new pool instead: that close wins.
+//
+// If the open fails (the file is gone, or a network share dropped), the closed
+// pool stays published, as after a failed reconnect, but the handle no longer
+// counts as closed on purpose: the close was only for the file operation. So
+// the heal of the next failed write (healAfterFatal) tries the open again,
+// instead of a session that stays closed for good.
 func (db *DB) openPool(gen uint64) error {
 	conn, err := db.openConn()
-	if err != nil {
-		return err
-	}
 	db.connMu.Lock()
 	defer db.connMu.Unlock()
 	if db.final || db.closeGen != gen {
-		_ = conn.Close()
+		if conn != nil {
+			_ = conn.Close()
+		}
 		return ErrClosed
 	}
-	db.conn = conn
 	db.closed = false
+	if err != nil {
+		return err
+	}
+	db.conn = conn
 	return nil
 }
 
