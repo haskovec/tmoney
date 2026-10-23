@@ -22,7 +22,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		dbPath := createTestDB(t, dir)
 		now := time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC)
 
-		backupPath, err := createAutoBackupAt(dbPath, now, "")
+		backupPath, err := createAutoBackupAt(dbPath, now)
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
@@ -53,7 +53,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		baseTime := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
 		for i := range 7 {
 			ts := baseTime.Add(time.Duration(i) * 24 * time.Hour)
-			_, err := createAutoBackupAt(dbPath, ts, "")
+			_, err := createAutoBackupAt(dbPath, ts)
 			if err != nil {
 				t.Fatalf("createAutoBackupAt() error on backup %d: %v", i, err)
 			}
@@ -114,7 +114,7 @@ func TestCreateAutoBackup(t *testing.T) {
 		autoBase := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
 		for i := range 6 {
 			ts := autoBase.Add(time.Duration(i) * 24 * time.Hour)
-			_, err := createAutoBackupAt(dbPath, ts, "")
+			_, err := createAutoBackupAt(dbPath, ts)
 			if err != nil {
 				t.Fatalf("createAutoBackupAt() error: %v", err)
 			}
@@ -179,9 +179,14 @@ func TestListBackups(t *testing.T) {
 			time.Date(2024, 3, 10, 8, 0, 0, 0, time.UTC),
 		}
 
-		createAutoBackupAt(dbPath, times[0], "")
-		createManualBackupAt(dbPath, times[1])
-		createAutoBackupAt(dbPath, times[2], "")
+		// Written by name: a backup made now always sorts after the existing
+		// ones (see freeBackupPath), and this test is about the sort.
+		for i, infix := range []string{AutoBackupInfix, ManualBackupInfix, AutoBackupInfix} {
+			name := dbPath + infix + times[i].Format(TimestampFormat)
+			if err := os.WriteFile(name, []byte("fictional backup"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {
@@ -232,7 +237,7 @@ func TestListBackups(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "test.tdb.somethingelse"), []byte("unrelated"), 0644)
 
 		// Create one real backup
-		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {
@@ -248,7 +253,7 @@ func TestListBackups(t *testing.T) {
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 
-		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 
 		backups, err := ListBackups(dbPath)
 		if err != nil {
@@ -266,13 +271,23 @@ func TestListBackups(t *testing.T) {
 	})
 }
 
+// skipValidation lets Restore take the fake file content of these tests; the
+// tests in restore_validate_test.go use real databases.
+func skipValidation(t *testing.T) {
+	t.Helper()
+	saved := validateDatabase
+	validateDatabase = func(string) error { return nil }
+	t.Cleanup(func() { validateDatabase = saved })
+}
+
 func TestRestore(t *testing.T) {
 	t.Run("restores database from backup", func(t *testing.T) {
+		skipValidation(t)
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 
 		// Create a backup
-		backupPath, err := createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC), "")
+		backupPath, err := createAutoBackupAt(dbPath, time.Date(2024, 3, 15, 14, 30, 0, 0, time.UTC))
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
@@ -306,27 +321,30 @@ func TestRestore(t *testing.T) {
 			t.Errorf("safety backup content = %q, want %q", string(safetyContent), "modified content")
 		}
 
-		// Verify .restoring file was cleaned up
-		restoringPath := dbPath + restoringExtension
-		if _, err := os.Stat(restoringPath); !os.IsNotExist(err) {
-			t.Error(".restoring file should have been cleaned up")
+		// Verify no .restoring file or partial copy was left
+		if _, err := os.Stat(dbPath + ".restoring"); !os.IsNotExist(err) {
+			t.Error("a .restoring file was left")
+		}
+		if partials, _ := filepath.Glob(filepath.Join(dir, "*"+partialInfix+"*")); len(partials) > 0 {
+			t.Errorf("partial copies were left: %v", partials)
 		}
 	})
 
 	t.Run("restoring the oldest of a full auto-backup set does not lose it to retention", func(t *testing.T) {
+		skipValidation(t)
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 
 		// Fill the retention window: MaxAutoBackups auto-backups already exist.
 		// The oldest one holds the content we want back.
 		baseTime := time.Date(2024, 3, 10, 10, 0, 0, 0, time.UTC)
-		oldest, err := createAutoBackupAt(dbPath, baseTime, "")
+		oldest, err := createAutoBackupAt(dbPath, baseTime)
 		if err != nil {
 			t.Fatalf("createAutoBackupAt() error = %v", err)
 		}
 		os.WriteFile(dbPath, []byte("modified content"), 0644)
 		for i := 1; i < MaxAutoBackups; i++ {
-			if _, err := createAutoBackupAt(dbPath, baseTime.Add(time.Duration(i)*24*time.Hour), ""); err != nil {
+			if _, err := createAutoBackupAt(dbPath, baseTime.Add(time.Duration(i)*24*time.Hour)); err != nil {
 				t.Fatalf("createAutoBackupAt() error = %v", err)
 			}
 		}

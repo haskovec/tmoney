@@ -1,13 +1,17 @@
 package backup
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/haskovec/tmoney/internal/db"
 )
 
 const (
@@ -23,9 +27,24 @@ const (
 	// MaxAutoBackups is the rolling retention limit for auto-backups.
 	MaxAutoBackups = 5
 
-	// restoringExtension is the temporary extension used during restore.
-	restoringExtension = ".restoring"
+	// partialInfix marks a file that a copy is still writing: the copy writes
+	// <final name>.tmoney-partial-<digits> (os.CreateTemp puts random digits
+	// for its "*") and renames it to <final name> only when it is complete and
+	// on disk. Such a name never parses as a backup (see parseBackupFilename),
+	// so ListBackups and retention skip it. The sweep of stale partial files
+	// deletes by name, so the infix names the app: a user can name a file
+	// "<db>.partial-2025", but not likely "<db>.tmoney-partial-2025".
+	partialInfix = ".tmoney-partial-"
+
+	// stalePartialAge is how old a partial file must be before enforceRetention
+	// deletes it as the leftover of a killed copy.
+	stalePartialAge = time.Hour
 )
+
+// validateDatabase checks, without changing it, that a file is a TMoney
+// database before Restore puts it in place of the database. A var so that
+// tests with fake file content can replace it.
+var validateDatabase = db.ValidateFile
 
 // BackupType distinguishes auto from manual backups.
 type BackupType string
@@ -46,21 +65,20 @@ type BackupInfo struct {
 // CreateAutoBackup creates an auto-backup of the given database file and
 // enforces rolling retention (keeping at most MaxAutoBackups auto-backups).
 func CreateAutoBackup(dbPath string) (string, error) {
-	return createAutoBackupAt(dbPath, time.Now(), "")
+	return createAutoBackupAt(dbPath, time.Now())
 }
 
 // createAutoBackupAt is the internal implementation that accepts a timestamp for
-// testability. keep names an auto-backup that retention must not delete ("" for
-// none); Restore passes the backup it is restoring from.
-func createAutoBackupAt(dbPath string, now time.Time, keep string) (string, error) {
-	backupPath := autoBackupPath(dbPath, now)
-
-	if err := copyFile(dbPath, backupPath); err != nil {
+// testability. keep names files that the retention pass must not delete;
+// Restore passes the backup it is restoring from and its own copy of it.
+func createAutoBackupAt(dbPath string, now time.Time, keep ...string) (string, error) {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, AutoBackupInfix, now) })
+	if err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
 
 	// Non-fatal: the backup exists even if retention cleanup fails.
-	_ = enforceRetention(dbPath, keep)
+	_ = enforceRetention(dbPath, keep...)
 
 	return backupPath, nil
 }
@@ -73,9 +91,8 @@ func CreateManualBackup(dbPath string) (string, error) {
 
 // createManualBackupAt is the internal implementation that accepts a timestamp for testability.
 func createManualBackupAt(dbPath string, now time.Time) (string, error) {
-	backupPath := manualBackupPath(dbPath, now)
-
-	if err := copyFile(dbPath, backupPath); err != nil {
+	backupPath, err := copyDatabase(dbPath, func() string { return freeBackupPath(dbPath, ManualBackupInfix, now) })
+	if err != nil {
 		return "", fmt.Errorf("failed to create manual backup: %w", err)
 	}
 
@@ -123,9 +140,16 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 }
 
 // Restore replaces the database file with the specified backup file using a
-// safe process: copy to temp, safety-backup the current state, swap, cleanup.
-// The safety backup is an auto-backup, but its retention pass never deletes
-// backupPath, so the source of a restore survives whatever happens next.
+// safe process: check that the backup is a TMoney database, copy it to a temp
+// file beside the database and check the copy, safety-backup the current
+// state, and rename the copy over the database. The safety backup is an
+// auto-backup, but it never takes the name of an existing backup, and its
+// retention pass never deletes backupPath, so the source of a restore survives
+// whatever happens next.
+//
+// The rename is the only step that changes the database file, and it replaces
+// it in one step: if the process dies, dbPath holds the old database or the
+// complete copy, never a part of one and never nothing.
 //
 // The database at dbPath must be closed while this runs (see db.DB.Close and
 // db.DB.WithFileClosed).
@@ -135,61 +159,113 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 		return "", fmt.Errorf("backup file not found: %s", backupPath)
 	}
 
-	// 1. Copy backup to a temp file in the same directory, before anything can
-	//    touch the set of backups.
-	dir := filepath.Dir(dbPath)
-	tempFile, err := os.CreateTemp(dir, "tmoney-restore-*.tmp")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file for restore: %w", err)
+	// 1. Check the backup: a backup cut short by a crash, a file that is not a
+	//    TMoney database, one of a newer app version, one that this user
+	//    cannot read, or one that another program has open stops here, and the
+	//    reason names the file the user chose.
+	if err := validateDatabase(backupPath); err != nil {
+		return "", checkFailed("backup file "+backupPath, err)
 	}
-	tempPath := tempFile.Name()
-	_ = tempFile.Close()
 
-	if err := copyFile(backupPath, tempPath); err != nil {
-		_ = os.Remove(tempPath)
+	// 2. Copy the backup beside the database, with the mode of the database
+	//    (not of the backup, which can be read-only), before anything can
+	//    touch the set of backups.
+	tempPath, err := copyToTemp(backupPath, dbPath, dbPath)
+	if err != nil {
 		return "", fmt.Errorf("failed to copy backup to temp file: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tempPath)
+		}
+	}()
 
-	// 2. Safety backup of the current state, keeping backupPath out of retention.
-	safetyPath, err := createAutoBackupAt(dbPath, time.Now(), backupPath)
+	// 3. Check the copy too, which is what goes in place.
+	if err := validateDatabase(tempPath); err != nil {
+		return "", checkFailed("the copy of backup file "+backupPath, err)
+	}
+
+	// 4. Safety backup of the current state. Its retention pass keeps
+	//    backupPath and the copy.
+	safetyPath, err := createAutoBackupAt(dbPath, time.Now(), backupPath, tempPath)
 	if err != nil {
-		_ = os.Remove(tempPath)
 		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
 	}
 
-	// 3. Rename current database to .restoring
-	restoringPath := dbPath + restoringExtension
-	if err := os.Rename(dbPath, restoringPath); err != nil {
-		_ = os.Remove(tempPath)
-		return safetyPath, fmt.Errorf("failed to move current database aside: %w", err)
-	}
-
-	// 4. Rename temp file to database name
+	// 5. Rename the copy over the database.
 	if err := os.Rename(tempPath, dbPath); err != nil {
-		// Roll back: restore the .restoring file. If the rollback itself
-		// fails the original database is still accessible at restoringPath;
-		// surface both errors so the user can recover manually.
-		_ = os.Remove(tempPath)
-		if rollbackErr := os.Rename(restoringPath, dbPath); rollbackErr != nil {
-			return safetyPath, fmt.Errorf("failed to move restored file into place: %w; rollback also failed, original database is at %s: %v", err, restoringPath, rollbackErr)
-		}
 		return safetyPath, fmt.Errorf("failed to move restored file into place: %w", err)
 	}
-
-	// 5. Delete the .restoring file
-	_ = os.Remove(restoringPath)
+	syncDir(filepath.Dir(dbPath))
 
 	return safetyPath, nil
 }
 
-// autoBackupPath returns the backup file path for an auto-backup.
-func autoBackupPath(dbPath string, t time.Time) string {
-	return dbPath + AutoBackupInfix + t.Format(TimestampFormat)
+// checkFailed is the error of Restore when the check of a file fails. file
+// says which file, by the backup that the user chose. Only a file that is not
+// a TMoney database is called invalid: a backup of a newer app needs a newer
+// TMoney, one that this user cannot read needs other permissions, and one
+// that another program has open needs that program closed.
+func checkFailed(file string, err error) error {
+	var newer *db.VersionMismatchError
+	var unreadable *db.UnreadableFileError
+	var locked *db.LockedFileError
+	switch {
+	case errors.As(err, &newer):
+		return fmt.Errorf("cannot restore %s: %w", file, err)
+	case errors.As(err, &unreadable):
+		return fmt.Errorf("cannot read %s: %w", file, err)
+	case errors.As(err, &locked):
+		return fmt.Errorf("%s is open in another program; close it and try again: %w", file, err)
+	default:
+		return fmt.Errorf("%s is not a valid TMoney database: %w", file, err)
+	}
 }
 
-// manualBackupPath returns the backup file path for a manual backup.
-func manualBackupPath(dbPath string, t time.Time) string {
-	return dbPath + ManualBackupInfix + t.Format(TimestampFormat)
+// freeBackupPath returns the name of a new backup of dbPath of the kind that
+// infix marks (AutoBackupInfix or ManualBackupInfix): at the time now, or one
+// second after the newest backup of that kind if that is later. Names have
+// one-second resolution and retention deletes by name order, so a new backup
+// must sort after all the others: a name in a second that retention freed
+// would sort as the oldest, and its own retention pass would delete it. More
+// than one backup per second therefore pushes the names ahead of the clock.
+// With publish, a backup never replaces another one, such as the safety backup
+// of a restore.
+//
+// A name that is ahead of the clock makes the new names follow it, ahead of
+// their real time, until the clock passes it: a clock that was ahead and went
+// back, a move to a time zone to the west (the names hold the local wall
+// clock), or a backup copied in from another machine. Only the times in the
+// list are wrong; to make them right again, rename or delete the names of that
+// kind that are ahead of the clock. A cap that ignores names far ahead would
+// lose backups: with MaxAutoBackups auto-backups ahead, a new one would sort
+// as the oldest, and its own retention pass would delete it.
+func freeBackupPath(dbPath, infix string, now time.Time) string {
+	// The names hold the wall clock, and ListBackups and retention order them
+	// as text (time.Parse reads them as UTC). Compare in that frame too: in
+	// instants, the hour that the end of daylight saving time repeats sorts
+	// in another order than its names.
+	at := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), 0, time.UTC)
+	prefix := filepath.Base(dbPath) + infix
+	entries, _ := os.ReadDir(filepath.Dir(dbPath))
+	for _, entry := range entries {
+		ts, ok := strings.CutPrefix(entry.Name(), prefix)
+		if !ok {
+			continue
+		}
+		if t, err := time.Parse(TimestampFormat, ts); err == nil && !t.Before(at) {
+			at = t.Add(time.Second)
+		}
+	}
+	// The scan does not see a name in another spelling (a file system that
+	// ignores case), so take the next second while the name is taken.
+	for {
+		path := dbPath + infix + at.Format(TimestampFormat)
+		if _, err := os.Lstat(path); err != nil {
+			return path
+		}
+		at = at.Add(time.Second)
+	}
 }
 
 // parseBackupFilename checks if a filename is a backup of the given base name
@@ -221,9 +297,11 @@ func parseBackupFilename(dbBase, filename string) (BackupInfo, bool) {
 }
 
 // enforceRetention deletes the oldest auto-backups if there are more than
-// MaxAutoBackups. The backup at keep (if any) is never deleted and does not
-// count toward the limit.
-func enforceRetention(dbPath, keep string) error {
+// MaxAutoBackups, and the stale partial files of dbPath. The files in keep are
+// never deleted, and a kept backup does not count toward the limit.
+func enforceRetention(dbPath string, keep ...string) error {
+	removeStalePartials(dbPath, time.Now(), keep...)
+
 	backups, err := ListBackups(dbPath)
 	if err != nil {
 		return err
@@ -232,7 +310,7 @@ func enforceRetention(dbPath, keep string) error {
 	// Filter to auto-backups only
 	var autoBackups []BackupInfo
 	for _, b := range backups {
-		if b.Type == BackupTypeAuto && !samePath(b.Path, keep) {
+		if b.Type == BackupTypeAuto && !isKept(b.Path, keep) {
 			autoBackups = append(autoBackups, b)
 		}
 	}
@@ -251,10 +329,20 @@ func enforceRetention(dbPath, keep string) error {
 	return nil
 }
 
+// isKept reports whether path is one of keep.
+func isKept(path string, keep []string) bool {
+	for _, k := range keep {
+		if samePath(path, k) {
+			return true
+		}
+	}
+	return false
+}
+
 // samePath reports whether a and b name the same file, tolerating a relative
 // spelling on one side. It is a cleaned-path comparison, not an inode check.
 func samePath(a, b string) bool {
-	if b == "" {
+	if b == "" { // no file; filepath.Abs("") would give the working directory
 		return false
 	}
 	absA, errA := filepath.Abs(a)
@@ -265,33 +353,175 @@ func samePath(a, b string) bool {
 	return absA == absB
 }
 
-// copyFile copies src to dst. If dst already exists it is overwritten.
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
+// removeStalePartials deletes the partial files of dbPath (see partialInfix)
+// that were last written more than stalePartialAge before now: a crash or a
+// kill left them. It also deletes the "tmoney-restore-*.tmp" files that a
+// killed Restore left before it named its copies this way. It never deletes a
+// file in keep: a clock that is behind (a network share) can give a copy in
+// progress an old time. Best effort: a file it cannot delete stays, and is
+// harmless, because no listing shows it.
+func removeStalePartials(dbPath string, now time.Time, keep ...string) {
+	dir, base := filepath.Dir(dbPath), filepath.Base(dbPath)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return err
+		return
 	}
-	defer func() { _ = srcFile.Close() }()
+	for _, entry := range entries {
+		name := entry.Name()
+		ours := isPartialOf(base, name) || isLegacyRestoreTemp(name)
+		if !ours || !entry.Type().IsRegular() || isKept(filepath.Join(dir, name), keep) {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && now.Sub(info.ModTime()) >= stalePartialAge {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
+}
 
-	srcInfo, err := srcFile.Stat()
+// isPartialOf reports whether name is a partial file of a copy to dbBase
+// (Restore) or to one of dbBase's backups: exactly
+// <final>.tmoney-partial-<digits>. Any other text after the infix is a file of
+// the user, such as another database named "<dbBase>.tmoney-partial-2025.tdb".
+func isPartialOf(dbBase, name string) bool {
+	i := strings.LastIndex(name, partialInfix)
+	if i < 0 || !isDigits(name[i+len(partialInfix):]) {
+		return false
+	}
+	final := name[:i]
+	_, ok := parseBackupFilename(dbBase, final)
+	return ok || final == dbBase
+}
+
+// isLegacyRestoreTemp reports whether name is a temp file of Restore from
+// before the partial names: exactly tmoney-restore-<digits>.tmp.
+func isLegacyRestoreTemp(name string) bool {
+	digits, ok := strings.CutPrefix(name, "tmoney-restore-")
+	digits, ok2 := strings.CutSuffix(digits, ".tmp")
+	return ok && ok2 && isDigits(digits)
+}
+
+// isDigits reports whether s is one or more ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// copyDatabase copies the database at src to a new backup, named by next
+// (freeBackupPath), and returns its path. The backup is never a part of a
+// copy: copyDatabase writes a partial file beside it (see copyToTemp) and then
+// gives it the name (publish). If the process dies first, only the partial
+// file is left. If another process takes the name first, next names the
+// backup again.
+func copyDatabase(src string, next func() string) (string, error) {
+	dst := next()
+	tempPath, err := copyToTemp(src, dst, src)
 	if err != nil {
+		return "", err
+	}
+	for tries := 1; ; tries++ {
+		err := publish(tempPath, dst)
+		if err == nil {
+			syncDir(filepath.Dir(dst))
+			return dst, nil
+		}
+		if !errors.Is(err, os.ErrExist) || tries == 10 {
+			_ = os.Remove(tempPath)
+			return "", err
+		}
+		dst = next()
+	}
+}
+
+// publish gives the complete copy at tempPath the name dst, but never over an
+// existing file: then it fails with an error that wraps os.ErrExist. A hard
+// link does both in one step. A file system with no hard links (FAT, some
+// network shares) gets a check and a rename, which a second process can still
+// race.
+func publish(tempPath, dst string) error {
+	err := os.Link(tempPath, dst)
+	if err == nil {
+		_ = os.Remove(tempPath) // a leftover is only a stale partial
+		return nil
+	}
+	if errors.Is(err, os.ErrExist) {
 		return err
 	}
+	if _, statErr := os.Lstat(dst); statErr == nil {
+		return &os.LinkError{Op: "publish", Old: tempPath, New: dst, Err: os.ErrExist}
+	}
+	return os.Rename(tempPath, dst)
+}
 
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+// copyToTemp copies the database at src to a new partial file beside dst,
+// flushed to disk and closed, with the permissions of the file at modeOf, and
+// returns its path. On error it removes what it wrote.
+func copyToTemp(src, dst, modeOf string) (_ string, err error) {
+	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return "", err
+	}
+	defer func() { _ = in.Close() }()
+	info, err := in.Stat()
+	if err != nil {
+		return "", err
 	}
 
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		_ = dstFile.Close()
-		return err
+	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+partialInfix+"*")
+	if err != nil {
+		return "", err
 	}
-	if err := dstFile.Sync(); err != nil {
-		_ = dstFile.Close()
-		return err
+	tempPath := out.Name()
+	defer func() {
+		if err != nil {
+			_ = out.Close()
+			_ = os.Remove(tempPath)
+		}
+	}()
+	// CreateTemp makes the file 0600. Give it the permissions of modeOf, as
+	// the copy had before it went through a temp file. Best effort: a network
+	// share can refuse a chmod, and 0600 still opens.
+	if modeInfo, err := os.Stat(modeOf); err == nil {
+		_ = out.Chmod(modeInfo.Mode().Perm())
 	}
-	return dstFile.Close()
+	n, err := io.Copy(out, in)
+	if err != nil {
+		return "", err
+	}
+	if n != info.Size() {
+		return "", fmt.Errorf("copied %d bytes of %s, which had %d: it changed during the copy", n, src, info.Size())
+	}
+	// The data must be on disk before the rename gives it its final name, or
+	// a power loss can leave that name on a file with holes.
+	if err := out.Sync(); err != nil {
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	return tempPath, nil
+}
+
+// syncDir flushes the directory dir, so that a rename into it is on disk too.
+// Best effort: the renamed file is already complete, so a failure here can at
+// worst lose the rename on a power loss, which leaves the earlier state, not a
+// torn file. Windows cannot flush a directory handle, so it does nothing there.
+func syncDir(dir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
 
 // FormatSize formats a file size in human-readable form.

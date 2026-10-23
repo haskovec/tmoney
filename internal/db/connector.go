@@ -34,7 +34,13 @@ var (
 // openPoolAt opens a pool on the DuckDB file at path through connector. Like
 // sql.Open("duckdb", path), it opens the file now.
 func openPoolAt(path string) (*sql.DB, error) {
-	inner, err := duckdb.NewConnector(path, nil)
+	return openPoolInit(path, nil)
+}
+
+// openPoolInit is openPoolAt with a DSN, and with init, when not nil, run on
+// each new connection before its first use.
+func openPoolInit(dsn string, init func(driver.ExecerContext) error) (*sql.DB, error) {
+	inner, err := duckdb.NewConnector(dsn, init)
 	if err != nil {
 		return nil, err
 	}

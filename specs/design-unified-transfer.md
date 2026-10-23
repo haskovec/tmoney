@@ -1593,7 +1593,7 @@ category onto them cannot leak into one.
 
 **This is a one-way door and that is why it is isolated.** `db.Migrate()` runs
 unprompted inside `db.Open` (`connection.go:61`) with no pre-migration backup,
-and a downgraded binary hits `VersionMismatchError` (`db_errors.go:71-78`) and
+and a downgraded binary hits `VersionMismatchError` (`db_errors.go`) and
 cannot open the file at all. The data is safe — an additive nullable column
 loses nothing — but the file becomes version-locked. Ship phases 1–6 first,
 confirm them in real use, then decide.

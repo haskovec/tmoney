@@ -24,6 +24,18 @@ personal.tdb.backup.2024-03-13T18-45-12
 ```
 
 Timestamp format: `YYYY-MM-DDTHH-MM-SS` (using hyphens instead of colons for filesystem compatibility).
+A new backup is always the newest of its kind, and it never replaces another
+one: it takes the time now, or one second after the newest backup of its kind
+if that is later. More than one backup per second therefore gives names ahead
+of the clock. The names hold the local wall clock, and retention deletes by
+name order, so a new backup is never the one it deletes, also in the hour that
+the end of daylight saving time repeats.
+
+A name that is ahead of the clock makes the new names of its kind follow it
+until the clock passes it: a clock that was ahead and went back, a move to a
+time zone to the west, or a backup copied in from another machine. Only the
+times in the list are wrong. To make them right again, rename or delete the
+backups of that kind whose names are ahead of the clock.
 
 ### Backup Location
 
@@ -172,7 +184,10 @@ Safety: the current state is always backed up before restoring.
 | Error | Handling |
 |-------|----------|
 | Backup file not found | `"Error: Backup file not found: <path>"` |
-| Backup file corrupted | `"Error: Backup file is not a valid TMoney database"` |
+| Backup file corrupted | `"Error: failed to restore: backup file <path> is not a valid TMoney database: <reason>"` |
+| Backup of a newer TMoney | `"Error: failed to restore: cannot restore backup file <path>: file was created with a newer version of TMoney (file: v<n>, app: v<m>)"` |
+| Backup file cannot be read | `"Error: failed to restore: cannot read backup file <path>: open <path>: permission denied"` |
+| Backup file open in another program | `"Error: failed to restore: backup file <path> is open in another program; close it and try again: <reason>"` |
 | Disk full during backup | `"Error: Not enough disk space to create backup"` |
 | Permission denied | `"Error: Cannot write to backup location"` |
 | Restore fails mid-copy | Original file is preserved (copy to temp first, then rename) |
@@ -181,12 +196,24 @@ Safety: the current state is always backed up before restoring.
 
 To prevent data loss if restore fails:
 
-1. Copy the backup to a temporary file in the same directory
-2. Verify the temp file is a valid TMoney database (open and check schema)
-3. Rename the current database to a `.restoring` suffix
-4. Rename the temp file to the database name
-5. Delete the `.restoring` file
-6. If any step fails, roll back to the `.restoring` file
+1. Verify the backup is a valid TMoney database (open it for reading, attach
+   it read-only, check the metadata, refuse a newer schema version). A backup
+   that this user cannot read, or that another program has open, is refused
+   with that reason: it is not called invalid.
+2. Copy the backup to a temporary file (`<db>.tmoney-partial-<n>`) in the same
+   directory, with the permissions of the current database
+3. Verify the temp file the same way: it is what goes in place
+4. Create the safety backup of the current state
+5. Rename the temp file over the database name in one step. If the process
+   dies before the rename, the database is as it was; after it, the database
+   is the complete copy.
+
+Every backup is written the same way: a temp file beside the final name,
+flushed to disk, then renamed. A crash during a backup leaves only a
+`.tmoney-partial-<n>` file, which no listing shows. The next auto-backup deletes
+such a file when it is more than an hour old. The sweep finds these files by
+name only, so the name has "tmoney" in it: a file of the user is not likely to
+have such a name.
 
 ## Validation Rules
 
