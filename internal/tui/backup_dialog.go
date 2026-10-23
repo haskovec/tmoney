@@ -141,9 +141,8 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 	database := a.db
 	a.showConfirmDialog("Confirm Restore", msg, func() tea.Msg {
 		// The file is swapped with the database closed and the same handle
-		// reopened after (see db.DB.WithFileClosed). Restore changes the file
-		// only by its last step, one rename, so on a failure before it the
-		// reopened handle is the untouched data.
+		// reopened after (see db.DB.WithFileClosed). On failure Restore has put
+		// the original file back, so the reopened handle is the untouched data.
 		var safetyPath string
 		err := database.WithFileClosed(func(path string) error {
 			var err error
