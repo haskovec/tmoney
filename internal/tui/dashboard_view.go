@@ -582,11 +582,13 @@ func (s *dashboardViewState) renderHoldings(styles widget.Styles, accountID type
 			}
 		}
 		amount := formatDashboardMoneyIn(h.MarketValue, currency)
-		ticker = widget.Truncate(ticker, max(colWidth-lipgloss.Width(amount)-6, 1))
 		if !h.HasPricing {
 			amount = "~" + amount
 		}
-		line := "    " + widget.PadRight(ticker, max(colWidth-lipgloss.Width(amount)-6, 1)) + " " + styles.Muted.Render(amount)
+		// One width, measured after the "~", for both the cut and the pad, so
+		// every row ends its amount in the same column.
+		tickerWidth := max(colWidth-lipgloss.Width(amount)-6, 1)
+		line := "    " + widget.PadRight(widget.Truncate(ticker, tickerWidth), tickerWidth) + " " + styles.Muted.Render(amount)
 		lines = append(lines, line)
 	}
 

@@ -44,8 +44,9 @@ func Truncate(s string, maxLen int) string {
 
 // DropLastGrapheme returns s without its last character as the user sees it
 // (a grapheme cluster), so "e" + U+0301, "👍🏽", a ZWJ family or a flag goes as
-// one. Backspace in a search calls it: one press removes what one key added
-// and never leaves half a character or invalid UTF-8. An empty s stays empty.
+// one. Backspace in a search calls it: one press removes one visible
+// character, even when that character arrived as several keys, and never
+// leaves half a character or invalid UTF-8. An empty s stays empty.
 func DropLastGrapheme(s string) string {
 	last := 0
 	for i := 0; i < len(s); {

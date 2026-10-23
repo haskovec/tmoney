@@ -1537,3 +1537,40 @@ func TestRenderAssetLiabilityColumns_WideNamesFit(t *testing.T) {
 		}
 	}
 }
+
+// Every holdings row ends its amount in the same column, also when the
+// holding has no price and its amount gets a "~": the ticker is cut and
+// padded to one width, measured after the "~" is added.
+func TestRenderHoldings_AmountsLineUp(t *testing.T) {
+	const colWidth = 30
+	acctID := types.NewID()
+	priced, unpriced := types.NewID(), types.NewID()
+	s := dashboardViewState{data: &dashboardData{
+		investmentHoldings: map[types.ID]*investment.AccountValuation{
+			acctID: {Holdings: []investment.Holding{
+				{SecurityID: priced, MarketValue: types.MustNewMoney("2000.00"), HasPricing: true},
+				{SecurityID: unpriced, MarketValue: types.MustNewMoney("1000.00"), HasPricing: false},
+			}},
+		},
+		securityTickers: map[types.ID]string{
+			priced:   "EXAMPLE TOTAL MARKET INDEX FUND",
+			unpriced: "EXAMPLE INTERNATIONAL INDEX FUND",
+		},
+	}}
+
+	lines := s.renderHoldings(widget.NewStyles(), acctID, "USD", colWidth)
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2: %q", len(lines), lines)
+	}
+	ends := map[int]bool{}
+	for _, line := range lines {
+		plain := widget.StripAnsi(line)
+		if w := lipgloss.Width(plain); w > colWidth {
+			t.Errorf("row is %d cells, over the %d-cell column: %q", w, colWidth, plain)
+		}
+		ends[lipgloss.Width(strings.TrimRight(plain, " "))] = true
+	}
+	if len(ends) != 1 {
+		t.Errorf("the amounts end in different columns %v:\n%s", ends, widget.StripAnsi(strings.Join(lines, "\n")))
+	}
+}
