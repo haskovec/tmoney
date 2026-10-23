@@ -266,8 +266,18 @@ func TestListBackups(t *testing.T) {
 	})
 }
 
+// skipValidation lets Restore take the fake file content of these tests; the
+// tests in restore_validate_test.go use real databases.
+func skipValidation(t *testing.T) {
+	t.Helper()
+	saved := validateDatabase
+	validateDatabase = func(string) error { return nil }
+	t.Cleanup(func() { validateDatabase = saved })
+}
+
 func TestRestore(t *testing.T) {
 	t.Run("restores database from backup", func(t *testing.T) {
+		skipValidation(t)
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 
@@ -306,14 +316,17 @@ func TestRestore(t *testing.T) {
 			t.Errorf("safety backup content = %q, want %q", string(safetyContent), "modified content")
 		}
 
-		// Verify .restoring file was cleaned up
-		restoringPath := dbPath + restoringExtension
-		if _, err := os.Stat(restoringPath); !os.IsNotExist(err) {
-			t.Error(".restoring file should have been cleaned up")
+		// Verify no .restoring file or partial copy was left
+		if _, err := os.Stat(dbPath + ".restoring"); !os.IsNotExist(err) {
+			t.Error("a .restoring file was left")
+		}
+		if partials, _ := filepath.Glob(filepath.Join(dir, "*"+partialInfix+"*")); len(partials) > 0 {
+			t.Errorf("partial copies were left: %v", partials)
 		}
 	})
 
 	t.Run("restoring the oldest of a full auto-backup set does not lose it to retention", func(t *testing.T) {
+		skipValidation(t)
 		dir := t.TempDir()
 		dbPath := createTestDB(t, dir)
 

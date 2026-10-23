@@ -181,12 +181,18 @@ Safety: the current state is always backed up before restoring.
 
 To prevent data loss if restore fails:
 
-1. Copy the backup to a temporary file in the same directory
-2. Verify the temp file is a valid TMoney database (open and check schema)
-3. Rename the current database to a `.restoring` suffix
-4. Rename the temp file to the database name
-5. Delete the `.restoring` file
-6. If any step fails, roll back to the `.restoring` file
+1. Copy the backup to a temporary file (`<db>.partial-<n>`) in the same directory
+2. Verify the temp file is a valid TMoney database (open it read-only, check the
+   metadata, refuse a newer schema version)
+3. Create the safety backup of the current state
+4. Rename the temp file over the database name in one step. If the process
+   dies before the rename, the database is as it was; after it, the database
+   is the complete copy.
+
+Every backup is written the same way: a temp file beside the final name,
+flushed to disk, then renamed. A crash during a backup leaves only a
+`.partial-<n>` file, which no listing shows and retention deletes after an
+hour.
 
 ## Validation Rules
 
