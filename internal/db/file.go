@@ -51,7 +51,13 @@ func ValidateFile(path string) error {
 			return &DatabaseError{Op: "validate", Err: err}
 		}
 	}
-	abs, err := filepath.Abs(path)
+	// EvalSymlinks before Abs: Abs cleans "link/.." away as text, but the os
+	// resolves the link first, and so does the copy of the file.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return &DatabaseError{Op: "validate", Err: err}
+	}
+	abs, err := filepath.Abs(resolved)
 	if err != nil {
 		return &DatabaseError{Op: "validate", Err: err}
 	}

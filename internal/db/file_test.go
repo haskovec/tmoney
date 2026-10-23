@@ -74,3 +74,23 @@ func TestValidateFileReadsAPlainPath(t *testing.T) {
 		t.Errorf("ValidateFile(abc:fin.tdb) error = %v, want a valid TMoney file", err)
 	}
 }
+
+// TestValidateFileThroughALinkAndDotDot: "link/../b.tdb" names the file that
+// the os resolves through the link, not the one that a text clean of the path
+// gives. ValidateFile must check the file that the backup copies.
+func TestValidateFileThroughALinkAndDotDot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "real", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := walOnlyFile(t, filepath.Join(t.TempDir(), "src.tdb"))
+	for _, suffix := range []string{"", ".wal"} {
+		copyFileTo(t, src+suffix, filepath.Join(root, "real", "b.tdb"+suffix))
+	}
+	if err := os.Symlink(filepath.Join(root, "real", "sub"), filepath.Join(root, "link")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	if err := ValidateFile(filepath.Join(root, "link") + string(filepath.Separator) + ".." + string(filepath.Separator) + "b.tdb"); err != nil {
+		t.Errorf("ValidateFile(link/../b.tdb) error = %v, want the valid file real/b.tdb", err)
+	}
+}

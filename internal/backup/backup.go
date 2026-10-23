@@ -211,8 +211,15 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 // than one backup per second therefore pushes the names ahead of the clock.
 // With publish, a backup never replaces another one, such as the safety backup
 // of a restore.
+//
+// A clock that was ahead and then went back makes the new names follow the
+// newest one, a little ahead of their real time, until the clock passes it.
 func freeBackupPath(dbPath, infix string, now time.Time) string {
-	at := now.Truncate(time.Second)
+	// The names hold the wall clock, and ListBackups and retention order them
+	// as text (time.Parse reads them as UTC). Compare in that frame too: in
+	// instants, the hour that the end of daylight saving time repeats sorts
+	// in another order than its names.
+	at := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), 0, time.UTC)
 	prefix := filepath.Base(dbPath) + infix
 	entries, _ := os.ReadDir(filepath.Dir(dbPath))
 	for _, entry := range entries {
@@ -220,13 +227,19 @@ func freeBackupPath(dbPath, infix string, now time.Time) string {
 		if !ok {
 			continue
 		}
-		// The names hold the wall clock of now's location.
-		t, err := time.ParseInLocation(TimestampFormat, ts, now.Location())
-		if err == nil && !t.Before(at) {
+		if t, err := time.Parse(TimestampFormat, ts); err == nil && !t.Before(at) {
 			at = t.Add(time.Second)
 		}
 	}
-	return dbPath + infix + at.Format(TimestampFormat)
+	// The scan does not see a name in another spelling (a file system that
+	// ignores case), so take the next second while the name is taken.
+	for {
+		path := dbPath + infix + at.Format(TimestampFormat)
+		if _, err := os.Lstat(path); err != nil {
+			return path
+		}
+		at = at.Add(time.Second)
+	}
 }
 
 // parseBackupFilename checks if a filename is a backup of the given base name

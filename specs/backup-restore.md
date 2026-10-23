@@ -27,8 +27,10 @@ Timestamp format: `YYYY-MM-DDTHH-MM-SS` (using hyphens instead of colons for fil
 A new backup is always the newest of its kind, and it never replaces another
 one: it takes the time now, or one second after the newest backup of its kind
 if that is later. More than one backup per second therefore gives names ahead
-of the clock. Retention deletes by name order, so a new backup is never the one
-it deletes.
+of the clock, and a clock that was ahead and went back makes the names follow
+the newest one until the clock passes it. The names hold the wall clock, and
+retention deletes by name order, so a new backup is never the one it deletes,
+also in the hour that the end of daylight saving time repeats.
 
 ### Backup Location
 

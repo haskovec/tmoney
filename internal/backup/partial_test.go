@@ -280,3 +280,53 @@ func TestRestoreAfterABurstKeepsTheSafetyBackup(t *testing.T) {
 		t.Errorf("the safety backup %s holds %q (%v), want the state before the restore", filepath.Base(safety), got, err)
 	}
 }
+
+// TestBackupNamesInTheRepeatedHour: at the end of daylight saving time the
+// wall clock repeats an hour. The names hold the wall clock and sort as text,
+// so a new backup must still sort after the ones of the first pass of that
+// hour, and a backup in a repeated second must still get a free name.
+func TestBackupNamesInTheRepeatedHour(t *testing.T) {
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Skip("no time zone data:", err)
+	}
+	firstPass := func(minute int) time.Time { return time.Date(2026, 11, 1, 1, minute, 0, 0, chicago) }
+	secondPass := func(minute int) time.Time { return firstPass(minute).Add(time.Hour) }
+
+	t.Run("a later backup sorts last", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := createTestDB(t, dir)
+		for _, minute := range []int{10, 20, 30, 40, 50} {
+			if _, err := createAutoBackupAt(dbPath, firstPass(minute), ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		path, err := createAutoBackupAt(dbPath, secondPass(5), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("the backup of the repeated hour is gone: %v", err)
+		}
+		backups, _ := ListBackups(dbPath)
+		if backups[0].Path != path {
+			t.Errorf("the newest backup is %s, want the one just made, %s", filepath.Base(backups[0].Path), filepath.Base(path))
+		}
+	})
+
+	t.Run("a repeated second", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := createTestDB(t, dir)
+		first, err := createManualBackupAt(dbPath, firstPass(10))
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := createManualBackupAt(dbPath, secondPass(10))
+		if err != nil {
+			t.Fatalf("a backup in the repeated second: %v", err)
+		}
+		if second == first {
+			t.Errorf("both backups are at %s", filepath.Base(first))
+		}
+	})
+}
