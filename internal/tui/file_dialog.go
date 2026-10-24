@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -421,20 +422,26 @@ func settleRetired(h *db.DB) tea.Cmd {
 	}
 }
 
+// retrySettleDelay is the pause before a retired handle that did not settle is
+// asked again. A var so tests can shorten it.
+var retrySettleDelay = db.SettleTimeout
+
 // retiredSettled drops a retired handle that has settled: no work can open
-// its file again. One that did not settle stays in the list, and nothing asks
-// again: a File > Open or New of its file, and quit, settle it when they need
-// to.
-func (a *App) retiredSettled(msg retiredSettledMsg) {
-	if !msg.settled {
-		return
+// its file again. One that did not settle stays in the list, and the command
+// that it returns asks again after a pause, until the handle settles: when
+// its work ends, or after settleHandlesOf settled it. A report on a handle
+// that is not in the list asks nothing.
+func (a *App) retiredSettled(msg retiredSettledMsg) tea.Cmd {
+	i := slices.Index(a.retired, msg.db)
+	if i < 0 {
+		return nil
 	}
-	for i, h := range a.retired {
-		if h == msg.db {
-			a.retired = append(a.retired[:i], a.retired[i+1:]...)
-			return
-		}
+	if msg.settled {
+		a.retired = slices.Delete(a.retired, i, i+1)
+		return nil
 	}
+	h := msg.db
+	return tea.Tick(retrySettleDelay, func(time.Time) tea.Msg { return settleRetired(h)() })
 }
 
 // settleAll runs CloseAndSettle on each handle at the same time, and closes

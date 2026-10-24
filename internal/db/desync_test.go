@@ -501,8 +501,8 @@ func TestCloseAndSettle(t *testing.T) {
 		}
 		ran := false
 		err := database.WithFileClosed(func(string) error { ran = true; return nil })
-		if !errors.Is(err, ErrClosed) || ran {
-			t.Errorf("WithFileClosed after CloseAndSettle: err %v, fn ran %v; want ErrClosed and no fn", err, ran)
+		if !errors.Is(err, ErrClosedForGood) || ran {
+			t.Errorf("WithFileClosed after CloseAndSettle: err %v, fn ran %v; want ErrClosedForGood and no fn", err, ran)
 		}
 		if !database.isClosed() {
 			t.Error("WithFileClosed reopened the database after CloseAndSettle")

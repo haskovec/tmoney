@@ -61,8 +61,10 @@ type App struct {
 	prevDB *db.DB // deferred close: kept alive until next switch so in-flight goroutines don't hit a nil conn
 	// retired are the handles of earlier files, closed for good
 	// (db.DB.CloseForGood), on which a backup, a restore or a load can still
-	// run. File > Open and New of their file, and quit, wait for that work
-	// (see settleHandlesOf). A handle leaves the list when it has settled.
+	// run. File > Open of their file, File > New at their path when no file
+	// is there, and quit wait for that work (see settleHandlesOf and
+	// submitNewFile). A handle leaves the list when it has settled;
+	// until then, it is asked again after a pause (see retiredSettled).
 	retired []*db.DB
 	// filesInFlight are the paths of the File > New and Open commands that
 	// have not reported yet; see startFileOperation.

@@ -292,8 +292,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.alreadyOpen(msg)
 
 	case retiredSettledMsg:
-		a.retiredSettled(msg)
-		return a, nil
+		return a, a.retiredSettled(msg)
 
 	case fileOpFailedMsg:
 		a.endFileOperation(msg.path)

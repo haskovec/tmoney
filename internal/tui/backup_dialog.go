@@ -56,11 +56,17 @@ func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInf
 	return d, backups, nil
 }
 
-// didNotStart is the error of a backup or restore whose handle was closed for
-// good before the work started: another file was opened or created after it
-// (see App.retire), and the handle no longer opens its file.
+// didNotStart is the error of a backup or restore, or of the backup before a
+// ledger move, when WithFileClosed returned db.ErrClosedForGood: the handle
+// was closed for good before the work started, and it does not open its file
+// again. In the TUI, a handle is closed for good when a second switch drops it
+// (App.retire), at File > Open of its file, or at File > New at its path when
+// no file is there (settleHandlesOf, also when that open or create then
+// fails). After an open or a create, a file can be open again at that path on
+// a new handle, so the text does not say that the file is closed now.
+// Quit also closes every handle for good, but no Update shows a message then.
 func didNotStart(work, file, outcome string) error {
-	return fmt.Errorf("the %s did not start: another file was opened or created after %s, so it is closed. %s",
+	return fmt.Errorf("the %s did not start: %s was closed or opened again after you asked for it. %s",
 		work, filepath.Base(file), outcome)
 }
 
@@ -75,14 +81,12 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 	database := a.db
 	return func() tea.Msg {
 		var backupPath string
-		ran := false
 		err := database.WithFileClosed(func(path string) error {
-			ran = true
 			var err error
 			backupPath, err = createManualBackup(path)
 			return err
 		})
-		if !ran && errors.Is(err, db.ErrClosed) {
+		if errors.Is(err, db.ErrClosedForGood) {
 			return errMsg{err: didNotStart("backup", database.Path(), "Nothing changed.")}
 		}
 		if err != nil {
@@ -185,15 +189,14 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 // operation reopens the handle on the restored data.
 func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backupPath string) (string, error)) tea.Msg {
 	var safetyPath string
-	ran, restored := false, false
+	restored := false
 	err := database.WithFileClosed(func(path string) error {
-		ran = true
 		var err error
 		safetyPath, err = restore(path, backupPath)
 		restored = err == nil
 		return err
 	})
-	if !ran && errors.Is(err, db.ErrClosed) {
+	if errors.Is(err, db.ErrClosedForGood) {
 		return errMsg{err: didNotStart("restore", database.Path(), "Nothing changed.")}
 	}
 	if err != nil && !restored {

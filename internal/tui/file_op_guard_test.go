@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -367,8 +368,10 @@ func TestNewFileOverAKeptFileSaysItExists(t *testing.T) {
 }
 
 // TestQueuedWorkOnARetiredHandleDoesNotStart: a backup or restore of A was
-// asked for, and its command runs only after two switches dropped A. It must
-// not run, must not reopen A, and must say why.
+// asked for, and its command runs only after the switches dropped its handle:
+// to two other files, or to B and back to A. It must not run, must not reopen
+// that handle, and must say why. After the switch back, A is open again on a
+// new handle: the text said "so it is closed".
 func TestQueuedWorkOnARetiredHandleDoesNotStart(t *testing.T) {
 	// Each one returns the command as the App builds it for A: before the
 	// switches.
@@ -382,24 +385,70 @@ func TestQueuedWorkOnARetiredHandleDoesNotStart(t *testing.T) {
 			return cmd
 		},
 	} {
-		t.Run(name, func(t *testing.T) {
-			first, bk := restoreFixture(t, "fictional-a.tdb")
-			a := NewApp(first, &config.Config{})
-			closeAll(t, a)
-			cmd := ask(t, a, first, bk)
-			switchTo(t, a, closedFile(t, "fictional-b.tdb"))
-			switchTo(t, a, closedFile(t, "fictional-c.tdb"))
+		for _, back := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, back to A %v", name, back), func(t *testing.T) {
+				first, bk := restoreFixture(t, "fictional-a.tdb")
+				a := NewApp(first, &config.Config{})
+				closeAll(t, a)
+				cmd := ask(t, a, first, bk)
+				switchTo(t, a, closedFile(t, "fictional-b.tdb"))
+				if back {
+					switchTo(t, a, first.Path())
+				} else {
+					switchTo(t, a, closedFile(t, "fictional-c.tdb"))
+				}
 
-			msg := cmd()
-			failed, ok := msg.(errMsg)
-			if !ok || !strings.Contains(failed.err.Error(), "did not start") {
-				t.Errorf("%s on a dropped handle = %#v, want an errMsg that says it did not start", name, msg)
-			}
-			if err := first.Conn().Ping(); err == nil {
-				t.Errorf("the %s reopened a handle that the App dropped", name)
-			}
-			if got := backupFiles(t, first.Path()); got != 1 {
-				t.Errorf("A has %d backups, want only the 1 of the fixture", got)
+				msg := cmd()
+				failed, ok := msg.(errMsg)
+				const why = "did not start: fictional-a.tdb was closed or opened again after you asked for it."
+				if !ok || !strings.Contains(failed.err.Error(), why) {
+					t.Errorf("%s on a dropped handle = %#v (%v), want an errMsg that says %q", name, msg, failed.err, why)
+				}
+				if err := first.Conn().Ping(); err == nil {
+					t.Errorf("the %s reopened a handle that the App dropped", name)
+				}
+				if got := backupFiles(t, first.Path()); got != 1 {
+					t.Errorf("A has %d backups, want only the 1 of the fixture", got)
+				}
+				if back {
+					if err := a.db.Conn().Ping(); a.db == first || err != nil {
+						t.Errorf("after the switch back, the open handle of A is the dropped one, or does not work: %v", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestErrClosedOfTheWorkIsAFailure: a backup or restore whose own work fails
+// with ErrClosed did run. It must report that failure, not "did not start",
+// which is only for a handle closed for good before the work.
+func TestErrClosedOfTheWorkIsAFailure(t *testing.T) {
+	failure := fmt.Errorf("fictional copy failure: %w", db.ErrClosed)
+	saved := createManualBackup
+	createManualBackup = func(string) (string, error) { return "", failure }
+	t.Cleanup(func() { createManualBackup = saved })
+	for name, run := range map[string]func(a *App) error{
+		"backup": func(a *App) error {
+			msg, _ := a.createManualBackupCmd()().(errMsg)
+			return msg.err
+		},
+		"restore": func(a *App) error {
+			msg, _ := restoreFile(a.db, "fictional.backup", func(string, string) (string, error) { return "", failure }).(errMsg)
+			return msg.err
+		},
+		"ledger move": func(a *App) error {
+			_, err := backupBeforeLedgerMove(a.db)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d, _ := dbtest.NewFile(t, "fictional-a.tdb")
+			a := NewApp(d, &config.Config{})
+			closeAll(t, a)
+			err := run(a)
+			if err == nil || !strings.Contains(err.Error(), "fictional copy failure") || strings.Contains(err.Error(), "did not start") {
+				t.Errorf("%s = %v; want its own failure, not \"did not start\"", name, err)
 			}
 		})
 	}
@@ -497,10 +546,21 @@ func TestShutdownWaitsForARestoreOfAnOlderFile(t *testing.T) {
 	}
 }
 
+// shortenRetry makes the pause before a retired handle is asked again short.
+func shortenRetry(t *testing.T) {
+	t.Helper()
+	saved := retrySettleDelay
+	retrySettleDelay = 100 * time.Millisecond
+	t.Cleanup(func() { retrySettleDelay = saved })
+}
+
 // TestRetiredHandleLeavesTheListWhenSettled: after two switches a.retired
-// holds the first handle until its settle reports; a handle that did not
-// settle stays, and no command asks again.
+// holds the first handle until its settle reports. A handle that did not
+// settle is asked again after a pause: nothing asked again, and it stayed in
+// the list for the session. A report on a handle that is not in the list asks
+// nothing.
 func TestRetiredHandleLeavesTheListWhenSettled(t *testing.T) {
+	shortenRetry(t)
 	first := dbtest.New(t)
 	a := NewApp(first, &config.Config{})
 	closeAll(t, a)
@@ -509,11 +569,55 @@ func TestRetiredHandleLeavesTheListWhenSettled(t *testing.T) {
 	if len(a.retired) != 1 || a.retired[0] != first {
 		t.Fatalf("a.retired = %v, want the first handle", a.retired)
 	}
-	if _, cmd := a.Update(retiredSettledMsg{db: first, settled: false}); cmd != nil || len(a.retired) != 1 {
-		t.Errorf("a handle that did not settle: a.retired = %v, cmd = %v; want it kept and no command", a.retired, cmd)
+
+	asked := time.Now()
+	_, cmd := a.Update(retiredSettledMsg{db: first, settled: false})
+	if cmd == nil || len(a.retired) != 1 {
+		t.Fatalf("a handle that did not settle: a.retired = %v, cmd = %v; want it kept and asked again", a.retired, cmd)
 	}
-	a.Update(settleRetired(first)())
+	msg := cmd()
+	if waited := time.Since(asked); waited < retrySettleDelay {
+		t.Errorf("the handle was asked again after %v, want a pause of %v first", waited, retrySettleDelay)
+	}
+	if _, next := a.Update(msg); next != nil || len(a.retired) != 0 {
+		t.Errorf("after the handle settled: a.retired = %v, cmd = %v; want empty and no command", a.retired, next)
+	}
+	if _, cmd := a.Update(retiredSettledMsg{db: first, settled: false}); cmd != nil {
+		t.Error("a report on a handle that is not in the list asked again")
+	}
+}
+
+// TestRetiredHandleIsAskedAgainAfterItsWorkEnds: a backup of A runs past the
+// first settle after two switches. When the backup ends, the next ask settles
+// the handle of A, and it leaves the list.
+func TestRetiredHandleIsAskedAgainAfterItsWorkEnds(t *testing.T) {
+	shortenRetry(t)
+	first, _ := dbtest.NewFile(t, "fictional-a.tdb")
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	inFn, proceed := holdBackups(t)
+	backupDone := make(chan tea.Msg, 1)
+	backupCmd := a.createManualBackupCmd()
+	go func() { backupDone <- backupCmd() }()
+	<-inFn
+	switchTo(t, a, closedFile(t, "fictional-b.tdb"))
+	switchTo(t, a, closedFile(t, "fictional-c.tdb"))
+
+	// The first settle ran out of time while the backup ran.
+	_, cmd := a.Update(retiredSettledMsg{db: first, settled: false})
+	if cmd == nil {
+		t.Fatal("a retired handle that did not settle is not asked again")
+	}
+	close(proceed)
+	if res := <-backupDone; func() bool { _, ok := res.(backupCreatedMsg); return !ok }() {
+		t.Errorf("backup result = %#v, want backupCreatedMsg", res)
+	}
+	msg := cmd()
+	if settled, ok := msg.(retiredSettledMsg); !ok || settled.db != first || !settled.settled {
+		t.Fatalf("the second ask = %#v, want the handle of A settled", msg)
+	}
+	a.Update(msg)
 	if len(a.retired) != 0 {
-		t.Errorf("a.retired = %v after the handle settled, want empty", a.retired)
+		t.Errorf("a.retired = %v after the backup ended, want empty", a.retired)
 	}
 }

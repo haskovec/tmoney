@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -31,8 +32,8 @@ func TestCloseForGoodBeforeWithFileClosedRunsNoFn(t *testing.T) {
 	}
 	ran := false
 	err := database.WithFileClosed(func(string) error { ran = true; return nil })
-	if !errors.Is(err, ErrClosed) || ran {
-		t.Errorf("WithFileClosed after CloseForGood = %v, fn ran = %v; want ErrClosed and no fn", err, ran)
+	if !errors.Is(err, ErrClosedForGood) || !errors.Is(err, ErrClosed) || ran {
+		t.Errorf("WithFileClosed after CloseForGood = %v, fn ran = %v; want ErrClosedForGood and no fn", err, ran)
 	}
 	if !database.isClosed() {
 		t.Error("WithFileClosed reopened a handle that was closed for good")
@@ -68,8 +69,8 @@ func TestCloseForGoodStopsAQueuedWithFileClosed(t *testing.T) {
 	if err := <-first; err != nil {
 		t.Errorf("the first WithFileClosed = %v, want fn's nil", err)
 	}
-	if err := <-second; !errors.Is(err, ErrClosed) || secondRan {
-		t.Errorf("the queued WithFileClosed = %v, fn ran = %v; want ErrClosed and no fn", err, secondRan)
+	if err := <-second; !errors.Is(err, ErrClosedForGood) || secondRan {
+		t.Errorf("the queued WithFileClosed = %v, fn ran = %v; want ErrClosedForGood and no fn", err, secondRan)
 	}
 	if !database.isClosed() {
 		t.Error("a file operation reopened a handle that was closed for good")
@@ -119,6 +120,68 @@ func TestWithFileClosedReportsFnResultWhenItsReopenIsDropped(t *testing.T) {
 	}
 }
 
+// TestErrClosedOfFnIsNotClosedForGood: ErrClosedForGood tells the caller
+// that fn did not run. An ErrClosed that fn returns is fn's failure, and the
+// caller must not take it for that refusal.
+func TestErrClosedOfFnIsNotClosedForGood(t *testing.T) {
+	for name, fnErr := range map[string]error{
+		"ErrClosed":         ErrClosed,
+		"wrapped ErrClosed": fmt.Errorf("fictional copy failure: %w", ErrClosed),
+	} {
+		t.Run(name, func(t *testing.T) {
+			database := newClosableDB(t)
+			ran := false
+			err := database.WithFileClosed(func(string) error { ran = true; return fnErr })
+			if !ran || !errors.Is(err, fnErr) || errors.Is(err, ErrClosedForGood) {
+				t.Errorf("WithFileClosed() = %v, fn ran = %v; want fn's %v, not ErrClosedForGood", err, ran, fnErr)
+			}
+		})
+	}
+}
+
+// TestWithFileClosedSaysClosedForGoodBeforeItWaits: a handle closed for good
+// gives ErrClosedForGood also when an earlier reopen still waits for a read,
+// or when a heal that is blocked holds reopenMu. It gave errFileBusy or
+// errHealBlocked ("restart tmoney"), and the TUI showed that in place of "did
+// not start".
+func TestWithFileClosedSaysClosedForGoodBeforeItWaits(t *testing.T) {
+	saved := reopenWaitTimeout
+	reopenWaitTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { reopenWaitTimeout = saved })
+
+	t.Run("an earlier reopen waits for a read", func(t *testing.T) {
+		database := newClosableDB(t)
+		if err := database.CloseForGood(); err != nil {
+			t.Fatal(err)
+		}
+		database.fileBusy.Store(true) // as the reopen of a WithFileClosed that timed out
+		t.Cleanup(func() { database.fileBusy.Store(false) })
+		ran := false
+		err := database.WithFileClosed(func(string) error { ran = true; return nil })
+		if !errors.Is(err, ErrClosedForGood) || ran {
+			t.Errorf("WithFileClosed() = %v, fn ran = %v; want ErrClosedForGood and no fn", err, ran)
+		}
+	})
+	t.Run("closed for good while it waits for a blocked heal", func(t *testing.T) {
+		database := newClosableDB(t)
+		database.reopenMu.Lock() // as a heal that is blocked in its open
+		ran := false
+		done := make(chan error, 1)
+		go func() {
+			done <- database.WithFileClosed(func(string) error { ran = true; return nil })
+		}()
+		waitInStack(t, "(*DB).WithFileClosed", "db.lockBy(")
+		if err := database.CloseForGood(); err != nil {
+			t.Fatal(err)
+		}
+		err := <-done
+		database.reopenMu.Unlock()
+		if !errors.Is(err, ErrClosedForGood) || ran {
+			t.Errorf("WithFileClosed() = %v, fn ran = %v; want ErrClosedForGood and no fn", err, ran)
+		}
+	})
+}
+
 // TestDroppedReopenDoesNotOpenTheFile: a reopen that a close on purpose
 // dropped must not open the file even for a moment. The open would get the
 // DuckDB instance of a new handle on the same file, or block behind it.
@@ -157,17 +220,23 @@ func TestDroppedReopenDoesNotOpenTheFile(t *testing.T) {
 // mutex, so that a test knows that a call is queued behind a lock.
 func waitParkedInLock(t *testing.T, fn string) {
 	t.Helper()
+	waitInStack(t, fn, "Mutex).Lock")
+}
+
+// waitInStack waits until a goroutine whose stack holds fn is in frame.
+func waitInStack(t *testing.T, fn, frame string) {
+	t.Helper()
 	buf := make([]byte, 1<<20)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		n := runtime.Stack(buf, true)
 		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
-			if strings.Contains(g, fn) && strings.Contains(g, "Mutex).Lock") {
+			if strings.Contains(g, fn) && strings.Contains(g, frame) {
 				return
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("no goroutine in %s waits for a lock", fn)
+			t.Fatalf("no goroutine in %s is in %s", fn, frame)
 		}
 		time.Sleep(time.Millisecond)
 	}

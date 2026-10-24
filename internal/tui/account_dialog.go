@@ -575,14 +575,12 @@ func backupBeforeLedgerMove(database *db.DB) (string, error) {
 		return "", fmt.Errorf("no database is open; nothing was moved")
 	}
 	var backupPath string
-	ran := false
 	err := database.WithFileClosed(func(path string) error {
-		ran = true
 		p, err := createManualBackup(path)
 		backupPath = p
 		return err
 	})
-	if !ran && errors.Is(err, db.ErrClosed) {
+	if errors.Is(err, db.ErrClosedForGood) {
 		return "", didNotStart("backup before the move", database.Path(), "Nothing was moved.")
 	}
 	if err != nil {
