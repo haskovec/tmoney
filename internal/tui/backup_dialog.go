@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -55,6 +56,13 @@ func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInf
 	return d, backups, nil
 }
 
+// didNotStart is the error of a backup or restore whose handle a File > Open
+// closed for good before the work started (see App.retire): the handle no
+// longer opens its file.
+func didNotStart(work, outcome string) error {
+	return fmt.Errorf("the %s did not start, because File > Open closed the file. %s", work, outcome)
+}
+
 // createManualBackup is backup.CreateManualBackup. Tests replace it to hold a
 // backup inside its file operation; the package has no parallel tests.
 var createManualBackup = backup.CreateManualBackup
@@ -66,11 +74,16 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 	database := a.db
 	return func() tea.Msg {
 		var backupPath string
+		ran := false
 		err := database.WithFileClosed(func(path string) error {
+			ran = true
 			var err error
 			backupPath, err = createManualBackup(path)
 			return err
 		})
+		if !ran && errors.Is(err, db.ErrClosed) {
+			return errMsg{err: didNotStart("backup of "+filepath.Base(database.Path()), "Nothing changed.")}
+		}
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to create backup: %w", err)}
 		}
@@ -94,6 +107,10 @@ func createAutoBackupOnQuit(database *db.DB) {
 type backupDialogState struct {
 	dialog  *dialog.Dialog
 	backups []backup.BackupInfo
+	// db is the handle of the file whose backups the list shows. A restore
+	// picked from the list replaces that file, also when a File > Open
+	// switched a.db in the meantime.
+	db *db.DB
 }
 
 // handleBackupDialogKey handles key input for the backup restore dialog.
@@ -142,13 +159,13 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 	}
 
 	selectedBackup := a.backupDialog.backups[selectedIndex]
-	a.backupDialog = nil
 
 	// Show confirmation dialog
 	msg := fmt.Sprintf("Restore from backup dated %s?\nCurrent data will be overwritten.\nA backup of the current state will be created first.",
 		selectedBackup.Timestamp.Format("2006-01-02 15:04:05"))
 	backupPath := selectedBackup.Path
-	database := a.db
+	database := a.backupDialog.db
+	a.backupDialog = nil
 	a.showConfirmDialog("Confirm Restore", msg, func() tea.Msg {
 		return restoreFile(database, backupPath, backup.Restore)
 	})
@@ -167,13 +184,17 @@ func (a *App) submitBackupDialog() (tea.Model, tea.Cmd) {
 // operation reopens the handle on the restored data.
 func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backupPath string) (string, error)) tea.Msg {
 	var safetyPath string
-	restored := false
+	ran, restored := false, false
 	err := database.WithFileClosed(func(path string) error {
+		ran = true
 		var err error
 		safetyPath, err = restore(path, backupPath)
 		restored = err == nil
 		return err
 	})
+	if !ran && errors.Is(err, db.ErrClosed) {
+		return errMsg{err: didNotStart("restore of "+filepath.Base(database.Path()), "Nothing changed.")}
+	}
 	if err != nil && !restored {
 		if safetyPath != "" { // Restore stopped after its safety backup
 			return errMsg{err: fmt.Errorf("failed to restore (a backup of the current state is %s): %w", backupFilename(safetyPath), err)}

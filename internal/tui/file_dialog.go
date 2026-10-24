@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -284,7 +286,13 @@ func (a *App) submitNewFile(path string) tea.Cmd {
 	if !a.startFileOperation(path) {
 		return nil
 	}
+	kept := a.keptHandles()
 	return func() tea.Msg {
+		// A handle of an earlier file on this path (since moved away) must
+		// not reopen on the new file.
+		if !settleHandlesOf(path, kept) {
+			return fileOpFailedMsg{path: path, err: busyError(path)}
+		}
 		// Create the directory if needed
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -318,12 +326,12 @@ type fileAlreadyOpenMsg struct {
 // instance per path, so the second handle shares the first one's instance: a
 // backup or restore through it closes only its own pool, the instance lives on,
 // and the backup misses the rows still in <path>.wal. The open file stays as it
-// is. The kept handle of the previous file (prevDB) closes for good first
-// (db.DB.CloseAndSettle): the open waits for a backup or restore that still
-// runs on it, or the new handle would open the file that the restore replaces,
-// and for the reads that still hold it, as an open of the file blocks inside
-// DuckDB until they let go, with no time limit. If they hold on, the open
-// fails with "try again".
+// is. Each kept handle of an earlier file on this file (prevDB and the retired
+// ones) closes for good first and settles (see settleHandlesOf): the open
+// waits for a backup or restore that still runs on it, or the new handle would
+// open the file that the restore replaces, and for the reads that still hold
+// it, as an open of the file blocks inside DuckDB until they let go, with no
+// time limit. If they hold on, the open fails with "try again".
 //
 // The path is the text of the dialog, so a leading "~" is expanded first, as
 // db.Open does, or the same-file checks would miss the open file.
@@ -332,17 +340,13 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 	if !a.startFileOperation(path) {
 		return nil
 	}
-	current, prev := a.db, a.prevDB
+	current, kept := a.db, a.keptHandles()
 	return func() tea.Msg {
 		if current != nil && sameFile(path, current.Path()) {
 			return fileAlreadyOpenMsg{path: path, db: current}
 		}
-		if prev != nil && sameFile(path, prev.Path()) {
-			// switchDatabase closes it again, which does nothing more.
-			if settled, err := prev.CloseAndSettle(prevDrainTimeout); err != nil || !settled {
-				return fileOpFailedMsg{path: path,
-					err: fmt.Errorf("%s is still busy with a load of the last session; try again in a moment", filepath.Base(path))}
-			}
+		if !settleHandlesOf(path, kept) {
+			return fileOpFailedMsg{path: path, err: busyError(path)}
 		}
 		database, err := db.Open(path)
 		if err != nil {
@@ -351,6 +355,96 @@ func (a *App) submitOpenFile(path string) tea.Cmd {
 
 		return fileDialogSavedMsg{db: database, path: path}
 	}
+}
+
+// keptHandles returns prevDB and the retired handles: every handle of an
+// earlier file that work can still use. The slice is a copy, for a command.
+func (a *App) keptHandles() []*db.DB {
+	kept := make([]*db.DB, 0, len(a.retired)+1)
+	if a.prevDB != nil {
+		kept = append(kept, a.prevDB)
+	}
+	return append(kept, a.retired...)
+}
+
+// settleHandlesOf closes for good each handle in kept on the file that path
+// names, and waits for the work that still runs on it: a backup or restore
+// (db.DB.WithFileClosed), a write, or a load of an earlier session (see
+// db.DB.CloseAndSettle). A new handle must not open the file before: it would
+// open the file that a restore replaces, or share the DuckDB instance of the
+// old handle. It reports false when one is still busy at the time limit; the
+// handle is closed for good all the same, so the next try is quick once the
+// work ends.
+func settleHandlesOf(path string, kept []*db.DB) bool {
+	for _, h := range kept {
+		if !sameTarget(path, h.Path()) {
+			continue
+		}
+		if settled, err := h.CloseAndSettle(prevDrainTimeout); err != nil || !settled {
+			return false
+		}
+	}
+	return true
+}
+
+// busyError is the "try again" answer when settleHandlesOf ran out of time.
+func busyError(path string) error {
+	return fmt.Errorf("%s is still busy with a backup, a restore or a load of an earlier session; try again in a moment",
+		filepath.Base(path))
+}
+
+// retiredSettledMsg reports the end of the CloseAndSettle of a retired handle.
+type retiredSettledMsg struct {
+	db      *db.DB
+	settled bool
+}
+
+// retire closes h for good at once and keeps it in a.retired until it has
+// settled. The close does not wait, so Update does not block; the command
+// that it returns waits.
+func (a *App) retire(h *db.DB) tea.Cmd {
+	_ = h.CloseForGood()
+	a.retired = append(a.retired, h)
+	return settleRetired(h)
+}
+
+// settleRetired waits for the work on the retired handle h to end.
+func settleRetired(h *db.DB) tea.Cmd {
+	return func() tea.Msg {
+		settled, err := h.CloseAndSettle(db.SettleTimeout)
+		return retiredSettledMsg{db: h, settled: settled && err == nil}
+	}
+}
+
+// retiredSettled drops a retired handle that has settled: no work can open
+// its file again. One that did not settle stays in the list, and nothing asks
+// again: a File > Open or New of its file, and quit, settle it when they need
+// to.
+func (a *App) retiredSettled(msg retiredSettledMsg) {
+	if !msg.settled {
+		return
+	}
+	for i, h := range a.retired {
+		if h == msg.db {
+			a.retired = append(a.retired[:i], a.retired[i+1:]...)
+			return
+		}
+	}
+}
+
+// settleAll runs CloseAndSettle on each handle at the same time, and closes
+// the channel when all of them returned.
+func settleAll(handles []*db.DB, timeout time.Duration) <-chan struct{} {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, h := range handles {
+		wg.Go(func() { _, _ = h.CloseAndSettle(timeout) })
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	return done
 }
 
 // alreadyOpen handles the report that File > Open named the open file. When
@@ -383,10 +477,19 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	// The current a.db is kept alive as prevDB so that any in-flight
 	// goroutines from dashboard.load/loadSidebarData/etc. that still
 	// hold service references to it won't panic on a nil *sql.DB conn.
+	//
+	// The handle before it closes for good (retire): a plain Close let a
+	// backup or restore that still waited for it reopen it, and the App
+	// forgot it, so File > Open of its file made a second handle on it.
+	var settle tea.Cmd
 	if a.prevDB != nil {
-		_ = a.prevDB.Close()
+		settle = a.retire(a.prevDB)
 	}
 	a.prevDB = a.db
+
+	// The Restore list and a confirm dialog act on the file we leave: a
+	// restore picked from the list would replace the new file.
+	a.closeDialogsOfTheOldFile()
 
 	// Set new database and reinitialize ALL services
 	a.db = newDB
@@ -437,7 +540,20 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
 		a.dashboard.load(a.dashboardDeps()),
+		settle,
 	)
+}
+
+// closeDialogsOfTheOldFile closes the Restore list and the confirm dialog at a
+// file switch, and says so. Every confirm dialog acts on the open file.
+func (a *App) closeDialogsOfTheOldFile() {
+	if a.backupDialog == nil && a.confirm.action == nil {
+		return
+	}
+	a.backupDialog = nil
+	a.confirm = confirmSurface{}
+	a.statusbar.AddNotification("Another file opened. The dialog of the last file closed, and nothing changed.",
+		widget.NotificationInfo)
 }
 
 // nearestExistingDir returns dir when it is a directory, else its nearest

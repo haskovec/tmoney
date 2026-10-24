@@ -273,6 +273,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.afterAccountDialogSave()
 
 	case ledgerMoveSavedMsg:
+		// The move is one-way, so the undo history of its file is cleared,
+		// as after a restore. A File > Open since then has its own history.
+		if msg.db == a.db && a.undoManager != nil {
+			a.undoManager.Clear()
+		}
 		a.statusbar.AddNotification(
 			fmt.Sprintf("Backup created before the move: %s", backupFilename(msg.backupPath)),
 			widget.NotificationInfo,
@@ -285,6 +290,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case fileAlreadyOpenMsg:
 		return a, a.alreadyOpen(msg)
+
+	case retiredSettledMsg:
+		a.retiredSettled(msg)
+		return a, nil
 
 	case fileOpFailedMsg:
 		a.endFileOperation(msg.path)
