@@ -22,6 +22,7 @@ type cashOperationDialogSavedMsg struct {
 	// closes the dialog before the save runs, so the operation type it names
 	// is no longer readable by the time this message arrives.
 	note string
+	fileOf
 }
 
 // buildCashOperationDialog creates a dialog.Dialog for cash-only investment operations
@@ -161,8 +162,10 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeCashOperationDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
@@ -171,26 +174,26 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 		if editTxnID != types.NilID {
 			switch txnType {
 			case investment.TransactionTypeDeposit:
-				saved, txnErr = a.services.InvestmentEdit.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = svc.InvestmentEdit.UpdateDeposit(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeWithdrawal:
-				saved, txnErr = a.services.InvestmentEdit.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = svc.InvestmentEdit.UpdateWithdrawal(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeFee:
-				saved, txnErr = a.services.InvestmentEdit.UpdateFee(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = svc.InvestmentEdit.UpdateFee(editTxnID, accountID, date, amountVal, memo)
 			case investment.TransactionTypeInterest:
-				saved, txnErr = a.services.InvestmentEdit.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
+				saved, txnErr = svc.InvestmentEdit.UpdateInterest(editTxnID, accountID, date, amountVal, memo)
 			default:
 				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}
 		} else {
 			switch txnType {
 			case investment.TransactionTypeDeposit:
-				saved, txnErr = a.services.Investment.Deposit(accountID, date, amountVal, memo)
+				saved, txnErr = svc.Investment.Deposit(accountID, date, amountVal, memo)
 			case investment.TransactionTypeWithdrawal:
-				saved, txnErr = a.services.Investment.Withdrawal(accountID, date, amountVal, memo)
+				saved, txnErr = svc.Investment.Withdrawal(accountID, date, amountVal, memo)
 			case investment.TransactionTypeFee:
-				saved, txnErr = a.services.Investment.Fee(accountID, date, amountVal, memo)
+				saved, txnErr = svc.Investment.Fee(accountID, date, amountVal, memo)
 			case investment.TransactionTypeInterest:
-				saved, txnErr = a.services.Investment.Interest(accountID, date, amountVal, memo)
+				saved, txnErr = svc.Investment.Interest(accountID, date, amountVal, memo)
 			default:
 				return errMsg{err: fmt.Errorf("unsupported cash operation type: %s", txnType)}
 			}
@@ -200,6 +203,6 @@ func (a *App) submitCashOperationDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save %s transaction: %w", txnType.DisplayName(), txnErr)}
 		}
 
-		return cashOperationDialogSavedMsg{savedDate: date, savedID: saved.ID, note: cashOperationSavedNote(txnType)}
+		return cashOperationDialogSavedMsg{savedDate: date, savedID: saved.ID, note: cashOperationSavedNote(txnType), fileOf: file}
 	}
 }

@@ -19,12 +19,14 @@ type feeLiquidationDialogData struct {
 // feeLiquidationDialogDataMsg is sent when fee-liquidation dialog data has loaded.
 type feeLiquidationDialogDataMsg struct {
 	data *feeLiquidationDialogData
+	fileOf
 }
 
 // feeLiquidationDialogSavedMsg is sent when a fee-liquidation transaction is saved.
 type feeLiquidationDialogSavedMsg struct {
 	savedDate types.Date
 	savedID   types.ID
+	fileOf
 }
 
 // buildFeeLiquidationDialog creates the dialog for a fee-via-liquidation. Field
@@ -102,17 +104,19 @@ func buildFeeLiquidationDialog(securityOptions []string, editTxn *investment.Tra
 
 // loadFeeLiquidationDialogData returns a command that loads securities for the dialog.
 func (a *App) loadFeeLiquidationDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &feeLiquidationDialogData{}
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
-		return feeLiquidationDialogDataMsg{data: data}
+		return feeLiquidationDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -257,19 +261,21 @@ func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
 
 	a.closeFeeLiquidationDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.services.InvestmentEdit.UpdateFeeLiquidation(
+			saved, err = svc.InvestmentEdit.UpdateFeeLiquidation(
 				editTxnID, accountID, securityID, date, shares,
 				totalAmount, pricePerShare, commission, memo, nil,
 			)
 		} else {
-			saved, err = a.services.Investment.FeeLiquidation(
+			saved, err = svc.Investment.FeeLiquidation(
 				accountID, securityID, date, shares,
 				totalAmount, pricePerShare, commission, memo, nil,
 			)
@@ -277,6 +283,6 @@ func (a *App) submitFeeLiquidationDialog() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to save fee liquidation transaction: %w", err)}
 		}
-		return feeLiquidationDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return feeLiquidationDialogSavedMsg{savedDate: date, savedID: saved.ID, fileOf: file}
 	}
 }

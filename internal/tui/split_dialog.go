@@ -100,6 +100,7 @@ type pendingSplitTransaction struct {
 // the cursor onto its row after reload.
 type splitDialogSavedMsg struct {
 	savedID types.ID
+	fileOf
 }
 
 // SplitDialog is a custom dialog for editing split transaction entries.

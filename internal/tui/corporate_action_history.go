@@ -41,28 +41,34 @@ type corporateActionViewData struct {
 // corporateActionViewLoadedMsg is sent when the register's data has loaded.
 type corporateActionViewLoadedMsg struct {
 	data *corporateActionViewData
+	fileOf
 }
 
 // corporateActionDeletedMsg is sent after a successful reversal+delete.
-type corporateActionDeletedMsg struct{}
+type corporateActionDeletedMsg struct{ fileOf }
 
 // corporateActionDeps is what the Corporate Actions view needs from outside
-// itself. Every dep is a func, because switchDatabase replaces App's services
-// and closes the previous *db.DB; and deps are passed to each call, never
-// stored in the view state. Both rules are pinned by the guards that run over
-// viewControllers.
+// itself. Every dep is a func bound to the file that is open when Update makes
+// the deps, so a load made before a file switch reads only its own file; and
+// deps are passed to each call, never stored in the view state. Both rules are
+// pinned by the guards that run over viewControllers.
 type corporateActionDeps struct {
 	corporateActions func() *investment.CorporateActionService
 	securities       func() *security.Service
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // corporateActionDeps binds the Corporate Actions view to the services App
 // owns. Every accessor may return nil, because an App built by a test has no
 // services, so each caller keeps its own nil guard.
 func (a *App) corporateActionDeps() corporateActionDeps {
+	svc := a.services
+	file := a.fileOfOpen()
 	return corporateActionDeps{
-		corporateActions: func() *investment.CorporateActionService { return a.services.CorporateAction },
-		securities:       func() *security.Service { return a.services.Security },
+		corporateActions: func() *investment.CorporateActionService { return svc.CorporateAction },
+		securities:       func() *security.Service { return svc.Security },
+		file:             func() fileOf { return file },
 	}
 }
 
@@ -70,20 +76,21 @@ func (a *App) corporateActionDeps() corporateActionDeps {
 // security map used to resolve tickers. The view's filter query is left
 // untouched so callers may pre-populate it before dispatching the load.
 func (s *corporateActionViewState) load(d corporateActionDeps) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		corporateActions, securities := d.corporateActions(), d.securities()
 		if corporateActions == nil || securities == nil {
-			return errMsg{err: fmt.Errorf("services not available")}
+			return errMsg{err: fmt.Errorf("services not available"), fileOf: file}
 		}
 
 		actions, err := corporateActions.ListAll()
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load corporate actions: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load corporate actions: %w", err), fileOf: file}
 		}
 
 		allSecurities, err := securities.List(security.Filter{})
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load securities: %w", err), fileOf: file}
 		}
 		secMap := make(map[types.ID]*security.Security, len(allSecurities))
 		for _, sec := range allSecurities {
@@ -91,7 +98,8 @@ func (s *corporateActionViewState) load(d corporateActionDeps) tea.Cmd {
 		}
 
 		return corporateActionViewLoadedMsg{
-			data: &corporateActionViewData{actions: actions, secMap: secMap},
+			data:   &corporateActionViewData{actions: actions, secMap: secMap},
+			fileOf: file,
 		}
 	}
 }
@@ -408,14 +416,16 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 		ca.ActionType.DisplayName(), ticker, ca.ActionDate.Time().Format("2006-01-02"),
 	)
 	actionID := ca.ID
+	svc := a.services
+	file := a.fileOfOpen()
 	a.showConfirmDialog(
 		"Reverse Corporate Action",
 		msg,
 		func() tea.Msg {
-			if a.services.CorporateAction == nil {
+			if svc.CorporateAction == nil {
 				return errMsg{err: fmt.Errorf("corporate action service not available")}
 			}
-			if err := a.services.CorporateAction.DeleteAction(actionID); err != nil {
+			if err := svc.CorporateAction.DeleteAction(actionID); err != nil {
 				var dse *investment.DownstreamEventsError
 				var ure *investment.UnsupportedReversalError
 				switch {
@@ -425,7 +435,7 @@ func (a *App) confirmDeleteCorporateAction(ca *investment.CorporateAction) {
 					return errMsg{err: fmt.Errorf("failed to reverse corporate action: %w", err)}
 				}
 			}
-			return corporateActionDeletedMsg{}
+			return corporateActionDeletedMsg{fileOf: file}
 		},
 	)
 }

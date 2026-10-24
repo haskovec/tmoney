@@ -46,8 +46,9 @@ func (a *App) refreshPricesCmd() tea.Cmd {
 			return priceRefreshCompleteMsg{err: fmt.Errorf("price service not available")}
 		}
 	}
+	svc := a.services
 	return func() tea.Msg {
-		result, err := a.services.Price.RefreshPrices(defaultRefreshProviderName, nil)
+		result, err := svc.Price.RefreshPrices(defaultRefreshProviderName, nil)
 		return priceRefreshCompleteMsg{result: result, err: err}
 	}
 }

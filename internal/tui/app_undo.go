@@ -21,8 +21,9 @@ func (a *App) performUndo() tea.Cmd {
 	if a.undoManager == nil {
 		return nil
 	}
+	undoManager := a.undoManager
 	return func() tea.Msg {
-		desc, err := a.undoManager.Undo()
+		desc, err := undoManager.Undo()
 		return undoResultMsg{action: "Undo", description: desc, err: err}
 	}
 }
@@ -32,8 +33,9 @@ func (a *App) performRedo() tea.Cmd {
 	if a.undoManager == nil {
 		return nil
 	}
+	undoManager := a.undoManager
 	return func() tea.Msg {
-		desc, err := a.undoManager.Redo()
+		desc, err := undoManager.Redo()
 		return undoResultMsg{action: "Redo", description: desc, err: err}
 	}
 }

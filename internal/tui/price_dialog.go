@@ -106,6 +106,7 @@ type priceLookupResultMsg struct {
 	date     types.Date
 	currency string
 	err      error
+	fileOf
 }
 
 // startPriceLookup reads the dialog's current date + selected security and
@@ -125,23 +126,25 @@ func (a *App) startPriceLookup() (tea.Model, tea.Cmd) {
 // lookupPriceCmd fetches the provider's close on/before the given date for the
 // ticker and delivers it as a priceLookupResultMsg.
 func (a *App) lookupPriceCmd(ticker, dateStr string) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		date, err := types.ParseDate(dateStr)
 		if err != nil {
-			return priceLookupResultMsg{err: fmt.Errorf("enter a valid date first (YYYY-MM-DD)")}
+			return priceLookupResultMsg{err: fmt.Errorf("enter a valid date first (YYYY-MM-DD)"), fileOf: file}
 		}
-		if a.services.Price == nil {
-			return priceLookupResultMsg{err: fmt.Errorf("price service not available")}
+		if svc.Price == nil {
+			return priceLookupResultMsg{err: fmt.Errorf("price service not available"), fileOf: file}
 		}
-		provider, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName)
+		provider, err := svc.Price.ProviderRegistry().Get(defaultRefreshProviderName)
 		if err != nil {
-			return priceLookupResultMsg{err: err}
+			return priceLookupResultMsg{err: err, fileOf: file}
 		}
 		quote, err := provider.FetchQuoteOn(ticker, date)
 		if err != nil {
-			return priceLookupResultMsg{err: err}
+			return priceLookupResultMsg{err: err, fileOf: file}
 		}
-		return priceLookupResultMsg{price: quote.Price, date: quote.Date, currency: quote.Currency}
+		return priceLookupResultMsg{price: quote.Price, date: quote.Date, currency: quote.Currency, fileOf: file}
 	}
 }
 
@@ -216,31 +219,35 @@ func (a *App) submitPriceDialog() (tea.Model, tea.Cmd) {
 
 // createPrice creates a new price via the service.
 func (a *App) createPrice(securityID types.ID, date types.Date, amount types.Money) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Price == nil {
+		if svc.Price == nil {
 			return errMsg{err: fmt.Errorf("price service not available")}
 		}
 
 		p := price.NewPrice(securityID, date, amount, price.SourceManual)
-		if err := a.services.Price.AddPrice(p); err != nil {
+		if err := svc.Price.AddPrice(p); err != nil {
 			return errMsg{err: err}
 		}
-		return priceAddedMsg{}
+		return priceAddedMsg{fileOf: file}
 	}
 }
 
 // updatePrice updates an existing price via the service.
 func (a *App) updatePrice(id, securityID types.ID, date types.Date, amount types.Money) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Price == nil {
+		if svc.Price == nil {
 			return errMsg{err: fmt.Errorf("price service not available")}
 		}
 
 		p := price.NewPrice(securityID, date, amount, price.SourceManual)
 		p.ID = id
-		if err := a.services.Price.UpdatePrice(p); err != nil {
+		if err := svc.Price.UpdatePrice(p); err != nil {
 			return errMsg{err: err}
 		}
-		return priceUpdatedMsg{}
+		return priceUpdatedMsg{fileOf: file}
 	}
 }

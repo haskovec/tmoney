@@ -38,12 +38,14 @@ type portfolioViewData struct {
 // portfolioLoadedMsg is sent when portfolio data has been loaded.
 type portfolioLoadedMsg struct {
 	data *portfolioViewData
+	fileOf
 }
 
 // portfolioLotDetailMsg is sent when lot detail has been loaded.
 type portfolioLotDetailMsg struct {
 	lots       []investment.LotDetail
 	securityID types.ID
+	fileOf
 }
 
 // portfolioViewMode tracks whether we're showing holdings or lot detail.
@@ -54,35 +56,42 @@ const (
 	portfolioViewLots
 )
 
-// portfolioDeps is what the Portfolio view needs from outside itself. Every
-// dep is a func, because switchDatabase replaces App's services and closes the
-// previous *db.DB; and deps are passed to each call, never stored in the view
-// state. Both rules are pinned by the guards that run over viewControllers.
+// portfolioDeps is what the Portfolio view needs from outside itself. Every dep
+// is a func bound to the file that is open when Update makes the deps, so a
+// load made before a file switch reads only its own file; and deps are passed
+// to each call, never stored in the view state. Both rules are pinned by the
+// guards that run over viewControllers.
 //
-// config is the user's config, for the valuation options; like the services,
-// it is read when the load runs.
+// config is the user's config, for the valuation options; it is bound with the
+// services.
 type portfolioDeps struct {
 	accounts   func() *account.Service
 	valuations func() *investment.ValuationService
 	securities func() *security.Service
 	config     func() *config.Config
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // portfolioDeps binds the Portfolio view to the services App owns. Every
 // accessor may return nil, because an App built by a test has no services, so
 // each caller keeps its own nil guard.
 func (a *App) portfolioDeps() portfolioDeps {
+	svc, cfg := a.services, copyConfig(a.cfg)
+	file := a.fileOfOpen()
 	return portfolioDeps{
-		accounts:   func() *account.Service { return a.services.Account },
-		valuations: func() *investment.ValuationService { return a.services.InvestmentValuation },
-		securities: func() *security.Service { return a.services.Security },
-		config:     func() *config.Config { return a.cfg },
+		accounts:   func() *account.Service { return svc.Account },
+		valuations: func() *investment.ValuationService { return svc.InvestmentValuation },
+		securities: func() *security.Service { return svc.Security },
+		config:     func() *config.Config { return cfg },
+		file:       func() fileOf { return file },
 	}
 }
 
 // load returns a command that loads all data needed for the portfolio view.
 // The services and the config are read through the deps when the command runs.
 func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		data := &portfolioViewData{
 			securityNames: make(map[types.ID]string),
@@ -92,7 +101,7 @@ func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 		if accounts := d.accounts(); accounts != nil {
 			acct, err := accounts.GetByID(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.account = acct
 		}
@@ -102,7 +111,7 @@ func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 			asOf := types.Today()
 			val, err := valuations.GetAccountValuation(accountID, asOf, valuationOptionsFor(d.config()))
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.valuation = val
 		}
@@ -117,25 +126,26 @@ func (s *portfolioViewState) load(d portfolioDeps, accountID types.ID) tea.Cmd {
 			}
 		}
 
-		return portfolioLoadedMsg{data: data}
+		return portfolioLoadedMsg{data: data, fileOf: file}
 	}
 }
 
 // loadLotDetail returns a command that loads lot detail for a specific security.
 func (s *portfolioViewState) loadLotDetail(d portfolioDeps, accountID, securityID types.ID) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		valuations := d.valuations()
 		if valuations == nil {
-			return errMsg{err: fmt.Errorf("valuation service not available")}
+			return errMsg{err: fmt.Errorf("valuation service not available"), fileOf: file}
 		}
 
 		asOf := types.Today()
 		lots, err := valuations.GetLotDetail(accountID, securityID, asOf)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 
-		return portfolioLotDetailMsg{lots: lots, securityID: securityID}
+		return portfolioLotDetailMsg{lots: lots, securityID: securityID, fileOf: file}
 	}
 }
 

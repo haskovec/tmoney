@@ -109,6 +109,7 @@ type priceChartDebounceTickMsg struct {
 type priceChartHistoryLoadedMsg struct {
 	secID  types.ID
 	prices []*price.Price
+	fileOf
 }
 
 // scheduleChartFetch returns a debounced tea.Cmd that, after
@@ -151,6 +152,7 @@ func (s *priceViewState) scheduleListChartFetchIfActive(onScreen bool) tea.Cmd {
 // priceChartHistoryLoadedMsg. On error, it returns no message — the
 // chart simply stays in its current state until the next cursor move.
 func (s *priceViewState) fetchChartHistory(d priceDeps, secID types.ID) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		priceSvc := d.prices()
 		if priceSvc == nil {
@@ -160,7 +162,7 @@ func (s *priceViewState) fetchChartHistory(d priceDeps, secID types.ID) tea.Cmd 
 		if err != nil {
 			return nil
 		}
-		return priceChartHistoryLoadedMsg{secID: secID, prices: prices}
+		return priceChartHistoryLoadedMsg{secID: secID, prices: prices, fileOf: file}
 	}
 }
 

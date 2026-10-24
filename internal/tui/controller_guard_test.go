@@ -13,14 +13,15 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/config"
+	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // A controller surface owns open, submit and close, and nothing about it needs
 // *App. These guards pin that claim from both sides: no method on the surface
 // names App, no production code reads a surface field through App, and every
-// dependency the surface is handed is a live func rather than a captured
-// pointer. They run over controllerSurfaces, which is the only list of
+// dependency the surface is handed is a func bound to the file that was open
+// when the deps were made. They run over controllerSurfaces, which is the only list of
 // controller surfaces, and over viewControllers, its twin for views; the reach
 // guard runs over the surfaces only, and viewControllers says why.
 // TestGuard_ControllerTableMatchesApp keeps both tables complete.
@@ -41,7 +42,7 @@ type controllerSurface struct {
 	deps reflect.Type
 	bind func(*App) any
 	// probes calls each dep accessor in turn. It is a hand list because reflect
-	// cannot call an unexported func field; TestControllerDeps_FollowADatabaseSwitch
+	// cannot call an unexported func field; TestControllerDeps_KeepTheirFileAcrossASwitch
 	// requires exactly one probe per dep so the list cannot fall behind the struct.
 	probes func(*App) []func() any
 }
@@ -60,6 +61,7 @@ var controllerSurfaces = []controllerSurface{
 				func() any { return d.categories() },
 				func() any { return d.transfers() },
 				func() any { return d.undo() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -76,6 +78,7 @@ var controllerSurfaces = []controllerSurface{
 				func() any { return d.payees() },
 				func() any { return d.scheduled() },
 				func() any { return d.undo() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -90,6 +93,7 @@ var controllerSurfaces = []controllerSurface{
 				func() any { return d.payees() },
 				func() any { return d.transactions() },
 				func() any { return d.undo() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -106,6 +110,7 @@ var controllerSurfaces = []controllerSurface{
 				func() any { return d.payees() },
 				func() any { return d.scheduled() },
 				func() any { return d.undo() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -137,6 +142,7 @@ var viewControllers = []controllerSurface{
 			return []func() any{
 				func() any { return d.accounts() },
 				func() any { return d.scheduled() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -150,6 +156,7 @@ var viewControllers = []controllerSurface{
 			return []func() any{
 				func() any { return d.securities() },
 				func() any { return d.prices() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -165,6 +172,7 @@ var viewControllers = []controllerSurface{
 				func() any { return d.valuations() },
 				func() any { return d.securities() },
 				func() any { return d.config() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -183,6 +191,7 @@ var viewControllers = []controllerSurface{
 				func() any { return d.valuations() },
 				func() any { return d.securities() },
 				func() any { return d.config() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -196,6 +205,7 @@ var viewControllers = []controllerSurface{
 			return []func() any{
 				func() any { return d.corporateActions() },
 				func() any { return d.securities() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -208,6 +218,7 @@ var viewControllers = []controllerSurface{
 			d := a.reportsDeps()
 			return []func() any{
 				func() any { return d.reports() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -224,6 +235,7 @@ var viewControllers = []controllerSurface{
 				func() any { return d.valuations() },
 				func() any { return d.securities() },
 				func() any { return d.config() },
+				func() any { return d.file() },
 			}
 		},
 	},
@@ -341,14 +353,14 @@ func TestGuard_ControllerStateIsReachedOnlyByMethod(t *testing.T) {
 	}
 }
 
-// TestGuard_ControllerDepsAreLiveIndirections: every dep is a function, and the
-// App binding supplies all of them.
+// TestGuard_ControllerDepsAreFuncs: every dep is a function, and the App
+// binding supplies all of them.
 //
-// A service pointer field here would compile and would be a use-after-close the
-// first time the user opened another file: switchDatabase replaces the services
-// and closes the previous *db.DB. A closure re-reads the field at call time, so
-// it survives the switch by construction.
-func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
+// A deps struct is a bag of funcs: each caller calls the dep it needs, and
+// TestGuard_NoSurfaceStructHoldsItsDeps finds a stored bag by that shape. A
+// service pointer field would break both. Which file a dep reaches is the
+// rule of TestControllerDeps_KeepTheirFileAcrossASwitch.
+func TestGuard_ControllerDepsAreFuncs(t *testing.T) {
 	for _, row := range allControllers() {
 		t.Run(row.field, func(t *testing.T) {
 			if row.deps == nil {
@@ -360,9 +372,9 @@ func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
 			for i := range row.deps.NumField() {
 				f := row.deps.Field(i)
 				if f.Type.Kind() != reflect.Func {
-					t.Errorf("%s.%s is a %s, not a func. Deps are live indirections: "+
-						"switchDatabase replaces App's services and closes the previous database, "+
-						"so a captured pointer becomes a use-after-close.", row.deps.Name(), f.Name, f.Type)
+					t.Errorf("%s.%s is a %s, not a func. Every dep is a func that the binding "+
+						"returns, bound to the file that is open when Update makes the deps "+
+						"(see transferDeps).", row.deps.Name(), f.Name, f.Type)
 				}
 			}
 
@@ -383,58 +395,63 @@ func TestGuard_ControllerDepsAreLiveIndirections(t *testing.T) {
 	}
 }
 
-// TestControllerDeps_FollowADatabaseSwitch is the behaviour behind the
-// structural guard above. switchDatabase replaces App's services when the user
-// opens another file and closes the previous *db.DB, and a deps struct taken
-// before that must see the new services — a captured pointer would still name
-// the ones built against the closed database, which is a use-after-close, not
-// stale data.
+// TestControllerDeps_KeepTheirFileAcrossASwitch: deps bind the services of the
+// file that is open when Update makes them. A command made before a switch
+// runs after it, and its deps must still name its own file: deps that read
+// the App's fields again when called sent a write of A to B, and gave a load
+// of A some data of B. A command on a handle that a switch closed fails with
+// "database is closed", and the load of an old file is dropped (fileOf).
 //
-// The test is generic over the table: take deps from an App with nothing, so
-// every accessor returns nil; then give the App a service of every kind and an
-// undo manager; every accessor must now return something. A closure captured
-// at bind time could not.
-func TestControllerDeps_FollowADatabaseSwitch(t *testing.T) {
+// The test is generic over the table: take deps from an App with a service
+// of every kind, an undo manager, a config and a handle; then replace all of
+// them, as a switch does with the services and the handle (switchDatabase
+// keeps the undo manager and the config; they are replaced here to prove that
+// no dep reads the App again). Every dep must still return what it returned
+// first.
+func TestControllerDeps_KeepTheirFileAcrossASwitch(t *testing.T) {
 	for _, row := range allControllers() {
 		t.Run(row.field, func(t *testing.T) {
 			if row.deps == nil {
 				t.Skip("surface has no deps")
 			}
 			app := &App{}
+			openAFile(app)
 			probes := row.probes(app)
 			if len(probes) != row.deps.NumField() {
 				t.Fatalf("%d probes for %d deps in %s; the probe list must name every dep",
 					len(probes), row.deps.NumField(), row.deps.Name())
 			}
+			before := make([]any, len(probes))
 			for i, probe := range probes {
-				if !isNilPointer(probe()) {
-					t.Fatalf("an App with no services handed out a non-nil %s.%s", row.deps.Name(), row.deps.Field(i).Name)
+				before[i] = probe()
+				if reflect.ValueOf(before[i]).IsZero() {
+					t.Fatalf("%s.%s is empty on an App with a file open", row.deps.Name(), row.deps.Field(i).Name)
 				}
 			}
 
-			// The switch. switchDatabase assigns a.services whole and clears the
-			// undo manager rather than replacing it (file_dialog.go), so the
-			// manager swap here is synthetic: it proves the closure re-reads the
-			// field, which is the property the deps rely on. The config does not
-			// change on a switch at all; setting it is synthetic for the same
-			// reason, for the views whose deps read it.
-			svcV := reflect.ValueOf(&app.services).Elem()
-			for i := range svcV.NumField() {
-				if f := svcV.Field(i); f.Kind() == reflect.Pointer {
-					f.Set(reflect.New(f.Type().Elem()))
-				}
-			}
-			app.undoManager = undo.NewManager()
-			app.cfg = &config.Config{}
-
+			openAFile(app) // the switch
 			for i, probe := range probes {
-				if isNilPointer(probe()) {
-					t.Errorf("%s.%s did not follow the switch; it is a captured pointer, not an indirection",
+				if probe() != before[i] {
+					t.Errorf("%s.%s followed the switch; deps must keep the file they were made for",
 						row.deps.Name(), row.deps.Field(i).Name)
 				}
 			}
 		})
 	}
+}
+
+// openAFile gives app a new service of every kind, a new handle, undo manager
+// and config, as a stand-in for a file switch.
+func openAFile(app *App) {
+	svcV := reflect.ValueOf(&app.services).Elem()
+	for i := range svcV.NumField() {
+		if f := svcV.Field(i); f.Kind() == reflect.Pointer {
+			f.Set(reflect.New(f.Type().Elem()))
+		}
+	}
+	app.db = &db.DB{}
+	app.undoManager = undo.NewManager()
+	app.cfg = &config.Config{}
 }
 
 // receiversDeclaringClose returns the receiver type of every `func (s *T) close()`
@@ -680,16 +697,6 @@ type emptyDeps struct{}
 	if !slices.Equal(got, []string{"fooDeps"}) {
 		t.Errorf("depsStructNames = %v, want [fooDeps]", got)
 	}
-}
-
-// isNilPointer reports whether v holds a nil pointer. A nil *T stored in an any
-// is not a nil interface, so a plain == nil check would read every dep as set.
-func isNilPointer(v any) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 // TestGuard_ControllerSelfTest_CloseFinder proves the close() detector sees a

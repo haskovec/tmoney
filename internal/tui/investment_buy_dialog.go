@@ -19,6 +19,7 @@ type buyDialogData struct {
 // buyDialogDataMsg is sent when buy dialog data has been loaded.
 type buyDialogDataMsg struct {
 	data *buyDialogData
+	fileOf
 }
 
 // buyDialogSavedMsg is sent when a buy transaction has been saved.
@@ -29,6 +30,7 @@ type buyDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the investment register
 	// can move the cursor onto its row after reload.
 	savedID types.ID
+	fileOf
 }
 
 // buildSecurityOptions builds parallel display name and ID slices for the security selector.
@@ -151,19 +153,21 @@ func buildBuyDialog(securityOptions []string, editTxn *investment.Transaction, s
 
 // loadBuyDialogData returns a command that loads securities for the buy dialog.
 func (a *App) loadBuyDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &buyDialogData{}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
-		return buyDialogDataMsg{data: data}
+		return buyDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -345,15 +349,17 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeBuyDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.services.InvestmentEdit.UpdateBuy(
+			saved, err = svc.InvestmentEdit.UpdateBuy(
 				editTxnID,
 				accountID,
 				securityID,
@@ -365,7 +371,7 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 				memo,
 			)
 		} else {
-			saved, err = a.services.Investment.Buy(
+			saved, err = svc.Investment.Buy(
 				accountID,
 				securityID,
 				date,
@@ -380,6 +386,6 @@ func (a *App) submitBuyDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save buy transaction: %w", err)}
 		}
 
-		return buyDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return buyDialogSavedMsg{savedDate: date, savedID: saved.ID, fileOf: file}
 	}
 }

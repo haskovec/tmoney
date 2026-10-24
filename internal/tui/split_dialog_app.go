@@ -25,25 +25,32 @@ import (
 // one, and never reaches into either parent.
 
 // splitDeps is what the split surface needs from outside itself. Every dep is
-// a func, because switchDatabase replaces App's services and closes the
-// previous *db.DB; and deps are passed to each call, never stored, because
-// close() resets the surface to its zero value. Both rules are pinned by
-// TestGuard_ControllerDepsAreLiveIndirections and
-// TestGuard_NoSurfaceStructHoldsItsDeps.
+// a func that splitDeps() binds to the file that is open when Update makes the
+// deps, so a command made before a file switch still acts on its own file;
+// and deps are passed to each call, never stored, because close() resets the
+// surface to its zero value. The rules are pinned by
+// TestGuard_ControllerDepsAreFuncs, TestControllerDeps_KeepTheirFileAcrossASwitch
+// and TestGuard_NoSurfaceStructHoldsItsDeps.
 type splitDeps struct {
 	payees       func() *payee.Service
 	transactions func() *transaction.Service
 	undo         func() *undo.Manager
+	// file tags the result of the save (see fileOf).
+	file func() fileOf
 }
 
 // splitDeps binds the split surface to the services App owns. Every accessor
 // may legitimately return nil — an App built by a test has no services — so
 // each caller keeps its own nil guard.
 func (a *App) splitDeps() splitDeps {
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return splitDeps{
-		payees:       func() *payee.Service { return a.services.Payee },
-		transactions: func() *transaction.Service { return a.services.Transaction },
-		undo:         func() *undo.Manager { return a.undoManager },
+		payees:       func() *payee.Service { return svc.Payee },
+		transactions: func() *transaction.Service { return svc.Transaction },
+		undo:         func() *undo.Manager { return undoManager },
+		file:         func() fileOf { return file },
 	}
 }
 
@@ -146,6 +153,7 @@ func (s *splitSurface) submit(deps splitDeps) tea.Cmd {
 	pending := s.pendingTxn
 	s.close()
 
+	file := deps.file()
 	return func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
@@ -184,7 +192,7 @@ func (s *splitSurface) submit(deps splitDeps) tea.Cmd {
 					return errMsg{err: fmt.Errorf("failed to save split transaction: %w", err)}
 				}
 			}
-			return splitDialogSavedMsg{savedID: updated.ID}
+			return splitDialogSavedMsg{savedID: updated.ID, fileOf: file}
 		}
 
 		// Build transaction (no category when using splits)
@@ -199,7 +207,7 @@ func (s *splitSurface) submit(deps splitDeps) tea.Cmd {
 			}
 		}
 
-		return splitDialogSavedMsg{savedID: txn.ID}
+		return splitDialogSavedMsg{savedID: txn.ID, fileOf: file}
 	}
 }
 

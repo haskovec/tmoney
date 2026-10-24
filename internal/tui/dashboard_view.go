@@ -48,14 +48,15 @@ type dashboardData struct {
 // dashboardLoadedMsg is sent when dashboard data has been loaded.
 type dashboardLoadedMsg struct {
 	data *dashboardData
+	fileOf
 }
 
-// dashboardDeps is what the Dashboard view needs from outside itself. Every
-// dep is a func, because switchDatabase replaces App's services and closes the
-// previous *db.DB; and deps are passed to each call, never stored in the view
-// state. Both rules are pinned by the guards that run over viewControllers.
-// config is the user's config, for the valuation options; like the services,
-// it is read when the load runs.
+// dashboardDeps is what the Dashboard view needs from outside itself. Every dep
+// is a func bound to the file that is open when Update makes the deps, so a
+// load made before a file switch reads only its own file; and deps are passed
+// to each call, never stored in the view state. Both rules are pinned by the
+// guards that run over viewControllers. config is the user's config, for the
+// valuation options; it is bound with the services.
 type dashboardDeps struct {
 	reports    func() *report.Service
 	schedules  func() *scheduled.Service
@@ -64,25 +65,31 @@ type dashboardDeps struct {
 	valuations func() *investment.ValuationService
 	securities func() *security.Service
 	config     func() *config.Config
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // dashboardDeps binds the Dashboard view to the services App owns. Every
 // accessor may return nil, because an App built by a test has no services, so
 // each caller keeps its own nil guard.
 func (a *App) dashboardDeps() dashboardDeps {
+	svc, cfg := a.services, copyConfig(a.cfg)
+	file := a.fileOfOpen()
 	return dashboardDeps{
-		reports:    func() *report.Service { return a.services.Report },
-		schedules:  func() *scheduled.Service { return a.services.Scheduled },
-		payees:     func() *payee.Service { return a.services.Payee },
-		accounts:   func() *account.Service { return a.services.Account },
-		valuations: func() *investment.ValuationService { return a.services.InvestmentValuation },
-		securities: func() *security.Service { return a.services.Security },
-		config:     func() *config.Config { return a.cfg },
+		reports:    func() *report.Service { return svc.Report },
+		schedules:  func() *scheduled.Service { return svc.Scheduled },
+		payees:     func() *payee.Service { return svc.Payee },
+		accounts:   func() *account.Service { return svc.Account },
+		valuations: func() *investment.ValuationService { return svc.InvestmentValuation },
+		securities: func() *security.Service { return svc.Security },
+		config:     func() *config.Config { return cfg },
+		file:       func() fileOf { return file },
 	}
 }
 
 // load returns a command that loads all data needed for the dashboard view.
 func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		data := &dashboardData{
 			payeeNames:   make(map[types.ID]string),
@@ -93,7 +100,7 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 		if reports := d.reports(); reports != nil {
 			report, err := reports.NetWorthReport()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.netWorth = report
 		}
@@ -102,13 +109,13 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 		if schedules := d.schedules(); schedules != nil {
 			due, err := schedules.ListDue()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.dueTxns = due
 
 			upcoming, err := schedules.ListUpcoming(30)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			// Filter out items already in due list
 			var filteredUpcoming []*scheduled.Transaction
@@ -176,7 +183,7 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 			}
 		}
 
-		return dashboardLoadedMsg{data: data}
+		return dashboardLoadedMsg{data: data, fileOf: file}
 	}
 }
 

@@ -31,10 +31,11 @@ type accountDialogData struct {
 // accountDialogDataMsg is sent when account dialog data has been loaded.
 type accountDialogDataMsg struct {
 	data *accountDialogData
+	fileOf
 }
 
 // accountDialogSavedMsg is sent when an account has been saved.
-type accountDialogSavedMsg struct{}
+type accountDialogSavedMsg struct{ fileOf }
 
 // ledgerMoveSavedMsg is sent when a confirmed ledger move has committed. It
 // carries the pre-move backup so the status bar can name it.
@@ -44,10 +45,10 @@ type ledgerMoveSavedMsg struct {
 }
 
 // accountDeletedMsg is sent when an account has been deleted.
-type accountDeletedMsg struct{}
+type accountDeletedMsg struct{ fileOf }
 
 // accountClosedMsg is sent when an account has been closed/reopened.
-type accountClosedMsg struct{}
+type accountClosedMsg struct{ fileOf }
 
 // Account dialog field indices for new account dialog.
 const (
@@ -274,14 +275,16 @@ func (a *App) loadNewAccountDialogData() tea.Cmd {
 // loadEditAccountDialogData returns a command that loads the selected account for editing.
 func (a *App) loadEditAccountDialogData() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Account == nil {
-			return errMsg{err: fmt.Errorf("account service not available")}
+		if svc.Account == nil {
+			return errMsg{err: fmt.Errorf("account service not available"), fileOf: file}
 		}
 
-		account, err := a.services.Account.GetByID(accountID)
+		account, err := svc.Account.GetByID(accountID)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load account: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load account: %w", err), fileOf: file}
 		}
 
 		return accountDialogDataMsg{
@@ -289,6 +292,7 @@ func (a *App) loadEditAccountDialogData() tea.Cmd {
 				mode:    accountDialogModeEdit,
 				account: account,
 			},
+			fileOf: file,
 		}
 	}
 }
@@ -517,8 +521,11 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save for responsive UI
 	a.closeAccountDialog()
 
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Account == nil || a.undoManager == nil {
+		if svc.Account == nil || undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
@@ -533,18 +540,18 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 		}
 
 		if mode == accountDialogModeEdit {
-			cmd := undo.NewEditAccountCommand(a.services.Account, acct)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewEditAccountCommand(svc.Account, acct)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update account: %w", err)}
 			}
 		} else {
-			cmd := undo.NewCreateAccountCommand(a.services.Account, acct)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewCreateAccountCommand(svc.Account, acct)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create account: %w", err)}
 			}
 		}
 
-		return accountDialogSavedMsg{}
+		return accountDialogSavedMsg{fileOf: file}
 	}
 }
 
@@ -592,17 +599,20 @@ func backupBeforeLedgerMove(database *db.DB) (string, error) {
 // deleteSelectedAccount deletes the currently selected account.
 func (a *App) deleteSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Account == nil || a.undoManager == nil {
+		if svc.Account == nil || undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
 
-		cmd := undo.NewDeleteAccountCommand(a.services.Account, accountID)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewDeleteAccountCommand(svc.Account, accountID)
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to delete account: %w", err)}
 		}
 
-		return accountDeletedMsg{}
+		return accountDeletedMsg{fileOf: file}
 	}
 }
 

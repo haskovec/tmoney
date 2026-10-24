@@ -25,12 +25,16 @@ type stockSplitDialogData struct {
 // stockSplitDialogDataMsg is sent when stock split dialog data has been loaded.
 type stockSplitDialogDataMsg struct {
 	data *stockSplitDialogData
+	fileOf
 }
 
 // stockSplitDialogSavedMsg is sent when a stock split has been executed.
 // savedDate carries the executed date so the handler can update the session
 // sticky date.
-type stockSplitDialogSavedMsg struct{ savedDate types.Date }
+type stockSplitDialogSavedMsg struct {
+	savedDate types.Date
+	fileOf
+}
 
 // buildStockSplitDialog creates a dialog.Dialog for executing a stock split.
 // If preSelectedSecurityID is non-nil, the security selector is pre-selected.
@@ -157,25 +161,27 @@ func (a *App) refreshStockSplitDialogMessage() {
 // loadStockSplitDialogData returns a command that loads securities and
 // per-account share totals for the stock split dialog.
 func (a *App) loadStockSplitDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &stockSplitDialogData{
 			sharesMap: make(map[types.ID][]investment.AccountShares),
 		}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
-		if a.services.Investment != nil {
+		if svc.Investment != nil {
 			for _, sec := range data.securities {
-				shares, err := a.services.Investment.SharesBySecurity(sec.ID)
+				shares, err := svc.Investment.SharesBySecurity(sec.ID)
 				if err != nil {
-					return errMsg{err: err}
+					return errMsg{err: err, fileOf: file}
 				}
 				if len(shares) > 0 {
 					data.sharesMap[sec.ID] = shares
@@ -183,7 +189,7 @@ func (a *App) loadStockSplitDialogData() tea.Cmd {
 			}
 		}
 
-		return stockSplitDialogDataMsg{data: data}
+		return stockSplitDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -297,16 +303,18 @@ func (a *App) submitStockSplitDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async execution
 	a.closeStockSplitDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.CorporateAction == nil {
+		if svc.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("corporate action service not available")}
 		}
 
-		_, err := a.services.CorporateAction.Split(securityID, splitDate, *splitParams)
+		_, err := svc.CorporateAction.Split(securityID, splitDate, *splitParams)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute stock split: %w", err)}
 		}
 
-		return stockSplitDialogSavedMsg{savedDate: splitDate}
+		return stockSplitDialogSavedMsg{savedDate: splitDate, fileOf: file}
 	}
 }

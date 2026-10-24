@@ -18,11 +18,15 @@ type mergerDialogData struct {
 // mergerDialogDataMsg is sent when merger dialog data has been loaded.
 type mergerDialogDataMsg struct {
 	data *mergerDialogData
+	fileOf
 }
 
 // mergerDialogSavedMsg is sent when a merger has been executed. savedDate
 // carries the executed date so the handler can update the session sticky date.
-type mergerDialogSavedMsg struct{ savedDate types.Date }
+type mergerDialogSavedMsg struct {
+	savedDate types.Date
+	fileOf
+}
 
 // buildMergerDialog creates a dialog.Dialog for executing a merger/acquisition.
 // If preSelectedSourceID is non-nil, the source security selector is pre-selected.
@@ -67,19 +71,21 @@ func buildMergerDialog(securityOptions []string, securityIDs []types.ID, preSele
 
 // loadMergerDialogData returns a command that loads securities for the merger dialog.
 func (a *App) loadMergerDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &mergerDialogData{}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
-		return mergerDialogDataMsg{data: data}
+		return mergerDialogDataMsg{data: data, fileOf: file}
 	}
 }
 

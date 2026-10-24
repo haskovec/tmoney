@@ -818,7 +818,9 @@ What `App` still does for the view:
 **The guard shape is as VL-402 proposed.** `viewControllers` is a table beside
 `controllerSurfaces`, with the same row type. The shared guards run over both:
 no method on the view state names `App`; every dep is a func and the binding
-fills it; the deps follow a database switch; and the tables match `App` (a
+fills it; the deps follow a database switch (since 2026-10-24 the opposite:
+deps keep the file they were made for, see the note in
+`design-tui-decomposition.md`); and the tables match `App` (a
 `xDeps` struct now needs an `xSurface` or an `xViewState` row). The reach
 guard runs over the surfaces only. Even this view, with nothing pinned, is
 read by code that stays on `App`: the message arm writes `data`, and the

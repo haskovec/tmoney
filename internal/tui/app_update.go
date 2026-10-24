@@ -18,6 +18,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// read them again after every message.
 	defer a.refreshKeyHints()
 
+	// The result of a load of a file that is no longer open: the view that
+	// asked for it is gone (see fileOf).
+	if a.fromAnotherFile(msg) {
+		return a, nil
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.handleWindowSize(msg.Width, msg.Height)
@@ -346,6 +352,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.applyUndoResult(msg)
 
 	case securityViewDataLoadedMsg:
+		if a.securities.data != nil {
+			msg.data.showHidden = a.securities.data.showHidden
+		}
 		a.securities.data = msg.data
 		a.buildSecurityTable()
 		return a, nil

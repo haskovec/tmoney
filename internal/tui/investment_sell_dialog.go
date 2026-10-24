@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -20,6 +21,7 @@ type sellDialogData struct {
 // sellDialogDataMsg is sent when sell dialog data has been loaded.
 type sellDialogDataMsg struct {
 	data *sellDialogData
+	fileOf
 }
 
 // sellDialogSavedMsg is sent when a sell transaction has been saved.
@@ -30,6 +32,7 @@ type sellDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the investment register
 	// can move the cursor onto its row after reload.
 	savedID types.ID
+	fileOf
 }
 
 // buildLotLabel creates a display label for a lot allocation field.
@@ -122,31 +125,38 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 
 // loadSellDialogData returns a command that loads securities and lots for the sell dialog.
 func (a *App) loadSellDialogData() tea.Cmd {
+	svc := a.services
+	// The account of the register, and the transaction in edit, as they are
+	// when the dialog is asked for.
+	var acct *account.Account
+	if a.investmentRegister.data != nil {
+		acct = a.investmentRegister.data.account
+	}
+	editTxnID := a.investmentEditTxnID
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &sellDialogData{}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
 		// Load lots if the account is lot-tracking
-		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil &&
-			a.investmentRegister.data.account.TrackLots && a.services.InvestmentValuation != nil {
-
-			acctID := a.investmentRegister.data.account.ID
+		if acct != nil && acct.TrackLots && svc.InvestmentValuation != nil {
+			acctID := acct.ID
 
 			// If editing, get the security from the existing transaction
 			// For new transactions, lots will be loaded after security selection
 			// For now, if editing, load lots for that security
-			if a.investmentEditTxnID != types.NilID && a.services.InvestmentValuation != nil {
-				editTxn, err := a.services.InvestmentValuation.GetTransaction(a.investmentEditTxnID)
+			if editTxnID != types.NilID && svc.InvestmentValuation != nil {
+				editTxn, err := svc.InvestmentValuation.GetTransaction(editTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
-					lots, err := a.services.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
+					lots, err := svc.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
 					if err == nil {
 						data.lots = lots
 					}
@@ -154,7 +164,7 @@ func (a *App) loadSellDialogData() tea.Cmd {
 			}
 		}
 
-		return sellDialogDataMsg{data: data}
+		return sellDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -383,15 +393,17 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeSellDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.services.InvestmentEdit.UpdateSell(
+			saved, err = svc.InvestmentEdit.UpdateSell(
 				editTxnID,
 				accountID,
 				securityID,
@@ -404,7 +416,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			saved, err = a.services.Investment.Sell(
+			saved, err = svc.Investment.Sell(
 				accountID,
 				securityID,
 				date,
@@ -420,7 +432,7 @@ func (a *App) submitSellDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save sell transaction: %w", err)}
 		}
 
-		return sellDialogSavedMsg{savedDate: date, savedID: saved.ID}
+		return sellDialogSavedMsg{savedDate: date, savedID: saved.ID, fileOf: file}
 	}
 }
 

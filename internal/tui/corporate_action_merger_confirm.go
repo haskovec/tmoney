@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -44,6 +45,7 @@ type mergerConfirmData struct {
 // mergerConfirmDataMsg is sent when merger confirmation data has been loaded.
 type mergerConfirmDataMsg struct {
 	data *mergerConfirmData
+	fileOf
 }
 
 // loadMergerConfirmData returns a command that loads affected accounts, positions, and lots
@@ -60,6 +62,8 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 	cashPerShare := params.cashPerShare
 	mergerDate := params.mergerDate
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &mergerConfirmData{
 			exchangeRatio: exchangeRatio,
@@ -68,11 +72,11 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 		}
 
 		// Resolve source and target tickers
-		if a.services.Security != nil {
-			if src, err := a.services.Security.GetByID(sourceID); err == nil {
+		if svc.Security != nil {
+			if src, err := svc.Security.GetByID(sourceID); err == nil {
 				data.sourceTicker = src.Ticker
 			}
-			if tgt, err := a.services.Security.GetByID(targetID); err == nil {
+			if tgt, err := svc.Security.GetByID(targetID); err == nil {
 				data.targetTicker = tgt.Ticker
 			}
 		}
@@ -80,15 +84,15 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 		// The holdings the merger will change, by the merger's own rules. A
 		// lot-tracked account that sold out keeps a position row, and the
 		// merger skips it, so this does not read the repositories.
-		if a.services.CorporateAction != nil {
-			holdings, err := a.services.CorporateAction.MergerHoldings(sourceID)
+		if svc.CorporateAction != nil {
+			holdings, err := svc.CorporateAction.MergerHoldings(sourceID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			for _, h := range holdings {
 				data.accounts = append(data.accounts, mergerAffectedAccount{
 					accountID:   h.AccountID,
-					accountName: resolveAccountName(a, h.AccountID),
+					accountName: resolveAccountName(svc.Account, h.AccountID),
 					trackLots:   h.TrackLots,
 					lots:        h.Lots,
 					position:    h.Position,
@@ -96,14 +100,14 @@ func (a *App) loadMergerConfirmData() tea.Cmd {
 			}
 		}
 
-		return mergerConfirmDataMsg{data: data}
+		return mergerConfirmDataMsg{data: data, fileOf: file}
 	}
 }
 
 // resolveAccountName looks up an account name by ID, returning a fallback if not found.
-func resolveAccountName(a *App, accountID types.ID) string {
-	if a.services.Account != nil {
-		if acct, err := a.services.Account.GetByID(accountID); err == nil {
+func resolveAccountName(accounts *account.Service, accountID types.ID) string {
+	if accounts != nil {
+		if acct, err := accounts.GetByID(accountID); err == nil {
 			return acct.Name
 		}
 	}
@@ -248,17 +252,19 @@ func (a *App) executeMerger() (tea.Model, tea.Cmd) {
 
 	a.closeMergerConfirmation()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.CorporateAction == nil {
+		if svc.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("corporate action service not available")}
 		}
 
-		_, err := a.services.CorporateAction.Merger(sourceID, targetID, mergerDate, mergerParams)
+		_, err := svc.CorporateAction.Merger(sourceID, targetID, mergerDate, mergerParams)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute merger: %w", err)}
 		}
 
-		return mergerDialogSavedMsg{savedDate: mergerDate}
+		return mergerDialogSavedMsg{savedDate: mergerDate, fileOf: file}
 	}
 }
 
