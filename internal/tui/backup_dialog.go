@@ -55,6 +55,10 @@ func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInf
 	return d, backups, nil
 }
 
+// createManualBackup is backup.CreateManualBackup. Tests replace it to hold a
+// backup inside its file operation; the package has no parallel tests.
+var createManualBackup = backup.CreateManualBackup
+
 // createManualBackupCmd returns a command that creates a manual backup. The
 // copy runs with the database closed and the same handle reopened after (see
 // db.DB.WithFileClosed), so services, undo and the current view stay valid.
@@ -64,7 +68,7 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 		var backupPath string
 		err := database.WithFileClosed(func(path string) error {
 			var err error
-			backupPath, err = backup.CreateManualBackup(path)
+			backupPath, err = createManualBackup(path)
 			return err
 		})
 		if err != nil {

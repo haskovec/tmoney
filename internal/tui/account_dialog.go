@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -577,7 +576,7 @@ func backupBeforeLedgerMove(database *db.DB) (string, error) {
 	}
 	var backupPath string
 	err := database.WithFileClosed(func(path string) error {
-		p, err := backup.CreateManualBackup(path)
+		p, err := createManualBackup(path)
 		backupPath = p
 		return err
 	})

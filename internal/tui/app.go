@@ -570,15 +570,19 @@ func Run(database *db.DB, cfg *config.Config) error {
 	p := tea.NewProgram(app)
 
 	_, err := p.Run()
+	app.shutdown()
+	return err
+}
 
+// shutdown closes the databases after the program ends, and writes the quit
+// backup of the open one.
+func (a *App) shutdown() {
 	// Close any database deferred during a database switch
-	if app.prevDB != nil {
-		_ = app.prevDB.Close()
+	if a.prevDB != nil {
+		_ = a.prevDB.Close()
 	}
 
 	// Auto-backup on quit (best-effort). Back up the database that is open NOW,
-	// which File → Open may have swapped in. This closes app.db.
-	createAutoBackupOnQuit(app.db)
-
-	return err
+	// which File → Open may have swapped in. This closes a.db.
+	createAutoBackupOnQuit(a.db)
 }
