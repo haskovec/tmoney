@@ -261,13 +261,17 @@ func buildEditAccountDialog(acct *account.Account) *dialog.Dialog {
 	return d
 }
 
-// loadNewAccountDialogData returns a command that prepares the new account dialog.
+// loadNewAccountDialogData returns a command that prepares the new account
+// dialog. It reads no data, but it is tagged: a New Account asked for on the
+// screen of one file does not open on the screen of the next.
 func (a *App) loadNewAccountDialogData() tea.Cmd {
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		return accountDialogDataMsg{
 			data: &accountDialogData{
 				mode: accountDialogModeNew,
 			},
+			fileOf: file,
 		}
 	}
 }

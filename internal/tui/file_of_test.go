@@ -315,3 +315,19 @@ func TestAnUndoFailureOfTheOldFileStillShows(t *testing.T) {
 		t.Errorf("a.err = %v, want the failure of the undo in A", a.err)
 	}
 }
+
+// TestANewAccountOfTheOldFileOpensNothing: New Account is asked for on the
+// screen of A, and a File > Open of B ends before its message comes back.
+// The form must not open on the screen of B.
+func TestANewAccountOfTheOldFileOpensNothing(t *testing.T) {
+	first, _ := dbtest.NewFile(t, "fictional-a.tdb")
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	cmd := a.loadNewAccountDialogData()
+	switchTo(t, a, closedFile(t, "fictional-b.tdb"))
+
+	a.Update(cmd())
+	if a.acct.IsVisible() {
+		t.Error("the New Account form of A opened on the screen of B")
+	}
+}
