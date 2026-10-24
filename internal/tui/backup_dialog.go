@@ -56,11 +56,12 @@ func buildRestoreBackupDialog(dbPath string) (*dialog.Dialog, []backup.BackupInf
 	return d, backups, nil
 }
 
-// didNotStart is the error of a backup or restore whose handle a File > Open
-// closed for good before the work started (see App.retire): the handle no
-// longer opens its file.
-func didNotStart(work, outcome string) error {
-	return fmt.Errorf("the %s did not start, because File > Open closed the file. %s", work, outcome)
+// didNotStart is the error of a backup or restore whose handle was closed for
+// good before the work started: another file was opened or created after it
+// (see App.retire), and the handle no longer opens its file.
+func didNotStart(work, file, outcome string) error {
+	return fmt.Errorf("the %s did not start: another file was opened or created after %s, so it is closed. %s",
+		work, filepath.Base(file), outcome)
 }
 
 // createManualBackup is backup.CreateManualBackup. Tests replace it to hold a
@@ -82,7 +83,7 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 			return err
 		})
 		if !ran && errors.Is(err, db.ErrClosed) {
-			return errMsg{err: didNotStart("backup of "+filepath.Base(database.Path()), "Nothing changed.")}
+			return errMsg{err: didNotStart("backup", database.Path(), "Nothing changed.")}
 		}
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to create backup: %w", err)}
@@ -107,9 +108,9 @@ func createAutoBackupOnQuit(database *db.DB) {
 type backupDialogState struct {
 	dialog  *dialog.Dialog
 	backups []backup.BackupInfo
-	// db is the handle of the file whose backups the list shows. A restore
-	// picked from the list replaces that file, also when a File > Open
-	// switched a.db in the meantime.
+	// db is the handle of the file whose backups the list shows, and a
+	// restore picked from the list replaces that file. switchDatabase closes
+	// the list at a file switch; this is a second guard.
 	db *db.DB
 }
 
@@ -193,7 +194,7 @@ func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backup
 		return err
 	})
 	if !ran && errors.Is(err, db.ErrClosed) {
-		return errMsg{err: didNotStart("restore of "+filepath.Base(database.Path()), "Nothing changed.")}
+		return errMsg{err: didNotStart("restore", database.Path(), "Nothing changed.")}
 	}
 	if err != nil && !restored {
 		if safetyPath != "" { // Restore stopped after its safety backup

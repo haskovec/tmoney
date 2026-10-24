@@ -3,6 +3,8 @@ package db
 import (
 	"errors"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -57,7 +59,7 @@ func TestCloseForGoodStopsAQueuedWithFileClosed(t *testing.T) {
 	go func() {
 		second <- database.WithFileClosed(func(string) error { secondRan = true; return nil })
 	}()
-	time.Sleep(50 * time.Millisecond) // the second one waits for txMu
+	waitParkedInLock(t, "(*DB).WithFileClosed") // the second one waits for txMu
 
 	if err := database.CloseForGood(); err != nil {
 		t.Fatal(err)
@@ -114,5 +116,59 @@ func TestWithFileClosedReportsFnResultWhenItsReopenIsDropped(t *testing.T) {
 				t.Error("the handle reopened after a close on purpose")
 			}
 		})
+	}
+}
+
+// TestDroppedReopenDoesNotOpenTheFile: a reopen that a close on purpose
+// dropped must not open the file even for a moment. The open would get the
+// DuckDB instance of a new handle on the same file, or block behind it.
+func TestDroppedReopenDoesNotOpenTheFile(t *testing.T) {
+	for name, closeIt := range map[string]func(*DB) error{"Close": (*DB).Close, "CloseForGood": (*DB).CloseForGood} {
+		t.Run(name, func(t *testing.T) {
+			database := newClosableDB(t)
+			opens := 0
+			reopened = func(string) { opens++ }
+			t.Cleanup(func() { reopened = nil })
+			inFn, release := make(chan struct{}), make(chan struct{})
+			done := make(chan error, 1)
+			go func() {
+				done <- database.WithFileClosed(func(string) error {
+					close(inFn)
+					<-release
+					return nil
+				})
+			}()
+			<-inFn
+			if err := closeIt(database); err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if opens != 0 {
+				t.Errorf("the dropped reopen opened the file %d time(s)", opens)
+			}
+		})
+	}
+}
+
+// waitParkedInLock waits until a goroutine whose stack holds fn waits for a
+// mutex, so that a test knows that a call is queued behind a lock.
+func waitParkedInLock(t *testing.T, fn string) {
+	t.Helper()
+	buf := make([]byte, 1<<20)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		n := runtime.Stack(buf, true)
+		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
+			if strings.Contains(g, fn) && strings.Contains(g, "Mutex).Lock") {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no goroutine in %s waits for a lock", fn)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

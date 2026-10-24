@@ -583,7 +583,7 @@ func backupBeforeLedgerMove(database *db.DB) (string, error) {
 		return err
 	})
 	if !ran && errors.Is(err, db.ErrClosed) {
-		return "", didNotStart("backup before the move", "Nothing was moved.")
+		return "", didNotStart("backup before the move", database.Path(), "Nothing was moved.")
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to write the backup; nothing was moved: %w", err)

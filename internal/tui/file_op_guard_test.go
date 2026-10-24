@@ -165,14 +165,18 @@ func TestRestoreOfARetiredHandleDoesNotReopenIt(t *testing.T) {
 	a.backupDialog = &backupDialogState{dialog: d, backups: backups, db: first}
 	a.submitBackupDialog() // the confirm dialog is up
 	action := a.confirm.action
+	if action == nil {
+		t.Fatal("submitBackupDialog showed no restore confirm")
+	}
 	switchTo(t, a, closedFile(t, "fictional-b.tdb"))
 	switchTo(t, a, closedFile(t, "fictional-c.tdb"))
 
 	if a.confirm.action != nil {
 		t.Error("the confirm dialog of the restore of A is still up after File > Open of other files")
 	}
-	if action != nil {
-		action() // a Yes that came before the dialog closed
+	// A Yes that came before the dialog closed.
+	if failed, ok := action().(errMsg); !ok || !strings.Contains(failed.err.Error(), "did not start") {
+		t.Errorf("the restore of a dropped handle = %#v, want an errMsg that says it did not start", failed)
 	}
 	if err := first.Conn().Ping(); err == nil {
 		t.Error("the restore reopened a handle that the App dropped; nothing will close it")
@@ -219,10 +223,39 @@ func TestRestoreDialogKeepsItsFile(t *testing.T) {
 	}
 	a.submitBackupDialog()
 	if a.confirm.action != nil {
-		a.Update(a.confirm.action()) // Yes
+		t.Fatal("a restore could be confirmed from the closed Restore list of A")
 	}
+}
+
+// TestRestoreListRestoresItsOwnFile: the Restore list keeps the handle of the
+// file whose backups it shows. If it outlives a file switch (switchDatabase
+// closes it; this is the second guard), a pick must restore that file, not
+// the one that is open now.
+func TestRestoreListRestoresItsOwnFile(t *testing.T) {
+	first, _ := restoreFixture(t, "fictional-a.tdb")
+	second, _ := dbtest.NewFile(t, "fictional-b.tdb")
+	if err := second.SetMetadata("fictional_state", "b-own"); err != nil {
+		t.Fatal(err)
+	}
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	d, backups, err := buildRestoreBackupDialog(first.Path())
+	if err != nil || len(backups) == 0 {
+		t.Fatalf("buildRestoreBackupDialog() = %d backups, %v", len(backups), err)
+	}
+	a.Update(fileDialogSavedMsg{db: second, path: second.Path()})
+	a.backupDialog = &backupDialogState{dialog: d, backups: backups, db: first} // the list of A is still up
+
+	a.submitBackupDialog()
+	if a.confirm.action == nil {
+		t.Fatal("submitBackupDialog showed no restore confirm")
+	}
+	a.Update(a.confirm.action()) // Yes
 	if got, err := second.GetMetadata("fictional_state"); err != nil || got != "b-own" {
 		t.Errorf("B shows fictional_state = %q (%v) after a restore picked from the backups of A, want its own %q", got, err, "b-own")
+	}
+	if got, err := first.GetMetadata("fictional_state"); err != nil || got != "restored" {
+		t.Errorf("A shows fictional_state = %q (%v), want %q from its backup", got, err, "restored")
 	}
 }
 
@@ -271,9 +304,14 @@ func TestOpenAnOlderFileWaitsForItsBackup(t *testing.T) {
 }
 
 // TestOpenThePreviousFileSettlesItsBackup: one switch only (A is prevDB), and
-// a backup of A runs. File > Open of A waits for it, and the backup reports
-// its file, not "database is closed".
+// a backup of A runs longer than the open waits. File > Open of A must not
+// open A, and says "try again"; its settle closes A for good during the
+// backup. The backup must still report its file: it reported "database is
+// closed", because its reopen was dropped.
 func TestOpenThePreviousFileSettlesItsBackup(t *testing.T) {
+	saved := prevDrainTimeout
+	prevDrainTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { prevDrainTimeout = saved })
 	first, pathA := dbtest.NewFile(t, "first.tdb")
 	a := NewApp(first, &config.Config{})
 	closeAll(t, a)
@@ -285,18 +323,46 @@ func TestOpenThePreviousFileSettlesItsBackup(t *testing.T) {
 	<-inFn
 	switchTo(t, a, closedFile(t, "second.tdb"))
 
-	openDone := make(chan tea.Msg, 1)
-	openCmd := a.submitOpenFile(pathA)
-	go func() { openDone <- openCmd() }()
-	time.Sleep(100 * time.Millisecond)
+	msg := a.submitOpenFile(pathA)()
+	if failed, ok := msg.(fileOpFailedMsg); !ok || !strings.Contains(failed.err.Error(), "try again") {
+		t.Errorf("File > Open of A while its backup runs = %#v, want a fileOpFailedMsg that says try again", msg)
+	}
+	a.Update(msg)
 	close(proceed)
 	if res := <-backupDone; func() bool { _, ok := res.(backupCreatedMsg); return !ok }() {
-		t.Errorf("backup result = %#v, want backupCreatedMsg", res)
+		t.Errorf("backup result = %#v, want backupCreatedMsg: the backup file is written", res)
 	}
-	if msg := <-openDone; func() bool { _, ok := msg.(fileDialogSavedMsg); return !ok }() {
-		t.Errorf("File > Open of A after the backup = %#v, want fileDialogSavedMsg", msg)
-	} else {
-		a.Update(msg)
+	switchTo(t, a, pathA)
+}
+
+// TestNewFileOverAKeptFileSaysItExists: File > New with the path of the
+// previous file, which exists. db.Create refuses it, so the handle of that
+// file must stay as it is: the settle closed it for good, and waited for its
+// backup, only to say "try again".
+func TestNewFileOverAKeptFileSaysItExists(t *testing.T) {
+	saved := prevDrainTimeout
+	prevDrainTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { prevDrainTimeout = saved })
+	first, pathA := dbtest.NewFile(t, "first.tdb")
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	inFn, proceed := holdBackups(t)
+
+	backupDone := make(chan tea.Msg, 1)
+	backupCmd := a.createManualBackupCmd()
+	go func() { backupDone <- backupCmd() }()
+	<-inFn
+	switchTo(t, a, closedFile(t, "second.tdb"))
+
+	msg := a.submitNewFile(pathA)()
+	if failed, ok := msg.(fileOpFailedMsg); !ok || !strings.Contains(failed.err.Error(), "already exists") {
+		t.Errorf("File > New over the previous file = %#v, want a fileOpFailedMsg that says it exists", msg)
+	}
+	a.Update(msg)
+	close(proceed)
+	<-backupDone
+	if err := first.Conn().Ping(); err != nil {
+		t.Errorf("File > New over the previous file closed its handle: %v", err)
 	}
 }
 
@@ -306,17 +372,21 @@ func TestOpenThePreviousFileSettlesItsBackup(t *testing.T) {
 func TestQueuedWorkOnARetiredHandleDoesNotStart(t *testing.T) {
 	// Each one returns the command as the App builds it for A: before the
 	// switches.
-	for name, ask := range map[string]func(a *App, first *db.DB, bk string) tea.Cmd{
-		"backup": func(a *App, _ *db.DB, _ string) tea.Cmd { return a.createManualBackupCmd() },
-		"restore": func(_ *App, first *db.DB, bk string) tea.Cmd {
+	for name, ask := range map[string]func(t *testing.T, a *App, first *db.DB, bk string) tea.Cmd{
+		"backup": func(_ *testing.T, a *App, _ *db.DB, _ string) tea.Cmd { return a.createManualBackupCmd() },
+		"restore": func(_ *testing.T, _ *App, first *db.DB, bk string) tea.Cmd {
 			return func() tea.Msg { return restoreFile(first, bk, backup.Restore) }
+		},
+		"ledger move": func(t *testing.T, a *App, _ *db.DB, _ string) tea.Cmd {
+			cmd, _ := askLedgerMove(t, a)
+			return cmd
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			first, bk := restoreFixture(t, "fictional-a.tdb")
 			a := NewApp(first, &config.Config{})
 			closeAll(t, a)
-			cmd := ask(a, first, bk)
+			cmd := ask(t, a, first, bk)
 			switchTo(t, a, closedFile(t, "fictional-b.tdb"))
 			switchTo(t, a, closedFile(t, "fictional-c.tdb"))
 
@@ -335,13 +405,12 @@ func TestQueuedWorkOnARetiredHandleDoesNotStart(t *testing.T) {
 	}
 }
 
-// TestLedgerMoveAfterASwitchStaysOnItsFile: Yes on a ledger move of A, and
-// File > Open of B lands before the command runs. The move must run on A, the
-// file of the edit, and must not clear the undo history of B.
-func TestLedgerMoveAfterASwitchStaysOnItsFile(t *testing.T) {
-	first, _ := dbtest.NewFile(t, "first.tdb")
-	accountRepo := account.NewRepository(first)
-	invRepo := investment.NewRepository(first)
+// askLedgerMove adds an HSA investment account with one row to the open file
+// of a, and returns the command of Yes on its move to the register.
+func askLedgerMove(t *testing.T, a *App) (tea.Cmd, *account.Account) {
+	t.Helper()
+	accountRepo := account.NewRepository(a.db)
+	invRepo := investment.NewRepository(a.db)
 	acct := account.NewAccount("Cedar Bank HSA", account.TypeHSAInvestment, "USD", types.ZeroMoney, types.MustParseDate("2020-01-01"))
 	if err := accountRepo.Create(acct); err != nil {
 		t.Fatal(err)
@@ -351,9 +420,6 @@ func TestLedgerMoveAfterASwitchStaysOnItsFile(t *testing.T) {
 	if err := invRepo.Create(r); err != nil {
 		t.Fatal(err)
 	}
-
-	a := NewApp(first, &config.Config{})
-	closeAll(t, a)
 	a.acct = acctSurface{
 		modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 			d := buildEditAccountDialog(acct)
@@ -367,6 +433,18 @@ func TestLedgerMoveAfterASwitchStaysOnItsFile(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Yes on the ledger move gave no command")
 	}
+	return cmd, acct
+}
+
+// TestLedgerMoveAfterASwitchStaysOnItsFile: Yes on a ledger move of A, and
+// File > Open of B lands before the command runs. The move must run on A, the
+// file of the edit, and must not clear the undo history of B.
+func TestLedgerMoveAfterASwitchStaysOnItsFile(t *testing.T) {
+	first, _ := dbtest.NewFile(t, "first.tdb")
+	accountRepo := account.NewRepository(first)
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	cmd, acct := askLedgerMove(t, a)
 	switchTo(t, a, closedFile(t, "second.tdb"))
 	other := account.NewAccount("Juniper Fictional", account.TypeChecking, "USD", types.ZeroMoney, types.MustParseDate("2020-01-01"))
 	if err := a.undoManager.Execute(undo.NewCreateAccountCommand(a.services.Account, other)); err != nil {

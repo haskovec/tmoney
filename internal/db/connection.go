@@ -607,6 +607,10 @@ func (db *DB) openPool(gen uint64) error {
 	return nil
 }
 
+// reopened, when set, runs at the start of each openConn. A test hook; the db
+// tests do not run in parallel.
+var reopened func(path string)
+
 // openConn opens and pings a fresh pool on db.path, without publishing it.
 //
 // It fails when the file is gone. DuckDB creates a new, empty database at a
@@ -614,6 +618,9 @@ func (db *DB) openPool(gen uint64) error {
 // deleted, or a share dropped, and an empty database in its place would show
 // no data, and the quit backup would copy it.
 func (db *DB) openConn() (*sql.DB, error) {
+	if reopened != nil {
+		reopened(db.path)
+	}
 	if _, err := os.Stat(db.path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, &FileNotFoundError{Path: db.path}

@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -288,9 +290,10 @@ func (a *App) submitNewFile(path string) tea.Cmd {
 	}
 	kept := a.keptHandles()
 	return func() tea.Msg {
-		// A handle of an earlier file on this path (since moved away) must
-		// not reopen on the new file.
-		if !settleHandlesOf(path, kept) {
+		// A handle of an earlier file on this path whose file is gone (moved
+		// or deleted) must not reopen on the new file. When a file is there,
+		// db.Create refuses the path, and the handle stays as it is.
+		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && !settleHandlesOf(path, kept) {
 			return fileOpFailedMsg{path: path, err: busyError(path)}
 		}
 		// Create the directory if needed
@@ -322,7 +325,9 @@ type fileAlreadyOpenMsg struct {
 // submitOpenFile returns a command that opens an existing database file, or nil
 // while another file operation is in flight (see startFileOperation).
 //
-// It never opens a second handle on a file this app has open. DuckDB caches one
+// It never opens a second handle on a file this app has open under the path of
+// a handle (or another path to the same file; a file moved while it is open is
+// not found by its new path). DuckDB caches one
 // instance per path, so the second handle shares the first one's instance: a
 // backup or restore through it closes only its own pool, the instance lives on,
 // and the backup misses the rows still in <path>.wal. The open file stays as it
@@ -487,8 +492,8 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	}
 	a.prevDB = a.db
 
-	// The Restore list and a confirm dialog act on the file we leave: a
-	// restore picked from the list would replace the new file.
+	// The Restore list and a confirm dialog belong to the file we leave, and
+	// a confirm action can read a.services when the user says Yes.
 	a.closeDialogsOfTheOldFile()
 
 	// Set new database and reinitialize ALL services
