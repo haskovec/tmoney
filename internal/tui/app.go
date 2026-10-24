@@ -59,6 +59,13 @@ type App struct {
 	// Database connection
 	db     *db.DB
 	prevDB *db.DB // deferred close: kept alive until next switch so in-flight goroutines don't hit a nil conn
+	// retired are the handles of earlier files, closed for good
+	// (db.DB.CloseForGood), on which a backup, a restore or a load can still
+	// run. File > Open of their file, File > New at their path when no file
+	// is there, and quit wait for that work (see settleHandlesOf and
+	// submitNewFile). A handle leaves the list when it has settled;
+	// until then, it is asked again after a pause (see retiredSettled).
+	retired []*db.DB
 	// filesInFlight are the paths of the File > New and Open commands that
 	// have not reported yet; see startFileOperation.
 	filesInFlight []string
@@ -570,15 +577,21 @@ func Run(database *db.DB, cfg *config.Config) error {
 	p := tea.NewProgram(app)
 
 	_, err := p.Run()
+	app.shutdown()
+	return err
+}
 
-	// Close any database deferred during a database switch
-	if app.prevDB != nil {
-		_ = app.prevDB.Close()
-	}
+// shutdown closes the databases after the program ends, and writes the quit
+// backup of the open one.
+func (a *App) shutdown() {
+	// The handles of earlier files close for good. A backup or restore that
+	// still runs on one gets the same time as the quit backup to end, so the
+	// exit does not cut it off. They are on other files than a.db, so the
+	// quit backup does not wait for them.
+	done := settleAll(a.keptHandles(), db.SettleTimeout)
 
 	// Auto-backup on quit (best-effort). Back up the database that is open NOW,
-	// which File → Open may have swapped in. This closes app.db.
-	createAutoBackupOnQuit(app.db)
-
-	return err
+	// which File → Open may have swapped in. This closes a.db.
+	createAutoBackupOnQuit(a.db)
+	<-done
 }

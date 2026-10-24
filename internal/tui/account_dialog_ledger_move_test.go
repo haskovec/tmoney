@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/haskovec/tmoney/internal/undo"
 )
@@ -47,6 +48,7 @@ func newLedgerMoveApp(t *testing.T, rows ...*investment.Transaction) (*App, *acc
 			Transfer: transferSvc,
 		},
 		undoManager: undo.NewManager(),
+		statusbar:   widget.NewStatusBar(),
 		acct: acctSurface{
 			modalSurface: modalSurface{dlg: func() *dialog.Dialog {
 				d := buildEditAccountDialog(acct)
@@ -108,6 +110,7 @@ func TestSubmitAccountDialog_LedgerMove_OpensConfirmAndMovesOnYes(t *testing.T) 
 	if len(rows) != 0 || reg != 2 {
 		t.Errorf("rows after move: inv %d reg %d", len(rows), reg)
 	}
+	a.Update(saved) // Update clears the undo stack of the file of the move
 	if a.undoManager.CanUndo() {
 		t.Error("undo stack should be cleared after a one-way ledger move")
 	}

@@ -1,12 +1,12 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
-	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/transfer"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -40,6 +40,7 @@ type accountDialogSavedMsg struct{}
 // carries the pre-move backup so the status bar can name it.
 type ledgerMoveSavedMsg struct {
 	backupPath string
+	db         *db.DB // the file of the move
 }
 
 // accountDeletedMsg is sent when an account has been deleted.
@@ -491,7 +492,10 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 				}
 			}
 
-			database := a.db
+			// Both belong to the file of this edit. The command reads no App
+			// field: a File > Open can switch a.services while it runs. Update
+			// clears the undo history (ledgerMoveSavedMsg).
+			database, transferSvc := a.db, a.services.Transfer
 			a.closeAccountDialog()
 			a.showConfirmDialog("Move "+existingAccount.Name+" to the register?",
 				ledgerMoveMessage(plan), func() tea.Msg {
@@ -501,15 +505,10 @@ func (a *App) submitAccountDialog() (tea.Model, tea.Cmd) {
 					}
 					// The move and every other field edit commit in one
 					// transaction, so a failure here changes nothing.
-					if err := a.services.Transfer.ChangeAccountType(plan, &edited); err != nil {
+					if err := transferSvc.ChangeAccountType(plan, &edited); err != nil {
 						return errMsg{err: fmt.Errorf("failed to change the account; nothing was moved: %w", err)}
 					}
-					// The move is one-way, so the undo stack is cleared as
-					// after a restore or a file switch.
-					if a.undoManager != nil {
-						a.undoManager.Clear()
-					}
-					return ledgerMoveSavedMsg{backupPath: backupPath}
+					return ledgerMoveSavedMsg{backupPath: backupPath, db: database}
 				})
 			return a, nil
 		}
@@ -577,10 +576,13 @@ func backupBeforeLedgerMove(database *db.DB) (string, error) {
 	}
 	var backupPath string
 	err := database.WithFileClosed(func(path string) error {
-		p, err := backup.CreateManualBackup(path)
+		p, err := createManualBackup(path)
 		backupPath = p
 		return err
 	})
+	if errors.Is(err, db.ErrClosedForGood) {
+		return "", didNotStart("backup before the move", database.Path(), "Nothing was moved.")
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to write the backup; nothing was moved: %w", err)
 	}

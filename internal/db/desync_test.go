@@ -501,8 +501,8 @@ func TestCloseAndSettle(t *testing.T) {
 		}
 		ran := false
 		err := database.WithFileClosed(func(string) error { ran = true; return nil })
-		if !errors.Is(err, ErrClosed) || ran {
-			t.Errorf("WithFileClosed after CloseAndSettle: err %v, fn ran %v; want ErrClosed and no fn", err, ran)
+		if !errors.Is(err, ErrClosedForGood) || ran {
+			t.Errorf("WithFileClosed after CloseAndSettle: err %v, fn ran %v; want ErrClosedForGood and no fn", err, ran)
 		}
 		if !database.isClosed() {
 			t.Error("WithFileClosed reopened the database after CloseAndSettle")
@@ -557,8 +557,10 @@ func TestWithFileClosedDropsItsReopenAfterCloseAndSettle(t *testing.T) {
 		t.Errorf("CloseAndSettle() = %v, %v; want false, nil while fn runs", settled, err)
 	}
 	close(release)
-	if err := <-done; !errors.Is(err, ErrClosed) {
-		t.Errorf("WithFileClosed() = %v, want ErrClosed: its reopen must not publish", err)
+	// The close on purpose wins: no reopen. That is no failure of fn, so
+	// fn's own result (nil) stands.
+	if err := <-done; err != nil {
+		t.Errorf("WithFileClosed() = %v, want fn's nil: a dropped reopen is no failure", err)
 	}
 	if !database.isClosed() {
 		t.Error("WithFileClosed reopened the database after CloseAndSettle")

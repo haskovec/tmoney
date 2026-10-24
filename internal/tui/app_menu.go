@@ -87,7 +87,7 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 			a.err = err
 			return a, nil
 		}
-		a.backupDialog = &backupDialogState{dialog: d, backups: backups}
+		a.backupDialog = &backupDialogState{dialog: d, backups: backups, db: a.db}
 		return a, nil
 
 	case widget.MenuActionCloseFile:
