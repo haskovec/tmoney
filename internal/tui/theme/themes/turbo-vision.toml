@@ -34,18 +34,23 @@ window.border.fg = "#ffffff"
 window.title.fg = "#ffff55"
 
 # Dialogs — black on light gray, dark borders. Action buttons render
-# as classic Borland green: black text on green for unfocused buttons,
-# and white text with a yellow first-letter shortcut highlight when
-# the button is focused (e.g. the bright "O" on a default OK button).
+# as classic Borland green: black text on green for unfocused buttons.
+# The focused button is bright green, with its first letter in the red
+# of the menu shortcuts. Borland's focused button kept the green and
+# had white text with a yellow letter, but those have low contrast on
+# green (3.1:1 and 2.9:1). Terminals with a "minimum contrast" setting
+# (Rex, Ghostty, iTerm2) made that text dark, and then the focused
+# button looked like the others. A terminal does not change a
+# background color, so the focus shows in each terminal.
 dialog.bg = "#aaaaaa"
 dialog.fg = "#000000"
 dialog.border.fg = "#000000"
 dialog.title.fg = "#000000"
 dialog.button.fg = "#000000"
 dialog.button.bg = "#00aa00"
-dialog.button.focused.fg = "#ffffff"
-dialog.button.focused.bg = "#00aa00"
-dialog.button.shortcut.fg = "#ffff55"
+dialog.button.focused.fg = "#000000"
+dialog.button.focused.bg = "#55ff55"
+dialog.button.shortcut.fg = "#aa0000"
 
 # Tables — yellow headers, black-on-cyan selected row.
 table.header.fg = "#ffff55"

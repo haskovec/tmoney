@@ -11,6 +11,8 @@
 
 > **Addendum (2026-05-25):** `dialog.fg` is now propagated through inner SGR resets. The previous renderer wrapped the dialog content with the outer Dialog style (which sets both `dialog.fg` and `dialog.bg` when both are opaque), but only re-emitted the background SGR after each inner reset (`widget.RepaintBg`). Inner styled spans — the red required-`*` marker, muted placeholder text, the bold title — close with `\x1b[m` which wipes *both* outer colors, so raw text after such a span lost its foreground and reverted to terminal default. Visible symptom on the `light` theme: labels without a required marker stayed near-black (correct), but values to the right of a `Date*:` or `Shares*:` label rendered in the terminal default foreground (often white on dark terminals). The new `widget.RepaintDialog` re-emits *both* `dialog.fg` and `dialog.bg` after every reset when `dialog.bg` is opaque; it is a no-op when `dialog.bg` is transparent (the `default` theme), preserving the existing transparent-panel look. No theme-file schema changes.
 
+> **Addendum (2026-10-24):** The Turbo Vision focused button has its own background. It was white text with a yellow first letter on the same green as the other buttons (3.1:1 and 2.9:1). Terminals with a "minimum contrast" setting (Rex, Ghostty, iTerm2) change such text colors, and in Rex the focused button looked like the others. The focused button is now black on bright green (`#55ff55`), with its first letter in the red of the menu shortcuts (`#aa0000`). A terminal does not change a background color. `TestBuiltinThemes_ButtonFocusShowsByBackground` requires that a built-in theme that colors its buttons gives the focused one its own background, and that each button text color has at least 4.5:1 (WCAG AA). No schema changes.
+
 ## Overview
 
 TMoney's TUI currently uses a single hard-coded color palette in `internal/tui/styles.go`. This spec defines a skinnable theme system that lets users choose between built-in themes (including a faithful Turbo Vision look) and define their own theme files. A pywal helper subcommand generates a theme from the user's system color scheme for Omarchy/pywal users.
@@ -94,9 +96,9 @@ dialog.title.fg          = "#000000"
 # focused slots empty for the default Reverse+Bold focus highlight.
 dialog.button.fg          = "#000000"
 dialog.button.bg          = "#00aa00"   # green button face
-dialog.button.focused.fg  = "#ffffff"
-dialog.button.focused.bg  = "#00aa00"
-dialog.button.shortcut.fg = "#ffff55"   # first letter on focused button
+dialog.button.focused.fg  = "#000000"
+dialog.button.focused.bg  = "#55ff55"   # bright green: focus shows by its background
+dialog.button.shortcut.fg = "#aa0000"   # first letter on focused button
 
 # ---- Tables ----
 table.header.fg          = "#ffff55"
