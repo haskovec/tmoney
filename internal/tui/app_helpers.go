@@ -270,6 +270,8 @@ func (a *App) reloadAfterBulkWrite() tea.Cmd {
 // copyConfig returns a copy of cfg, or nil. A load reads the config in its
 // own goroutine, and Update can change it meanwhile (toggleClosedPositions),
 // so a deps builder gives the load a copy made when Update makes the deps.
+// The copy is shallow: RecentFiles shares its array. That is safe while
+// Update replaces the slice (AddRecentFile) and does not edit it in place.
 func copyConfig(cfg *config.Config) *config.Config {
 	if cfg == nil {
 		return nil

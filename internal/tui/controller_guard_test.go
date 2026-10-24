@@ -424,7 +424,7 @@ func TestControllerDeps_KeepTheirFileAcrossASwitch(t *testing.T) {
 			before := make([]any, len(probes))
 			for i, probe := range probes {
 				before[i] = probe()
-				if reflect.ValueOf(before[i]).IsZero() {
+				if v := reflect.ValueOf(before[i]); !v.IsValid() || v.IsZero() {
 					t.Fatalf("%s.%s is empty on an App with a file open", row.deps.Name(), row.deps.Field(i).Name)
 				}
 			}

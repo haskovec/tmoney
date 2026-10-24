@@ -2,7 +2,9 @@ package undo
 
 import (
 	"errors"
+	"sync"
 	"testing"
+	"time"
 )
 
 // mockCommand is a test helper that records Execute/Undo calls.
@@ -374,5 +376,82 @@ func TestManager_DescriptionEmpty(t *testing.T) {
 	}
 	if m.RedoDescription() != "" {
 		t.Errorf("RedoDescription() on empty stack = %q, want empty", m.RedoDescription())
+	}
+}
+
+// TestManager_ConcurrentExecute: write commands run Execute in their own
+// goroutines while Update reads the stacks. No step may be lost. Run it with
+// -race too.
+func TestManager_ConcurrentExecute(t *testing.T) {
+	m := NewManager()
+	const writers, each = 8, 50
+	var wg sync.WaitGroup
+	for range writers {
+		wg.Go(func() {
+			for range each {
+				if err := m.Execute(newMockCommand("Fictional write")); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+	done := make(chan struct{})
+	read := make(chan struct{})
+	go func() { // Update, which reads the stacks meanwhile
+		defer close(read)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				m.CanUndo()
+				m.UndoDescription()
+			}
+		}
+	}()
+	wg.Wait()
+	close(done)
+	<-read
+	if got := m.UndoLen(); got != writers*each {
+		t.Errorf("UndoLen() = %d after %d writes, want each one on the stack", got, writers*each)
+	}
+}
+
+// TestManager_AWriteWaitsForAnUndoInProgress: an undo and a write run at the
+// same time. The write must wait until the undo is done. If it does not, the
+// undo puts its step on the redo stack after the write cleared that stack,
+// and a Redo then applies a step from before the write.
+func TestManager_AWriteWaitsForAnUndoInProgress(t *testing.T) {
+	m := NewManager()
+	first := newMockCommand("First")
+	if err := m.Execute(first); err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	first.onUndo = func() { close(entered); <-release }
+
+	undone := make(chan error, 1)
+	go func() { _, err := m.Undo(); undone <- err }()
+	<-entered
+	wrote := make(chan error, 1)
+	go func() { wrote <- m.Execute(newMockCommand("Second")) }()
+	select {
+	case err := <-wrote: // the write did not wait
+		wrote <- err
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+
+	if err := <-undone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-wrote; err != nil {
+		t.Fatal(err)
+	}
+	if m.CanRedo() {
+		t.Errorf("the redo stack has %q after a later write; a write discards the redo steps", m.RedoDescription())
+	}
+	if got := m.UndoDescription(); got != "Second" {
+		t.Errorf("UndoDescription() = %q, want %q", got, "Second")
 	}
 }

@@ -17,10 +17,12 @@ import (
 // state of a view) when it is made, in Update. Then a load reads only the file
 // it was made for, a write goes to that file, and no command reads a field
 // that Update writes. An object that a command shares with Update (a dialog
-// state, the undo manager of the file) is not a field read, and this guard
-// does not see it.
+// state, the undo manager of the file, which has its own lock) is not a field
+// read, and this guard does not see it.
 // The deps builders (a.dashboardDeps() and the others) bind the deps the same
-// way, when Update makes them.
+// way, when Update makes them. An App method that returns a tea.Msg can run
+// as a command too, as a method value (a.loadX, or tea.Tick(d, a.onTick)),
+// and then its body reads the App; so no App method returns a tea.Msg.
 //
 // TestGuard_CommandsTouchNoAppWhileTheyRun pins that rule.
 
@@ -39,7 +41,8 @@ func TestGuard_CommandsTouchNoAppWhileTheyRun(t *testing.T) {
 // "line: a.name in fn". A command is a func literal of type func(...)
 // tea.Msg, or any func literal inside a function that returns a ...Deps
 // struct (a deps builder). The App is the *App receiver or an *App parameter
-// of the enclosing function.
+// of the enclosing function. It also returns each App method that returns a
+// tea.Msg, as "line: a.name returns a tea.Msg".
 func appUsesInCommands(t *testing.T, src string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -57,13 +60,17 @@ func appUsesInCommands(t *testing.T, src string) []string {
 		if len(apps) == 0 {
 			continue
 		}
+		if recv := appReceiverOf(fd); recv != "" && returnsMsg(fd.Type) {
+			uses = append(uses, fmt.Sprintf("%d: %s.%s returns a tea.Msg",
+				fset.Position(fd.Pos()).Line, recv, fd.Name.Name))
+		}
 		builder := returnsDeps(fd)
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			fl, ok := n.(*ast.FuncLit)
 			if !ok {
 				return true
 			}
-			if !builder && !returnsMsg(fl) {
+			if !builder && !returnsMsg(fl.Type) {
 				return true // a callback that runs in Update; look inside it
 			}
 			ast.Inspect(fl.Body, func(m ast.Node) bool {
@@ -112,6 +119,22 @@ func appVarsOf(fd *ast.FuncDecl) map[string]bool {
 	return apps
 }
 
+// appReceiverOf returns the name of the *App receiver of fd, or "".
+func appReceiverOf(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) != 1 {
+		return ""
+	}
+	recv := fd.Recv.List[0]
+	star, ok := recv.Type.(*ast.StarExpr)
+	if !ok || len(recv.Names) != 1 {
+		return ""
+	}
+	if id, ok := star.X.(*ast.Ident); !ok || id.Name != "App" {
+		return ""
+	}
+	return recv.Names[0].Name
+}
+
 // returnsDeps reports whether fd returns one value of a type named ...Deps.
 func returnsDeps(fd *ast.FuncDecl) bool {
 	res := fd.Type.Results
@@ -122,10 +145,10 @@ func returnsDeps(fd *ast.FuncDecl) bool {
 	return ok && strings.HasSuffix(id.Name, "Deps")
 }
 
-// returnsMsg reports whether fl returns one tea.Msg: a command, or the
-// callback of tea.Tick.
-func returnsMsg(fl *ast.FuncLit) bool {
-	res := fl.Type.Results
+// returnsMsg reports whether a func of type ft returns one tea.Msg: a
+// command, or the callback of tea.Tick.
+func returnsMsg(ft *ast.FuncType) bool {
+	res := ft.Results
 	if res == nil || len(res.List) != 1 {
 		return false
 	}
@@ -172,6 +195,15 @@ func (a *App) fooDeps() fooDeps {
 func (s *fooSurface) load() tea.Cmd {
 	return func() tea.Msg { return s.x }
 }
+func (a *App) asValue() tea.Msg {
+	return a.services.Account.List()
+}
+func (a *App) onTick(time.Time) tea.Msg {
+	return nil
+}
+func (s *fooSurface) build(a *App) tea.Msg {
+	return s.x
+}
 `)
 	want := []string{
 		"4: a.services in live",
@@ -180,6 +212,8 @@ func (s *fooSurface) load() tea.Cmd {
 		"21: a.undoManager in nested",
 		"25: a.db in helper",
 		"31: a.services in fooDeps",
+		"37: a.asValue returns a tea.Msg",
+		"40: a.onTick returns a tea.Msg",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("appUsesInCommands =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

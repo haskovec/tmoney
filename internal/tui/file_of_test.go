@@ -13,6 +13,7 @@ import (
 	"github.com/haskovec/tmoney/internal/dbtest"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // TestUpdateDropsALoadOfAnotherFile: a message tagged with a handle that is
@@ -222,14 +223,16 @@ func TestAWriteFailureOfTheOldFileStillShows(t *testing.T) {
 // was made.
 func TestDepsCopyTheConfig(t *testing.T) {
 	a := &App{cfg: &config.Config{}}
-	for name, cfg := range map[string]func() *config.Config{
-		"dashboard":           a.dashboardDeps().config,
-		"portfolio":           a.portfolioDeps().config,
-		"investment register": a.investmentRegisterDeps().config,
+	for name, deps := range map[string]func() func() *config.Config{
+		"dashboard":           func() func() *config.Config { return a.dashboardDeps().config },
+		"portfolio":           func() func() *config.Config { return a.portfolioDeps().config },
+		"investment register": func() func() *config.Config { return a.investmentRegisterDeps().config },
 	} {
-		a.cfg.ShowClosedPositions = !a.cfg.ShowClosedPositions
-		if cfg() == a.cfg {
-			t.Errorf("the %s deps share the config with Update", name)
+		a.cfg.ShowClosedPositions = false
+		cfg := deps()
+		a.cfg.ShowClosedPositions = true // Update flips it after the deps are made
+		if cfg().ShowClosedPositions {
+			t.Errorf("the %s deps saw a change that Update made after they were made", name)
 		}
 	}
 }
@@ -245,5 +248,70 @@ func TestSecurityReloadKeepsTheShowHiddenToggle(t *testing.T) {
 	a.Update(cmd())
 	if a.securities.data == nil || !a.securities.data.showHidden {
 		t.Error("the reload of the Securities view undid the show-hidden toggle")
+	}
+}
+
+// fictionalStep is an undo step that changes no data. Its Undo and its Redo
+// return fail.
+type fictionalStep struct{ fail error }
+
+func (s fictionalStep) Execute() error    { return s.fail }
+func (s fictionalStep) Undo() error       { return s.fail }
+func (fictionalStep) Description() string { return "fictional step" }
+
+var _ undo.Command = fictionalStep{}
+
+// TestAnUndoOfTheOldFileShowsNothing: an undo in A ends after a switch to B.
+// It showed "Undo: <the step of A>" in B and reloaded the view of B. Its
+// success is dropped, as the success of a write is.
+func TestAnUndoOfTheOldFileShowsNothing(t *testing.T) {
+	for action, perform := range map[string]func(*App) tea.Cmd{
+		"Undo": (*App).performUndo,
+		"Redo": (*App).performRedo,
+	} {
+		t.Run(action, func(t *testing.T) {
+			first, _ := dbtest.NewFile(t, "fictional-a.tdb")
+			a := NewApp(first, &config.Config{})
+			closeAll(t, a)
+			a.undoManager.Push(fictionalStep{})
+			if action == "Redo" {
+				if _, err := a.undoManager.Undo(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := perform(a)
+			switchTo(t, a, closedFile(t, "fictional-b.tdb"))
+
+			msg := cmd()
+			if !a.fromAnotherFile(msg) {
+				t.Errorf("the %s result of A = %#v, want it tagged with A", action, msg)
+			}
+			_, reload := a.Update(msg)
+			for _, n := range a.statusbar.Notifications() {
+				if strings.Contains(n.Text, "fictional step") {
+					t.Errorf("B shows %q, the %s of a step of A", n.Text, action)
+				}
+			}
+			if reload != nil {
+				t.Errorf("the %s of A reloaded the view of B", action)
+			}
+		})
+	}
+}
+
+// TestAnUndoFailureOfTheOldFileStillShows: the failure of an undo is not
+// tagged, as the failure of a write is not.
+func TestAnUndoFailureOfTheOldFileStillShows(t *testing.T) {
+	first, _ := dbtest.NewFile(t, "fictional-a.tdb")
+	a := NewApp(first, &config.Config{})
+	closeAll(t, a)
+	fictional := errors.New("fictional undo failure")
+	a.undoManager.Push(fictionalStep{fail: fictional})
+	cmd := a.performUndo()
+	switchTo(t, a, closedFile(t, "fictional-b.tdb"))
+
+	a.Update(cmd())
+	if !errors.Is(a.err, fictional) {
+		t.Errorf("a.err = %v, want the failure of the undo in A", a.err)
 	}
 }

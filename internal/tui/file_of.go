@@ -16,6 +16,9 @@ import (
 // changes the view of the open file; the failure of a write is not tagged, so
 // that it shows also after a switch. The tag is set from a.db when the
 // command is made, never when it runs.
+//
+// A dropped success shows no confirmation. That is on purpose: the write is
+// done, in its own file, and only the view of that file shows it.
 type fileOf struct{ db *db.DB }
 
 // loadedFrom returns the handle that the load read, or nil when the message
