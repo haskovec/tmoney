@@ -21,11 +21,15 @@ type spinOffDialogData struct {
 // spinOffDialogDataMsg is sent when spin-off dialog data has been loaded.
 type spinOffDialogDataMsg struct {
 	data *spinOffDialogData
+	fileOf
 }
 
 // spinOffDialogSavedMsg is sent when a spin-off has been executed. savedDate
 // carries the executed date so the handler can update the session sticky date.
-type spinOffDialogSavedMsg struct{ savedDate types.Date }
+type spinOffDialogSavedMsg struct {
+	savedDate types.Date
+	fileOf
+}
 
 // buildSpinOffDialog creates a dialog.Dialog for executing a corporate spin-off.
 // If preSelectedParentID is non-nil, the parent security selector is pre-selected.
@@ -77,19 +81,21 @@ func buildSpinOffDialog(securityOptions []string, securityIDs []types.ID, preSel
 
 // loadSpinOffDialogData returns a command that loads securities for the spin-off dialog.
 func (a *App) loadSpinOffDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &spinOffDialogData{}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
-		return spinOffDialogDataMsg{data: data}
+		return spinOffDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -149,6 +155,7 @@ type spinOffPriceLookupMsg struct {
 	price    types.Money
 	currency string
 	err      error
+	fileOf
 }
 
 // startSpinOffPriceLookup fetches the spin-off (child) security's close on the
@@ -172,27 +179,29 @@ func (a *App) startSpinOffPriceLookup() (tea.Model, tea.Cmd) {
 
 // spinOffPriceLookupCmd resolves the child ticker and fetches its as-of close.
 func (a *App) spinOffPriceLookupCmd(childID types.ID, dateStr string) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		date, err := parseDateInput(dateStr)
 		if err != nil {
-			return spinOffPriceLookupMsg{err: fmt.Errorf("enter a valid date first (MM/DD/YYYY)")}
+			return spinOffPriceLookupMsg{err: fmt.Errorf("enter a valid date first (MM/DD/YYYY)"), fileOf: file}
 		}
-		if a.services.Security == nil || a.services.Price == nil {
-			return spinOffPriceLookupMsg{err: fmt.Errorf("price/security service not available")}
+		if svc.Security == nil || svc.Price == nil {
+			return spinOffPriceLookupMsg{err: fmt.Errorf("price/security service not available"), fileOf: file}
 		}
-		sec, err := a.services.Security.GetByID(childID)
+		sec, err := svc.Security.GetByID(childID)
 		if err != nil {
-			return spinOffPriceLookupMsg{err: err}
+			return spinOffPriceLookupMsg{err: err, fileOf: file}
 		}
-		provider, err := a.services.Price.ProviderRegistry().Get(defaultRefreshProviderName)
+		provider, err := svc.Price.ProviderRegistry().Get(defaultRefreshProviderName)
 		if err != nil {
-			return spinOffPriceLookupMsg{err: err}
+			return spinOffPriceLookupMsg{err: err, fileOf: file}
 		}
 		quote, err := provider.FetchQuoteOn(sec.Ticker, date)
 		if err != nil {
-			return spinOffPriceLookupMsg{err: err}
+			return spinOffPriceLookupMsg{err: err, fileOf: file}
 		}
-		return spinOffPriceLookupMsg{price: quote.Price, currency: quote.Currency}
+		return spinOffPriceLookupMsg{price: quote.Price, currency: quote.Currency, fileOf: file}
 	}
 }
 
@@ -326,13 +335,15 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async execution
 	a.closeSpinOffDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil || a.services.CorporateAction == nil {
+		if svc.Investment == nil || svc.CorporateAction == nil {
 			return errMsg{err: fmt.Errorf("investment services not available")}
 		}
 
 		// Derive the engine's share ratio from the parent's current total shares.
-		total, terr := a.services.Investment.TotalSharesForSecurity(parentSecurityID)
+		total, terr := svc.Investment.TotalSharesForSecurity(parentSecurityID)
 		if terr != nil {
 			return errMsg{err: fmt.Errorf("failed to read parent holding: %w", terr)}
 		}
@@ -345,11 +356,11 @@ func (a *App) submitSpinOffDialog() (tea.Model, tea.Cmd) {
 			ShareRatio:          resultingShares / totalF,
 			ParentAllocationPct: parentAllocPct,
 		}
-		_, err := a.services.CorporateAction.SpinOff(parentSecurityID, spinOffSecurityID, spinOffDate, params, priceMoney)
+		_, err := svc.CorporateAction.SpinOff(parentSecurityID, spinOffSecurityID, spinOffDate, params, priceMoney)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to execute spin-off: %w", err)}
 		}
 
-		return spinOffDialogSavedMsg{savedDate: spinOffDate}
+		return spinOffDialogSavedMsg{savedDate: spinOffDate, fileOf: file}
 	}
 }

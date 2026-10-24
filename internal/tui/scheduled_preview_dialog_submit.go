@@ -56,13 +56,16 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 	templateID := template.ID
 	a.closeSchedulePreviewDialog()
 
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 		cmd := undo.NewPostScheduledTransferCommand(
-			a.services.Scheduled,
-			a.services.Transfer,
+			svc.Scheduled,
+			svc.Transfer,
 			templateID,
 			date,
 			magnitude,
@@ -70,10 +73,10 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 			cleared,
 			categoryID,
 		)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to post scheduled transfer: %w", err)}
 		}
-		return scheduledPostedMsg{}
+		return scheduledPostedMsg{fileOf: file}
 	}
 }
 
@@ -215,16 +218,19 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 	loanShaped := a.schedPreviewDialog.loanShaped
 	a.closeSchedulePreviewDialog()
 
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
 		if payeeName != "" {
 			if id, ok := payeeLookup[strings.ToLower(payeeName)]; ok {
 				parent.SetPayee(id)
-			} else if a.services.Payee != nil {
-				py, _, err := a.services.Payee.GetOrCreate(payeeName)
+			} else if svc.Payee != nil {
+				py, _, err := svc.Payee.GetOrCreate(payeeName)
 				if err != nil {
 					return errMsg{err: fmt.Errorf("failed to resolve payee: %w", err)}
 				}
@@ -233,13 +239,13 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		}
 
 		cmd := undo.NewPostScheduledTransactionWithEditsCommand(
-			a.services.Scheduled,
-			a.services.Transaction,
+			svc.Scheduled,
+			svc.Transaction,
 			templateID,
 			parent,
 			multiSplits,
 		)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to post scheduled transaction: %w", err)}
 		}
 
@@ -249,12 +255,12 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 		// the schedule to surface that as a payoff toast; the handler runs
 		// on the main loop, so it does the SetToast (never this closure).
 		paidOff := false
-		if loanShaped && a.services.Scheduled != nil {
-			if st, gerr := a.services.Scheduled.GetByID(templateID); gerr == nil && st != nil {
+		if loanShaped && svc.Scheduled != nil {
+			if st, gerr := svc.Scheduled.GetByID(templateID); gerr == nil && st != nil {
 				paidOff = st.IsCompleted()
 			}
 		}
-		return scheduledPostedMsg{loanPaidOff: paidOff}
+		return scheduledPostedMsg{loanPaidOff: paidOff, fileOf: file}
 	}
 }
 

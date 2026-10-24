@@ -115,10 +115,11 @@ type scheduledDialogData struct {
 // scheduledDialogDataMsg is sent when scheduled dialog data has been loaded.
 type scheduledDialogDataMsg struct {
 	data *scheduledDialogData
+	fileOf
 }
 
 // scheduledDialogSavedMsg is sent when a scheduled transaction has been saved.
-type scheduledDialogSavedMsg struct{}
+type scheduledDialogSavedMsg struct{ fileOf }
 
 // paycheckDemotionWarning is shown before a save that would drop a
 // paycheck-shaped schedule's paycheck_section tags. Nothing behavioural breaks

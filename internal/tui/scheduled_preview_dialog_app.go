@@ -40,30 +40,32 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		return nil
 	}
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		var accounts []*account.Account
-		if a.services.Account != nil {
-			acs, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			acs, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			accounts = acs
 		}
 
 		var payees []*payee.Payee
-		if a.services.Payee != nil {
-			ps, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			ps, err := svc.Payee.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			payees = ps
 		}
 
 		var categories []*category.Category
-		if a.services.Category != nil {
-			cs, err := a.services.Category.List()
+		if svc.Category != nil {
+			cs, err := svc.Category.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			categories = cs
 		}
@@ -83,8 +85,8 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 		// cannot be previewed with correct numbers, so the loader blocks the
 		// open with a reason rather than seeding stale template values.
 		var loanSplits *scheduled.LoanSplits
-		if a.services.Scheduled != nil && a.services.Scheduled.IsLoanShaped(template) {
-			ls, err := a.services.Scheduled.ComputeLoanSplits(template, template.NextDate)
+		if svc.Scheduled != nil && svc.Scheduled.IsLoanShaped(template) {
+			ls, err := svc.Scheduled.ComputeLoanSplits(template, template.NextDate)
 			switch {
 			case err == nil:
 				loanSplits = ls
@@ -98,13 +100,14 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 				// a closed funding account tripping the pre-check) means the
 				// schedule was NOT completed, so surface that instead of a
 				// misleading "paid off" toast.
-				if _, perr := a.services.Scheduled.Post(template.ID, nil); perr != nil &&
+				if _, perr := svc.Scheduled.Post(template.ID, nil); perr != nil &&
 					!errors.Is(perr, scheduled.ErrLoanPaidOff) {
+					// The post failed: show it also after a switch (no tag).
 					return schedulePreviewLoanBlockedMsg{err: perr}
 				}
-				return schedulePreviewLoanBlockedMsg{paidOff: true}
+				return schedulePreviewLoanBlockedMsg{paidOff: true, fileOf: file}
 			default:
-				return schedulePreviewLoanBlockedMsg{err: err}
+				return schedulePreviewLoanBlockedMsg{err: err, fileOf: file}
 			}
 		}
 
@@ -115,6 +118,7 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 			categoryOptions: categoryOptions,
 			categoryIDs:     categoryIDs,
 			loanSplits:      loanSplits,
+			fileOf:          file,
 		}
 	}
 }

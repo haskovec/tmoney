@@ -10,22 +10,25 @@ import (
 // sidebarLoadedMsg is sent when sidebar data has been loaded.
 type sidebarLoadedMsg struct {
 	accounts []*account.Account
+	fileOf
 }
 
 // loadSidebarData returns a command that loads accounts and balances for the sidebar.
 func (a *App) loadSidebarData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Account == nil {
+		if svc.Account == nil {
 			return nil
 		}
 		// Load all accounts (including closed) so the sidebar can show a
 		// dimmed "Closed Accounts" section at the bottom. Pickers elsewhere
 		// still use List(true) to exclude closed accounts.
-		accounts, err := a.services.Account.List(false)
+		accounts, err := svc.Account.List(false)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
-		return sidebarLoadedMsg{accounts: accounts}
+		return sidebarLoadedMsg{accounts: accounts, fileOf: file}
 	}
 }
 

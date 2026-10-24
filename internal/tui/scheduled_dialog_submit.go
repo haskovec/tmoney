@@ -203,18 +203,21 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save for responsive UI
 	a.closeScheduledDialog()
 
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	save := func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
-		if payeeName != "" && a.services.Payee != nil {
-			py, _, err := a.services.Payee.GetOrCreate(payeeName)
+		if payeeName != "" && svc.Payee != nil {
+			py, _, err := svc.Payee.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
 			payeeID = py.ID
 		}
 
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
@@ -266,8 +269,8 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewEditScheduledTransactionCommand(svc.Scheduled, st)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
 		} else {
@@ -304,13 +307,13 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewCreateScheduledTransactionCommand(svc.Scheduled, st)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 			}
 		}
 
-		return scheduledDialogSavedMsg{}
+		return scheduledDialogSavedMsg{fileOf: file}
 	}
 
 	switch {
@@ -350,17 +353,20 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		looksLikePaycheck(pending.existing) &&
 		!looksLikePaycheck(&scheduled.Transaction{Splits: children})
 
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	save := func() tea.Msg {
 		var payeeID types.ID
-		if pending.payeeName != "" && a.services.Payee != nil {
-			py, _, err := a.services.Payee.GetOrCreate(pending.payeeName)
+		if pending.payeeName != "" && svc.Payee != nil {
+			py, _, err := svc.Payee.GetOrCreate(pending.payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
 			payeeID = py.ID
 		}
 
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
@@ -393,20 +399,20 @@ func (a *App) submitScheduledSplitDialog() (tea.Model, tea.Cmd) {
 		if pending.mode == scheduledDialogModeEdit && pending.existing != nil {
 			st := pending.existing
 			applyScalars(st)
-			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewEditScheduledTransactionCommand(svc.Scheduled, st)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
 		} else {
 			st := scheduled.NewTransaction(pending.accountID, pending.frequency, pending.startDate)
 			applyScalars(st)
-			cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewCreateScheduledTransactionCommand(svc.Scheduled, st)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 			}
 		}
 
-		return scheduledDialogSavedMsg{}
+		return scheduledDialogSavedMsg{fileOf: file}
 	}
 
 	switch {

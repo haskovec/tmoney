@@ -85,6 +85,7 @@ type transferDialogData struct {
 // transferDialogDataMsg is sent when transfer dialog data has been loaded.
 type transferDialogDataMsg struct {
 	data *transferDialogData
+	fileOf
 }
 
 // transferDialogSavedMsg is sent when a transfer has been saved.
@@ -100,6 +101,7 @@ type transferDialogSavedMsg struct {
 	savedDate         types.Date
 	savedID           types.ID
 	savedIsInvestment bool
+	fileOf
 }
 
 // buildAccountOptions builds parallel display name and ID slices for account selectors.
@@ -228,32 +230,41 @@ func categoryComboIndex(ids []types.ID, catID types.NullableID) int {
 }
 
 // transferDeps is what the transfer surface needs from outside itself. Two
-// constraints shape it, and both are live:
+// constraints shape it:
 //
-//   - Every dep is a func, because switchDatabase re-points App's service
-//     fields and closes the previous *db.DB. A closure re-reads the field at
-//     call time; a captured pointer would be a use-after-close.
+//   - Every dep is a func that transferDeps() binds to the file that is open
+//     when Update makes the deps. A command made before a file switch runs
+//     after it, and must still act on its own file: a dep that read App's
+//     fields again sent a write of one file to the next. On a handle that a
+//     switch closed, the command fails with "database is closed".
 //   - Deps are passed to each call and never stored on the surface, because
 //     close() resets the surface to its zero value and would zero them.
 //
-// Both are pinned by tests: TestControllerDeps_FollowADatabaseSwitch and
+// Both are pinned by tests: TestGuard_ControllerDepsAreFuncs,
+// TestControllerDeps_KeepTheirFileAcrossASwitch and
 // TestGuard_NoSurfaceStructHoldsItsDeps.
 type transferDeps struct {
 	accounts   func() *account.Service
 	categories func() *category.Service
 	transfers  func() *transfer.Service
 	undo       func() *undo.Manager
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // transferDeps binds the transfer surface to the services App owns. Every
 // accessor may legitimately return nil — an App built by a test has no services
 // — so each caller keeps its own nil guard.
 func (a *App) transferDeps() transferDeps {
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return transferDeps{
-		accounts:   func() *account.Service { return a.services.Account },
-		categories: func() *category.Service { return a.services.Category },
-		transfers:  func() *transfer.Service { return a.services.Transfer },
-		undo:       func() *undo.Manager { return a.undoManager },
+		accounts:   func() *account.Service { return svc.Account },
+		categories: func() *category.Service { return svc.Category },
+		transfers:  func() *transfer.Service { return svc.Transfer },
+		undo:       func() *undo.Manager { return undoManager },
+		file:       func() fileOf { return file },
 	}
 }
 
@@ -396,12 +407,13 @@ func (s *transferSurface) categoryFieldIndex() int {
 // receiver goes unread — open is a method because opening is the surface's
 // operation, not App's.
 func (s *transferSurface) open(deps transferDeps) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		data := &transferDialogData{}
 		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
-		return transferDialogDataMsg{data: data}
+		return transferDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -410,12 +422,13 @@ func (s *transferSurface) open(deps transferDeps) tea.Cmd {
 // form is pre-filled from the row, and submit replaces the row with the
 // transfer in one step.
 func (s *transferSurface) openToReplace(deps transferDeps, row *investment.Transaction) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		data := &transferDialogData{replaces: row}
 		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
-		return transferDialogDataMsg{data: data}
+		return transferDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -439,20 +452,21 @@ func (s *transferSurface) openToReplace(deps transferDeps, row *investment.Trans
 // inv↔reg transfer whose investment counterpart had been closed was misrouted to
 // GetTransferPair and failed. transfer.Resolve reads account rows directly.
 func (s *transferSurface) openForEdit(deps transferDeps, legRowID types.ID) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		data := &transferDialogData{mode: transferDialogModeEdit}
 		if err := loadTransferAccountsAndCategories(deps, data); err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 
 		svc := deps.transfers()
 		if svc == nil {
-			return transferDialogDataMsg{data: data}
+			return transferDialogDataMsg{data: data, fileOf: file}
 		}
 
 		t, err := svc.Resolve(legRowID)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 
 		// A transfer LINE inside a multi-line split is owned by the parent
@@ -465,15 +479,15 @@ func (s *transferSurface) openForEdit(deps transferDeps, legRowID types.ID) tea.
 			return errMsg{err: fmt.Errorf(
 				"this transfer is a line inside a multi-line split; edit it from the parent transaction's splits (parent %s)",
 				t.ParentTransactionID.String(),
-			)}
+			), fileOf: file}
 		}
 		// Share transfers are owned by the investment share-transfer dialog.
 		if t.Movement == transfer.MovementShares {
-			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog")}
+			return errMsg{err: fmt.Errorf("this is a share transfer; edit it with the Transfer Shares dialog"), fileOf: file}
 		}
 
 		data.existing = t
-		return transferDialogDataMsg{data: data}
+		return transferDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -638,6 +652,7 @@ func (s *transferSurface) submit(deps transferDeps, currentAcct types.ID) tea.Cm
 	// The inv↔inv category refusal that used to be re-implemented here is also
 	// gone: the domain returns *transfer.CategoryNotSupportedError, and the
 	// error surface below maps it back onto the Category field.
+	file := deps.file()
 	return func() tea.Msg {
 		undoMgr := deps.undo()
 		if undoMgr == nil {
@@ -681,7 +696,7 @@ func (s *transferSurface) submit(deps transferDeps, currentAcct types.ID) tea.Cm
 			}
 		}
 
-		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment, fileOf: file}
 	}
 }
 
@@ -780,6 +795,7 @@ func (s *transferSurface) submitEdit(deps transferDeps, currentAcct types.ID) te
 
 	s.close()
 
+	file := deps.file()
 	return func() tea.Msg {
 		svc := deps.transfers()
 		undoMgr := deps.undo()
@@ -811,7 +827,7 @@ func (s *transferSurface) submitEdit(deps transferDeps, currentAcct types.ID) te
 				savedIsInvestment = leg.Ledger == transfer.LedgerInvestment
 			}
 		}
-		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment}
+		return transferDialogSavedMsg{savedDate: date, savedID: savedID, savedIsInvestment: savedIsInvestment, fileOf: file}
 	}
 }
 

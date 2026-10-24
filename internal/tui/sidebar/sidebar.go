@@ -100,6 +100,12 @@ func (s *Sidebar) SetAccounts(accounts []*account.Account) {
 	s.rebuildItems()
 }
 
+// Reset drops the accounts and the selection, and keeps the focus: the
+// accounts of a file that is no longer open must not stay selected.
+func (s *Sidebar) Reset() {
+	*s = Sidebar{focused: s.focused}
+}
+
 // SetFocused sets whether the sidebar has input focus.
 func (s *Sidebar) SetFocused(focused bool) {
 	s.focused = focused

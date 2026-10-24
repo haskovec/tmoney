@@ -52,25 +52,31 @@ type amortizationViewData struct {
 // amortizationLoadedMsg carries loaded amortization data into the update loop.
 type amortizationLoadedMsg struct {
 	data *amortizationViewData
+	fileOf
 }
 
 // amortizationDeps is what the Amortization view needs from outside itself.
-// Every dep is a func, because switchDatabase replaces App's services and
-// closes the previous *db.DB; and deps are passed to each call, never stored
-// in the view state. Both rules are pinned by the guards that run over
-// viewControllers.
+// Every dep is a func bound to the file that is open when Update makes the
+// deps, so a load made before a file switch reads only its own file; and deps
+// are passed to each call, never stored in the view state. Both rules are
+// pinned by the guards that run over viewControllers.
 type amortizationDeps struct {
 	accounts  func() *account.Service
 	scheduled func() *scheduled.Service
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // amortizationDeps binds the Amortization view to the services App owns. Every
 // accessor may return nil, because an App built by a test has no services, so
 // each caller keeps its own nil guard.
 func (a *App) amortizationDeps() amortizationDeps {
+	svc := a.services
+	file := a.fileOfOpen()
 	return amortizationDeps{
-		accounts:  func() *account.Service { return a.services.Account },
-		scheduled: func() *scheduled.Service { return a.services.Scheduled },
+		accounts:  func() *account.Service { return svc.Account },
+		scheduled: func() *scheduled.Service { return svc.Scheduled },
+		file:      func() fileOf { return file },
 	}
 }
 
@@ -84,14 +90,15 @@ func (a *App) amortizationDeps() amortizationDeps {
 // The services are read through the deps when the command runs, where the
 // a.services reads were.
 func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		accounts := d.accounts()
 		if accounts == nil {
-			return errMsg{err: fmt.Errorf("account service not available")}
+			return errMsg{err: fmt.Errorf("account service not available"), fileOf: file}
 		}
 		acct, err := accounts.GetByID(accountID)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 		data := &amortizationViewData{account: acct}
 		if acct.InterestRate.Valid {
@@ -106,7 +113,7 @@ func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea
 		if schedules := d.scheduled(); schedules != nil {
 			sched, err = schedules.FindLoanSchedule(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 		}
 
@@ -114,10 +121,10 @@ func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea
 			// No schedule: show the current balance owed and APR only.
 			bal, gerr := accounts.GetBalance(accountID)
 			if gerr != nil {
-				return errMsg{err: gerr}
+				return errMsg{err: gerr, fileOf: file}
 			}
 			data.owed = bal.CurrentBalance.Neg()
-			return amortizationLoadedMsg{data: data}
+			return amortizationLoadedMsg{data: data, fileOf: file}
 		}
 
 		data.hasSchedule = true
@@ -129,7 +136,7 @@ func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea
 		// balance the next post will compute against.
 		signedBal, berr := accounts.BalanceAsOf(accountID, sched.NextDate)
 		if berr != nil {
-			return errMsg{err: berr}
+			return errMsg{err: berr, fileOf: file}
 		}
 		data.owed = signedBal.Neg()
 
@@ -142,7 +149,7 @@ func (s *amortizationViewState) load(d amortizationDeps, accountID types.ID) tea
 				data.stats = loan.RemainingStats(proj)
 			}
 		}
-		return amortizationLoadedMsg{data: data}
+		return amortizationLoadedMsg{data: data, fileOf: file}
 	}
 }
 

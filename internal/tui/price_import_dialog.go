@@ -70,8 +70,10 @@ func (a *App) submitImportPriceDialog() (tea.Model, tea.Cmd) {
 
 // importPrices imports prices from a CSV file.
 func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Price == nil || a.services.Security == nil {
+		if svc.Price == nil || svc.Security == nil {
 			return errMsg{err: fmt.Errorf("services not available")}
 		}
 
@@ -97,14 +99,14 @@ func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
 		// Resolve tickers to security IDs
 		var prices []*price.Price
 		for _, rec := range result.Records {
-			sec, lookupErr := a.services.Security.GetByTicker(rec.Ticker, "USD")
+			sec, lookupErr := svc.Security.GetByTicker(rec.Ticker, "USD")
 			if lookupErr != nil {
 				return errMsg{err: fmt.Errorf("unknown ticker %q (line %d): %w", rec.Ticker, rec.SourceLine, lookupErr)}
 			}
 			prices = append(prices, price.NewPrice(sec.ID, rec.Date, rec.Price, price.SourceImport))
 		}
 
-		importResult, err := a.services.Price.BulkImport(prices, overwrite)
+		importResult, err := svc.Price.BulkImport(prices, overwrite)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("import failed: %w", err)}
 		}
@@ -113,6 +115,7 @@ func (a *App) importPrices(filePath string, overwrite bool) tea.Cmd {
 			total:    importResult.Total,
 			imported: importResult.Imported,
 			skipped:  importResult.Skipped,
+			fileOf:   file,
 		}
 	}
 }

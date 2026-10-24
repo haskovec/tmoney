@@ -560,9 +560,12 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// errMsg is a message type for errors.
+// errMsg is a message type for errors. A load tags its failure with its file
+// (see fileOf), so that Update drops the error of a file that is no longer
+// open.
 type errMsg struct {
 	err error
+	fileOf
 }
 
 // mouseOpenAccountMsg is sent to defer a view switch from a mouse click

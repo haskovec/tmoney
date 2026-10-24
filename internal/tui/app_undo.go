@@ -9,11 +9,14 @@ import (
 	"github.com/haskovec/tmoney/internal/undo"
 )
 
-// undoResultMsg carries the result of an undo or redo operation.
+// undoResultMsg carries the result of an undo or redo operation. A success
+// carries the tag of its file, as the success of a write does; a failure is
+// not tagged, so that it shows also after a switch.
 type undoResultMsg struct {
 	action      string // "Undo" or "Redo"
 	description string
 	err         error
+	fileOf
 }
 
 // performUndo returns a tea.Cmd that undoes the last operation.
@@ -21,9 +24,10 @@ func (a *App) performUndo() tea.Cmd {
 	if a.undoManager == nil {
 		return nil
 	}
+	undoManager, file := a.undoManager, a.fileOfOpen()
 	return func() tea.Msg {
-		desc, err := a.undoManager.Undo()
-		return undoResultMsg{action: "Undo", description: desc, err: err}
+		desc, err := undoManager.Undo()
+		return undoResult("Undo", desc, err, file)
 	}
 }
 
@@ -32,10 +36,20 @@ func (a *App) performRedo() tea.Cmd {
 	if a.undoManager == nil {
 		return nil
 	}
+	undoManager, file := a.undoManager, a.fileOfOpen()
 	return func() tea.Msg {
-		desc, err := a.undoManager.Redo()
-		return undoResultMsg{action: "Redo", description: desc, err: err}
+		desc, err := undoManager.Redo()
+		return undoResult("Redo", desc, err, file)
 	}
+}
+
+// undoResult makes the message of an undo or redo of file.
+func undoResult(action, desc string, err error, file fileOf) undoResultMsg {
+	msg := undoResultMsg{action: action, description: desc, err: err}
+	if err == nil {
+		msg.fileOf = file
+	}
+	return msg
 }
 
 // applyUndoResult reports the outcome of an undo or redo. An empty stack is a

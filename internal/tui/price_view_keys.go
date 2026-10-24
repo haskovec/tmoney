@@ -136,17 +136,19 @@ func (a *App) handlePriceDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if p != nil {
 			priceID := p.ID
 			dateStr := p.Date.Time().Format("2006-01-02")
+			svc := a.services
+			file := a.fileOfOpen()
 			a.showConfirmDialog(
 				"Delete Price",
 				fmt.Sprintf("Delete price for %s?", dateStr),
 				func() tea.Msg {
-					if a.services.Price == nil {
+					if svc.Price == nil {
 						return errMsg{err: fmt.Errorf("price service not available")}
 					}
-					if err := a.services.Price.DeletePrice(priceID); err != nil {
+					if err := svc.Price.DeletePrice(priceID); err != nil {
 						return errMsg{err: err}
 					}
-					return priceDeletedMsg{}
+					return priceDeletedMsg{fileOf: file}
 				},
 			)
 		}

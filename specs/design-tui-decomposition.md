@@ -1098,6 +1098,20 @@ Two candidates to rule out explicitly, because both look cheap and are not:
 The full ordering, easiest to hardest true controller extraction:
 **transfer → paycheck → loan → split → create-category.**
 
+> **Changed 2026-10-24.** Deps now bind the services of the file that is open
+> when `Update` makes them, and no command reads `App` while it runs
+> (`TestGuard_CommandsTouchNoAppWhileTheyRun`). The use-after-close argument
+> below no longer holds: `switchDatabase` keeps the previous handle open for
+> one switch, and a closed handle returns an error ("sql: database is
+> closed"), not a nil pool. A live dep sent a command made for one file to the
+> next file: a write of A went to B, and a load of A showed B's data or B's
+> "not found". The result of a load, or of a successful write, of an earlier
+> file is dropped (`fileOf`), and each file gets its own undo manager.
+> `TestControllerDeps_FollowADatabaseSwitch` is now
+> `TestControllerDeps_KeepTheirFileAcrossASwitch`, and
+> `TestGuard_ControllerDepsAreLiveIndirections` is
+> `TestGuard_ControllerDepsAreFuncs`.
+
 Deps must be a **live indirection**, not captured pointers. `switchDatabase`
 re-points 18 service fields at runtime (`file_dialog.go:230-247`) and closes the
 previous `*db.DB`, so a surface holding a captured `*transfer.Service` would be
@@ -1221,6 +1235,8 @@ guards:
    That one is the behaviour; the guard is the shape. Note that `switchDatabase`
    re-points the three services and **not** `undoManager`, so the test proves
    the closure re-reads its field — it does not claim undo follows a file switch.
+   (Since 2026-10-24 the test is `TestControllerDeps_KeepTheirFileAcrossASwitch`
+   and asserts the opposite: see the note in the deps section above.)
 4. **No surface struct holds a dependency bag.** `close()` is
    `*s = surface{}` for every surface, so a stored deps struct would be zeroed
    and the next call through it would panic on a nil func. The rule is narrow by

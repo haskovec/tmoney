@@ -62,6 +62,7 @@ type importDialogState struct {
 type importPreviewedMsg struct {
 	state  *importDialogState
 	result *imexport.ImportResult
+	fileOf
 }
 
 // importNeedsSourceMsg is sent when the parsed file contains rows for more
@@ -70,6 +71,7 @@ type importPreviewedMsg struct {
 type importNeedsSourceMsg struct {
 	state   *importDialogState
 	sources []string
+	fileOf
 }
 
 // importCompletedMsg is sent when the import has been executed.
@@ -224,19 +226,21 @@ func importDuplicateFromIndex(idx int) imexport.DuplicateHandling {
 // startImport opens the import options dialog populated from the current
 // account list. Called from the File menu action handler.
 func (a *App) startImport() tea.Cmd {
+	svc := a.services
+	var defaultID types.ID
+	if a.sidebar != nil {
+		defaultID = a.sidebar.SelectedAccountID()
+	}
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Account == nil {
-			return errMsg{err: fmt.Errorf("account service not available")}
+		if svc.Account == nil {
+			return errMsg{err: fmt.Errorf("account service not available"), fileOf: file}
 		}
-		accounts, err := a.services.Account.List(true)
+		accounts, err := svc.Account.List(true)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to list accounts: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to list accounts: %w", err), fileOf: file}
 		}
-		var defaultID types.ID
-		if a.sidebar != nil {
-			defaultID = a.sidebar.SelectedAccountID()
-		}
-		return importDialogOpenMsg{accounts: accounts, defaultAccountID: defaultID}
+		return importDialogOpenMsg{accounts: accounts, defaultAccountID: defaultID, fileOf: file}
 	}
 }
 
@@ -245,6 +249,7 @@ func (a *App) startImport() tea.Cmd {
 type importDialogOpenMsg struct {
 	accounts         []*account.Account
 	defaultAccountID types.ID
+	fileOf
 }
 
 // importSurface is the import workflow's state. One dialog handle serves all
@@ -404,12 +409,13 @@ func (a *App) submitImportOptions() (tea.Model, tea.Cmd) {
 // here: the constructor heals data as a side effect.
 func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		format := state.format
 		if format == "" {
 			detected, err := imexport.DetectFormat(state.filePath)
 			if err != nil {
-				return errMsg{err: fmt.Errorf("cannot detect format: %w (use the Format dropdown to choose)", err)}
+				return errMsg{err: fmt.Errorf("cannot detect format: %w (use the Format dropdown to choose)", err), fileOf: file}
 			}
 			format = detected
 			state.format = detected
@@ -417,23 +423,23 @@ func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 
 		f, err := os.Open(state.filePath)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to open file: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to open file: %w", err), fileOf: file}
 		}
 		defer f.Close()
 
 		importSvc, err := newImportService(svc)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 
 		parseResult, err := importSvc.Parse(f, format)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("import parse failed: %w", err)}
+			return errMsg{err: fmt.Errorf("import parse failed: %w", err), fileOf: file}
 		}
 
 		sources := imexport.DistinctAccounts(parseResult)
 		if len(sources) > 1 && state.sourceAccount == "" {
-			return importNeedsSourceMsg{state: state, sources: sources}
+			return importNeedsSourceMsg{state: state, sources: sources, fileOf: file}
 		}
 		if state.sourceAccount != "" {
 			parseResult = imexport.FilterByAccount(parseResult, state.sourceAccount)
@@ -444,9 +450,9 @@ func (a *App) runImportPreview(state *importDialogState) tea.Cmd {
 			DuplicateHandling: state.duplicateHandling,
 		})
 		if err != nil {
-			return errMsg{err: fmt.Errorf("import preview failed: %w", err)}
+			return errMsg{err: fmt.Errorf("import preview failed: %w", err), fileOf: file}
 		}
-		return importPreviewedMsg{state: state, result: result}
+		return importPreviewedMsg{state: state, result: result, fileOf: file}
 	}
 }
 

@@ -70,6 +70,7 @@ func (d *securityViewData) filteredSecurities() []*security.Security {
 // securityViewDataLoadedMsg is sent when security view data has been loaded.
 type securityViewDataLoadedMsg struct {
 	data *securityViewData
+	fileOf
 }
 
 // securityAddedMsg is sent when a security has been added. id carries the new
@@ -77,42 +78,40 @@ type securityViewDataLoadedMsg struct {
 // reload.
 type securityAddedMsg struct {
 	id types.ID
+	fileOf
 }
 
 // securityUpdatedMsg is sent when a security has been updated.
-type securityUpdatedMsg struct{}
+type securityUpdatedMsg struct{ fileOf }
 
 // securityDeletedMsg is sent when a security has been deleted.
-type securityDeletedMsg struct{}
+type securityDeletedMsg struct{ fileOf }
 
 // securityHiddenMsg is sent when a security's hidden status changes.
 type securityHiddenMsg struct {
 	hidden bool
+	fileOf
 }
 
 // loadSecurityViewData returns a command that loads security view data.
 func (a *App) loadSecurityViewData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Security == nil {
-			return errMsg{err: fmt.Errorf("security service not available")}
+		if svc.Security == nil {
+			return errMsg{err: fmt.Errorf("security service not available"), fileOf: file}
 		}
 
-		securities, err := a.services.Security.List(security.Filter{})
+		securities, err := svc.Security.List(security.Filter{})
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load securities: %w", err), fileOf: file}
 		}
 
-		showHidden := false
-		if a.securities.data != nil {
-			showHidden = a.securities.data.showHidden
-		}
+		// showHidden is set by Update when the message comes: the user can
+		// flip it with "f" while the load runs.
+		data := &securityViewData{securities: securities}
 
-		data := &securityViewData{
-			securities: securities,
-			showHidden: showHidden,
-		}
-
-		return securityViewDataLoadedMsg{data: data}
+		return securityViewDataLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -330,17 +329,19 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if sec.Ticker != "" {
 				label = fmt.Sprintf("%s (%s)", sec.Ticker, sec.Name)
 			}
+			svc := a.services
+			file := a.fileOfOpen()
 			a.showConfirmDialog(
 				"Delete Security",
 				fmt.Sprintf("Delete %s?", label),
 				func() tea.Msg {
-					if a.services.Security == nil {
+					if svc.Security == nil {
 						return errMsg{err: fmt.Errorf("security service not available")}
 					}
-					if err := a.services.Security.Delete(secID); err != nil {
+					if err := svc.Security.Delete(secID); err != nil {
 						return errMsg{err: err}
 					}
-					return securityDeletedMsg{}
+					return securityDeletedMsg{fileOf: file}
 				},
 			)
 		}
@@ -419,20 +420,22 @@ func (a *App) handleSecuritySearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (a *App) toggleSecurityHidden(sec *security.Security) tea.Cmd {
 	hidden := sec.Hidden
 	secID := sec.ID
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Security == nil {
+		if svc.Security == nil {
 			return errMsg{err: fmt.Errorf("security service not available")}
 		}
 		var err error
 		if hidden {
-			err = a.services.Security.Unhide(secID)
+			err = svc.Security.Unhide(secID)
 		} else {
-			err = a.services.Security.Hide(secID)
+			err = svc.Security.Hide(secID)
 		}
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return securityHiddenMsg{hidden: !hidden}
+		return securityHiddenMsg{hidden: !hidden, fileOf: file}
 	}
 }
 
@@ -612,8 +615,10 @@ func (a *App) submitSecurityDialog() (tea.Model, tea.Cmd) {
 
 // createSecurity creates a new security via the service.
 func (a *App) createSecurity(ticker, name, isin string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Security == nil {
+		if svc.Security == nil {
 			return errMsg{err: fmt.Errorf("security service not available")}
 		}
 
@@ -623,21 +628,23 @@ func (a *App) createSecurity(ticker, name, isin string, secType security.Type, a
 		sec.SetExchange(exchange)
 		sec.SetISIN(isin)
 
-		if err := a.services.Security.Create(sec); err != nil {
+		if err := svc.Security.Create(sec); err != nil {
 			return errMsg{err: err}
 		}
-		return securityAddedMsg{id: sec.ID}
+		return securityAddedMsg{id: sec.ID, fileOf: file}
 	}
 }
 
 // updateSecurity updates an existing security via the service.
 func (a *App) updateSecurity(id types.ID, ticker, name, isin string, secType security.Type, assetClass security.AssetClass, currency, exchange string) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Security == nil {
+		if svc.Security == nil {
 			return errMsg{err: fmt.Errorf("security service not available")}
 		}
 
-		sec, err := a.services.Security.GetByID(id)
+		sec, err := svc.Security.GetByID(id)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -650,10 +657,10 @@ func (a *App) updateSecurity(id types.ID, ticker, name, isin string, secType sec
 		sec.SetExchange(exchange)
 		sec.SetISIN(isin)
 
-		if err := a.services.Security.Update(sec); err != nil {
+		if err := svc.Security.Update(sec); err != nil {
 			return errMsg{err: err}
 		}
-		return securityUpdatedMsg{}
+		return securityUpdatedMsg{fileOf: file}
 	}
 }
 

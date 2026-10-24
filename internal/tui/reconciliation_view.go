@@ -42,23 +42,26 @@ type reconciliationLoadedMsg struct {
 	// reload is true for a refresh of the session already on screen, and
 	// false for the first load after a start.
 	reload bool
+	fileOf
 }
 
 // reconciliationStartedMsg is sent when a reconciliation session has been started.
 type reconciliationStartedMsg struct {
 	session *reconciliation.Session
 	account *account.Account
+	fileOf
 }
 
 // reconciliationFinishedMsg is sent when reconciliation completes successfully.
-type reconciliationFinishedMsg struct{}
+type reconciliationFinishedMsg struct{ fileOf }
 
 // reconciliationCancelledMsg is sent when reconciliation is cancelled.
-type reconciliationCancelledMsg struct{}
+type reconciliationCancelledMsg struct{ fileOf }
 
 // reconciliationClearedTotalMsg is sent with an updated cleared total.
 type reconciliationClearedTotalMsg struct {
 	clearedTotal types.Money
+	fileOf
 }
 
 // buildStartReconciliationDialog builds the dialog for starting a
@@ -168,39 +171,44 @@ func (a *App) submitStartReconciliation() (tea.Model, tea.Cmd) {
 
 // startReconciliation starts a reconciliation session and loads view data.
 func (a *App) startReconciliation(accountID types.ID, statementDate types.Date, statementBalance types.Money) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Reconciliation == nil {
-			return errMsg{err: fmt.Errorf("reconciliation service not available")}
+		if svc.Reconciliation == nil {
+			return errMsg{err: fmt.Errorf("reconciliation service not available"), fileOf: file}
 		}
 
-		session, err := a.services.Reconciliation.StartReconciliation(accountID, statementDate, statementBalance)
+		session, err := svc.Reconciliation.StartReconciliation(accountID, statementDate, statementBalance)
 		if err != nil {
+			// A write failed: show it also after a switch (no tag).
 			return errMsg{err: fmt.Errorf("failed to start reconciliation: %w", err)}
 		}
 
-		acct, err := a.services.Account.GetByID(accountID)
+		acct, err := svc.Account.GetByID(accountID)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to get account: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to get account: %w", err), fileOf: file}
 		}
 
-		return reconciliationStartedMsg{session: session, account: acct}
+		return reconciliationStartedMsg{session: session, account: acct, fileOf: file}
 	}
 }
 
 // loadReconciliationData loads reconciliation view data for an active session.
 func (a *App) loadReconciliationData(session *reconciliation.Session, account *account.Account) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		candidates, err := a.services.Reconciliation.GetCandidateTransactions(
+		candidates, err := svc.Reconciliation.GetCandidateTransactions(
 			session.AccountID, session.StatementDate,
 		)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load candidate transactions: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load candidate transactions: %w", err), fileOf: file}
 		}
 
 		// Load payee names
 		payeeNames := make(map[types.ID]string)
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					payeeNames[p.ID] = p.Name
@@ -210,8 +218,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		// Load category names
 		categoryNames := make(map[types.ID]string)
-		if a.services.Category != nil {
-			categories, err := a.services.Category.List()
+		if svc.Category != nil {
+			categories, err := svc.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					categoryNames[c.ID] = c.Name
@@ -221,8 +229,8 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 
 		// Load account names for transfers
 		accountNames := make(map[types.ID]string)
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err == nil {
 				for _, acct := range accounts {
 					accountNames[acct.ID] = acct.Name
@@ -231,9 +239,9 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 		}
 
 		// Calculate initial cleared total (no checked transactions)
-		clearedTotal, err := a.services.Reconciliation.CalculateClearedTotal(session.AccountID, nil)
+		clearedTotal, err := svc.Reconciliation.CalculateClearedTotal(session.AccountID, nil)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to calculate cleared total: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to calculate cleared total: %w", err), fileOf: file}
 		}
 
 		data := &reconciliationViewData{
@@ -247,7 +255,7 @@ func (a *App) loadReconciliationData(session *reconciliation.Session, account *a
 			clearedTotal:  clearedTotal,
 		}
 
-		return reconciliationLoadedMsg{data: data}
+		return reconciliationLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -297,12 +305,14 @@ func (a *App) recalculateClearedTotal() tea.Cmd {
 	accountID := a.reconciliation.data.session.AccountID
 	checkedIDs := a.getCheckedTransactionIDs()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		total, err := a.services.Reconciliation.CalculateClearedTotal(accountID, checkedIDs)
+		total, err := svc.Reconciliation.CalculateClearedTotal(accountID, checkedIDs)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to recalculate cleared total: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to recalculate cleared total: %w", err), fileOf: file}
 		}
-		return reconciliationClearedTotalMsg{clearedTotal: total}
+		return reconciliationClearedTotalMsg{clearedTotal: total, fileOf: file}
 	}
 }
 
@@ -602,14 +612,17 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 	accountID := a.reconciliation.data.session.AccountID
 	txnIDs := a.getCheckedTransactionIDs()
 
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
 		cmd := undo.NewFinishReconciliationCommand(
-			a.services.Reconciliation, a.services.Transaction, accountID, txnIDs,
+			svc.Reconciliation, svc.Transaction, accountID, txnIDs,
 		)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to finish reconciliation: %w", err)}
 		}
-		return reconciliationFinishedMsg{}
+		return reconciliationFinishedMsg{fileOf: file}
 	}
 }
 
@@ -621,12 +634,14 @@ func (a *App) cancelReconciliation() (tea.Model, tea.Cmd) {
 
 	accountID := a.reconciliation.data.session.AccountID
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		err := a.services.Reconciliation.CancelReconciliation(accountID)
+		err := svc.Reconciliation.CancelReconciliation(accountID)
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to cancel reconciliation: %w", err)}
 		}
-		return reconciliationCancelledMsg{}
+		return reconciliationCancelledMsg{fileOf: file}
 	}
 }
 

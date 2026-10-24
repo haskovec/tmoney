@@ -15,6 +15,7 @@ import (
 // Update loop so the confirm dialog can be built on the main goroutine.
 type linkTransfersPreviewedMsg struct {
 	result *transferlink.Result
+	fileOf
 }
 
 // linkTransfersCompletedMsg is dispatched when the link operation has run.
@@ -31,15 +32,16 @@ type linkTransfersCompletedMsg struct {
 // constructor heals data as a side effect.
 func (a *App) startLinkTransfers() tea.Cmd {
 	svc := a.services.TransferLink
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		if svc == nil {
-			return errMsg{err: fmt.Errorf("services not available")}
+			return errMsg{err: fmt.Errorf("services not available"), fileOf: file}
 		}
 		res, err := svc.FindUnlinked(transferlink.DefaultMaxDateDiffDays)
 		if err != nil {
-			return errMsg{err: fmt.Errorf("scan failed: %w", err)}
+			return errMsg{err: fmt.Errorf("scan failed: %w", err), fileOf: file}
 		}
-		return linkTransfersPreviewedMsg{result: res}
+		return linkTransfersPreviewedMsg{result: res, fileOf: file}
 	}
 }
 

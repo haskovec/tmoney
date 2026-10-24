@@ -32,23 +32,28 @@ type priceViewState struct {
 }
 
 // priceDeps is what the Prices view needs from outside itself. Every dep is a
-// func, because switchDatabase replaces App's services and closes the previous
-// *db.DB; and deps are passed to each call, never stored in the view state.
-// Both rules are pinned by the guards that run over viewControllers. The name
-// is priceDeps, not pricesDeps, because the table guard finds the view state
-// from it (priceViewState).
+// func bound to the file that is open when Update makes the deps, so a load
+// made before a file switch reads only its own file; and deps are passed to
+// each call, never stored in the view state. Both rules are pinned by the
+// guards that run over viewControllers. The name is priceDeps, not pricesDeps,
+// because the table guard finds the view state from it (priceViewState).
 type priceDeps struct {
 	securities func() *security.Service
 	prices     func() *price.Service
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // priceDeps binds the Prices view to the services App owns. Every accessor may
 // return nil, because an App built by a test has no services, so each caller
 // keeps its own nil guard.
 func (a *App) priceDeps() priceDeps {
+	svc := a.services
+	file := a.fileOfOpen()
 	return priceDeps{
-		securities: func() *security.Service { return a.services.Security },
-		prices:     func() *price.Service { return a.services.Price },
+		securities: func() *security.Service { return svc.Security },
+		prices:     func() *price.Service { return svc.Price },
+		file:       func() fileOf { return file },
 	}
 }
 
@@ -124,37 +129,40 @@ func (d *priceViewData) filteredSecurities() []*security.Security {
 
 type priceViewDataLoadedMsg struct {
 	data *priceViewData
+	fileOf
 }
 
-type priceAddedMsg struct{}
-type priceUpdatedMsg struct{}
-type priceDeletedMsg struct{}
+type priceAddedMsg struct{ fileOf }
+type priceUpdatedMsg struct{ fileOf }
+type priceDeletedMsg struct{ fileOf }
 
 type priceImportedMsg struct {
 	total    int
 	imported int
 	skipped  int
+	fileOf
 }
 
 // load returns a command that loads the prices landing page: the list of
 // latest prices per non-hidden security with any prices. The services are read
 // through the deps when the command runs.
 func (s *priceViewState) load(d priceDeps) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		secSvc, priceSvc := d.securities(), d.prices()
 		if secSvc == nil || priceSvc == nil {
-			return errMsg{err: fmt.Errorf("services not available")}
+			return errMsg{err: fmt.Errorf("services not available"), fileOf: file}
 		}
 
 		excludeHidden := true
 		securities, err := secSvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load securities: %w", err), fileOf: file}
 		}
 
 		latest, err := priceSvc.GetLatestPrices()
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load latest prices: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load latest prices: %w", err), fileOf: file}
 		}
 
 		data := &priceViewData{
@@ -164,7 +172,7 @@ func (s *priceViewState) load(d priceDeps) tea.Cmd {
 			historyCache: newHistoryCache(),
 		}
 
-		return priceViewDataLoadedMsg{data: data}
+		return priceViewDataLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -198,23 +206,24 @@ func (s *priceViewState) reloadKeepingMode(d priceDeps) tea.Cmd {
 // loadForSecurity returns a command that drills into a single security's price
 // history (detail mode).
 func (s *priceViewState) loadForSecurity(d priceDeps, sec *security.Security) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		secSvc, priceSvc := d.securities(), d.prices()
 		if secSvc == nil || priceSvc == nil {
-			return errMsg{err: fmt.Errorf("services not available")}
+			return errMsg{err: fmt.Errorf("services not available"), fileOf: file}
 		}
 
 		excludeHidden := true
 		securities, err := secSvc.List(security.Filter{ExcludeHidden: &excludeHidden})
 		if err != nil {
-			return errMsg{err: fmt.Errorf("failed to load securities: %w", err)}
+			return errMsg{err: fmt.Errorf("failed to load securities: %w", err), fileOf: file}
 		}
 
 		var prices []*price.Price
 		if sec != nil {
 			prices, err = priceSvc.GetPriceHistory(sec.ID, nil, nil)
 			if err != nil {
-				return errMsg{err: fmt.Errorf("failed to load prices: %w", err)}
+				return errMsg{err: fmt.Errorf("failed to load prices: %w", err), fileOf: file}
 			}
 		}
 
@@ -226,7 +235,7 @@ func (s *priceViewState) loadForSecurity(d priceDeps, sec *security.Security) te
 			historyCache:     newHistoryCache(),
 		}
 
-		return priceViewDataLoadedMsg{data: data}
+		return priceViewDataLoadedMsg{data: data, fileOf: file}
 	}
 }
 

@@ -187,6 +187,7 @@ func (s *loanSurface) submitNew(deps loanDeps) tea.Cmd {
 
 	s.close()
 
+	file := deps.file()
 	return func() tea.Msg {
 		accountSvc, categorySvc, payeeSvc, schedSvc, undoMgr :=
 			deps.accounts(), deps.categories(), deps.payees(), deps.scheduled(), deps.undo()
@@ -269,7 +270,7 @@ func (s *loanSurface) submitNew(deps loanDeps) tea.Cmd {
 		if err := undoMgr.Execute(compound); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create loan: %w", err)}
 		}
-		return loanWizardSavedMsg{}
+		return loanWizardSavedMsg{fileOf: file}
 	}
 }
 
@@ -372,6 +373,7 @@ func (s *loanSurface) submitEdit(deps loanDeps) tea.Cmd {
 
 	s.close()
 
+	file := deps.file()
 	return func() tea.Msg {
 		accountSvc, categorySvc, schedSvc, undoMgr :=
 			deps.accounts(), deps.categories(), deps.scheduled(), deps.undo()
@@ -436,7 +438,7 @@ func (s *loanSurface) submitEdit(deps loanDeps) tea.Cmd {
 		if err := undoMgr.Execute(compound); err != nil {
 			return errMsg{err: fmt.Errorf("failed to save loan edit: %w", err)}
 		}
-		return loanWizardSavedMsg{}
+		return loanWizardSavedMsg{fileOf: file}
 	}
 }
 

@@ -57,37 +57,44 @@ type investmentRegisterData struct {
 // investmentRegisterLoadedMsg is sent when investment register data has been loaded.
 type investmentRegisterLoadedMsg struct {
 	data *investmentRegisterData
+	fileOf
 }
 
 // investmentRegisterDeps is what the investment register view needs from
-// outside itself. Every dep is a func, because switchDatabase replaces App's
-// services and closes the previous *db.DB; and deps are passed to each call,
-// never stored in the view state. Both rules are pinned by the guards that run
-// over viewControllers. config is the user's config, for the valuation
-// options; like the services, it is read when the load runs.
+// outside itself. Every dep is a func bound to the file that is open when
+// Update makes the deps, so a load made before a file switch reads only its own
+// file; and deps are passed to each call, never stored in the view state. Both
+// rules are pinned by the guards that run over viewControllers. config is the
+// user's config, for the valuation options; it is bound with the services.
 type investmentRegisterDeps struct {
 	accounts    func() *account.Service
 	investments func() *investment.Service
 	valuations  func() *investment.ValuationService
 	securities  func() *security.Service
 	config      func() *config.Config
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // investmentRegisterDeps binds the investment register view to the services
 // App owns. Every accessor may return nil, because an App built by a test has
 // no services, so each caller keeps its own nil guard.
 func (a *App) investmentRegisterDeps() investmentRegisterDeps {
+	svc, cfg := a.services, copyConfig(a.cfg)
+	file := a.fileOfOpen()
 	return investmentRegisterDeps{
-		accounts:    func() *account.Service { return a.services.Account },
-		investments: func() *investment.Service { return a.services.Investment },
-		valuations:  func() *investment.ValuationService { return a.services.InvestmentValuation },
-		securities:  func() *security.Service { return a.services.Security },
-		config:      func() *config.Config { return a.cfg },
+		accounts:    func() *account.Service { return svc.Account },
+		investments: func() *investment.Service { return svc.Investment },
+		valuations:  func() *investment.ValuationService { return svc.InvestmentValuation },
+		securities:  func() *security.Service { return svc.Security },
+		config:      func() *config.Config { return cfg },
+		file:        func() fileOf { return file },
 	}
 }
 
 // load returns a command that loads all data needed for the investment register view.
 func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID types.ID) tea.Cmd {
+	file := d.file()
 	return func() tea.Msg {
 		data := &investmentRegisterData{
 			securityNames:     make(map[types.ID]string),
@@ -98,7 +105,7 @@ func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID t
 		if accounts := d.accounts(); accounts != nil {
 			acct, err := accounts.GetByID(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.account = acct
 		}
@@ -107,13 +114,13 @@ func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID t
 		if valuations := d.valuations(); valuations != nil {
 			txns, err := valuations.ListTransactions(accountID, investment.TransactionFilter{})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.transactions = txns
 
 			val, err := valuations.GetAccountValuation(accountID, types.Today(), valuationOptionsFor(d.config()))
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.valuation = val
 		}
@@ -122,7 +129,7 @@ func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID t
 		if investments := d.investments(); investments != nil {
 			cash, err := investments.GetCashBalance(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.cashBalance = cash
 		}
@@ -138,7 +145,7 @@ func (s *investmentRegisterViewState) load(d investmentRegisterDeps, accountID t
 			}
 		}
 
-		return investmentRegisterLoadedMsg{data: data}
+		return investmentRegisterLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -272,11 +279,14 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 			if isTransferLeg {
 				transferID = txn.TransferID.ID
 			}
+			undoManager := a.undoManager
+			svc := a.services
+			file := a.fileOfOpen()
 			a.showConfirmDialog(
 				"Delete Transaction",
 				prompt,
 				func() tea.Msg {
-					if a.services.Investment == nil {
+					if svc.Investment == nil {
 						return errMsg{err: fmt.Errorf("investment service not available")}
 					}
 					// A cash-transfer row is one LEG of a pair whose counterpart may
@@ -289,19 +299,19 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 					// investment rows owned by this package, and their cascade also
 					// reverses lot and position effects.
 					if isTransferLeg {
-						if a.services.Transfer == nil || a.undoManager == nil {
+						if svc.Transfer == nil || undoManager == nil {
 							return errMsg{err: fmt.Errorf("transfer service not available")}
 						}
-						cmd := undo.NewDeleteTransferCommand(a.services.Transfer, transferID)
-						if err := a.undoManager.Execute(cmd); err != nil {
+						cmd := undo.NewDeleteTransferCommand(svc.Transfer, transferID)
+						if err := undoManager.Execute(cmd); err != nil {
 							return errMsg{err: err}
 						}
-						return investmentTransactionDeletedMsg{}
+						return investmentTransactionDeletedMsg{fileOf: file}
 					}
-					if err := a.services.Investment.DeleteTransaction(txnID); err != nil {
+					if err := svc.Investment.DeleteTransaction(txnID); err != nil {
 						return errMsg{err: err}
 					}
-					return investmentTransactionDeletedMsg{}
+					return investmentTransactionDeletedMsg{fileOf: file}
 				},
 			)
 		}
@@ -340,8 +350,11 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 	// Classified synchronously — the closure below runs on another goroutine.
 	isTransferLeg := isCashTransferLeg(txn)
 
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
@@ -365,25 +378,25 @@ func (a *App) toggleInvestmentTransactionStatus() (tea.Model, tea.Cmd) {
 		// Only this leg moves — clearing your side of a transfer says your
 		// institution posted it, independent of the other account.
 		if isTransferLeg {
-			if a.services.Transfer == nil || a.undoManager == nil {
+			if svc.Transfer == nil || undoManager == nil {
 				return errMsg{err: fmt.Errorf("transfer service not available")}
 			}
 			status := transaction.StatusCleared
 			if !cleared {
 				status = transaction.StatusUncleared
 			}
-			cmd := undo.NewSetTransferLegStatusCommand(a.services.Transfer, txnID, status)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewSetTransferLegStatusCommand(svc.Transfer, txnID, status)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: err}
 			}
-			return investmentTransactionClearedMsg{}
+			return investmentTransactionClearedMsg{fileOf: file}
 		}
 
 		// Route through the service so the closed-account freeze gate applies.
-		if err := a.services.Investment.SetClearedStatus(txnID, cleared); err != nil {
+		if err := svc.Investment.SetClearedStatus(txnID, cleared); err != nil {
 			return errMsg{err: err}
 		}
-		return investmentTransactionClearedMsg{}
+		return investmentTransactionClearedMsg{fileOf: file}
 	}
 }
 
@@ -407,10 +420,10 @@ func isCashTransferLeg(txn *investment.Transaction) bool {
 }
 
 // investmentTransactionDeletedMsg is sent when an investment transaction has been deleted.
-type investmentTransactionDeletedMsg struct{}
+type investmentTransactionDeletedMsg struct{ fileOf }
 
 // investmentTransactionClearedMsg is sent when an investment transaction's status has been toggled.
-type investmentTransactionClearedMsg struct{}
+type investmentTransactionClearedMsg struct{ fileOf }
 
 // shareTransferEditRefusal returns the notice for a share-transfer row that
 // this register cannot edit. The edit dialog always sends from the register's
