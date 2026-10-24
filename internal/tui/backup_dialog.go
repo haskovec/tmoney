@@ -171,6 +171,9 @@ func restoreFile(database *db.DB, backupPath string, restore func(dbPath, backup
 		return err
 	})
 	if err != nil && !restored {
+		if safetyPath != "" { // Restore stopped after its safety backup
+			return errMsg{err: fmt.Errorf("failed to restore (a backup of the current state is %s): %w", backupFilename(safetyPath), err)}
+		}
 		return errMsg{err: fmt.Errorf("failed to restore: %w", err)}
 	}
 	return restoreConfirmedMsg{db: database, safetyBackupPath: safetyPath, reopenErr: err}

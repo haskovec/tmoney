@@ -43,6 +43,12 @@ Same directory as the database file.
 
 Example: if the database is at `~/Documents/TMoney/personal.tdb`, backups are stored in `~/Documents/TMoney/`.
 
+If the database path is a symbolic link to the real file (for example, a file in
+a synced folder), the backups go beside the link, where the restore list looks.
+A restore through the link replaces the file at the end of the link, and the
+link stays. DuckDB keeps the write-ahead log files beside the real file, so the
+backup and the restore read them there.
+
 ### Rolling Retention
 
 - **Keep the last 5 backups**
@@ -184,9 +190,10 @@ Safety: the current state is always backed up before restoring.
 | Error | Handling |
 |-------|----------|
 | Backup file not found | `"Error: Backup file not found: <path>"` |
+| Database file not found | `"Error: failed to restore: cannot read database file <path>: stat <path>: no such file or directory"` (nothing changes) |
 | Backup file corrupted | `"Error: failed to restore: backup file <path> is not a valid TMoney database: <reason>"` |
 | Backup of a newer TMoney | `"Error: failed to restore: cannot restore backup file <path>: file was created with a newer version of TMoney (file: v<n>, app: v<m>)"` |
-| Backup file cannot be read | `"Error: failed to restore: cannot read backup file <path>: open <path>: permission denied"` |
+| Backup file cannot be read | `"Error: failed to restore: cannot read backup file <path>: open <path>: permission denied"` (also for a log beside it: `open <resolved path>.wal: ...`, with the absolute path of the file at the end of any link) |
 | Backup file open in another program | `"Error: failed to restore: backup file <path> is open in another program; close it and try again: <reason>"` |
 | Disk full during backup | `"Error: Not enough disk space to create backup"` |
 | Permission denied | `"Error: Cannot write to backup location"` |
@@ -196,24 +203,78 @@ Safety: the current state is always backed up before restoring.
 
 To prevent data loss if restore fails:
 
-1. Verify the backup is a valid TMoney database (open it for reading, attach
-   it read-only, check the metadata, refuse a newer schema version). A backup
-   that this user cannot read, or that another program has open, is refused
-   with that reason: it is not called invalid.
-2. Copy the backup to a temporary file (`<db>.tmoney-partial-<n>`) in the same
-   directory, with the permissions of the current database
+0. Stop if the database file is not there: the open in step 4 would create
+   an empty database, and its safety backup would count toward retention.
+1. Verify the backup is a valid TMoney database (open it and the write-ahead
+   log files beside it for reading, attach it read-only, check the metadata,
+   refuse a newer schema version). A backup that this user cannot read, or
+   that another program has open, is refused with that reason: it is not
+   called invalid.
+2. Copy the backup to a temporary file (`<db>.tmoney-partial-<n>`) in the
+   directory of the database file (for a link, the directory of the file at
+   the end of the link, named after that file), with the permissions of the
+   current database. If the backup has write-ahead log files beside it, apply
+   them to the copy.
 3. Verify the temp file the same way: it is what goes in place
-4. Create the safety backup of the current state
-5. Rename the temp file over the database name in one step. If the process
+4. Apply the write-ahead log files of the current database (`<db>.wal`,
+   `<db>.wal.checkpoint`, `<db>.wal.recovery`) to it, in place, so that the
+   file alone holds every committed row. This open also shows another program
+   that has the database open (DuckDB locks the file): then stop with
+   `"Error: failed to restore: the database is open in another program; close
+   it and try again: ..."`, before anything changes. If the open fails for
+   another reason, ask the operating system whether another process holds the
+   lock of the file (`fcntl F_GETLK`; an open with no sharing on Windows), and
+   stop the same way if one does. If that check fails, stop with `"Error:
+   failed to restore: cannot check whether another program has the database
+   open (...), and the database cannot be opened for writing: ..."`.
+5. Create the safety backup of the current state. If the database file or a
+   log changed during it (a program opened the database after step 4 and
+   wrote to it), stop with `"Error: failed to restore: the database changed
+   during the restore, so another program has it open; close it and try
+   again"`. The safety backup stays. Then ask the operating system again
+   whether another process holds the lock of the file, and stop the same way
+   if one does: a program that only opened the database changed nothing yet.
+6. Rename the temp file over the database name in one step. If the process
    dies before the rename, the database is as it was; after it, the database
    is the complete copy.
 
-Every backup is written the same way: a temp file beside the final name,
-flushed to disk, then renamed. A crash during a backup leaves only a
-`.tmoney-partial-<n>` file, which no listing shows. The next auto-backup deletes
-such a file when it is more than an hour old. The sweep finds these files by
-name only, so the name has "tmoney" in it: a file of the user is not likely to
-have such a name.
+If the log files cannot be applied in place (a damaged log, which DuckDB cannot
+open the database with either, a damaged database file, or a read-only database
+file), and no other process has the file, or a log is still there after step 4
+(DuckDB ignored it as torn, but its bytes can hold committed rows), the safety
+backup is the file alone with raw copies of the logs beside it (`<safety
+backup>.wal`), and the logs move aside before the rename (and back if the
+rename fails), because DuckDB would replay them onto the restored file. A
+restore of such a safety backup applies a good log; it refuses a damaged one
+and says to move the logs beside it away to restore the file alone. DuckDB has
+no check that a log belongs to its file: it replays the log of another file at
+any open, so step 4 applies it too.
+
+Known limits:
+
+- The checks for another program do not keep DuckDB's lock. A program that
+  opens the database in the moment between the last check in step 5 and the
+  rename is not seen. On macOS and Linux, what it writes after the rename goes
+  to the old file, and its log goes beside the restored file, where the next
+  open replays it.
+- DuckDB looks for the log of a path with a `?` in another place, so such a
+  file cannot be folded: a backup or restore with a log there stops with an
+  error.
+- DuckDB replays the readable start of a log and drops the rest, also
+  committed rows after a damaged entry, and its checkpoint then deletes the
+  log. No copy keeps those bytes.
+- If the log files cannot be applied in place, and the process is killed
+  after the logs move aside and before the rename, the database is without
+  the rows of those logs. They are in the raw copies beside the safety
+  backup.
+
+Every backup is written the same way: a temp file beside the final name, with
+the write-ahead log files of the source applied to it (for a raw safety backup,
+raw copies of them beside it), flushed to disk, then renamed. A crash during a
+backup leaves only a `.tmoney-partial-<n>` file, which no listing shows. The
+next auto-backup deletes such a file when it is more than an hour old. The
+sweep finds these files by name only, so the name has "tmoney" in it: a file of
+the user is not likely to have such a name.
 
 ## Validation Rules
 

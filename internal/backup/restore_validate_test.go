@@ -316,6 +316,59 @@ func TestRestoreUnreadableBackup(t *testing.T) {
 	}
 }
 
+// TestRestoreBackupWithAnUnreadableLog: DuckDB opens the logs beside a backup
+// too, and reports one that this user cannot read as an "IO Error". A good
+// backup with such a log is not invalid, and the log can hold good rows, so
+// the refusal must not say to move it away.
+func TestRestoreBackupWithAnUnreadableLog(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has only a read-only attribute, no permission bits")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file of any mode")
+	}
+	for _, suffix := range []string{".wal", ".wal.checkpoint"} {
+		t.Run(suffix, func(t *testing.T) {
+			dir := t.TempDir()
+			dbPath := newMarkedDB(t, dir, "fin.tdb", "current")
+			good, err := os.ReadFile(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(dir, "saved"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			saved := filepath.Join(dir, "saved", "fin.tdb"+backup.ManualBackupInfix+"2026-01-01T00-00-00")
+			writeFile(t, saved, good)
+			writeFile(t, saved+suffix, make([]byte, 4096))
+			chmodUntilCleanup(t, saved+suffix, 0, 0o600)
+			before := names(t, dir)
+
+			_, err = backup.Restore(dbPath, saved)
+			if err == nil {
+				t.Fatal("Restore took a backup with a log that it cannot read")
+			}
+			msg := err.Error()
+			for _, want := range []string{"cannot read backup file " + saved, filepath.Base(saved) + suffix + ": permission denied"} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("refusal = %q, want it to contain %q", msg, want)
+				}
+			}
+			for _, wrong := range []string{"not a valid TMoney database", "away"} {
+				if strings.Contains(msg, wrong) {
+					t.Errorf("refusal = %q contains %q", msg, wrong)
+				}
+			}
+			if now, _ := os.ReadFile(dbPath); !bytes.Equal(now, good) {
+				t.Errorf("the database changed: %d bytes, was %d", len(now), len(good))
+			}
+			if after := names(t, dir); strings.Join(after, ",") != strings.Join(before, ",") {
+				t.Errorf("the folder changed: %v, was %v", after, before)
+			}
+		})
+	}
+}
+
 // chmodUntilCleanup gives path the mode locked, and the mode unlocked when the
 // test ends, so that t.TempDir can delete it.
 func chmodUntilCleanup(t *testing.T, path string, locked, unlocked os.FileMode) {

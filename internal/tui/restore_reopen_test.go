@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,5 +91,24 @@ func TestRestoreOfAnotherFileKeepsTheSession(t *testing.T) {
 	a.Update(restoreConfirmedMsg{db: restored, safetyBackupPath: "fictional.tdb.backup.2026-01-01T09-00-00"})
 	if n := a.undoManager.UndoLen(); n != 1 {
 		t.Errorf("the restore of another file changed the undo history of the open one: %d commands, want 1", n)
+	}
+}
+
+// TestRestoreFailureNamesTheSafetyBackup: Restore can stop after it made the
+// safety backup (the database changed during the restore). The message must
+// name that backup: it is in the list now, and it is the state before.
+func TestRestoreFailureNamesTheSafetyBackup(t *testing.T) {
+	database, _ := dbtest.NewFile(t, "fictional-refused.tdb")
+	t.Cleanup(func() { _ = database.Close() })
+	const safety = "fictional-refused.tdb.backup.2026-01-01T09-00-00"
+	msg := restoreFile(database, "fictional-source", func(dbPath, backupPath string) (string, error) {
+		return filepath.Join(filepath.Dir(dbPath), safety), errors.New("fictional refusal")
+	})
+	failed, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("restoreFile() = %#v, want errMsg", msg)
+	}
+	if !strings.Contains(failed.err.Error(), safety) {
+		t.Errorf("error = %q, want it to name the safety backup %s", failed.err, safety)
 	}
 }
