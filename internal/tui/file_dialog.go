@@ -501,8 +501,8 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	}
 	a.prevDB = a.db
 
-	// The Restore list and a confirm dialog belong to the file we leave: a
-	// confirm action acts on the file it was made for.
+	// Each open dialog belongs to the file we leave: a confirm action, a
+	// Restore pick or a Save acts on the file it was opened for.
 	a.closeDialogsOfTheOldFile()
 
 	// Set new database and reinitialize ALL services
@@ -569,16 +569,25 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	)
 }
 
-// closeDialogsOfTheOldFile closes the Restore list and the confirm dialog at a
-// file switch, and says so. Every confirm dialog acts on the open file.
+// closeDialogsOfTheOldFile closes every dialog of the file we leave at a file
+// switch, and says so when one was open. A File > Open runs as a command, so
+// the user can open a dialog while it runs; its Save would then act on the
+// new file with the IDs and data of the old one, or read view data that the
+// switch clears. Help and About show nothing of a file and stay open (see
+// modalEntry.close).
 func (a *App) closeDialogsOfTheOldFile() {
-	if a.backupDialog == nil && a.confirm.action == nil {
-		return
+	open := false
+	for _, e := range a.modals() {
+		if e.close == nil {
+			continue
+		}
+		open = open || e.modal.IsVisible()
+		e.close(a)
 	}
-	a.backupDialog = nil
-	a.confirm = confirmSurface{}
-	a.statusbar.AddNotification("Another file opened. The dialog of the last file closed, and nothing changed.",
-		widget.NotificationInfo)
+	if open {
+		a.statusbar.AddNotification("Another file opened. The dialog of the last file closed, and nothing changed.",
+			widget.NotificationInfo)
+	}
 }
 
 // nearestExistingDir returns dir when it is a directory, else its nearest
