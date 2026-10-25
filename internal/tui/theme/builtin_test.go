@@ -1,7 +1,10 @@
 package theme
 
 import (
+	"math"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -159,4 +162,66 @@ func TestEmbeddedLight_Parses(t *testing.T) {
 	if string(tm.BorderStyle) != "single" {
 		t.Errorf("BorderStyle = %q, want single", tm.BorderStyle)
 	}
+}
+
+// TestBuiltinThemes_ButtonFocusShowsByBackground: some terminals change a
+// text color that has low contrast with its background (the "minimum
+// contrast" settings of Rex, Ghostty and iTerm2). The Turbo Vision theme
+// marked the focused button by its text color only: white on the same green
+// as the other buttons, at 3.1:1. Such a terminal made the white text dark,
+// and then Save and Cancel looked the same. A theme that colors its buttons
+// gives the focused one its own background, which no terminal changes, and
+// each text color on a button has at least 4.5:1 (WCAG AA).
+func TestBuiltinThemes_ButtonFocusShowsByBackground(t *testing.T) {
+	for _, id := range BuiltinIDs() {
+		t.Run(id, func(t *testing.T) {
+			tm, _, err := LoadBuiltin(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := tm.Dialog.Button
+			if b.Focused.Fg == "" && b.Focused.Bg == "" {
+				return // Reverse + Bold: the focus shows by its background
+			}
+			if b.Focused.Bg == "" || strings.EqualFold(b.Focused.Bg, b.Bg) {
+				t.Errorf("the focused button has the background %q of the other buttons; give it its own", b.Focused.Bg)
+			}
+			for _, text := range []struct{ name, fg, bg string }{
+				{"button text", b.Fg, b.Bg},
+				{"focused button text", b.Focused.Fg, b.Focused.Bg},
+				{"shortcut letter", b.Shortcut.Fg, b.Focused.Bg},
+			} {
+				if text.fg == "" || text.bg == "" {
+					continue
+				}
+				if r := contrastRatio(t, text.fg, text.bg); r < 4.5 {
+					t.Errorf("%s %s on %s has a contrast of %.2f:1, want at least 4.5:1", text.name, text.fg, text.bg, r)
+				}
+			}
+		})
+	}
+}
+
+// contrastRatio returns the WCAG contrast ratio of two "#rrggbb" colors.
+func contrastRatio(t *testing.T, a, b string) float64 {
+	t.Helper()
+	la, lb := luminance(t, a), luminance(t, b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+}
+
+// luminance returns the WCAG relative luminance of a "#rrggbb" color.
+func luminance(t *testing.T, hex string) float64 {
+	t.Helper()
+	v, err := strconv.ParseUint(strings.TrimPrefix(hex, "#"), 16, 32)
+	if err != nil || len(hex) != 7 {
+		t.Fatalf("%q is not a #rrggbb color", hex)
+	}
+	channel := func(shift uint) float64 {
+		c := float64((v>>shift)&0xff) / 255
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*channel(16) + 0.7152*channel(8) + 0.0722*channel(0)
 }

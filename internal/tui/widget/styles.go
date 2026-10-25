@@ -104,7 +104,7 @@ var (
 	ColorDialogButtonFocusedFg color.Color = lipgloss.NoColor{}
 	ColorDialogButtonFocusedBg color.Color = lipgloss.NoColor{}
 	// ColorDialogButtonShortcutFg colors the first letter of a focused
-	// button's label (the Turbo Vision yellow-letter highlight). NoColor{}
+	// button's label (the Turbo Vision shortcut-letter highlight). NoColor{}
 	// disables the highlight so the letter takes the focused button's
 	// regular foreground color.
 	ColorDialogButtonShortcutFg color.Color = lipgloss.NoColor{}
@@ -358,7 +358,7 @@ func (s *Styles) initBaseStyles() {
 		s.DialogButtonFocused = focusedStyle
 	}
 
-	// Shortcut letter on the focused button (Turbo Vision's yellow first
+	// Shortcut letter on the focused button (Turbo Vision's colored first
 	// letter on the highlighted action). Inherits the focused button's
 	// background so the colored letter sits on the same face. When the
 	// theme leaves shortcut.fg unset, the style is the focused-button
