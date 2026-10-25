@@ -94,6 +94,13 @@ type modalEntry struct {
 	// onMouse replaces the default "HandleMouse then onAction" walk. Only the
 	// surfaces that need it declare one, and each says why at its entry.
 	onMouse func(*App, tea.MouseMsg) (tea.Model, tea.Cmd)
+
+	// close shuts the surface with no save. switchDatabase calls it on every
+	// surface that has one, hidden or not: each acts on the open file, and its
+	// IDs, its data and its Save belong to the file that the switch leaves.
+	// Nil means that the surface shows nothing of a file (help, about), and a
+	// switch leaves it open.
+	close func(*App)
 }
 
 // modals returns every modal surface in priority order: index 0 receives keys
@@ -127,6 +134,7 @@ func (a *App) modals() []modalEntry {
 			modal:    &a.confirm,
 			onKey:    (*App).handleConfirmDialogKey,
 			onAction: (*App).confirmDialogAction,
+			close:    func(a *App) { a.confirm = confirmSurface{} },
 		},
 		{
 			name:     "about",
@@ -139,6 +147,7 @@ func (a *App) modals() []modalEntry {
 			modal:    a.backupDialog.Dialog(),
 			onKey:    (*App).handleBackupDialogKey,
 			onAction: (*App).backupDialogAction,
+			close:    func(a *App) { a.backupDialog = nil },
 		},
 		// The file dialog adds a double-click-to-activate step in browse mode
 		// before the ordinary action dispatch.
@@ -148,18 +157,21 @@ func (a *App) modals() []modalEntry {
 			onKey:    (*App).handleFileDialogKey,
 			onAction: (*App).fileDialogAction,
 			onMouse:  (*App).handleFileDialogMouse,
+			close:    (*App).closeFileDialog,
 		},
 		{
 			name:     "import",
 			modal:    &a.importer,
 			onKey:    (*App).handleImportDialogKey,
 			onAction: (*App).importDialogAction,
+			close:    (*App).closeImportDialog,
 		},
 		{
 			name:     "linkTransfers",
 			modal:    &a.linkTransfers,
 			onKey:    (*App).handleLinkTransfersDialogKey,
 			onAction: (*App).linkTransfersDialogAction,
+			close:    (*App).closeLinkTransfersDialog,
 		},
 		// The split editor's rows are not dialog.Field rows, so DialogBounds cannot
 		// map a click to them. Its own hit test (HandleMouseLocal) does, and the
@@ -170,6 +182,7 @@ func (a *App) modals() []modalEntry {
 			onKey:    (*App).handleSplitDialogKey,
 			onAction: (*App).splitDialogAction,
 			onMouse:  (*App).handleSplitDialogMouse,
+			close:    func(a *App) { a.split.close() },
 		},
 		// createCat must outrank the eight surfaces it diverts from, so it takes
 		// keys and paints above them. Split is the exception: it outranks
@@ -179,24 +192,28 @@ func (a *App) modals() []modalEntry {
 			modal:    &a.createCat,
 			onKey:    (*App).handleCreateCatDialogKey,
 			onAction: (*App).createCatDialogAction,
+			close:    func(a *App) { a.createCat.close() },
 		},
 		{
 			name:     "transaction",
 			modal:    &a.txn,
 			onKey:    (*App).handleTransactionDialogKey,
 			onAction: (*App).transactionDialogAction,
+			close:    (*App).closeTransactionDialog,
 		},
 		{
 			name:     "transfer",
 			modal:    &a.transfer,
 			onKey:    (*App).handleTransferDialogKey,
 			onAction: (*App).transferDialogAction,
+			close:    func(a *App) { a.transfer.close() },
 		},
 		{
 			name:     "scheduled",
 			modal:    &a.sched,
 			onKey:    (*App).handleScheduledDialogKey,
 			onAction: (*App).scheduledDialogAction,
+			close:    (*App).closeScheduledDialog,
 		},
 		// The preview stacks a header dialog over an embedded split editor and
 		// routes to whichever panel the click lands in, so the mouse path maps
@@ -208,90 +225,105 @@ func (a *App) modals() []modalEntry {
 			onKey:    (*App).handleSchedulePreviewDialogKey,
 			onAction: (*App).schedulePreviewAction,
 			onMouse:  (*App).handleSchedulePreviewMouse,
+			close:    (*App).closeSchedulePreviewDialog,
 		},
 		{
 			name:     "paycheckWizard",
 			modal:    &a.paycheck,
 			onKey:    (*App).handlePaycheckWizardKey,
 			onAction: (*App).paycheckWizardAction,
+			close:    func(a *App) { a.paycheck.close() },
 		},
 		{
 			name:     "loanWizard",
 			modal:    &a.loan,
 			onKey:    (*App).handleLoanWizardKey,
 			onAction: (*App).loanWizardAction,
+			close:    func(a *App) { a.loan.close() },
 		},
 		{
 			name:     "account",
 			modal:    &a.acct,
 			onKey:    (*App).handleAccountDialogKey,
 			onAction: (*App).accountDialogAction,
+			close:    (*App).closeAccountDialog,
 		},
 		{
 			name:     "reconciliation",
 			modal:    a.reconDialog,
 			onKey:    (*App).handleReconDialogKey,
 			onAction: (*App).reconDialogAction,
+			close:    func(a *App) { a.reconDialog = nil },
 		},
 		{
 			name:     "closeAccount",
 			modal:    &a.closeAcct,
 			onKey:    (*App).handleCloseAcctDialogKey,
 			onAction: (*App).closeAcctDialogAction,
+			close:    func(a *App) { a.closeAcct = closeAcctSurface{} },
 		},
 		{
 			name:     "security",
 			modal:    &a.security,
 			onKey:    (*App).handleSecurityDialogKey,
 			onAction: (*App).securityDialogAction,
+			close:    func(a *App) { a.security = securitySurface{} },
 		},
 		{
 			name:     "price",
 			modal:    &a.price,
 			onKey:    (*App).handlePriceDialogKey,
 			onAction: (*App).priceDialogAction,
+			close:    func(a *App) { a.price = priceSurface{} },
 		},
 		{
 			name:     "priceImport",
 			modal:    a.priceImportDialog,
 			onKey:    (*App).handlePriceImportDialogKey,
 			onAction: (*App).priceImportDialogAction,
+			close:    func(a *App) { a.priceImportDialog = nil },
 		},
 		{
 			name:     "buy",
 			modal:    &a.buy,
 			onKey:    (*App).handleBuyDialogKey,
 			onAction: (*App).buyDialogAction,
+			close:    (*App).closeBuyDialog,
 		},
 		{
 			name:     "sell",
 			modal:    &a.sell,
 			onKey:    (*App).handleSellDialogKey,
 			onAction: (*App).sellDialogAction,
+			close:    (*App).closeSellDialog,
 		},
 		{
 			name:     "feeLiquidation",
 			modal:    &a.feeLiquidation,
 			onKey:    (*App).handleFeeLiquidationDialogKey,
 			onAction: (*App).feeLiquidationDialogAction,
+			close:    (*App).closeFeeLiquidationDialog,
 		},
 		{
 			name:     "dividend",
 			modal:    &a.dividend,
 			onKey:    (*App).handleDividendDialogKey,
 			onAction: (*App).dividendDialogAction,
+			close:    (*App).closeDividendDialog,
 		},
 		{
 			name:     "transferShares",
 			modal:    &a.transferShares,
 			onKey:    (*App).handleTransferSharesDialogKey,
 			onAction: (*App).transferSharesDialogAction,
+			close:    (*App).closeTransferSharesDialog,
 		},
 		{
 			name:     "stockSplit",
 			modal:    &a.stockSplit,
 			onKey:    (*App).handleStockSplitDialogKey,
 			onAction: (*App).stockSplitDialogAction,
+			close:    (*App).closeStockSplitDialog,
 		},
 		// The merger confirmation outranks the merger dialog that produced it,
 		// which is safe either way: submitMergerDialog closes the dialog before
@@ -303,30 +335,35 @@ func (a *App) modals() []modalEntry {
 			modal:   mergerConfirmModal{a},
 			onKey:   (*App).handleMergerConfirmKey,
 			onMouse: (*App).handleMergerConfirmMouse,
+			close:   (*App).closeMergerConfirmation,
 		},
 		{
 			name:     "merger",
 			modal:    &a.merger,
 			onKey:    (*App).handleMergerDialogKey,
 			onAction: (*App).mergerDialogAction,
+			close:    (*App).closeMergerDialog,
 		},
 		{
 			name:     "spinOff",
 			modal:    &a.spinOff,
 			onKey:    (*App).handleSpinOffDialogKey,
 			onAction: (*App).spinOffDialogAction,
+			close:    (*App).closeSpinOffDialog,
 		},
 		{
 			name:     "cashOperation",
 			modal:    &a.cashOperation,
 			onKey:    (*App).handleCashOperationDialogKey,
 			onAction: (*App).cashOperationDialogAction,
+			close:    (*App).closeCashOperationDialog,
 		},
 		{
 			name:     "investmentTypeSelector",
 			modal:    a.investmentTypeSelector,
 			onKey:    (*App).handleInvestmentTypeSelectorKey,
 			onAction: (*App).investmentTypeSelectorAction,
+			close:    func(a *App) { a.investmentTypeSelector = nil },
 		},
 	}
 }

@@ -1726,6 +1726,16 @@ generalized, if it does.
 
 ### 5.5 `switchDatabase` re-points services; nothing else is notified
 
+> **Changed 2026-10-24.** `switchDatabase` also closes every modal of the file
+> that it leaves. A File > Open runs as a command, so a dialog that the user
+> opened while it ran stayed open on the new file: its Save read view data that
+> the switch cleared (Add Price crashed on a nil pointer), or acted on the new
+> file with the IDs of the old one. Each `modalEntry` declares `close`; only
+> Help and About have none, and they stay open. `TestEveryModalOfAFileHasAClose`
+> fails for a new surface that declares no `close`, and
+> `TestASwitchClosesEveryDialogOfTheOldFile` opens each surface and checks that
+> the switch leaves none of its state.
+
 `file_dialog.go:230-247` reassigns 18 service and repository fields when the
 user opens another file, and `backup_dialog.go:126-140` reaches
 `switchDatabase` by a second route after a restore. The previous `*db.DB` is
