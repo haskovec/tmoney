@@ -20,29 +20,36 @@ import (
 // because it reads and writes the scheduled dialog's state, not this surface's.
 
 // loanDeps is what the loan surface needs from outside itself. Every dep is a
-// func, because switchDatabase replaces App's services and closes the previous
-// *db.DB; and deps are passed to each call, never stored, because close()
-// resets the surface to its zero value. Both rules are pinned by
-// TestGuard_ControllerDepsAreLiveIndirections and
-// TestGuard_NoSurfaceStructHoldsItsDeps.
+// func that loanDeps() binds to the file that is open when Update makes the
+// deps, so a command made before a file switch still acts on its own file;
+// and deps are passed to each call, never stored, because close() resets the
+// surface to its zero value. The rules are pinned by
+// TestGuard_ControllerDepsAreFuncs, TestControllerDeps_KeepTheirFileAcrossASwitch
+// and TestGuard_NoSurfaceStructHoldsItsDeps.
 type loanDeps struct {
 	accounts   func() *account.Service
 	categories func() *category.Service
 	payees     func() *payee.Service
 	scheduled  func() *scheduled.Service
 	undo       func() *undo.Manager
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // loanDeps binds the loan surface to the services App owns. Every accessor may
 // legitimately return nil — an App built by a test has no services — so each
 // caller keeps its own nil guard.
 func (a *App) loanDeps() loanDeps {
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return loanDeps{
-		accounts:   func() *account.Service { return a.services.Account },
-		categories: func() *category.Service { return a.services.Category },
-		payees:     func() *payee.Service { return a.services.Payee },
-		scheduled:  func() *scheduled.Service { return a.services.Scheduled },
-		undo:       func() *undo.Manager { return a.undoManager },
+		accounts:   func() *account.Service { return svc.Account },
+		categories: func() *category.Service { return svc.Category },
+		payees:     func() *payee.Service { return svc.Payee },
+		scheduled:  func() *scheduled.Service { return svc.Scheduled },
+		undo:       func() *undo.Manager { return undoManager },
+		file:       func() fileOf { return file },
 	}
 }
 
@@ -54,11 +61,12 @@ type loanWizardDataMsg struct {
 	categories   []*category.Category
 	editSchedule *scheduled.Transaction
 	editOwed     types.Money
+	fileOf
 }
 
 // loanWizardSavedMsg is emitted after a successful save so the app reloads the
 // affected views.
-type loanWizardSavedMsg struct{}
+type loanWizardSavedMsg struct{ fileOf }
 
 // open returns the command that loads the accounts and categories a new
 // wizard needs. The wizard is built when the resulting message reaches
@@ -66,12 +74,13 @@ type loanWizardSavedMsg struct{}
 // goes unread — open is a method because opening is the surface's operation,
 // not App's.
 func (s *loanSurface) open(deps loanDeps) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		accounts, categories, err := loadLoanAccountsAndCategories(deps)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
-		return loanWizardDataMsg{accounts: accounts, categories: categories}
+		return loanWizardDataMsg{accounts: accounts, categories: categories, fileOf: file}
 	}
 }
 
@@ -80,10 +89,11 @@ func (s *loanSurface) open(deps loanDeps) tea.Cmd {
 // loanWizardDataMsg carrying the schedule so applyData builds the wizard in
 // edit mode.
 func (s *loanSurface) openForEdit(deps loanDeps, st *scheduled.Transaction) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		accounts, categories, err := loadLoanAccountsAndCategories(deps)
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
 		// The loan's live balance as of the next payment date → owed magnitude.
 		owed := types.ZeroMoney
@@ -99,7 +109,7 @@ func (s *loanSurface) openForEdit(deps loanDeps, st *scheduled.Transaction) tea.
 				break
 			}
 		}
-		return loanWizardDataMsg{accounts: accounts, categories: categories, editSchedule: st, editOwed: owed}
+		return loanWizardDataMsg{accounts: accounts, categories: categories, editSchedule: st, editOwed: owed, fileOf: file}
 	}
 }
 

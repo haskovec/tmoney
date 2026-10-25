@@ -209,19 +209,21 @@ func indexOfID(ids []types.ID, id types.ID) int {
 // transfer and dispatches a scheduledDialogDataMsg flagged as a transfer so
 // the data handler builds the transfer-shaped dialog.
 func (a *App) loadNewScheduledTransferDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &scheduledDialogData{
 			mode:       scheduledDialogModeNew,
 			isTransfer: true,
 		}
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.accounts = accounts
 		}
-		return scheduledDialogDataMsg{data: data}
+		return scheduledDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -353,8 +355,11 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 
 	a.closeScheduledDialog()
 
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
@@ -384,11 +389,11 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 			st.SetAutoPost(autoPost)
 			st.SetPostLeadDays(leadDays)
 
-			cmd := undo.NewEditScheduledTransactionCommand(a.services.Scheduled, st)
-			if err := a.undoManager.Execute(cmd); err != nil {
+			cmd := undo.NewEditScheduledTransactionCommand(svc.Scheduled, st)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transfer: %w", err)}
 			}
-			return scheduledDialogSavedMsg{}
+			return scheduledDialogSavedMsg{fileOf: file}
 		}
 
 		st := scheduled.NewTransaction(fromID, frequency, startDate)
@@ -407,11 +412,11 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 		st.SetAutoPost(autoPost)
 		st.SetPostLeadDays(leadDays)
 
-		cmd := undo.NewCreateScheduledTransactionCommand(a.services.Scheduled, st)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewCreateScheduledTransactionCommand(svc.Scheduled, st)
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transfer: %w", err)}
 		}
-		return scheduledDialogSavedMsg{}
+		return scheduledDialogSavedMsg{fileOf: file}
 	}
 }
 

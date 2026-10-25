@@ -1,6 +1,9 @@
 package undo
 
-import "errors"
+import (
+	"errors"
+	"sync"
+)
 
 // Sentinel errors for undo/redo operations.
 var (
@@ -10,7 +13,15 @@ var (
 
 // Manager maintains undo and redo stacks for the current session.
 // The stacks are not persisted — they are cleared when the application exits.
+//
+// A Manager is safe for use by more than one goroutine: the TUI runs each
+// write in its own goroutine, and Update calls Push and Clear meanwhile. Each
+// method holds the lock for its whole run, the work of the command included.
+// So a write that starts during an undo waits for it, and does not clear the
+// redo stack before the undo puts its step there; and Clear waits for a step
+// in progress, which then does not come back after it.
 type Manager struct {
+	mu        sync.Mutex
 	undoStack []Command
 	redoStack []Command
 }
@@ -23,6 +34,8 @@ func NewManager() *Manager {
 // Execute runs a command and pushes it onto the undo stack.
 // Any pending redo operations are discarded.
 func (m *Manager) Execute(cmd Command) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := cmd.Execute(); err != nil {
 		return err
 	}
@@ -36,6 +49,8 @@ func (m *Manager) Execute(cmd Command) error {
 // (e.g. auto-post on startup) and need to be made undoable after the fact.
 // Any pending redo operations are discarded.
 func (m *Manager) Push(cmd Command) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.undoStack = append(m.undoStack, cmd)
 	m.redoStack = nil
 }
@@ -43,6 +58,8 @@ func (m *Manager) Push(cmd Command) {
 // Undo reverses the most recent operation. Returns the command description
 // on success.
 func (m *Manager) Undo() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.undoStack) == 0 {
 		return "", ErrNothingToUndo
 	}
@@ -60,6 +77,8 @@ func (m *Manager) Undo() (string, error) {
 // Redo re-applies the most recently undone operation. Returns the command
 // description on success.
 func (m *Manager) Redo() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.redoStack) == 0 {
 		return "", ErrNothingToRedo
 	}
@@ -76,17 +95,23 @@ func (m *Manager) Redo() (string, error) {
 
 // CanUndo returns true if there is at least one operation to undo.
 func (m *Manager) CanUndo() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.undoStack) > 0
 }
 
 // CanRedo returns true if there is at least one operation to redo.
 func (m *Manager) CanRedo() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.redoStack) > 0
 }
 
 // UndoDescription returns the description of the operation that would be
 // undone, or an empty string if the undo stack is empty.
 func (m *Manager) UndoDescription() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.undoStack) == 0 {
 		return ""
 	}
@@ -96,6 +121,8 @@ func (m *Manager) UndoDescription() string {
 // RedoDescription returns the description of the operation that would be
 // redone, or an empty string if the redo stack is empty.
 func (m *Manager) RedoDescription() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.redoStack) == 0 {
 		return ""
 	}
@@ -104,16 +131,22 @@ func (m *Manager) RedoDescription() string {
 
 // Clear empties both the undo and redo stacks.
 func (m *Manager) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.undoStack = nil
 	m.redoStack = nil
 }
 
 // UndoLen returns the number of commands on the undo stack.
 func (m *Manager) UndoLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.undoStack)
 }
 
 // RedoLen returns the number of commands on the redo stack.
 func (m *Manager) RedoLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.redoStack)
 }

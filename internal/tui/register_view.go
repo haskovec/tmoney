@@ -34,11 +34,17 @@ type registerData struct {
 // registerLoadedMsg is sent when register data has been loaded.
 type registerLoadedMsg struct {
 	data *registerData
+	fileOf
 }
 
 // loadRegisterData returns a command that loads all data needed for the register view.
 func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
+		if accountID.IsNil() {
+			return nil // no account selected, as after a file switch
+		}
 		data := &registerData{
 			payeeNames:    make(map[types.ID]string),
 			categoryNames: make(map[types.ID]string),
@@ -46,22 +52,22 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load account
-		if a.services.Account != nil {
-			acct, err := a.services.Account.GetByID(accountID)
+		if svc.Account != nil {
+			acct, err := svc.Account.GetByID(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.account = acct
 
 			// Load balance
-			bal, err := a.services.Account.GetBalance(accountID)
+			bal, err := svc.Account.GetBalance(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.balance = bal
 
 			// Load account names for transfer display
-			accounts, err := a.services.Account.List(true)
+			accounts, err := svc.Account.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -70,17 +76,17 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load transactions
-		if a.services.Transaction != nil {
-			txns, err := a.services.Transaction.ListByAccount(accountID)
+		if svc.Transaction != nil {
+			txns, err := svc.Transaction.ListByAccount(accountID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.transactions = txns
 		}
 
 		// Load payee names
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -89,8 +95,8 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 		}
 
 		// Load category names
-		if a.services.Category != nil {
-			categories, err := a.services.Category.List()
+		if svc.Category != nil {
+			categories, err := svc.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					data.categoryNames[c.ID] = c.Name
@@ -98,7 +104,7 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 			}
 		}
 
-		return registerLoadedMsg{data: data}
+		return registerLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -251,8 +257,11 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 		nextStatus = transaction.StatusUncleared
 	}
 
+	svc := a.services
+	undoManager := a.undoManager
+	reload := a.loadRegisterData(accountID) // made now; runs after the write
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
@@ -266,12 +275,12 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 			// This used to go through EditTransactionCommand →
 			// transaction.Service.Update, which rewrites the whole row and has
 			// no transfer-aware path at all.
-			if a.services.Transfer == nil {
+			if svc.Transfer == nil {
 				return errMsg{err: fmt.Errorf("transfer service not available")}
 			}
-			cmd = undo.NewSetTransferLegStatusCommand(a.services.Transfer, txnID, nextStatus)
+			cmd = undo.NewSetTransferLegStatusCommand(svc.Transfer, txnID, nextStatus)
 		} else {
-			current, err := a.services.Transaction.GetByID(txnID)
+			current, err := svc.Transaction.GetByID(txnID)
 			if err != nil {
 				return errMsg{err: err}
 			}
@@ -281,15 +290,15 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 			} else {
 				updated.Clear()
 			}
-			cmd = undo.NewEditTransactionCommand(a.services.Transaction, &updated)
+			cmd = undo.NewEditTransactionCommand(svc.Transaction, &updated)
 		}
 
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
 
 		// Reload register data to reflect the change
-		return a.loadRegisterData(accountID)()
+		return reload()
 	}
 }
 
@@ -333,8 +342,11 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 		transferID = txn.TransferID.ID
 	}
 
+	svc := a.services
+	undoManager := a.undoManager
+	reload := a.loadRegisterData(accountID) // made now; runs after the write
 	a.showConfirmDialog("Void Transaction", msg, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
@@ -343,14 +355,14 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 			// Addressed by transfer_id rather than by a leg's row id: the void
 			// applies to the whole transfer, and an investment-involving one is
 			// refused by name instead of failing with "expected 2 transactions".
-			cmd = undo.NewVoidTransferCommand(a.services.Transfer, transferID)
+			cmd = undo.NewVoidTransferCommand(svc.Transfer, transferID)
 		} else {
-			cmd = undo.NewVoidTransactionCommand(a.services.Transaction, txnID)
+			cmd = undo.NewVoidTransactionCommand(svc.Transaction, txnID)
 		}
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
-		return a.loadRegisterData(accountID)()
+		return reload()
 	})
 
 	return a, nil
@@ -394,21 +406,24 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 	txnID := txn.ID
 	isTransfer := txn.IsTransfer()
 
+	undoManager := a.undoManager
+	svc := a.services
+	reload := a.loadRegisterData(accountID) // made now; runs after the write
 	a.showConfirmDialog("Delete Transaction", msg, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
 
 		var cmd undo.Command
 		if isTransfer {
-			cmd = undo.NewDeleteTransferCommand(a.services.Transfer, txn.TransferID.ID)
+			cmd = undo.NewDeleteTransferCommand(svc.Transfer, txn.TransferID.ID)
 		} else {
-			cmd = undo.NewDeleteTransactionCommand(a.services.Transaction, txnID)
+			cmd = undo.NewDeleteTransactionCommand(svc.Transaction, txnID)
 		}
-		if err := a.undoManager.Execute(cmd); err != nil {
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
-		return a.loadRegisterData(accountID)()
+		return reload()
 	})
 
 	return a, nil

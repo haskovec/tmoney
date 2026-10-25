@@ -23,6 +23,7 @@ type transferSharesDialogData struct {
 // transferSharesDialogDataMsg is sent when share transfer dialog data has been loaded.
 type transferSharesDialogDataMsg struct {
 	data *transferSharesDialogData
+	fileOf
 }
 
 // transferSharesDialogSavedMsg is sent when a share transfer has been saved.
@@ -34,6 +35,7 @@ type transferSharesDialogSavedMsg struct {
 	// register (which shows the source account) can move the cursor onto its
 	// row after reload.
 	savedID types.ID
+	fileOf
 }
 
 // buildInvestmentAccountOptions builds parallel display name and ID slices
@@ -128,28 +130,37 @@ func buildTransferSharesDialog(
 // loadTransferSharesDialogData returns a command that loads securities and investment accounts
 // for the share transfer dialog.
 func (a *App) loadTransferSharesDialogData() tea.Cmd {
+	svc := a.services
+	// The source account, and the transaction in edit, as they are when the
+	// dialog is asked for.
+	var acct *account.Account
+	if a.investmentRegister.data != nil {
+		acct = a.investmentRegister.data.account
+	}
+	editTxnID := a.investmentEditTxnID
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &transferSharesDialogData{}
 
 		// Load securities
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
 		// Load investment accounts (excluding current)
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			excludeID := types.NilID
-			if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil {
-				excludeID = a.investmentRegister.data.account.ID
+			if acct != nil {
+				excludeID = acct.ID
 			}
 			data.investmentAccounts = accounts
 			_, ids := buildInvestmentAccountOptions(accounts, excludeID)
@@ -157,15 +168,13 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 		}
 
 		// Load lots if source account is lot-tracking
-		if a.investmentRegister.data != nil && a.investmentRegister.data.account != nil &&
-			a.investmentRegister.data.account.TrackLots && a.services.InvestmentValuation != nil {
+		if acct != nil && acct.TrackLots && svc.InvestmentValuation != nil {
+			acctID := acct.ID
 
-			acctID := a.investmentRegister.data.account.ID
-
-			if a.investmentEditTxnID != types.NilID && a.services.InvestmentValuation != nil {
-				editTxn, err := a.services.InvestmentValuation.GetTransaction(a.investmentEditTxnID)
+			if editTxnID != types.NilID && svc.InvestmentValuation != nil {
+				editTxn, err := svc.InvestmentValuation.GetTransaction(editTxnID)
 				if err == nil && editTxn.SecurityID.Valid {
-					lots, err := a.services.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
+					lots, err := svc.InvestmentValuation.ListOpenLots(acctID, editTxn.SecurityID.ID)
 					if err == nil {
 						data.lots = lots
 					}
@@ -173,7 +182,7 @@ func (a *App) loadTransferSharesDialogData() tea.Cmd {
 			}
 		}
 
-		return transferSharesDialogDataMsg{data: data}
+		return transferSharesDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -361,15 +370,17 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeTransferSharesDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var result *investment.ShareTransferResult
 		var txnErr error
 		if editTxnID != types.NilID {
-			result, txnErr = a.services.InvestmentEdit.UpdateTransferShares(
+			result, txnErr = svc.InvestmentEdit.UpdateTransferShares(
 				editTxnID,
 				sourceAccountID,
 				destAccountID,
@@ -380,7 +391,7 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 				lotAllocations,
 			)
 		} else {
-			result, txnErr = a.services.Investment.TransferShares(
+			result, txnErr = svc.Investment.TransferShares(
 				sourceAccountID,
 				destAccountID,
 				securityID,
@@ -398,6 +409,6 @@ func (a *App) submitTransferSharesDialog() (tea.Model, tea.Cmd) {
 		if result != nil && result.SourceTransaction != nil {
 			savedID = result.SourceTransaction.ID
 		}
-		return transferSharesDialogSavedMsg{savedDate: date, savedID: savedID}
+		return transferSharesDialogSavedMsg{savedDate: date, savedID: savedID, fileOf: file}
 	}
 }

@@ -19,6 +19,7 @@ type dividendDialogData struct {
 // dividendDialogDataMsg is sent when dividend dialog data has been loaded.
 type dividendDialogDataMsg struct {
 	data *dividendDialogData
+	fileOf
 }
 
 // dividendDialogSavedMsg is sent when a dividend transaction has been saved.
@@ -33,6 +34,7 @@ type dividendDialogSavedMsg struct {
 	// variant; the surface's reinvest flag is already cleared by the time
 	// this message arrives, so it cannot be consulted then.
 	note string
+	fileOf
 }
 
 // buildDividendDialog creates a dialog.Dialog for entering a cash dividend transaction.
@@ -151,19 +153,21 @@ func buildReinvestDividendDialog(securityOptions []string, editTxn *investment.T
 
 // loadDividendDialogData returns a command that loads securities for the dividend dialog.
 func (a *App) loadDividendDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &dividendDialogData{}
 
-		if a.services.Security != nil {
+		if svc.Security != nil {
 			excludeHidden := true
-			securities, err := a.services.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
+			securities, err := svc.Security.List(security.Filter{ExcludeHidden: &excludeHidden})
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.securities = securities
 		}
 
-		return dividendDialogDataMsg{data: data}
+		return dividendDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -300,23 +304,25 @@ func (a *App) submitDividendDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeDividendDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.services.InvestmentEdit.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
+			saved, err = svc.InvestmentEdit.UpdateDividend(editTxnID, accountID, securityID, date, *amount, memo)
 		} else {
-			saved, err = a.services.Investment.Dividend(accountID, securityID, date, *amount, memo)
+			saved, err = svc.Investment.Dividend(accountID, securityID, date, *amount, memo)
 		}
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to save dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Dividend transaction saved"}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Dividend transaction saved", fileOf: file}
 	}
 }
 
@@ -404,15 +410,17 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save
 	a.closeDividendDialog()
 
+	svc := a.services
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.services.Investment == nil {
+		if svc.Investment == nil {
 			return errMsg{err: fmt.Errorf("investment service not available")}
 		}
 
 		var saved *investment.Transaction
 		var err error
 		if editTxnID != types.NilID {
-			saved, err = a.services.InvestmentEdit.UpdateReinvestDividend(
+			saved, err = svc.InvestmentEdit.UpdateReinvestDividend(
 				editTxnID,
 				accountID,
 				securityID,
@@ -423,7 +431,7 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 				memo,
 			)
 		} else {
-			saved, err = a.services.Investment.ReinvestDividend(
+			saved, err = svc.Investment.ReinvestDividend(
 				accountID,
 				securityID,
 				date,
@@ -437,6 +445,6 @@ func (a *App) submitReinvestDividendDialog() (tea.Model, tea.Cmd) {
 			return errMsg{err: fmt.Errorf("failed to save reinvest dividend transaction: %w", err)}
 		}
 
-		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Reinvest dividend transaction saved"}
+		return dividendDialogSavedMsg{savedDate: date, savedID: saved.ID, note: "Reinvest dividend transaction saved", fileOf: file}
 	}
 }

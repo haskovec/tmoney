@@ -20,24 +20,26 @@ import (
 
 // loadNewScheduledDialogData returns a command that loads data for a new scheduled dialog.
 func (a *App) loadNewScheduledDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &scheduledDialogData{
 			mode:     scheduledDialogModeNew,
 			payeeMap: make(map[string]*payee.Payee),
 		}
 
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.accounts = accounts
 		}
 
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
 			for _, p := range payees {
@@ -45,7 +47,7 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 			}
 		}
 
-		return scheduledDialogDataMsg{data: data}
+		return scheduledDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -61,6 +63,8 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 	}
 
 	st := a.scheduled.data.allTxns[cursor]
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &scheduledDialogData{
 			mode:       scheduledDialogModeEdit,
@@ -69,18 +73,18 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 			isTransfer: st.IsTransfer(),
 		}
 
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.accounts = accounts
 		}
 
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
 			for _, p := range payees {
@@ -88,7 +92,7 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 			}
 		}
 
-		return scheduledDialogDataMsg{data: data}
+		return scheduledDialogDataMsg{data: data, fileOf: file}
 	}
 }
 

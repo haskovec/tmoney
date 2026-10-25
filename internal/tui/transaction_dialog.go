@@ -42,6 +42,7 @@ type transactionDialogData struct {
 // transactionDialogDataMsg is sent when transaction dialog data has been loaded.
 type transactionDialogDataMsg struct {
 	data *transactionDialogData
+	fileOf
 }
 
 // transactionDialogSavedMsg is sent when a transaction has been saved.
@@ -52,6 +53,7 @@ type transactionDialogSavedMsg struct {
 	// savedID is the ID of the saved transaction so the register can move the
 	// cursor onto its row after reload.
 	savedID types.ID
+	fileOf
 }
 
 // parseDateInput parses a date string in MM/DD/YYYY format.
@@ -311,15 +313,17 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 
 // loadTransactionDialogData returns a command that loads payees and categories for the dialog.
 func (a *App) loadTransactionDialogData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &transactionDialogData{
 			payeeMap: make(map[string]*payee.Payee),
 		}
 
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
 			for _, p := range payees {
@@ -327,23 +331,23 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 			}
 		}
 
-		if a.services.Category != nil {
-			categories, err := a.services.Category.List()
+		if svc.Category != nil {
+			categories, err := svc.Category.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.categories = categories
 		}
 
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.accounts = accounts
 		}
 
-		return transactionDialogDataMsg{data: data}
+		return transactionDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -352,16 +356,18 @@ func (a *App) loadTransactionDialogData() tea.Cmd {
 // transactionDialogDataMsg with mode = transactionDialogModeEdit so the
 // transaction dialog opens pre-filled for editing.
 func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &transactionDialogData{
 			payeeMap: make(map[string]*payee.Payee),
 			mode:     transactionDialogModeEdit,
 		}
 
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
 			for _, p := range payees {
@@ -369,37 +375,37 @@ func (a *App) loadEditTransactionDialogData(txnID types.ID) tea.Cmd {
 			}
 		}
 
-		if a.services.Category != nil {
-			categories, err := a.services.Category.List()
+		if svc.Category != nil {
+			categories, err := svc.Category.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.categories = categories
 		}
 
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.accounts = accounts
 		}
 
-		if a.services.Transaction != nil {
-			txn, err := a.services.Transaction.GetByID(txnID)
+		if svc.Transaction != nil {
+			txn, err := svc.Transaction.GetByID(txnID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.existing = txn
 
-			splits, err := a.services.Transaction.GetSplits(txnID)
+			splits, err := svc.Transaction.GetSplits(txnID)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.existingSplits = splits
 		}
 
-		return transactionDialogDataMsg{data: data}
+		return transactionDialogDataMsg{data: data, fileOf: file}
 	}
 }
 
@@ -685,11 +691,14 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 	// Close dialog before async save for responsive UI
 	a.closeTransactionDialog()
 
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
 		// Resolve or create payee
 		var payeeID types.ID
-		if payeeName != "" && a.services.Payee != nil {
-			py, _, err := a.services.Payee.GetOrCreate(payeeName)
+		if payeeName != "" && svc.Payee != nil {
+			py, _, err := svc.Payee.GetOrCreate(payeeName)
 			if err != nil {
 				return errMsg{err: fmt.Errorf("failed to create payee: %w", err)}
 			}
@@ -713,22 +722,22 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 				updated.CategoryID = types.NullableID{Valid: false}
 			}
 
-			if a.services.Transaction != nil && a.undoManager != nil {
+			if svc.Transaction != nil && undoManager != nil {
 				// Use the splits-aware edit command when the prior state had
 				// splits — this clears them as part of the same undo unit
 				// (split→plain conversion). Otherwise the plain edit command
 				// is sufficient.
 				var cmd undo.Command
 				if hadSplits {
-					cmd = undo.NewEditTransactionWithSplitsCommand(a.services.Transaction, &updated, nil)
+					cmd = undo.NewEditTransactionWithSplitsCommand(svc.Transaction, &updated, nil)
 				} else {
-					cmd = undo.NewEditTransactionCommand(a.services.Transaction, &updated)
+					cmd = undo.NewEditTransactionCommand(svc.Transaction, &updated)
 				}
-				if err := a.undoManager.Execute(cmd); err != nil {
+				if err := undoManager.Execute(cmd); err != nil {
 					return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 				}
 			}
-			return transactionDialogSavedMsg{savedDate: date, savedID: updated.ID}
+			return transactionDialogSavedMsg{savedDate: date, savedID: updated.ID, fileOf: file}
 		}
 
 		// Build transaction
@@ -736,13 +745,13 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		txn.Status = status
 
 		// Save via undo manager
-		if a.services.Transaction != nil && a.undoManager != nil {
-			cmd := undo.NewCreateTransactionCommand(a.services.Transaction, txn)
-			if err := a.undoManager.Execute(cmd); err != nil {
+		if svc.Transaction != nil && undoManager != nil {
+			cmd := undo.NewCreateTransactionCommand(svc.Transaction, txn)
+			if err := undoManager.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to save transaction: %w", err)}
 			}
 		}
 
-		return transactionDialogSavedMsg{savedDate: date, savedID: txn.ID}
+		return transactionDialogSavedMsg{savedDate: date, savedID: txn.ID, fileOf: file}
 	}
 }

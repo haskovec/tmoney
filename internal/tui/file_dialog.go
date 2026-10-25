@@ -17,6 +17,8 @@ import (
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
+	"github.com/haskovec/tmoney/internal/undo"
 )
 
 // fileDialogMode indicates which file dialog is active.
@@ -499,8 +501,8 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	}
 	a.prevDB = a.db
 
-	// The Restore list and a confirm dialog belong to the file we leave, and
-	// a confirm action can read a.services when the user says Yes.
+	// The Restore list and a confirm dialog belong to the file we leave: a
+	// confirm action acts on the file it was made for.
 	a.closeDialogsOfTheOldFile()
 
 	// Set new database and reinitialize ALL services
@@ -514,10 +516,21 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	}
 
 	// The undo history describes rows in the file we just left, and every
-	// command on it captured the OLD services when it was built. Undoing one
-	// after the switch would write to a closed database. Clear it, exactly as
-	// reloadAfterRestore does when the rows change underneath it.
-	a.undoManager.Clear()
+	// command on it holds the services of that file. The new file gets a new
+	// manager, not a cleared one: a write of the old file that ends after
+	// the switch records its step in the manager that it copied, which is
+	// the old one, so an undo in the new file never changes the old file.
+	a.undoManager = undo.NewManager()
+
+	// The selection and the pending IDs name rows of the file we left. A
+	// save, or a late result, would load them in the new file and fail with
+	// "not found".
+	if a.sidebar != nil {
+		a.sidebar.Reset()
+	}
+	a.pendingRegisterSelectID = types.NilID
+	a.investmentEditTxnID = types.NilID
+	a.investmentNewTxnSecurityID = types.NilID
 
 	// Clear all cached view data
 	a.dashboard.data = nil

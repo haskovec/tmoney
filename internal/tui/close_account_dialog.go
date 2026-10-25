@@ -117,7 +117,8 @@ func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
 	}
 
 	a.closeAcct = closeAcctSurface{}
-	return a, func() tea.Msg { return accountClosedMsg{} }
+	file := a.fileOfOpen()
+	return a, func() tea.Msg { return accountClosedMsg{fileOf: file} }
 }
 
 // closeAccountErrorMessage renders a friendly dialog message for the typed
@@ -154,15 +155,18 @@ func (a *App) selectedAccountClosed() bool {
 // undoable). Reopening clears the close date.
 func (a *App) reopenSelectedAccount() tea.Cmd {
 	accountID := a.sidebar.SelectedAccountID()
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Account == nil || a.undoManager == nil {
+		if svc.Account == nil || undoManager == nil {
 			return errMsg{err: fmt.Errorf("account service not available")}
 		}
-		cmd := undo.NewReopenAccountCommand(a.services.Account, accountID)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewReopenAccountCommand(svc.Account, accountID)
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to reopen account: %w", err)}
 		}
-		return accountClosedMsg{}
+		return accountClosedMsg{fileOf: file}
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 // scheduledDueCountMsg is sent when the count of due scheduled transactions is loaded.
 type scheduledDueCountMsg struct {
 	count int
+	fileOf
 }
 
 // scheduledViewState is everything the Scheduled view owns. Its zero value is
@@ -39,6 +40,7 @@ type scheduledViewData struct {
 // scheduledViewDataLoadedMsg is sent when scheduled view data has been loaded.
 type scheduledViewDataLoadedMsg struct {
 	data *scheduledViewData
+	fileOf
 }
 
 // scheduledPostedMsg is sent when a scheduled transaction has been posted.
@@ -46,17 +48,19 @@ type scheduledViewDataLoadedMsg struct {
 // balance reached ≥ 0), so the handler can show the payoff toast.
 type scheduledPostedMsg struct {
 	loanPaidOff bool
+	fileOf
 }
 
 // scheduledSkippedMsg is sent when a scheduled transaction has been skipped.
-type scheduledSkippedMsg struct{}
+type scheduledSkippedMsg struct{ fileOf }
 
 // scheduledDeletedMsg is sent when a scheduled transaction has been deleted.
-type scheduledDeletedMsg struct{}
+type scheduledDeletedMsg struct{ fileOf }
 
 // autoPostCompletedMsg is sent when auto-posting on file open completes.
 type autoPostCompletedMsg struct {
 	summary *scheduled.AutoPostSummary
+	fileOf
 }
 
 // autoPostOnFileOpen returns a command that runs auto-posting on startup.
@@ -64,31 +68,37 @@ func (a *App) autoPostOnFileOpen() tea.Cmd {
 	if a.services.Scheduled == nil {
 		return nil
 	}
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		summary, err := a.services.Scheduled.AutoPost()
+		summary, err := svc.Scheduled.AutoPost()
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return autoPostCompletedMsg{summary: summary}
+		return autoPostCompletedMsg{summary: summary, fileOf: file}
 	}
 }
 
 // loadScheduledDueCount returns a command that loads the count of due scheduled transactions.
 func (a *App) loadScheduledDueCount() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
-		if a.services.Scheduled == nil {
+		if svc.Scheduled == nil {
 			return nil
 		}
-		due, err := a.services.Scheduled.ListDue()
+		due, err := svc.Scheduled.ListDue()
 		if err != nil {
-			return errMsg{err: err}
+			return errMsg{err: err, fileOf: file}
 		}
-		return scheduledDueCountMsg{count: len(due)}
+		return scheduledDueCountMsg{count: len(due), fileOf: file}
 	}
 }
 
 // loadScheduledViewData returns a command that loads all data needed for the scheduled transactions view.
 func (a *App) loadScheduledViewData() tea.Cmd {
+	svc := a.services
+	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &scheduledViewData{
 			payeeNames:    make(map[types.ID]string),
@@ -97,10 +107,10 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load due scheduled transactions
-		if a.services.Scheduled != nil {
-			due, err := a.services.Scheduled.ListDue()
+		if svc.Scheduled != nil {
+			due, err := svc.Scheduled.ListDue()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			data.dueTxns = due
 			data.dueCount = len(due)
@@ -110,9 +120,9 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			// is. A bounded "upcoming" window hid monthly+ schedules from
 			// view right after posting, since the next occurrence was past
 			// the cutoff.
-			all, err := a.services.Scheduled.List()
+			all, err := svc.Scheduled.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			dueIDs := make(map[string]bool, len(due))
 			for _, d := range due {
@@ -137,8 +147,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load payee names
-		if a.services.Payee != nil {
-			payees, err := a.services.Payee.List()
+		if svc.Payee != nil {
+			payees, err := svc.Payee.List()
 			if err == nil {
 				for _, p := range payees {
 					data.payeeNames[p.ID] = p.Name
@@ -147,8 +157,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load account names
-		if a.services.Account != nil {
-			accounts, err := a.services.Account.List(true)
+		if svc.Account != nil {
+			accounts, err := svc.Account.List(true)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
@@ -157,8 +167,8 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 		}
 
 		// Load category names
-		if a.services.Category != nil {
-			categories, err := a.services.Category.List()
+		if svc.Category != nil {
+			categories, err := svc.Category.List()
 			if err == nil {
 				for _, c := range categories {
 					data.categoryNames[c.ID] = c.Name
@@ -166,7 +176,7 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			}
 		}
 
-		return scheduledViewDataLoadedMsg{data: data}
+		return scheduledViewDataLoadedMsg{data: data, fileOf: file}
 	}
 }
 
@@ -246,15 +256,18 @@ func (a *App) skipSelectedScheduled() (tea.Model, tea.Cmd) {
 	}
 
 	st := a.scheduled.data.allTxns[cursor]
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-		cmd := undo.NewSkipScheduledTransactionCommand(a.services.Scheduled, st.ID)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewSkipScheduledTransactionCommand(svc.Scheduled, st.ID)
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
-		return scheduledSkippedMsg{}
+		return scheduledSkippedMsg{fileOf: file}
 	}
 }
 
@@ -270,15 +283,18 @@ func (a *App) deleteSelectedScheduled() (tea.Model, tea.Cmd) {
 	}
 
 	st := a.scheduled.data.allTxns[cursor]
+	svc := a.services
+	undoManager := a.undoManager
+	file := a.fileOfOpen()
 	return a, func() tea.Msg {
-		if a.undoManager == nil {
+		if undoManager == nil {
 			return errMsg{err: fmt.Errorf("undo manager not available")}
 		}
-		cmd := undo.NewDeleteScheduledTransactionCommand(a.services.Scheduled, st.ID)
-		if err := a.undoManager.Execute(cmd); err != nil {
+		cmd := undo.NewDeleteScheduledTransactionCommand(svc.Scheduled, st.ID)
+		if err := undoManager.Execute(cmd); err != nil {
 			return errMsg{err: err}
 		}
-		return scheduledDeletedMsg{}
+		return scheduledDeletedMsg{fileOf: file}
 	}
 }
 

@@ -23,15 +23,16 @@ import (
 // second implementation on App.
 
 // paycheckDeps is what the paycheck surface needs from outside itself. The two
-// constraints are the ones the transfer pilot established, and both are live:
+// constraints are the ones of transferDeps:
 //
-//   - Every dep is a func, because switchDatabase replaces App's services and
-//     closes the previous *db.DB. A closure re-reads the field at call time; a
-//     captured pointer would be a use-after-close.
+//   - Every dep is a func that paycheckDeps() binds to the file that is open
+//     when Update makes the deps. A command made before a file switch runs
+//     after it, and must still act on its own file.
 //   - Deps are passed to each call and never stored on the surface, because
 //     close() resets the surface to its zero value and would zero them.
 //
-// Both are pinned by tests: TestGuard_ControllerDepsAreLiveIndirections and
+// Both are pinned by tests: TestGuard_ControllerDepsAreFuncs,
+// TestControllerDeps_KeepTheirFileAcrossASwitch and
 // TestGuard_NoSurfaceStructHoldsItsDeps.
 type paycheckDeps struct {
 	accounts   func() *account.Service
@@ -39,18 +40,24 @@ type paycheckDeps struct {
 	payees     func() *payee.Service
 	scheduled  func() *scheduled.Service
 	undo       func() *undo.Manager
+	// file tags the messages of the loads (see fileOf).
+	file func() fileOf
 }
 
 // paycheckDeps binds the paycheck surface to the services App owns. Every
 // accessor may legitimately return nil — an App built by a test has no services
 // — so each caller keeps its own nil guard.
 func (a *App) paycheckDeps() paycheckDeps {
+	undoManager := a.undoManager
+	svc := a.services
+	file := a.fileOfOpen()
 	return paycheckDeps{
-		accounts:   func() *account.Service { return a.services.Account },
-		categories: func() *category.Service { return a.services.Category },
-		payees:     func() *payee.Service { return a.services.Payee },
-		scheduled:  func() *scheduled.Service { return a.services.Scheduled },
-		undo:       func() *undo.Manager { return a.undoManager },
+		accounts:   func() *account.Service { return svc.Account },
+		categories: func() *category.Service { return svc.Category },
+		payees:     func() *payee.Service { return svc.Payee },
+		scheduled:  func() *scheduled.Service { return svc.Scheduled },
+		undo:       func() *undo.Manager { return undoManager },
+		file:       func() fileOf { return file },
 	}
 }
 
@@ -74,6 +81,7 @@ type paycheckWizardDataMsg struct {
 	accounts        []*account.Account
 	categoryOptions []string
 	categoryIDs     []types.ID
+	fileOf
 }
 
 // open returns the command that loads the accounts and categories a new
@@ -82,12 +90,13 @@ type paycheckWizardDataMsg struct {
 // goes unread — open is a method because opening is the surface's operation,
 // not App's.
 func (s *paycheckSurface) open(deps paycheckDeps) tea.Cmd {
+	file := deps.file()
 	return func() tea.Msg {
 		var accounts []*account.Account
 		if svc := deps.accounts(); svc != nil {
 			acs, err := svc.List(true)
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			accounts = acs
 		}
@@ -96,7 +105,7 @@ func (s *paycheckSurface) open(deps paycheckDeps) tea.Cmd {
 		if svc := deps.categories(); svc != nil {
 			cs, err := svc.List()
 			if err != nil {
-				return errMsg{err: err}
+				return errMsg{err: err, fileOf: file}
 			}
 			categories = cs
 		}
@@ -106,6 +115,7 @@ func (s *paycheckSurface) open(deps paycheckDeps) tea.Cmd {
 			accounts:        accounts,
 			categoryOptions: categoryOptions,
 			categoryIDs:     categoryIDs,
+			fileOf:          file,
 		}
 	}
 }
@@ -200,6 +210,7 @@ func (s *paycheckSurface) submit(deps paycheckDeps) tea.Cmd {
 
 	s.close()
 
+	file := deps.file()
 	return func() tea.Msg {
 		undoMgr, schedSvc := deps.undo(), deps.scheduled()
 		if undoMgr == nil || schedSvc == nil {
@@ -273,7 +284,7 @@ func (s *paycheckSurface) submit(deps paycheckDeps) tea.Cmd {
 			if err := undoMgr.Execute(cmd); err != nil {
 				return errMsg{err: fmt.Errorf("failed to update scheduled transaction: %w", err)}
 			}
-			return scheduledDialogSavedMsg{}
+			return scheduledDialogSavedMsg{fileOf: file}
 		}
 
 		st := scheduled.NewTransaction(accountID, freqOpt.frequency, nextDate)
@@ -282,7 +293,7 @@ func (s *paycheckSurface) submit(deps paycheckDeps) tea.Cmd {
 		if err := undoMgr.Execute(cmd); err != nil {
 			return errMsg{err: fmt.Errorf("failed to create scheduled transaction: %w", err)}
 		}
-		return scheduledDialogSavedMsg{}
+		return scheduledDialogSavedMsg{fileOf: file}
 	}
 }
 

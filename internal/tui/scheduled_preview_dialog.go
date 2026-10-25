@@ -296,6 +296,7 @@ type schedulePreviewDataMsg struct {
 	// loanSplits is non-nil only for a loan-shaped schedule whose live-balance
 	// recompute succeeded — the preview seeds its lines from it.
 	loanSplits *scheduled.LoanSplits
+	fileOf
 }
 
 // schedulePreviewLoanBlockedMsg is emitted instead of schedulePreviewDataMsg
@@ -309,4 +310,5 @@ type schedulePreviewDataMsg struct {
 type schedulePreviewLoanBlockedMsg struct {
 	paidOff bool
 	err     error
+	fileOf
 }
