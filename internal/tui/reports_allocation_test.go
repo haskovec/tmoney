@@ -576,6 +576,141 @@ func TestAllocation_EditFromTheDrillDown(t *testing.T) {
 	}
 }
 
+// A reply to e that comes after its drill-down closed, after a reload, or
+// while another dialog is open opens no dialog: the security loads in a
+// command, and the keys do not wait for it.
+func TestAllocation_StaleEditReply(t *testing.T) {
+	app := NewApp(dbtest.New(t), nil)
+	app.width, app.height = 180, 40
+	app.styles.Resize(app.width, app.height)
+	svc := app.services
+	brokerage := account.NewAccount("Maple Invest Brokerage", account.TypeInvestment, "USD", types.MustNewMoney("5000.00"), types.NewDate(2024, 1, 1))
+	if err := svc.Account.Create(brokerage); err != nil {
+		t.Fatal(err)
+	}
+	sec := security.NewSecurity("ACME", "Acme Total Market Index", security.TypeETF)
+	sec.AssetClass = security.AssetClassLargeCapStock
+	if err := svc.Security.Create(sec); err != nil {
+		t.Fatal(err)
+	}
+	amount := types.MustNewMoney("3000.00")
+	if _, err := svc.Investment.Buy(brokerage.ID, sec.ID, types.NewDate(2024, 1, 3),
+		types.MustNewQuantity("30"), &amount, nil, types.ZeroMoney, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Price.AddPrice(price.NewPrice(sec.ID, types.NewDate(2024, 2, 1),
+		types.MustNewMoney("120.00"), price.SourceManual)); err != nil {
+		t.Fatal(err)
+	}
+	app.switchView(ViewReports)
+	load := func() {
+		t.Helper()
+		app.Update(app.reports.load(app.reportsDeps(), reportTypeAllocation, 2024, 1, false)())
+	}
+	load()
+	// pressE opens the Large Cap Stock drill-down, presses e on ACME and
+	// returns the reply, not yet delivered.
+	pressE := func() tea.Msg {
+		t.Helper()
+		if !app.reports.drillOpen() {
+			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}
+		_, cmd := app.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		if cmd == nil {
+			t.Fatal("'e' returned no command")
+		}
+		return cmd()
+	}
+
+	for _, tc := range []struct {
+		name   string
+		before func()
+	}{
+		{"esc", func() { app.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) }},
+		{"another view", func() { app.switchView(ViewDashboard); app.switchView(ViewReports) }},
+		{"reload", load},
+		{"esc and back in", func() {
+			app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}},
+	} {
+		reply := pressE()
+		tc.before()
+		app.Update(reply)
+		if app.security.IsVisible() {
+			t.Errorf("%s: the late reply opened Edit Security", tc.name)
+			app.security = securitySurface{}
+		}
+	}
+
+	// Another dialog opened in the meantime stays, and is not replaced.
+	reply := pressE()
+	app.showHelp = true
+	app.Update(reply)
+	if app.security.IsVisible() || !app.showHelp {
+		t.Error("the late reply opened Edit Security over the help")
+	}
+	app.showHelp = false
+
+	// A reply opens its dialog once.
+	reply = pressE()
+	app.Update(reply)
+	if !app.security.IsVisible() || app.security.editID != sec.ID {
+		t.Fatal("the reply did not open Edit Security")
+	}
+	app.security = securitySurface{}
+	app.Update(reply)
+	if app.security.IsVisible() {
+		t.Error("the same reply opened Edit Security two times")
+	}
+}
+
+// Many holdings with no price make a note longer than the screen. The
+// footer does not scroll, so the note counts them in place of naming them,
+// and the view keeps its hint and a table.
+func TestRenderAllocation_LongNoPriceNote(t *testing.T) {
+	rpt := allocationTestReport()
+	large := &rpt.Sections[0].Classes[0]
+	for i := range 40 {
+		large.NoPrice = append(large.NoPrice, report.HoldingRow{SecurityID: types.NewID(),
+			Label: fmt.Sprintf("NP%02d", i+1), Name: "Unpriced Fund", Estimated: true})
+	}
+	fits := func(app *App, view string) {
+		t.Helper()
+		if lines := strings.Count(view, "\n") + 1; lines > app.height-appChromeRows {
+			t.Errorf("the view is %d lines, more than the %d of the pane:\n%s", lines, app.height-appChromeRows, view)
+		}
+	}
+	// The notes wrap, so compare with each run of space as one space.
+	flat := func(view string) string { return strings.Join(strings.Fields(view), " ") }
+
+	app := newAllocationApp(100, 18, rpt)
+	view := app.renderedReports()
+	fits(app, view)
+	for _, want := range []string{"Not included (no price): 41 holdings. Press i to see them in the holdings report.",
+		"esc back", "Large Cap Stock"} {
+		if !strings.Contains(flat(view), want) {
+			t.Errorf("view lacks %q:\n%s", want, view)
+		}
+	}
+
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // Large Cap Stock
+	view = app.renderedReports()
+	fits(app, view)
+	for _, want := range []string{"Not included (no price): 41 holdings. Add a price to include them.",
+		"esc back to allocation", "ACME"} {
+		if !strings.Contains(flat(view), want) {
+			t.Errorf("drill-down lacks %q:\n%s", want, view)
+		}
+	}
+
+	// With room, the note names each holding.
+	app = newAllocationApp(100, 60, rpt)
+	if view := app.renderedReports(); !strings.Contains(view, "NP40 (Large Cap Stock)") {
+		t.Errorf("the full note is not on a tall screen:\n%s", view)
+	}
+}
+
 // On a narrow screen the notes wrap to the table width: no line is cut.
 func TestRenderAllocation_NotesWrap(t *testing.T) {
 	app := newAllocationApp(70, 30, allocationTestReport())

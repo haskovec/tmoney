@@ -370,6 +370,9 @@ Not included (no price): STRK. Add a price to include it.
 - The Cash class lists `Cash  Uninvested cash` as a row.
 - An empty class returns the error of C12.
 - A class in two currencies prints one block per currency.
+- A failed account: the Total line is the class value, as in the class row
+  of §5.3.1, and the line
+  `Percentages leave out accounts that could not be valued.` follows.
 - This output has no image.
 
 ### 5.4 Colors
@@ -497,6 +500,9 @@ Not included (no price): STRK (Large Cap Stock). Add a price to include it.
   an error line.
 - The notes wrap to the table width, and each wrapped line counts in the
   height. A cut note would lose the names of holdings with no price.
+- The footer does not scroll. When the names do not fit and leave the
+  table its header, one row and the scroll line, the note counts them:
+  `Not included (no price): 41 holdings. Press i to see them in the holdings report.`
 - Negative cash is a negative Cash row with an empty bar. (PR 3 adds a
   note for it, §6.5.)
 - The empty states are the ones of the holdings view, with "allocation" in
@@ -526,7 +532,9 @@ Total                                                               $45000.00   
   % Total (7).
 - The rows are `ClassRow.Holdings`, then `ClassRow.NoPrice`, with
   `no price` in the Value column and no percentages. The `Not included`
-  note of §5.3.2 is under the Total line.
+  note of §5.3.2 is under the Total line. When the names do not fit, it
+  counts them, as in §5.5.2, and ends `Add a price to include them.`: the
+  holdings are rows of the table.
 - The Cash class has the `Cash  Uninvested cash` row.
 - Enter on a holding opens the account split of the holdings report
   (`splitColumns`, `splitCells`). Its title is the holding, as in the
@@ -540,6 +548,9 @@ Total                                                               $45000.00   
   the existing Edit Security dialog (`buildEditSecurityDialog`) on the
   `a.security` surface, in edit mode.
 - On the Cash row, `e` does nothing.
+- The security loads in a command, and the keys do not wait for it. The
+  dialog opens only if the drill-down of that `e` is still open, with no
+  reload since, and no other dialog is open. Else the reply is dropped.
 - On save, `securityUpdatedMsg` runs `afterSecurityChange`. That function
   also reloads the allocation report when it is on screen. The cursor
   follows C10.

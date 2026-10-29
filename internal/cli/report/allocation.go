@@ -204,15 +204,14 @@ func printAllocationClass(w io.Writer, rpt *reportdom.Allocation, ac security.As
 		for _, row := range b.class.NoPrice {
 			fmt.Fprintf(tw, "%s\t%s\tno price\t\t\n", row.Label, row.Name)
 		}
-		if b.sec.Available {
-			pct := ""
-			if b.class.Value.IsPositive() {
-				pct = "100.0%"
-			}
-			fmt.Fprintf(tw, "Total\t\t%s\t%s\t%.1f%%\n", money(b.class.Value), pct, b.class.Percent)
-		} else {
-			fmt.Fprintf(tw, "Total\t\t%s\t\t\n", formatTotal(b.class.Value, b.sec.Currency, false, false))
+		// The class total is the value of the class row in the full
+		// report, also when an account failed: the note below says what
+		// it leaves out.
+		pct := ""
+		if b.class.Value.IsPositive() {
+			pct = "100.0%"
 		}
+		fmt.Fprintf(tw, "Total\t\t%s\t%s\t%.1f%%\n", money(b.class.Value), pct, b.class.Percent)
 		tw.Flush()
 		printTrimmed(w, buf.String())
 

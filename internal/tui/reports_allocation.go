@@ -93,6 +93,10 @@ type allocationViewState struct {
 	split      *widget.Table // the open split, or nil
 	splitRef   drillRef
 	clicks     *widget.ClickTracker
+	// editRequest numbers the e press that waits for its security. A close
+	// of the drill-down and a reload change it, so a late reply opens no
+	// dialog.
+	editRequest int
 }
 
 // allocationPlace is where the allocation view is, by what is on screen
@@ -150,7 +154,8 @@ func (s *reportsViewState) allocationPlace() (allocationPlace, bool) {
 // the drill-down closes when the class is now empty. An open split closes.
 func (s *reportsViewState) setAllocation(p allocationPlace, kept bool) {
 	width, dark := s.allocation.width, s.allocation.dark
-	s.allocation = allocationViewState{clicks: s.allocation.clicks, dark: dark}
+	s.allocation = allocationViewState{clicks: s.allocation.clicks, dark: dark,
+		editRequest: s.allocation.editRequest + 1}
 	rpt := s.allocationReport()
 	if rpt == nil {
 		return
@@ -315,6 +320,7 @@ func (s *reportsViewState) openDrill() {
 func (s *reportsViewState) closeDrill() {
 	s.allocation.drill = nil
 	s.allocation.split = nil
+	s.allocation.editRequest++
 }
 
 // drillHolding is the holding behind row i of the drill-down.
@@ -403,7 +409,8 @@ func (s *reportsViewState) clickAllocationRow(row int) {
 // reportsEditSecurityMsg carries a security that `e` in the class
 // drill-down loaded for the Edit Security dialog.
 type reportsEditSecurityMsg struct {
-	sec *security.Security
+	sec     *security.Security
+	request int // the editRequest of the e press
 	fileOf
 }
 
@@ -416,6 +423,8 @@ func (s *reportsViewState) editDrillSecurity(d reportsDeps) tea.Cmd {
 	}
 	id := row.SecurityID
 	file := d.file()
+	s.allocation.editRequest++
+	request := s.allocation.editRequest
 	return func() tea.Msg {
 		securities := d.securities()
 		if securities == nil {
@@ -425,8 +434,18 @@ func (s *reportsViewState) editDrillSecurity(d reportsDeps) tea.Cmd {
 		if err != nil {
 			return errMsg{err: fmt.Errorf("failed to load security: %w", err), fileOf: file}
 		}
-		return reportsEditSecurityMsg{sec: sec, fileOf: file}
+		return reportsEditSecurityMsg{sec: sec, request: request, fileOf: file}
 	}
+}
+
+// takeEditRequest reports whether request is the e press that waits for its
+// security, with its drill-down still open, and ends it.
+func (s *reportsViewState) takeEditRequest(request int) bool {
+	if !s.drillOpen() || request != s.allocation.editRequest {
+		return false
+	}
+	s.allocation.editRequest++
+	return true
 }
 
 // handleAllocationKey handles the keys that belong to the allocation report
@@ -575,16 +594,54 @@ func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, da
 	if !sec.Available {
 		footer = append(footer, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
 	}
-	footer = append(footer, mutedNote(styles, report.NoPriceNote(sec.NoPriceNames()), tableWidth)...)
+	var after []string
 	if c, ok := sec.Class(security.AssetClassUnclassified); ok {
 		if note := report.UnclassifiedNote(c.Count()); note != "" {
-			footer = append(footer, mutedNote(styles, note+" Press enter on Unclassified, then e to set a class.", tableWidth)...)
+			after = append(after, mutedNote(styles, note+" Press enter on Unclassified, then e to set a class.", tableWidth)...)
 		}
 	}
-	footer = append(footer, "", hint)
+	after = append(after, "", hint)
+	// A class whose holdings all have no price has no row, so the short
+	// note sends the owner to the holdings report for the names.
+	names := sec.NoPriceNames()
+	footer = append(footer, fitNoPriceNote(styles, names,
+		shortNoPriceNote(len(names), "Press i to see %s in the holdings report."),
+		tableWidth, footerRoom(height)-len(footer)-len(after))...)
+	footer = append(footer, after...)
 	sections = append(sections, s.renderAllocationTable(styles, height, tableWidth, a.table, len(footer))...)
 	sections = append(sections, footer...)
 	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+}
+
+// allocationTableMin is the fewest lines a table gets: the header, its
+// border, one row and the scroll line.
+const allocationTableMin = 4
+
+// footerRoom is the number of footer lines that leave the table on screen
+// its allocationTableMin lines.
+func footerRoom(height int) int {
+	return height - appChromeRows - 2 - 2 - allocationTableMin
+}
+
+// fitNoPriceNote is the note that names the holdings with no price, wrapped
+// to width, or short when the names take more than room lines. The footer
+// does not scroll, and the screen cuts the last lines of a footer that is
+// too tall.
+func fitNoPriceNote(styles widget.Styles, names []string, short string, width, room int) []string {
+	lines := mutedNote(styles, report.NoPriceNote(names), width)
+	if len(lines) > max(room, 1) {
+		return mutedNote(styles, short, width)
+	}
+	return lines
+}
+
+// shortNoPriceNote counts the holdings with no price in place of naming
+// them; then, with "it" or "them" for its %s, tells where the names are.
+func shortNoPriceNote(n int, then string) string {
+	if n == 1 {
+		return "Not included (no price): 1 holding. " + fmt.Sprintf(then, "it")
+	}
+	return fmt.Sprintf("Not included (no price): %d holdings. ", n) + fmt.Sprintf(then, "them")
 }
 
 // mutedNote is a note wrapped to width, one muted line per element, so
@@ -607,7 +664,7 @@ func mutedNote(styles widget.Styles, note string, width int) []string {
 func (s *reportsViewState) renderAllocationTable(styles widget.Styles, height, tableWidth int, tbl *widget.Table, footer int) []string {
 	// Padding (2), title and separator (2), and the footer stay on screen;
 	// the table gets the rest.
-	avail := max(height-appChromeRows-2-2-footer, 3)
+	avail := max(height-appChromeRows-2-2-footer, allocationTableMin)
 	if tbl.RowCount() == 0 {
 		return nil
 	}
@@ -685,9 +742,14 @@ func (s *reportsViewState) renderAllocationDrill(styles widget.Styles, height, t
 	for i, row := range class.NoPrice {
 		labels[i] = row.Label
 	}
-	footer = append(footer, mutedNote(styles, report.NoPriceNote(labels), tableWidth)...)
-	footer = append(footer, "", styles.Muted.Render("  "+widget.FitParts(
-		[]string{"enter accounts", "e edit security", "esc back to allocation"}, "  ", tableWidth-2, []int{0, 1})))
+	after := []string{"", styles.Muted.Render("  " + widget.FitParts(
+		[]string{"enter accounts", "e edit security", "esc back to allocation"}, "  ", tableWidth-2, []int{0, 1}))}
+	// The holdings with no price are rows of this table, so the short note
+	// needs no names.
+	footer = append(footer, fitNoPriceNote(styles, labels,
+		shortNoPriceNote(len(labels), "Add a price to include %s."),
+		tableWidth, footerRoom(height)-len(footer)-len(after))...)
+	footer = append(footer, after...)
 	sections = append(sections, s.renderAllocationTable(styles, height, tableWidth, a.drill, len(footer))...)
 	sections = append(sections, footer...)
 	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))

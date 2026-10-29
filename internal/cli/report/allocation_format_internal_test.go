@@ -141,7 +141,7 @@ func TestPrintAllocationReport_UnclassifiedNote(t *testing.T) {
 
 // A failed account makes the TOTAL "not available", adds the percentages
 // note, and gives the command an error that names the account. Each currency
-// has its own table and total.
+// has its own table and total. A class total stays a value.
 func TestPrintAllocationReport_FailedAndCurrencies(t *testing.T) {
 	m := types.MustNewMoney
 	rpt := &reportdom.Allocation{
@@ -180,5 +180,22 @@ func TestPrintAllocationReport_FailedAndCurrencies(t *testing.T) {
 	if err := notInClassError(rpt, security.AssetClassMidCapStock); err == nil ||
 		!strings.HasPrefix(err.Error(), "no holdings in Mid Cap Stock in the accounts that could be valued: could not value 1 account(s): Birch 401k") {
 		t.Errorf("notInClassError = %v, want the C12 error", err)
+	}
+
+	// The class view shows the class total, as the class row above and the
+	// TUI do, with the note.
+	out.Reset()
+	printAllocationClass(&out, rpt, security.AssetClassLargeCapStock)
+	got = out.String()
+	for _, want := range []string{
+		"Total           $100.00  100.0%      100.0%\n",
+		"\nPercentages leave out accounts that could not be valued.\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("class output lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "not available") {
+		t.Errorf("class output has \"not available\":\n%s", got)
 	}
 }

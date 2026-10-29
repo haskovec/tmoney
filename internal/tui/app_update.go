@@ -200,7 +200,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case reportsEditSecurityMsg:
-		a.openEditSecurity(msg.sec)
+		// While the security loaded, the drill-down can have closed or
+		// another dialog opened; then the reply is stale.
+		if a.reports.takeEditRequest(msg.request) && a.frontmostModal() == nil {
+			a.openEditSecurity(msg.sec)
+		}
 		return a, nil
 
 	case reportsViewDataLoadedMsg:
