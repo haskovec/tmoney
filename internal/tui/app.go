@@ -10,6 +10,7 @@ import (
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/db"
 	"github.com/haskovec/tmoney/internal/price"
+	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/sidebar"
 	"github.com/haskovec/tmoney/internal/tui/theme"
@@ -168,6 +169,9 @@ type App struct {
 	// lightBackground is true when the terminal said that its background is
 	// light. Until it says so, the class colors are the dark set (C3).
 	lightBackground bool
+	// pie is the allocation report's pie image in the terminal, and what the
+	// terminal said it can do for it.
+	pie pieState
 
 	// Reconciliation view state, and its start dialog (a modal)
 	reconciliation reconciliationViewState
@@ -319,6 +323,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 		services:    *svc,
 		dashboard:   dashboardViewState{expandedAccounts: make(map[types.ID]bool)},
 		createCat:   createCatSurface{origin: newCreateCatOrigin()},
+		pie:         pieState{id: termimg.NewID(), pieTerm: pieTerm{inTmux: termimg.InTmux()}},
 	}
 
 	a.menubar.SetMenuItemsBuilder(widget.ViewMenuIndex, func() []widget.MenuItem {
@@ -328,7 +333,7 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 			active = a.cfg.Theme
 			showClosed = a.cfg.ShowClosedPositions
 		}
-		return widget.BuildViewMenuItems(active, showClosed)
+		return widget.BuildViewMenuItems(active, showClosed, a.chartImagesMode().Label())
 	})
 
 	// Apply the persisted theme (TH-029). On a clean load the styles
@@ -375,6 +380,7 @@ func (a *App) Init() tea.Cmd {
 		a.loadScheduledDueCount(),
 		a.dashboard.load(a.dashboardDeps()),
 		tea.RequestBackgroundColor,
+		a.queryPie(),
 	}
 	// If NewApp surfaced a startup theme issue/failure, the toast is
 	// already on the status bar — schedule its auto-clear here so it

@@ -141,7 +141,7 @@ func TestHoldingsColumns_NameAndBarShareTheSpare(t *testing.T) {
 
 func TestRenderHoldings(t *testing.T) {
 	app := newHoldingsApp(180, 40)
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{
 		"HOLDINGS", "As of: Jan 15, 2024",
 		"Security", "% Total", "Cost Basis",
@@ -171,7 +171,7 @@ func TestRenderHoldings(t *testing.T) {
 // stay, and the view still fits.
 func TestRenderHoldings_ShortScreenScrolls(t *testing.T) {
 	app := newHoldingsApp(180, 15)
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{"HOLDINGS", "TOTAL", "~ No price on file", "of 3"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view lacks %q:\n%s", want, view)
@@ -188,7 +188,7 @@ func TestRenderHoldings_FailedAccountAndEmpty(t *testing.T) {
 	rpt.Sections[0].Available = false
 	rpt.Failed = []report.AccountFailure{{Name: "Birch 401k", Currency: "USD", Err: errString("price lookup failed")}}
 	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: rpt})
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{
 		"not available",
 		"Birch 401k: could not be valued (price lookup failed)",
@@ -209,7 +209,7 @@ func TestRenderHoldings_FailedAccountAndEmpty(t *testing.T) {
 		Failed:   []report.AccountFailure{{Name: "Birch 401k", Currency: "USD", Err: errString("price lookup failed")}},
 	}
 	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: rpt})
-	view = app.reports.render(app.styles, app.height, true)
+	view = app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{"TOTAL", "not available", "Birch 401k: could not be valued"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("all-failed view lacks %q:\n%s", want, view)
@@ -220,14 +220,14 @@ func TestRenderHoldings_FailedAccountAndEmpty(t *testing.T) {
 	}
 
 	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: &report.Holdings{}})
-	if view := app.reports.render(app.styles, app.height, true); !strings.Contains(view, "No investment accounts. Add one to see holdings.") {
+	if view := app.reports.render(app.styles, app.height, reportsLook{dark: true}); !strings.Contains(view, "No investment accounts. Add one to see holdings.") {
 		t.Errorf("empty view:\n%s", view)
 	}
 
 	// An account that holds nothing is an account: the view says that
 	// nothing is held, not that there are no accounts.
 	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: &report.Holdings{AccountCount: 1}})
-	view = app.reports.render(app.styles, app.height, true)
+	view = app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	if !strings.Contains(view, "No holdings in the investment accounts.") || strings.Contains(view, "No investment accounts") {
 		t.Errorf("view of an account that holds nothing:\n%s", view)
 	}
@@ -253,7 +253,7 @@ func TestRenderHoldings_TotalNotPositive(t *testing.T) {
 		}},
 	}
 	app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: rpt})
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	found := false
 	for line := range strings.Lines(view) {
 		if !strings.Contains(line, "TOTAL") {
@@ -279,7 +279,7 @@ func TestRenderHoldings_TwoCurrencies(t *testing.T) {
 		cad.Currency = "CAD"
 		rpt.Sections = []report.HoldingsSection{cad, rpt.Sections[0]}
 		app.reports.setData(&reportsViewData{rtype: reportTypeHoldings, holdings: rpt})
-		view := app.reports.render(app.styles, app.height, true)
+		view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 		if width == 80 && app.reports.holdings.width >= holdingsWidthName {
 			t.Fatalf("table width %d has a Name column; the test needs a narrower one", app.reports.holdings.width)
 		}
@@ -358,7 +358,7 @@ func TestHoldings_SplitOpensAndCloses(t *testing.T) {
 	if !app.reports.splitOpen() {
 		t.Fatal("Enter did not open the split")
 	}
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{
 		"ACME  Acme Total Market Index", "$4800.00  80.0% of total",
 		"Account", "% of Holding",
@@ -407,7 +407,7 @@ func TestHoldings_SplitEstimatedAndPartial(t *testing.T) {
 	app.reports.holdings.table.SetCursor(2) // STRK
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	for _, want := range []string{
 		"~STRK  Stark Industries", "~$500.00  8.3% of total",
 		"~ No price on file: the value is the cost basis.",
@@ -423,16 +423,16 @@ func TestHoldings_SplitEstimatedAndPartial(t *testing.T) {
 // the split's cursor stays on its account.
 func TestHoldings_ResizeKeepsTheSplitCursor(t *testing.T) {
 	app := newHoldingsApp(180, 40)
-	app.reports.render(app.styles, app.height, true)
+	app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	app.reports.render(app.styles, app.height, true)
+	app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	if c := app.reports.holdings.split.Cursor(); c != 1 {
 		t.Fatalf("split cursor = %d before the resize, want 1", c)
 	}
 
 	app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	if !app.reports.splitOpen() {
 		t.Fatal("the resize closed the split")
 	}
@@ -498,7 +498,7 @@ func TestHoldings_CashSplit(t *testing.T) {
 	app := newHoldingsApp(180, 40)
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	if !strings.Contains(view, "Cash  Uninvested cash") || !strings.Contains(view, "$700.00") {
 		t.Errorf("cash split:\n%s", view)
 	}
@@ -512,7 +512,7 @@ func TestHoldings_CashSplit(t *testing.T) {
 // rows above the table (tableContentRowOffset).
 func TestHoldings_ClickAndDoubleClick(t *testing.T) {
 	app := newHoldingsApp(180, 40)
-	app.reports.render(app.styles, app.height, true)
+	app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	app.reports.holdings.table.SetCursor(2)
 
 	now := time.Unix(0, 0)
@@ -534,7 +534,7 @@ func TestHoldings_ClickAndDoubleClick(t *testing.T) {
 	if !app.reports.splitOpen() {
 		t.Fatal("a double click did not open the split")
 	}
-	if !strings.Contains(app.reports.render(app.styles, app.height, true), "ACME  Acme Total Market Index") {
+	if !strings.Contains(app.reports.render(app.styles, app.height, reportsLook{dark: true}), "ACME  Acme Total Market Index") {
 		t.Error("the double click opened another row's split")
 	}
 }
@@ -544,7 +544,7 @@ func TestHoldings_ClickAndDoubleClick(t *testing.T) {
 // double click there opens no split.
 func TestHoldings_ClickUnderAScrolledTable(t *testing.T) {
 	app := newHoldingsApp(180, 15)
-	view := app.reports.render(app.styles, app.height, true)
+	view := app.reports.render(app.styles, app.height, reportsLook{dark: true})
 	if !strings.Contains(view, "of 3") {
 		t.Fatalf("the table does not scroll:\n%s", view)
 	}
@@ -641,7 +641,7 @@ func TestHoldings_Hints(t *testing.T) {
 func TestRenderHoldings_HintLineFits(t *testing.T) {
 	for _, width := range []int{50, 60, 70} {
 		app := newHoldingsApp(width, 40)
-		view := widget.StripAnsi(app.reports.render(app.styles, app.height, true))
+		view := widget.StripAnsi(app.reports.render(app.styles, app.height, reportsLook{dark: true}))
 		var hint string
 		for line := range strings.Lines(view) {
 			if strings.Contains(line, "enter accounts") {

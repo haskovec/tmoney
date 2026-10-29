@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/chart"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -25,6 +26,7 @@ const (
 	allocationColValue
 	allocationColPercent
 	allocationColBar
+	allocationColSwatch
 )
 
 // allocationColumn is one column of the allocation table on screen.
@@ -39,6 +41,15 @@ const (
 	allocationWidthAll = 61
 	allocationMinBar   = 10
 	allocationMaxBar   = 40
+)
+
+// The pie of the class table: its most and fewest rows, the cells between it
+// and its legend, and the legend width (§6.5).
+const (
+	allocationPieMaxRows  = 20
+	allocationPieMinRows  = 8
+	allocationPieGap      = 3
+	allocationLegendWidth = 52
 )
 
 // allocationColumns returns the columns for a table of width cells. The bar
@@ -67,6 +78,18 @@ func allocationColumns(width int) []allocationColumn {
 	return cols
 }
 
+// allocationLegendColumns are the columns of the legend beside the pie:
+// the swatch in place of the bar, allocationLegendWidth cells in all.
+func allocationLegendColumns() []allocationColumn {
+	return []allocationColumn{
+		{allocationColSwatch, widget.Column{Width: 1}},
+		{allocationColClass, widget.Column{Header: "Asset Class", Width: 19}},
+		{allocationColCount, widget.Column{Header: "Holdings", Width: 8, Align: widget.AlignRight}},
+		{allocationColValue, widget.Column{Header: "Value", Width: 13, Align: widget.AlignRight}},
+		{allocationColPercent, widget.Column{Header: "% Total", Width: 7, Align: widget.AlignRight}},
+	}
+}
+
 // drillRef is the holding behind a row of the class drill-down: one of the
 // class's priced Holdings, or one of its NoPrice rows.
 type drillRef struct {
@@ -84,6 +107,10 @@ type allocationViewState struct {
 	columns []allocationColumn
 	width   int  // the table width the rows were laid out for
 	dark    bool // the class colors the rows were laid out with
+	legend  bool // the rows were laid out as the legend of a pie
+	// pieCols is the width of the pie at the last render, or 0 when the
+	// class table had no pie. A click on it selects nothing (C9).
+	pieCols int
 	// pageRows is the number of data rows on screen at the last render, the
 	// step of PgUp and PgDn.
 	pageRows   int
@@ -153,8 +180,8 @@ func (s *reportsViewState) allocationPlace() (allocationPlace, bool) {
 // on its holding, or at its position when the holding left the class, and
 // the drill-down closes when the class is now empty. An open split closes.
 func (s *reportsViewState) setAllocation(p allocationPlace, kept bool) {
-	width, dark := s.allocation.width, s.allocation.dark
-	s.allocation = allocationViewState{clicks: s.allocation.clicks, dark: dark,
+	width, dark, legend := s.allocation.width, s.allocation.dark, s.allocation.legend
+	s.allocation = allocationViewState{clicks: s.allocation.clicks, dark: dark, legend: legend,
 		editRequest: s.allocation.editRequest + 1}
 	rpt := s.allocationReport()
 	if rpt == nil {
@@ -172,7 +199,7 @@ func (s *reportsViewState) setAllocation(p allocationPlace, kept bool) {
 	if width == 0 {
 		width = allocationWidthAll
 	}
-	s.layoutAllocation(width, dark)
+	s.layoutAllocation(width, dark, legend)
 	if !kept {
 		return
 	}
@@ -201,11 +228,15 @@ func (s *reportsViewState) setAllocation(p allocationPlace, kept bool) {
 }
 
 // layoutAllocation sets the class table's columns and rows for a table
-// width, with the bars in the light or the dark class colors.
-func (s *reportsViewState) layoutAllocation(width int, dark bool) {
+// width, with the bars, or the swatches of a pie's legend, in the light or
+// the dark class colors.
+func (s *reportsViewState) layoutAllocation(width int, dark, legend bool) {
 	a := &s.allocation
-	a.width, a.dark = width, dark
+	a.width, a.dark, a.legend = width, dark, legend
 	a.columns = allocationColumns(width)
+	if legend {
+		a.columns = allocationLegendColumns()
+	}
 	cols := make([]widget.Column, len(a.columns))
 	for i, c := range a.columns {
 		cols[i] = c.Column
@@ -228,9 +259,13 @@ func (s *reportsViewState) layoutAllocation(width int, dark bool) {
 	a.table.SetColumns(cols)
 	a.table.SetRows(rows)
 	a.table.SetCursor(cursor)
-	bar := len(a.columns) - 1
-	for i, ac := range a.classes {
-		a.table.SetCellColor(i, bar, chart.ClassColor(ac, dark))
+	for col, c := range a.columns {
+		if c.col != allocationColBar && c.col != allocationColSwatch {
+			continue
+		}
+		for i, ac := range a.classes {
+			a.table.SetCellColor(i, col, chart.ClassColor(ac, dark))
+		}
 	}
 }
 
@@ -249,6 +284,8 @@ func allocationCells(cols []allocationColumn, c report.ClassRow, currency string
 			cells[i] = fmt.Sprintf("%.1f%%", c.Percent)
 		case allocationColBar:
 			cells[i] = report.Bar(c.Value, largest, col.Width)
+		case allocationColSwatch:
+			cells[i] = "■"
 		}
 	}
 	return cells
@@ -265,7 +302,7 @@ func (s *reportsViewState) changeCurrency(step int) {
 	}
 	a.section = next
 	a.table.SetCursor(0)
-	s.layoutAllocation(a.width, a.dark)
+	s.layoutAllocation(a.width, a.dark, a.legend)
 }
 
 // drillColumns are the columns of the class drill-down. Name gets the
@@ -524,9 +561,9 @@ func (s *reportsViewState) allocationHints() string {
 }
 
 // renderAllocation renders the allocation report: the class table of one
-// currency, or the drill-down or the split when one is open. height is the
-// terminal height; dark selects the class colors.
-func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, dark bool) string {
+// currency, with its pie when it has one, or the drill-down or the split when
+// one is open. height is the terminal height.
+func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, look reportsLook) string {
 	rpt := s.data.allocation
 	if rpt == nil {
 		return lipgloss.NewStyle().
@@ -534,9 +571,11 @@ func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, da
 			Render("No allocation data available.")
 	}
 	a := &s.allocation
-	tableWidth := max(styles.ContentWidth()-4, 1)
-	if a.width != tableWidth || a.dark != dark {
-		s.layoutAllocation(tableWidth, dark)
+	tableWidth := allocationTableWidth(styles)
+	pie, hasPie := s.allocationPie(styles, height, look)
+	a.pieCols = 0
+	if a.width != tableWidth || a.dark != look.dark || a.legend != hasPie {
+		s.layoutAllocation(tableWidth, look.dark, hasPie)
 		// Only the widths change, so the drill-down and the split keep their
 		// cursors.
 		if a.drill != nil {
@@ -553,7 +592,7 @@ func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, da
 	case ok && a.split != nil:
 		return s.renderAllocationSplit(styles, height, tableWidth, sec)
 	case ok && a.drill != nil:
-		return s.renderAllocationDrill(styles, height, tableWidth, sec, dark)
+		return s.renderAllocationDrill(styles, height, tableWidth, sec, look.dark)
 	}
 
 	title := "ASSET ALLOCATION"
@@ -564,53 +603,166 @@ func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, da
 		reportTitleRow(styles, title, "As of: "+rpt.AsOfDate.Time().Format("Jan 2, 2006"), tableWidth),
 		styles.Muted.Render(strings.Repeat("═", tableWidth)),
 	}
-	// The hint leaves out whole hints to fit, the current view's first;
-	// "esc back" and "enter holdings" stay longest.
-	hints := []string{"enter holdings", "n net worth", "s spending", "i holdings", "a allocation", "esc back"}
-	drop := []int{4, 3, 2, 1, 0}
-	if len(rpt.Sections) > 1 {
-		hints = append(hints[:1], append([]string{"←→ currency"}, hints[1:]...)...)
-		drop = []int{5, 4, 3, 2, 1, 0}
-	}
-	hint := styles.Muted.Render("  " + widget.FitParts(hints, "  ", tableWidth-2, drop))
 	if !ok {
 		empty := "  No holdings in the investment accounts."
 		if rpt.AccountCount == 0 {
 			empty = "  No investment accounts. Add one to see the allocation."
 		}
-		sections = append(sections, "", styles.Muted.Render(empty), "", hint)
+		sections = append(sections, "", styles.Muted.Render(empty), "", s.allocationHint(styles, tableWidth))
 		return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
 	}
 
+	if hasPie {
+		notes := s.allocationNotes(styles, sec, tableWidth, pieNotesRoom(height), "")
+		sections = append(sections, s.renderAllocationPie(styles, pie, look.pie, freeRows(height, len(notes)))...)
+		sections = append(sections, notes...)
+		return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+	}
+	// A section that the pie cannot show says so, when the pie would show
+	// (§6.5).
+	noPie := ""
+	if look.pie.allowed() && !sec.Drawable() {
+		noPie = sec.NoPieNote()
+	}
 	footer := []string{
 		styles.Muted.Render(strings.Repeat("─", tableWidth)),
 		s.allocationTotalLine(styles, sec),
 	}
-	for _, f := range rpt.Failed {
-		if f.Currency == sec.Currency {
-			footer = append(footer, styles.Error.UnsetPadding().Render(fmt.Sprintf("%s: could not be valued (%v)", f.Name, f.Err)))
-		}
-	}
-	if !sec.Available {
-		footer = append(footer, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
-	}
-	var after []string
-	if c, ok := sec.Class(security.AssetClassUnclassified); ok {
-		if note := report.UnclassifiedNote(c.Count()); note != "" {
-			after = append(after, mutedNote(styles, note+" Press enter on Unclassified, then e to set a class.", tableWidth)...)
-		}
-	}
-	after = append(after, "", hint)
-	// A class whose holdings all have no price has no row, so the short
-	// note sends the owner to the holdings report for the names.
-	names := sec.NoPriceNames()
-	footer = append(footer, fitNoPriceNote(styles, names,
-		shortNoPriceNote(len(names), "Press i to see %s in the holdings report."),
-		tableWidth, footerRoom(height)-len(footer)-len(after))...)
-	footer = append(footer, after...)
+	footer = append(footer, s.allocationNotes(styles, sec, tableWidth, footerRoom(height)-len(footer), noPie)...)
 	sections = append(sections, s.renderAllocationTable(styles, height, tableWidth, a.table, len(footer))...)
 	sections = append(sections, footer...)
 	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+}
+
+// allocationTableWidth is the width of the report's tables: the content
+// width less the padding.
+func allocationTableWidth(styles widget.Styles) int {
+	return max(styles.ContentWidth()-4, 1)
+}
+
+// allocationHint is the key hint under the class table. It leaves out whole
+// hints to fit, the current view's first; "esc back" and "enter holdings"
+// stay longest.
+func (s *reportsViewState) allocationHint(styles widget.Styles, width int) string {
+	hints := []string{"enter holdings", "n net worth", "s spending", "i holdings", "a allocation", "esc back"}
+	drop := []int{4, 3, 2, 1, 0}
+	if rpt := s.allocationReport(); rpt != nil && len(rpt.Sections) > 1 {
+		hints = append(hints[:1], append([]string{"←→ currency"}, hints[1:]...)...)
+		drop = []int{5, 4, 3, 2, 1, 0}
+	}
+	return styles.Muted.Render("  " + widget.FitParts(hints, "  ", width-2, drop))
+}
+
+// allocationNotes are the lines under the class table or the pie: the
+// accounts that failed, the notes, a blank line and the hint. room is the
+// lines they can take; the names of the holdings with no price give way to
+// a count when they do not fit. noPie is the note that says why there is no
+// pie, or "".
+func (s *reportsViewState) allocationNotes(styles widget.Styles, sec report.AllocationSection, width, room int, noPie string) []string {
+	var before []string
+	for _, f := range s.allocationReport().Failed {
+		if f.Currency == sec.Currency {
+			before = append(before, styles.Error.UnsetPadding().Render(fmt.Sprintf("%s: could not be valued (%v)", f.Name, f.Err)))
+		}
+	}
+	if !sec.Available {
+		before = append(before, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
+	}
+	before = append(before, mutedNote(styles, noPie, width)...)
+	var after []string
+	if c, ok := sec.Class(security.AssetClassUnclassified); ok {
+		if note := report.UnclassifiedNote(c.Count()); note != "" {
+			after = append(after, mutedNote(styles, note+" Press enter on Unclassified, then e to set a class.", width)...)
+		}
+	}
+	after = append(after, "", s.allocationHint(styles, width))
+	// A class whose holdings all have no price has no row, so the short
+	// note sends the owner to the holdings report for the names.
+	names := sec.NoPriceNames()
+	out := append(before, fitNoPriceNote(styles, names,
+		shortNoPriceNote(len(names), "Press i to see %s in the holdings report."),
+		width, room-len(before)-len(after))...)
+	return append(out, after...)
+}
+
+// freeRows is the rows of the view between the separator under the title
+// and the notes: the room of the pie and its legend.
+func freeRows(height, notes int) int {
+	return height - appChromeRows - 2 - 2 - notes
+}
+
+// pieNotesRoom is the number of note lines that leave the pie its fewest
+// rows.
+func pieNotesRoom(height int) int {
+	return freeRows(height, 0) - allocationPieMinRows
+}
+
+// allocationPie is the pie of the class table, when it shows: the setting,
+// the terminal and the color profile allow it (§6.3), the section can be
+// drawn (D11), and the pie and its legend fit (§6.5). The pie takes the free
+// rows of the view, at most allocationPieMaxRows; when the legend does not
+// fit beside it, a smaller pie is tried, down to allocationPieMinRows.
+func (s *reportsViewState) allocationPie(styles widget.Styles, height int, look reportsLook) (pieKey, bool) {
+	rpt := s.allocationReport()
+	sec, ok := s.allocationSection()
+	if !ok || !look.pie.allowed() || !sec.Drawable() {
+		return pieKey{}, false
+	}
+	width := allocationTableWidth(styles)
+	free := freeRows(height, len(s.allocationNotes(styles, sec, width, pieNotesRoom(height), "")))
+	for rows := min(allocationPieMaxRows, free); rows >= allocationPieMinRows; rows-- {
+		cols, w, h := termimg.Placement(rows, look.pie.term.cellW, look.pie.term.cellH)
+		if cols+allocationPieGap+allocationLegendWidth <= width {
+			return pieKey{rpt: rpt, section: s.allocation.section, rows: rows, cols: cols, w: w, h: h, dark: look.dark}, true
+		}
+	}
+	return pieKey{}, false
+}
+
+// renderAllocationPie renders the pie and, on its right, the legend: the
+// class table with swatches, its separator and its TOTAL. free is the rows
+// they can take; the legend's rows scroll when they do not fit. The pie
+// shows once the terminal has its image; until then its cells are blank.
+func (s *reportsViewState) renderAllocationPie(styles widget.Styles, key pieKey, pv pieView, free int) []string {
+	a := &s.allocation
+	sec, _ := s.allocationSection()
+	a.pieCols = key.cols
+	dataRows := free - 4 // the header, its border, the separator and the TOTAL
+	if a.table.RowCount() > dataRows {
+		dataRows-- // the scroll info line
+	}
+	dataRows = max(min(dataRows, a.table.RowCount()), 1)
+	a.pageRows = dataRows
+	legend := strings.Split(a.table.Render(styles, allocationLegendWidth, dataRows+2), "\n")
+	if info := a.table.ScrollInfo(dataRows); info != "" {
+		legend = append(legend, styles.Muted.Render(info))
+	}
+	legend = append(legend,
+		styles.Muted.Render(strings.Repeat("─", allocationLegendWidth)),
+		s.allocationTotalLine(styles, sec))
+
+	gap := strings.Repeat(" ", allocationPieGap)
+	var out []string
+	for y := range max(key.rows, len(legend)) {
+		left := strings.Repeat(" ", key.cols)
+		if y < key.rows && pv.sent == key {
+			left = termimg.PlaceholderLine(pv.id, y, key.cols)
+		}
+		right := ""
+		if y < len(legend) {
+			right = legend[y]
+		}
+		out = append(out, left+gap+right)
+	}
+	return out
+}
+
+// clickOnPie reports whether a click at column x of the report (past its
+// padding) is on the pie, or the gap beside it. It selects nothing there:
+// the row on the same line is of another class than the slice (C9).
+func (s *reportsViewState) clickOnPie(x int) bool {
+	a := &s.allocation
+	return a.pieCols > 0 && a.drill == nil && x < a.pieCols+allocationPieGap
 }
 
 // allocationTableMin is the fewest lines a table gets: the header, its
@@ -687,6 +839,8 @@ func (s *reportsViewState) allocationTotalLine(styles widget.Styles, sec report.
 	var cells []string
 	for _, c := range s.allocation.columns {
 		switch c.col {
+		case allocationColSwatch:
+			cells = append(cells, " ")
 		case allocationColClass:
 			cells = append(cells, styles.Bold.Render(widget.AlignText("TOTAL", c.Width, c.Align)))
 		case allocationColCount:

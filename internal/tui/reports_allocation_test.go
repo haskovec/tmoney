@@ -83,7 +83,7 @@ func newAllocationApp(width, height int, rpt *report.Allocation) *App {
 }
 
 func (a *App) renderedReports() string {
-	return widget.StripAnsi(a.reports.render(a.styles, a.height, !a.lightBackground))
+	return widget.StripAnsi(a.reports.render(a.styles, a.height, a.reportsLook()))
 }
 
 func classHeaders(cols []allocationColumn) []string {
@@ -161,12 +161,12 @@ func TestRenderAllocation_LightColors(t *testing.T) {
 	dark := fg(color.RGBA{R: 0x36, G: 0x64, B: 0xb2}) // Large Cap, dark
 	light := fg(color.RGBA{R: 0x18, G: 0x4f, B: 0x95})
 
-	view := app.reports.render(app.styles, app.height, !app.lightBackground)
+	view := app.reports.render(app.styles, app.height, app.reportsLook())
 	if !strings.Contains(view, dark) || strings.Contains(view, light) {
 		t.Errorf("before a reply the bar is not in the dark color")
 	}
 	app.Update(tea.BackgroundColorMsg{Color: color.White})
-	view = app.reports.render(app.styles, app.height, !app.lightBackground)
+	view = app.reports.render(app.styles, app.height, app.reportsLook())
 	if !strings.Contains(view, light) || strings.Contains(view, dark) {
 		t.Errorf("after a light reply the bar is not in the light color")
 	}
@@ -461,7 +461,7 @@ func TestRenderAllocation_FailedAccount(t *testing.T) {
 	rpt.Sections[0].Available = false
 	rpt.Failed = []report.AccountFailure{{Name: "Birch 401k", Currency: "USD", Err: errString("price lookup failed")}}
 	app := newAllocationApp(180, 40, rpt)
-	if !errorLineHasNoPadding(app.reports.render(app.styles, app.height, true)) {
+	if !errorLineHasNoPadding(app.reports.render(app.styles, app.height, reportsLook{dark: true})) {
 		t.Error("the error line has padding")
 	}
 	view := app.renderedReports()

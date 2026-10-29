@@ -663,12 +663,28 @@ in Rex. If one fails, the spec changes before the code is written.
 The scratch probe of 2026-10-27 showed that both placement methods work in
 Ghostty and Rex, and that Rex replies "OK" before DA1. herdr is not tested.
 
+**Result (2026-10-29): all three facts are true.** A scratch program (not in
+the repo) drew a pie of 12 slices beside a legend that scrolls, in the Bubble
+Tea v2 renderer, with the terminal's own profile and with `-profile 256`.
+The owner checked it in Ghostty and in Rex: the pie is round, a scroll, a
+partial redraw (a frame counter 2 times a second), a resize and hide/show do
+not break it, and the image ID test shows red and blue, not green (fact 3).
+The same program, run in a terminal emulator library (x/vt), passed every
+step in truecolor and 256 colors, with and without mode 2027. Ghostty and Rex
+leave mode 2027 reset, so the renderer counts widths with wcwidth. Two
+lessons go into §6.5: draw and encode the image in a command, not in Update,
+because a synchronous draw delayed the frame after a resize; and ask for the
+cell size before the kitty query, because the spike sent its first pie with
+the default cell size and then again.
+
 ### 6.1 Packages
 
 - `internal/chart/pie.go`: draws the pie. Pure: no terminal, no TUI state.
 - `internal/termimg`: the kitty graphics code that the TUI and the CLI
-  share: the encoding, the placeholder lines, the decision rule, and the
-  CLI terminal query.
+  share: the encoding, the placeholder lines, the decision rule, the size
+  of a placement (`Placement`), and the CLI terminal query
+  (`probe_unix.go`, with the ioctl names in `probe_bsd.go` and
+  `probe_linux.go`, and `probe_other.go`).
 
 ### 6.2 Drawing
 
@@ -680,10 +696,18 @@ type Slice struct {
 }
 
 // Pie draws the slices clockwise from 12 o'clock, in order, on a
-// transparent square of size pixels. A slice smaller than minDeg is drawn
-// at minDeg; the other slices get smaller in proportion to pay for it.
-func Pie(slices []Slice, size int, minDeg float64) *image.NRGBA
+// transparent canvas of w×h pixels. The pie is a circle in the middle, as
+// wide as the shorter side. A slice smaller than minDeg is drawn at
+// minDeg; the other slices get smaller in proportion to pay for it.
+func Pie(slices []Slice, w, h int, minDeg float64) *image.NRGBA
 ```
+
+- The canvas is the cells of the placement (§6.5), which are not exactly
+  square, so the image fills its cells and stays sharp. The spike drew it
+  this way. `size` below is the shorter side.
+- The slices are `AllocationSection.PieSlices(dark)`: the shown classes in
+  the order of the table. A class with a row but no value has no slice
+  (D5).
 
 - The gap between slices is transparent: `max(2, size/200)` px (C13).
 - 4×4 samples per pixel give smooth edges.
@@ -733,29 +757,43 @@ Other conditions, before `Show`:
   `kitty.Diacritic(hi)`, then `39m`.
 - Delete: `ESC_Ga=d,d=I,i=ID,q=2ESC\`.
 - The ID: `hi<<24 | lo`, both random from 1 to 255 (C5).
+- `Placement(rows, cellW, cellH)` gives the columns (`round(R × cellH /
+  cellW)`) and the image pixels (`C × cellW` by `R × cellH`). With no cell
+  size, a cell is 1:2 and the image is 600 px.
 
 ### 6.5 TUI
 
 - At start, and when the setting changes from `off`, the app sends with
-  `tea.Raw` the kitty query `ESC_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAAESC\` and
-  the cell size query `CSI 16 t`. With `off`, it sends nothing. A `uv.KittyGraphicsEvent` with ID 31 and the
+  `tea.Raw` the cell size query `CSI 16 t` and then the kitty query
+  `ESC_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAAESC\`. The terminal replies in
+  order, so the cell size is known when "OK" comes, and the first pie is
+  not sent two times (§6.0). With `off`, it sends nothing. A `uv.KittyGraphicsEvent` with ID 31 and the
   payload "OK" sets `kittyOK` (C7). A `uv.CellSizeEvent` sets the cell
   size. With no cell size, the pie uses a cell of 1:2 and 600 px.
 - `R` is the free rows of the view (the height minus the app chrome, the
-  title, the separator, the TOTAL and the notes), at most 20. With `R` less
-  than 8, there is no pie.
+  padding, the title, the separator and the notes under the pie), at most
+  20. With `R` less than 8, there is no pie. The no-price note gives way
+  to its short form (§5.5.2) when its names would leave the pie less than
+  8 rows.
 - `C` is `round(R × cellHeight / cellWidth)`, so the pie is round.
 - The legend table is 52 cells: the swatch (1), Asset Class (19),
   Holdings (8), Value (13), % Total (7), and four separators. There is no
   bar column. It fits when `W ≥ C + 3 + 52`. If not, try a smaller `R`,
   down to 8. If it still does not fit, show the table of §5.5.2.
 - The pie image is `C × cellWidth` by `R × cellHeight` pixels, so it is
-  sharp. The app draws and transmits it again when the data, `R`, `C`, the
-  currency or the light/dark choice changes. Each transmit replaces the
-  image with the same ID.
-- The pie and the legend start on the line under the separator. The TOTAL
-  and the notes are under the legend. When the legend is shorter than the
-  pie, the TOTAL goes under the pie.
+  sharp. The app draws and transmits it again when the data (each load),
+  `R`, `C`, the cell size, the currency or the light/dark choice changes.
+  Each transmit replaces the image with the same ID.
+- After every message, `Update` compares the image the screen needs with
+  the one the terminal has (`syncPie`). The app draws and encodes the image
+  in a command, not in `Update` (§6.0), one draw at a time. A draw that
+  ends after the screen changed is not sent; the image the screen needs
+  then is drawn. Until the terminal has the image, the pie's cells are
+  blank, and the layout does not move.
+- The pie and the legend start on the line under the separator. The legend
+  rows, their separator and the TOTAL are in the legend column, beside the
+  pie, as in the drawing. The notes are under the taller of the two. When
+  the legend rows do not fit in the free rows, they scroll.
 
 ```
 ASSET ALLOCATION                                                                         As of: Jan 15, 2024
@@ -784,18 +822,29 @@ ASSET ALLOCATION                                                                
 (The box shows where the image is. The real view has no box.)
 
 - When the pie would show but the section is not `Drawable`, the view
-  shows the table of §5.5.2 with the note `No pie: Cash is negative.`
+  shows the table of §5.5.2 with the note `No pie: Cash is negative.` (or
+  `No pie: the total is zero.` when no class is negative), from
+  `AllocationSection.NoPieNote`.
 
 - The drill-down and the split do not draw the placeholders, so the pie is
   not on screen there (D8). Back in the class table, the pie shows again
   with no new transmit.
-- Leaving the Reports view and quitting delete the image (C11).
+- Leaving the Reports view and quitting delete the image (C11); the delete
+  is written before the quit. So do the setting `off`, another report, and
+  a screen with no room for the pie.
+- A click on the pie, or on the gap beside it, selects nothing (C9). A
+  click on the legend, its swatch too, selects the row.
 
 ### 6.6 CLI
 
-- When `Show` is true, the CLI opens `/dev/tty` and sets raw mode with
-  `VMIN=0` and `VTIME=1`, through `github.com/charmbracelet/x/termios`
-  (already in the module graph). It restores the mode on every path.
+- When the output is a terminal and the setting is not `off`, the CLI
+  opens `/dev/tty` and turns off echo, the line buffer and signals, with
+  `VMIN=0` and `VTIME=1`, through `golang.org/x/sys/unix` (already in the
+  module graph). It restores the mode on every path; with no signals, a
+  Ctrl+C cannot end the program before that. `x/termios` was the plan, but
+  its `SetTermios` always sets the line speed. The CLI reads the raw file
+  descriptor, because a Go `os.File` on a terminal can use the poller,
+  which ignores `VTIME`. `Show` then decides with the replies.
 - It writes the kitty query, OSC 11 (`ESC]11;?ESC\`), `CSI 16 t` and DA1
   (`ESC[c`), and reads until the DA1 reply or 300 ms. A kitty "OK" before
   DA1 means support. The OSC 11 reply picks the colors (C3).
@@ -824,7 +873,8 @@ ChartImages string `json:"chart_images,omitempty"`
 
 - The View menu gets `Chart images: Auto` (or `On`, `Off`) under "Show
   closed positions". Each select moves Auto → On → Off → Auto, saves the
-  config, and renders the view again.
+  config, and renders the view again. A change from Off sends the query
+  (§6.5).
 - The CLI reads the same key with `config.Load`, as
   `cmdutil.OpenServices` does.
 
@@ -857,6 +907,11 @@ ChartImages string `json:"chart_images,omitempty"`
 - A click on the pie selects nothing. A click on the legend selects the
   row.
 - The View menu item moves Auto → On → Off → Auto and saves.
+- The image: one transmit, none for a key with no change, a new one after a
+  resize. The drill-down keeps it, and back in the class table there is no
+  new transmit. Leaving the view deletes it, and a quit writes the delete
+  before the quit. A draw that ends after a resize is not sent.
+- The replies: the profile, the cell size, and "OK" only with ID 31.
 
 `internal/cli/report`:
 

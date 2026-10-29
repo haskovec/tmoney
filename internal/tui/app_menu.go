@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -245,6 +246,9 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 	case widget.MenuActionToggleClosedPositions:
 		return a.toggleClosedPositions()
 
+	case widget.MenuActionCycleChartImages:
+		return a.cycleChartImages()
+
 	case widget.MenuActionNone:
 		// No action
 	}
@@ -277,6 +281,25 @@ func (a *App) toggleClosedPositions() (tea.Model, tea.Cmd) {
 		if a.portfolio.data != nil && a.portfolio.data.account != nil {
 			return a, a.portfolio.load(a.portfolioDeps(), a.portfolio.data.account.ID)
 		}
+	}
+	return a, nil
+}
+
+// cycleChartImages moves the "View → Chart images" setting to its next
+// value (Auto, On, Off, Auto) and saves it (best-effort — Save() is a no-op
+// under `go test`). The pie follows at once: after Update, syncPie draws or
+// deletes it. A change from Off asks the terminal again, because with Off
+// it asked nothing at start.
+func (a *App) cycleChartImages() (tea.Model, tea.Cmd) {
+	a.menubar.Deactivate()
+	if a.cfg == nil {
+		return a, nil
+	}
+	from := a.chartImagesMode()
+	a.cfg.ChartImages = from.Next().String()
+	_ = a.cfg.Save()
+	if from == termimg.ModeOff {
+		return a, a.queryPie()
 	}
 	return a, nil
 }

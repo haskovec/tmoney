@@ -1,6 +1,7 @@
 // Package chart holds what the asset allocation report draws with: the fixed
-// color of each asset class. It has no terminal and no TUI state, so the TUI
-// and the CLI share it. See specs/design-asset-allocation-report.md §5.4.
+// color of each asset class, and the pie. It has no terminal and no TUI
+// state, so the TUI and the CLI share it. See
+// specs/design-asset-allocation-report.md §5.4 and §6.2.
 package chart
 
 import (

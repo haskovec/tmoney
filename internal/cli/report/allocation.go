@@ -10,8 +10,10 @@ import (
 
 	"github.com/haskovec/tmoney/internal/app"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	"github.com/haskovec/tmoney/internal/config"
 	reportdom "github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -70,18 +72,27 @@ func runReportAllocation(opts *reportAllocationOptions, w io.Writer) error {
 		return err
 	}
 	defer database.Close()
-	return reportAllocation(w, svc, class)
+	// Only the full report has pies (§9: no pie for one class).
+	var pie *cliPie
+	if class == "" {
+		mode := termimg.ModeAuto
+		if cfg, err := config.Load(); err == nil {
+			mode = termimg.ParseMode(cfg.ChartImages)
+		}
+		pie = probeCLIPie(w, mode)
+	}
+	return reportAllocation(w, svc, class, pie)
 }
 
 // reportAllocation is runReportAllocation on open services. class is "" for
-// the full report.
-func reportAllocation(w io.Writer, svc *app.Services, class security.AssetClass) error {
+// the full report; pie is nil for text.
+func reportAllocation(w io.Writer, svc *app.Services, class security.AssetClass, pie *cliPie) error {
 	rpt, err := svc.Report.Allocation()
 	if err != nil {
 		return fmt.Errorf("failed to generate allocation report: %w", err)
 	}
 	if class == "" {
-		printAllocationReport(w, rpt)
+		printAllocationReport(w, rpt, pie)
 	} else if !printAllocationClass(w, rpt, class) {
 		return notInClassError(rpt, class)
 	}
@@ -92,8 +103,9 @@ func reportAllocation(w io.Writer, svc *app.Services, class security.AssetClass)
 const allocationBarWidth = 20
 
 // printAllocationReport prints the allocation report: one table per
-// currency, each with its TOTAL line and its notes.
-func printAllocationReport(w io.Writer, rpt *reportdom.Allocation) {
+// currency, each with its TOTAL line and its notes. With a pie, a section
+// that can show one prints its pie and legend in place of the table.
+func printAllocationReport(w io.Writer, rpt *reportdom.Allocation, pie *cliPie) {
 	fmt.Fprintln(w, "ASSET ALLOCATION")
 	fmt.Fprintln(w, "================")
 	fmt.Fprintf(w, "As of: %s\n", rpt.AsOfDate.Time().Format("January 2, 2006"))
@@ -111,13 +123,32 @@ func printAllocationReport(w io.Writer, rpt *reportdom.Allocation) {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
-		printAllocationSection(w, sec)
+		printAllocationSection(w, sec, pie)
 	}
 }
 
 // printAllocationSection prints one currency's classes, its TOTAL line, and
-// its notes.
-func printAllocationSection(w io.Writer, sec reportdom.AllocationSection) {
+// its notes: as a pie and its legend when pie is set and the section can
+// show one, else as a table with bars.
+func printAllocationSection(w io.Writer, sec reportdom.AllocationSection, pie *cliPie) {
+	var notes []string
+	switch {
+	case pie != nil && sec.Drawable():
+		if !printAllocationPie(w, sec, pie) {
+			printAllocationTable(w, sec)
+		}
+	case pie != nil:
+		printAllocationTable(w, sec)
+		notes = append(notes, sec.NoPieNote())
+	default:
+		printAllocationTable(w, sec)
+	}
+	printAllocationNotes(w, sec, notes)
+}
+
+// printAllocationTable prints one currency's classes with their bars, and
+// its TOTAL line.
+func printAllocationTable(w io.Writer, sec reportdom.AllocationSection) {
 	money := func(m types.Money) string { return cmdutil.FormatMoney(m, sec.Currency) }
 	shown := sec.Shown()
 	largest := types.ZeroMoney
@@ -148,8 +179,11 @@ func printAllocationSection(w io.Writer, sec reportdom.AllocationSection) {
 	}
 	tw.Flush()
 	printTrimmed(w, buf.String())
+}
 
-	var notes []string
+// printAllocationNotes prints the notes under a section: first the ones
+// given, then the notes of the section.
+func printAllocationNotes(w io.Writer, sec reportdom.AllocationSection, notes []string) {
 	if !sec.Available {
 		notes = append(notes, "Percentages leave out accounts that could not be valued.")
 	}

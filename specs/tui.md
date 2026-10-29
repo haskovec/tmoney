@@ -370,10 +370,15 @@ Enter or a double click on a row shows how it splits across the accounts,
 and Esc goes back. See [`design-holdings-report.md`](design-holdings-report.md).
 
 The asset allocation report is a table of the asset classes, with a bar in
-the color of each class. Enter or a double click on a class shows its
-holdings; Enter on a holding shows its split across the accounts; `e` on a
-holding opens Edit Security, and a save reloads the report. Esc goes back
-one level. With more than one currency, `←`/`→` change the currency. See
+the color of each class. In a terminal that shows kitty images (tested:
+Ghostty and Rex), and with room on the screen, a pie of the classes is on the
+left and the table is its legend on the right, with a swatch in place of the
+bar. The pie needs 256 colors or more, and it does not show in tmux; View →
+Chart images changes this. A click on the pie selects nothing. Enter or a
+double click on a class shows its holdings, full width with no pie; Enter on
+a holding shows its split across the accounts; `e` on a holding opens Edit
+Security, and a save reloads the report. Esc goes back one level. With more
+than one currency, `←`/`→` change the currency. See
 [`design-asset-allocation-report.md`](design-asset-allocation-report.md).
 
 ## Menu Bar
@@ -396,6 +401,10 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 
 ### View Menu
 - Show closed positions — a toggle (a `✓` marks it on)
+- Chart images: Auto / On / Off — each select moves to the next value and
+  saves it as `chart_images` in `config.json`. Auto shows the allocation pie
+  when the terminal replies that it shows kitty images and the app is not in
+  tmux; On skips those two checks; Off never shows it
 - Theme entries — one row per available theme (the built-ins `default`,
   `light`, and `turbo-vision`, plus any user-installed theme from the theme
   directory), the active one marked `✓`. Selecting one applies it live and

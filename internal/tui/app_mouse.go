@@ -115,6 +115,16 @@ func (a *App) handleMouseContent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return a.handleMouseTable(msg, contentY)
 }
 
+// contentStartX is the screen column where the current view's content
+// starts: 0 with no sidebar, else right after the sidebar. The sidebar's
+// width counts its border (Styles.ContentWidth).
+func (a *App) contentStartX() int {
+	if e, _ := viewFor(a.currentView); e.fullScreen {
+		return 0
+	}
+	return a.styles.SidebarWidth()
+}
+
 // handleMouseDashboard toggles expand/collapse when a click lands on an
 // investment account's ▸/▾ header row in the dashboard's ASSETS column.
 // contentStartX is the absolute column where the content pane begins (0 in the
@@ -153,8 +163,14 @@ func (a *App) handleMouseDashboard(m tea.Mouse, contentY, contentStartX int) (te
 // Single click moves the cursor; on tables that support drill-in
 // (the prices list, and the holdings and allocation reports), a second click
 // on the same row within the double-click threshold opens the row.
-func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
+func (a *App) handleMouseTable(msg tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	tableY := contentY - a.tableContentRowOffset()
+
+	// The allocation pie shares its lines with the rows of its legend, so a
+	// click on the pie selects nothing (C9). The report is padded by 2.
+	if a.currentView == ViewReports && a.reports.clickOnPie(msg.Mouse().X-a.contentStartX()-2) {
+		return a, nil
+	}
 
 	tbl := a.activeTable()
 	if tbl == nil {

@@ -251,9 +251,9 @@ func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
 }
 
 // render renders the reports view. height is the terminal height, which
-// sizes the holdings and allocation tables; dark selects the class colors
-// of the allocation report.
-func (s *reportsViewState) render(styles widget.Styles, height int, dark bool) string {
+// sizes the holdings and allocation tables; look gives the allocation
+// report its class colors and its pie.
+func (s *reportsViewState) render(styles widget.Styles, height int, look reportsLook) string {
 	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -268,7 +268,7 @@ func (s *reportsViewState) render(styles widget.Styles, height int, dark bool) s
 	case reportTypeHoldings:
 		return s.renderHoldings(styles, height)
 	case reportTypeAllocation:
-		return s.renderAllocation(styles, height, dark)
+		return s.renderAllocation(styles, height, look)
 	default:
 		return lipgloss.NewStyle().
 			Padding(1, 2).

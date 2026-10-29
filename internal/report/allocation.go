@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/haskovec/tmoney/internal/chart"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -177,6 +178,44 @@ func UnclassifiedNote(n int) string {
 		return "1 holding has no asset class."
 	}
 	return fmt.Sprintf("%d holdings have no asset class.", n)
+}
+
+// Drawable reports whether a pie can show the section: its Value is more
+// than zero and no class Value is negative (D11). Negative cash is the usual
+// reason it cannot.
+func (s AllocationSection) Drawable() bool {
+	if !s.Value.IsPositive() {
+		return false
+	}
+	for _, c := range s.Classes {
+		if c.Value.IsNegative() {
+			return false
+		}
+	}
+	return true
+}
+
+// NoPieNote says why a section that is not Drawable has no pie.
+func (s AllocationSection) NoPieNote() string {
+	for _, c := range s.Classes {
+		if c.Value.IsNegative() {
+			return fmt.Sprintf("No pie: %s is negative.", c.Class.DisplayName())
+		}
+	}
+	return "No pie: the total is zero."
+}
+
+// PieSlices are the slices of the section's pie: the shown classes in the
+// order of the table, in their light or dark colors. A class with no value
+// has a row but no slice (D5).
+func (s AllocationSection) PieSlices(dark bool) []chart.Slice {
+	var out []chart.Slice
+	for _, c := range s.Shown() {
+		if c.Value.IsPositive() {
+			out = append(out, chart.Slice{Value: c.Value.Float64(), Color: chart.ClassColor(c.Class, dark)})
+		}
+	}
+	return out
 }
 
 // Shown are the classes that have a row in the table and a slice in the pie:

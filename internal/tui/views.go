@@ -131,7 +131,7 @@ func init() {
 		{
 			id:     ViewReports,
 			name:   "Reports",
-			render: func(a *App) string { return a.reports.render(a.styles, a.height, !a.lightBackground) },
+			render: func(a *App) string { return a.reports.render(a.styles, a.height, a.reportsLook()) },
 			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				// Keys always go to the report. A click in the sidebar took
 				// the focus, and with it the report's cursor, so take it back.

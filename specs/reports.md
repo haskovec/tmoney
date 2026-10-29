@@ -322,7 +322,16 @@ cash and each security of class Cash. A holding with no price is left out of
 every value and percentage, and a note names it. Unclassified is always the
 last row. Enter on a class shows its holdings, Enter on a holding shows its
 split across the accounts, and `e` there edits the security, so a class can
-be fixed from the report. The full design is in
+be fixed from the report.
+
+In a terminal that shows kitty images, a pie of the classes is beside the
+table, which becomes its legend: a swatch in the class color in place of the
+bar. The slices are in the order of the rows, clockwise from 12 o'clock; a
+slice smaller than 2° is drawn at 2°. The CLI prints the pie only when its
+output is a terminal, so a pipe, a file and an AI agent get the text. A
+section with negative cash, or a total of zero, has no pie and a note says
+why. The `chart_images` setting (`auto`, `on`, `off`) is the same for the TUI
+and the CLI. The full design is in
 [`design-asset-allocation-report.md`](design-asset-allocation-report.md).
 
 ## Report Data Models

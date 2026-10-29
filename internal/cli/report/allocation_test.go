@@ -2,6 +2,8 @@ package report_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -175,4 +177,31 @@ func TestReportAllocation_Empty(t *testing.T) {
 			t.Errorf("err = %v, output:\n%s", err, out)
 		}
 	})
+}
+
+// Output to a file is text only, also when the setting says "on".
+func TestReportAllocation_ChartImagesOnToAFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "tmoney"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tmoney", "config.json"), []byte(`{"chart_images":"on"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.Create(filepath.Join(dir, "out.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	if err := cli.ExecuteWith([]string{"report", "allocation", "--file", allocationFile(t)}, out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("report allocation: %v", err)
+	}
+	got, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "TOTAL (USD)") || strings.Contains(string(got), "\x1b") {
+		t.Errorf("want the text report with no escape code:\n%q", got)
+	}
 }

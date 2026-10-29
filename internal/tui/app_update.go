@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -13,6 +15,12 @@ import (
 // reaching past it — the status bar, a view reload, a service, switchView —
 // is an App method in the feature's own file.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := a.update(msg)
+	// Any message can change what the screen needs of the pie image.
+	return m, a.syncPie(cmd)
+}
+
+func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// The key hints can depend on a view's state, not only on the view: the
 	// Prices hints follow its mode, which changes without a view switch. So
 	// read them again after every message.
@@ -198,6 +206,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		a.lightBackground = !msg.IsDark()
 		return a, nil
+
+	case tea.ColorProfileMsg:
+		a.pie.profile = msg.Profile
+		return a, nil
+
+	case uv.CellSizeEvent:
+		if msg.Width > 0 && msg.Height > 0 {
+			a.pie.cellW, a.pie.cellH = msg.Width, msg.Height
+		}
+		return a, nil
+
+	case uv.KittyGraphicsEvent:
+		if msg.Options.ID == termimg.QueryID && string(msg.Payload) == "OK" {
+			a.pie.kittyOK = true
+		}
+		return a, nil
+
+	case pieDrawnMsg:
+		return a, a.pieDrawn(msg)
 
 	case reportsEditSecurityMsg:
 		// While the security loaded, the drill-down can have closed or
