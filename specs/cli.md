@@ -1640,7 +1640,7 @@ Edit fields on an existing security. Only flags that are supplied take effect. P
 ```bash
 tmoney security edit AAPL --name "Apple Corporation"
 tmoney security edit AAPL --ticker AAPL2
-tmoney security edit VTI --asset-class total_market
+tmoney security edit VTI --asset-class large_cap_stock
 ```
 
 ### `security hide`

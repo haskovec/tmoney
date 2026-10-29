@@ -502,6 +502,24 @@ func TestBuildEditSecurityDialog_AssetClassSelection(t *testing.T) {
 	}
 }
 
+// TestBuildEditSecurityDialog_AssetClassOrder: the picker lists the three
+// stock sizes together, Mid Cap between Large Cap and Small Cap.
+func TestBuildEditSecurityDialog_AssetClassOrder(t *testing.T) {
+	sec := security.NewSecurity("ACME", "Acme Total Market Index", security.TypeETF)
+	opts := buildEditSecurityDialog(sec).Fields()[4].Options
+	want := []string{"Large Cap Stock", "Mid Cap Stock", "Small Cap Stock"}
+	for i, label := range want {
+		if opts[i] != label {
+			t.Errorf("asset class option %d = %q, want %q", i, opts[i], label)
+		}
+	}
+	for _, label := range opts {
+		if label == "Index" {
+			t.Error("the removed Index class is still offered")
+		}
+	}
+}
+
 func TestSecurityViewKeyHints(t *testing.T) {
 	app := &App{
 		currentView: ViewSecurities,

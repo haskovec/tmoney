@@ -168,6 +168,16 @@ func TestAssetClass(t *testing.T) {
 		}
 	})
 
+	t.Run("AllAssetClasses puts the three stock sizes together", func(t *testing.T) {
+		classes := AllAssetClasses()
+		want := []AssetClass{AssetClassLargeCapStock, AssetClassMidCapStock, AssetClassSmallCapStock}
+		for i, ac := range want {
+			if classes[i] != ac {
+				t.Errorf("AllAssetClasses()[%d] = %q, want %q", i, classes[i], ac)
+			}
+		}
+	})
+
 	t.Run("String returns correct value", func(t *testing.T) {
 		if AssetClassLargeCapStock.String() != "large_cap_stock" {
 			t.Errorf("Expected 'large_cap_stock', got %q", AssetClassLargeCapStock.String())
@@ -198,9 +208,9 @@ func TestAssetClass(t *testing.T) {
 			expected   string
 		}{
 			{AssetClassLargeCapStock, "Large Cap Stock"},
+			{AssetClassMidCapStock, "Mid Cap Stock"},
 			{AssetClassSmallCapStock, "Small Cap Stock"},
 			{AssetClassInternationalStock, "International Stock"},
-			{AssetClassIndex, "Index"},
 			{AssetClassDomesticBond, "Domestic Bond"},
 			{AssetClassForeignBond, "Foreign Bond"},
 			{AssetClassCash, "Cash"},
@@ -240,10 +250,28 @@ func TestParseAssetClass(t *testing.T) {
 		}
 	})
 
+	t.Run("Parses mid_cap_stock", func(t *testing.T) {
+		ac, err := ParseAssetClass("mid_cap_stock")
+		if err != nil {
+			t.Fatalf("ParseAssetClass returned error: %v", err)
+		}
+		if ac != AssetClassMidCapStock {
+			t.Errorf("Expected AssetClassMidCapStock, got %q", ac)
+		}
+	})
+
 	t.Run("Rejects invalid classes", func(t *testing.T) {
 		_, err := ParseAssetClass("not_a_class")
 		if err == nil {
 			t.Error("ParseAssetClass('not_a_class') should return error")
+		}
+	})
+
+	// Migration 037 removed the index class: it told how a fund is managed,
+	// not what it holds.
+	t.Run("Rejects the removed index class", func(t *testing.T) {
+		if _, err := ParseAssetClass("index"); err == nil {
+			t.Error("ParseAssetClass('index') should return error")
 		}
 	})
 }
