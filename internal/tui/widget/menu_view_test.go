@@ -48,10 +48,10 @@ func TestBuildShowClosedPositionsItem_On(t *testing.T) {
 // arg; the themes' ✓ prefix tracks the activeTheme arg — verifying
 // both arguments are routed correctly.
 func TestBuildViewMenuItems_OrdersToggleFirstAndThemes(t *testing.T) {
-	got := BuildViewMenuItems("turbo-vision", true)
+	got := BuildViewMenuItems("turbo-vision", true, "Off")
 
-	if len(got) < 2 {
-		t.Fatalf("expected at least 2 items (toggle + themes), got %d", len(got))
+	if len(got) < 3 {
+		t.Fatalf("expected at least 3 items (toggle, chart images, themes), got %d", len(got))
 	}
 
 	if got[0].Action != MenuActionToggleClosedPositions {
@@ -61,9 +61,14 @@ func TestBuildViewMenuItems_OrdersToggleFirstAndThemes(t *testing.T) {
 		t.Errorf("items[0].label = %q, want '✓ ' prefix (toggle is on)", got[0].Label)
 	}
 
-	// Themes follow the toggle; the active one carries a ✓ marker.
+	// The Chart images setting is second, with its value.
+	if got[1].Action != MenuActionCycleChartImages || got[1].Label != "  Chart images: Off" {
+		t.Errorf("items[1] = %q (action %d), want \"  Chart images: Off\" with MenuActionCycleChartImages", got[1].Label, got[1].Action)
+	}
+
+	// Themes follow the settings; the active one carries a ✓ marker.
 	var foundActiveTheme bool
-	for _, item := range got[1:] {
+	for _, item := range got[2:] {
 		if item.Action != MenuActionLoadTheme {
 			t.Errorf("post-toggle item %q has action %d, want MenuActionLoadTheme", item.Label, item.Action)
 		}
@@ -77,7 +82,7 @@ func TestBuildViewMenuItems_OrdersToggleFirstAndThemes(t *testing.T) {
 }
 
 func TestBuildViewMenuItems_ToggleOffNoCheckmark(t *testing.T) {
-	got := BuildViewMenuItems("", false)
+	got := BuildViewMenuItems("", false, "Auto")
 
 	if len(got) < 1 {
 		t.Fatal("expected at least the toggle item")

@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/chart"
 	"github.com/haskovec/tmoney/internal/security"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // classed adds a security in an asset class.
@@ -262,5 +264,47 @@ func TestAllocation_Empty(t *testing.T) {
 	e.value(brokerage, "0")
 	if rpt := e.allocation(t); len(rpt.Sections) != 0 || rpt.AccountCount != 1 {
 		t.Errorf("report = %+v, want no section and one account", rpt)
+	}
+}
+
+// A pie can show a section with a positive total and no negative class.
+func TestAllocationSection_Drawable(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		classes []int64
+		want    bool
+	}{
+		{"all positive", []int64{100, 50}, true},
+		{"a class of zero", []int64{100, 0}, true},
+		{"negative cash", []int64{100, -5}, false},
+		{"a total of zero", []int64{0}, false},
+		{"no classes", nil, false},
+	} {
+		sec := AllocationSection{Value: types.ZeroMoney}
+		for _, v := range tc.classes {
+			sec.Classes = append(sec.Classes, ClassRow{Value: types.NewMoneyFromInt(v)})
+			sec.Value = sec.Value.Add(types.NewMoneyFromInt(v))
+		}
+		if got := sec.Drawable(); got != tc.want {
+			t.Errorf("%s: Drawable = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The note says why there is no pie, and the slices leave out a class with
+// no value.
+func TestAllocationSection_NoPieNoteAndSlices(t *testing.T) {
+	cash := ClassRow{Class: security.AssetClassCash, Value: types.NewMoneyFromInt(-5), Holdings: []ClassHolding{{}}}
+	large := ClassRow{Class: security.AssetClassLargeCapStock, Value: types.NewMoneyFromInt(100), Holdings: []ClassHolding{{}}}
+	empty := ClassRow{Class: security.AssetClassCrypto, Value: types.ZeroMoney, Holdings: []ClassHolding{{}}}
+	if got := (AllocationSection{Classes: []ClassRow{large, cash}}).NoPieNote(); got != "No pie: Cash is negative." {
+		t.Errorf("negative cash: note = %q", got)
+	}
+	if got := (AllocationSection{Classes: []ClassRow{empty}}).NoPieNote(); got != "No pie: the total is zero." {
+		t.Errorf("zero total: note = %q", got)
+	}
+	slices := (AllocationSection{Classes: []ClassRow{large, empty}}).PieSlices(true)
+	if len(slices) != 1 || slices[0].Value != 100 || slices[0].Color != chart.ClassColor(security.AssetClassLargeCapStock, true) {
+		t.Errorf("slices = %+v, want one Large Cap slice of 100 in the dark color", slices)
 	}
 }

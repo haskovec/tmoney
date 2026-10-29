@@ -266,8 +266,10 @@ tmoney -f personal.tdb account balance
   how a security splits across the accounts
 - Asset allocation: the holdings grouped by asset class (Large, Mid and
   Small Cap Stock, bonds, cash, and more), with each class's percentage and a
-  bar in the class color. Enter on a class shows its holdings, and `e` there
-  edits a security's class (`report allocation` on the CLI)
+  bar in the class color. In a terminal that shows kitty images (tested:
+  Ghostty and Rex), a pie of the classes is beside the table, in the TUI and
+  in `report allocation`. Enter on a class shows its holdings, and `e` there
+  edits a security's class
 
 ### Prices
 - Manual entry, CSV import, and history per security
@@ -1707,6 +1709,7 @@ TMoney stores its configuration at `~/.config/tmoney/config.json`, following the
 The config file tracks:
 - **Last opened file** — automatically reopened when you launch `tmoney` without specifying a file
 - **Recent files** — the 5 most recently opened database files (available via File > Open Recent in the TUI)
+- **Chart images** — `"chart_images": "auto"`, `"on"` or `"off"` (View → Chart images in the TUI). It controls the asset allocation pie, which uses the kitty graphics protocol. `auto` (the default) shows the pie when the terminal replies that it shows kitty images and tmoney is not in tmux. `on` skips those two checks, for a terminal that shows the pie but does not reply. `off` never shows it; set it if a terminal shows broken cells in place of the pie. The CLI prints the pie only when its output is a terminal
 
 This means you can simply run `tmoney` after your first session and it will reopen the last file you were working with. Specifying `-f <path>` or a positional argument always takes priority over the saved default.
 

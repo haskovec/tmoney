@@ -57,7 +57,7 @@ func specAllocation() *reportdom.Allocation {
 // The full report is the spec's §5.3.1 example, with both notes.
 func TestPrintAllocationReport_SpecExample(t *testing.T) {
 	var out bytes.Buffer
-	printAllocationReport(&out, specAllocation())
+	printAllocationReport(&out, specAllocation(), nil)
 	want := `ASSET ALLOCATION
 ================
 As of: January 15, 2024
@@ -125,7 +125,7 @@ func TestPrintAllocationReport_UnclassifiedNote(t *testing.T) {
 		un := &sec.Classes[len(sec.Classes)-1]
 		un.Holdings = make([]reportdom.ClassHolding, tc.count)
 		var out bytes.Buffer
-		printAllocationReport(&out, rpt)
+		printAllocationReport(&out, rpt, nil)
 		got := out.String()
 		if tc.want == "" {
 			if strings.Contains(got, "no asset class") {
@@ -159,7 +159,7 @@ func TestPrintAllocationReport_FailedAndCurrencies(t *testing.T) {
 		Failed: []reportdom.AccountFailure{{Name: "Birch 401k", Currency: "USD", Err: errors.New("price lookup failed")}},
 	}
 	var out bytes.Buffer
-	printAllocationReport(&out, rpt)
+	printAllocationReport(&out, rpt, nil)
 	got := out.String()
 	for _, want := range []string{
 		"TOTAL (EUR)  0         €40.00",

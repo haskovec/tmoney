@@ -36,6 +36,11 @@ type Config struct {
 	// default of false (closed positions hidden).
 	ShowClosedPositions bool `json:"show_closed_positions,omitzero"`
 
+	// ChartImages is the "View → Chart images" setting: "auto", "on" or
+	// "off" (termimg.ParseMode). Empty or unknown means "auto", so old
+	// config files keep working.
+	ChartImages string `json:"chart_images,omitempty"`
+
 	// ValueAdjustmentNoticeShown records that the user has already been
 	// warned that their pre-existing user category named "Value
 	// Adjustment" collides with the system category and will not be

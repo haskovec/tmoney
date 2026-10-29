@@ -68,6 +68,7 @@ const (
 	MenuActionThemeSubmenu
 	MenuActionLoadTheme
 	MenuActionToggleClosedPositions
+	MenuActionCycleChartImages
 
 	// Help menu actions
 	MenuActionKeyboardShortcuts

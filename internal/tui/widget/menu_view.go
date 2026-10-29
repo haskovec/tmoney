@@ -18,13 +18,26 @@ func BuildShowClosedPositionsItem(showClosed bool) MenuItem {
 	}
 }
 
+// BuildChartImagesItem returns the "Chart images" entry for the View
+// menu, with the setting's value in the label: "Auto", "On" or "Off". It
+// has the 2-space prefix of an unchecked toggle, so the labels stay
+// column-aligned. Selecting the item dispatches MenuActionCycleChartImages;
+// the handler moves the setting to the next value and saves it.
+func BuildChartImagesItem(label string) MenuItem {
+	return MenuItem{
+		Label:  "  Chart images: " + label,
+		Action: MenuActionCycleChartImages,
+	}
+}
+
 // BuildViewMenuItems composes the full View-menu dropdown: the
-// "Show closed positions" toggle on top, followed by every theme
-// entry. The toggle is listed first because it changes *what* is
-// rendered, whereas the theme entries change *how* it is rendered —
-// the structural setting goes ahead of the cosmetic ones.
-func BuildViewMenuItems(activeTheme string, showClosed bool) []MenuItem {
-	items := []MenuItem{BuildShowClosedPositionsItem(showClosed)}
+// "Show closed positions" toggle and the "Chart images" setting on top,
+// followed by every theme entry. The settings are listed first because
+// they change *what* is rendered, whereas the theme entries change *how*
+// it is rendered — the structural settings go ahead of the cosmetic ones.
+// chartImages is the label of the Chart images value.
+func BuildViewMenuItems(activeTheme string, showClosed bool, chartImages string) []MenuItem {
+	items := []MenuItem{BuildShowClosedPositionsItem(showClosed), BuildChartImagesItem(chartImages)}
 	items = append(items, BuildThemeMenuItems(activeTheme)...)
 	return items
 }
