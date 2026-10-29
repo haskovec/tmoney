@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/report"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -20,13 +21,15 @@ const (
 	reportTypeNetWorth reportType = iota
 	reportTypeSpending
 	reportTypeHoldings
+	reportTypeAllocation
 )
 
 // reportsViewState is everything the Reports view owns. Its zero value is the
 // view before its first load.
 type reportsViewState struct {
-	data     *reportsViewData
-	holdings holdingsViewState
+	data       *reportsViewData
+	holdings   holdingsViewState
+	allocation allocationViewState
 }
 
 // reportsViewData holds the loaded data for the reports view.
@@ -35,8 +38,10 @@ type reportsViewData struct {
 	netWorth *report.NetWorth
 	spending *report.Spending
 	holdings *report.Holdings
-	year     int
-	month    int // 1-12 for monthly, 0 for yearly
+	// allocation is the asset allocation report.
+	allocation *report.Allocation
+	year       int
+	month      int // 1-12 for monthly, 0 for yearly
 	// includeTransfers folds categorized transfers into the spending report.
 	// Session-only state (like the period), reset on a fresh entry to the view.
 	includeTransfers bool
@@ -55,6 +60,9 @@ type reportsViewDataLoadedMsg struct {
 // guards that run over viewControllers.
 type reportsDeps struct {
 	reports func() *report.Service
+	// securities loads the security that `e` edits from the allocation
+	// report.
+	securities func() *security.Service
 	// file tags the messages of the loads (see fileOf).
 	file func() fileOf
 }
@@ -66,8 +74,9 @@ func (a *App) reportsDeps() reportsDeps {
 	svc := a.services
 	file := a.fileOfOpen()
 	return reportsDeps{
-		reports: func() *report.Service { return svc.Report },
-		file:    func() fileOf { return file },
+		reports:    func() *report.Service { return svc.Report },
+		securities: func() *security.Service { return svc.Security },
+		file:       func() fileOf { return file },
 	}
 }
 
@@ -114,6 +123,14 @@ func (s *reportsViewState) load(d reportsDeps, rt reportType, year, month int, i
 				}
 				data.holdings = report
 			}
+		case reportTypeAllocation:
+			if reports := d.reports(); reports != nil {
+				report, err := reports.Allocation()
+				if err != nil {
+					return errMsg{err: err, fileOf: file}
+				}
+				data.allocation = report
+			}
 		}
 
 		return reportsViewDataLoadedMsg{data: data, fileOf: file}
@@ -127,6 +144,9 @@ func (s *reportsViewState) handleKey(d reportsDeps, msg tea.KeyPressMsg, keys ke
 	}
 	if s.handleHoldingsKey(msg, keys) {
 		return nil
+	}
+	if took, cmd := s.handleAllocationKey(d, msg, keys); took {
+		return cmd
 	}
 
 	switch {
@@ -155,6 +175,10 @@ func (s *reportsViewState) handleKey(d reportsDeps, msg tea.KeyPressMsg, keys ke
 	case msg.String() == "i":
 		// Switch to the holdings report
 		return s.load(d, reportTypeHoldings, s.data.year, s.data.month, s.data.includeTransfers)
+
+	case msg.String() == "a":
+		// Switch to the asset allocation report
+		return s.load(d, reportTypeAllocation, s.data.year, s.data.month, s.data.includeTransfers)
 
 	case msg.String() == "y":
 		// Toggle to yearly spending view (only for spending)
@@ -227,8 +251,9 @@ func (s *reportsViewState) nextPeriod(d reportsDeps) tea.Cmd {
 }
 
 // render renders the reports view. height is the terminal height, which
-// sizes the holdings table.
-func (s *reportsViewState) render(styles widget.Styles, height int) string {
+// sizes the holdings and allocation tables; dark selects the class colors
+// of the allocation report.
+func (s *reportsViewState) render(styles widget.Styles, height int, dark bool) string {
 	if s.data == nil {
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -242,6 +267,8 @@ func (s *reportsViewState) render(styles widget.Styles, height int) string {
 		return s.renderSpending(styles)
 	case reportTypeHoldings:
 		return s.renderHoldings(styles, height)
+	case reportTypeAllocation:
+		return s.renderAllocation(styles, height, dark)
 	default:
 		return lipgloss.NewStyle().
 			Padding(1, 2).
@@ -289,7 +316,7 @@ func (s *reportsViewState) renderNetWorth(styles widget.Styles) string {
 
 	// Navigation hints
 	sections = append(sections, "")
-	sections = append(sections, styles.Muted.Render("  n net worth  s spending  i holdings  esc back"))
+	sections = append(sections, styles.Muted.Render("  n net worth  s spending  i holdings  a allocation  esc back"))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -386,7 +413,7 @@ func (s *reportsViewState) renderSpending(styles widget.Styles) string {
 	if s.data.month > 0 {
 		modeHint = "y yearly"
 	}
-	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  i holdings  esc back", modeHint)))
+	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  i holdings  a allocation  esc back", modeHint)))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -432,4 +459,43 @@ func renderSpendingBar(percentage float64, maxWidth int) string {
 	}
 	filled := max(min(int(math.Round(percentage/100.0*float64(maxWidth))), maxWidth), 0)
 	return strings.Repeat("█", filled) + strings.Repeat("░", maxWidth-filled)
+}
+
+// hints is the status bar's key hints for the report on screen.
+func (s *reportsViewState) hints() string {
+	switch {
+	case s.holdingsReport() != nil:
+		return s.holdingsHints()
+	case s.allocationReport() != nil:
+		return s.allocationHints()
+	}
+	return "←→ period  n net worth  s spending  i holdings  a allocation  y year  m month  esc back"
+}
+
+// tableOnScreen is the table the mouse and the wheel address: the holdings
+// or the allocation report's table on screen, or nil for the other reports.
+func (s *reportsViewState) tableOnScreen() *widget.Table {
+	if tbl := s.holdingsTableOnScreen(); tbl != nil {
+		return tbl
+	}
+	return s.allocationTableOnScreen()
+}
+
+// clickRow takes a click on a row of the table on screen; the cursor is
+// already on it.
+func (s *reportsViewState) clickRow(row int) {
+	s.clickHoldingsRow(row)
+	s.clickAllocationRow(row)
+}
+
+// claimsEsc reports whether Esc goes back inside the view: from a holdings
+// split, or from a class drill-down or its split.
+func (s *reportsViewState) claimsEsc() bool {
+	return s.splitOpen() || s.drillOpen()
+}
+
+// closeDrillDowns goes back to the top table of the report on screen.
+func (s *reportsViewState) closeDrillDowns() {
+	s.closeSplit()
+	s.closeDrill()
 }

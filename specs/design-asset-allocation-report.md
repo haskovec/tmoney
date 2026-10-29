@@ -242,9 +242,15 @@ type ClassHolding struct {
 }
 
 // Drawable reports whether a pie can show the section: its Value is more
-// than zero and no class Value is negative.
+// than zero and no class Value is negative. PR 3 adds it, with the pie that
+// uses it.
 func (s AllocationSection) Drawable() bool
 ```
+
+The section also has `Count()`, `Shown()` (the classes with a priced
+holding: the rows of the table), `Class(ac)`, and `NoPriceNames()`. The
+package has `NoPriceNote` and `UnclassifiedNote`, so the TUI and the CLI
+print the same note text.
 
 `HoldingRow.Percent` is not used here. It is of the holdings total, which
 includes holdings with no price at cost (rule 6).
@@ -261,9 +267,10 @@ func (s *Service) Allocation() (*Allocation, error)
 Steps:
 
 1. `h, err := s.Holdings()`. Copy `AsOfDate`, `AccountCount` and `Failed`.
-2. For each holdings section, for each row, call `classWeights(row)`. In
-   this version it returns one weight: `{row.AssetClass, 1}`. This is the
-   one function of D1.
+2. For each holdings section, for each row, call `classShares(row)`. In
+   this version it returns one share: `{row.AssetClass, row.Value}`. This
+   is the one function of D1: a split version returns a part of the value
+   for each class.
    - A row with `Estimated` set goes to `NoPrice` of its class.
    - Every other row goes to `Holdings` of its class, and its Value adds to
      the class Value.
@@ -363,6 +370,9 @@ Not included (no price): STRK. Add a price to include it.
 - The Cash class lists `Cash  Uninvested cash` as a row.
 - An empty class returns the error of C12.
 - A class in two currencies prints one block per currency.
+- A failed account: the Total line is the class value, as in the class row
+  of §5.3.1, and the line
+  `Percentages leave out accounts that could not be valued.` follows.
 - This output has no image.
 
 ### 5.4 Colors
@@ -486,7 +496,13 @@ Not included (no price): STRK (Large Cap Stock). Add a price to include it.
   `ASSET ALLOCATION   USD (1 of 2)`, and the TOTAL reads `TOTAL`, because
   the view shows one currency.
 - An account that failed: the error line and the note of the holdings
-  report, under the TOTAL.
+  report, under the TOTAL. Only the accounts of the currency on screen have
+  an error line.
+- The notes wrap to the table width, and each wrapped line counts in the
+  height. A cut note would lose the names of holdings with no price.
+- The footer does not scroll. When the names do not fit and leave the
+  table its header, one row and the scroll line, the note counts them:
+  `Not included (no price): 41 holdings. Press i to see them in the holdings report.`
 - Negative cash is a negative Cash row with an empty bar. (PR 3 adds a
   note for it, §6.5.)
 - The empty states are the ones of the holdings view, with "allocation" in
@@ -515,7 +531,10 @@ Total                                                               $45000.00   
 - Columns: Security (8), Name (flex), Value (13), % of Class (10),
   % Total (7).
 - The rows are `ClassRow.Holdings`, then `ClassRow.NoPrice`, with
-  `no price` in the Value column and no percentages.
+  `no price` in the Value column and no percentages. The `Not included`
+  note of §5.3.2 is under the Total line. When the names do not fit, it
+  counts them, as in §5.5.2, and ends `Add a price to include them.`: the
+  holdings are rows of the table.
 - The Cash class has the `Cash  Uninvested cash` row.
 - Enter on a holding opens the account split of the holdings report
   (`splitColumns`, `splitCells`). Its title is the holding, as in the
@@ -529,6 +548,9 @@ Total                                                               $45000.00   
   the existing Edit Security dialog (`buildEditSecurityDialog`) on the
   `a.security` surface, in edit mode.
 - On the Cash row, `e` does nothing.
+- The security loads in a command, and the keys do not wait for it. The
+  dialog opens only if the drill-down of that `e` is still open, with no
+  reload since, and no other dialog is open. Else the reply is dropped.
 - On save, `securityUpdatedMsg` runs `afterSecurityChange`. That function
   also reloads the allocation report when it is on screen. The cursor
   follows C10.
@@ -537,9 +559,9 @@ Total                                                               $45000.00   
 
 - A click on a row selects it. A second click on the same row opens it, as
   in the holdings report.
-- `handleMouseTable` passes the message X. In the allocation view, a click
-  left of the table selects nothing (C9). (In PR 2 the table starts at the
-  left edge, so this rule matters from PR 3.)
+- In the allocation view, a click left of the table selects nothing (C9).
+  In PR 2 the table starts at the left edge, so PR 3 adds this:
+  `handleMouseTable` passes the message X.
 
 #### 5.5.6 Hints and help
 
@@ -579,8 +601,8 @@ Every fixture uses fictional names and amounts.
   section Value equals the holdings section Value.
 - Two currencies give two sections, sorted by code.
 - A failed account: the section is not Available, and `Failed` is copied.
-- Negative cash larger than the money market: the Cash class is negative,
-  and `Drawable` is false. A total of zero or less: `Drawable` is false.
+- Negative cash: the Cash class is negative, and the section Value is still
+  the holdings section Value. (The `Drawable` tests come with PR 3.)
 
 `internal/chart`:
 

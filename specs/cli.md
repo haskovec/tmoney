@@ -1468,6 +1468,69 @@ Total                   412.5   $101103.75  100.0%
 ACME is 40.0% of all holdings (~$253070.17).
 ```
 
+### `report allocation`
+
+`Use: report allocation` · `Args: NoArgs`
+
+Show the holdings of the active investment accounts grouped by the asset
+class of each security, with each class's number of holdings, value,
+percentage of the total, and a bar. The Cash class holds the accounts'
+uninvested cash and each security of class `cash`. A holding with no price
+is left out of every value and percentage, and a note names it; so the total
+is the holdings total less those holdings. Unclassified is always the last
+row, and a note tells how to set a class. Each currency has its own table,
+total and notes. When an account cannot be valued, its currency's total
+prints `not available` and the command exits non-zero. See
+[`design-asset-allocation-report.md`](design-asset-allocation-report.md).
+
+**Optional flags:**
+- `--asset-class string` — Show the holdings in one class (the values of
+  `security list --asset-class`). A class with no holding is an error.
+
+For the split of one security across the accounts, use
+`tmoney report holdings --ticker`.
+
+```bash
+tmoney report allocation
+tmoney report allocation --asset-class mid_cap_stock
+```
+
+```
+ASSET ALLOCATION
+================
+As of: January 15, 2024
+
+Asset Class          Holdings  Value       % Total
+Large Cap Stock      2         $110175.75  33.6%    ████████████████████
+Asset Mixture        1         $58226.45   17.7%    ██████████▌
+Mid Cap Stock        2         $45000.00   13.7%    ████████▏
+International Stock  1         $40240.80   12.3%    ███████▎
+Domestic Bond        1         $29581.50   9.0%     █████▎
+Cash                 1         $17345.67   5.3%     ███▏
+Real Estate          1         $12500.00   3.8%     ██▎
+Small Cap Stock      1         $8000.00    2.4%     █▍
+Crypto               1         $6000.00    1.8%     █
+Unclassified         1         $1200.00    0.4%     ▏
+TOTAL (USD)          12        $328270.17  100.0%
+
+Not included (no price): STRK (Large Cap Stock). Add a price to include it.
+1 holding has no asset class. Set one with: tmoney security edit <ticker> --asset-class <class>
+```
+
+```
+ASSET CLASS: Large Cap Stock
+============================
+As of: January 15, 2024
+
+Security  Name                     Value       % of Class  % Total
+ACME      Acme Total Market Index  $101103.75  91.8%       30.8%
+INIT      Initech Corp             $9072.00    8.2%        2.8%
+STRK      Stark Industries         no price
+Total                              $110175.75  100.0%      33.6%
+
+Not included (no price): STRK. Add a price to include it.
+```
+
 ---
 
 ## `scheduled`

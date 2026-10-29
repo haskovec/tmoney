@@ -137,6 +137,9 @@ func reportsShortcuts() shortcutSection {
 			{"t", "Toggle categorized transfers (spending)"},
 			{"i", "Holdings report"},
 			{"Enter", "Holdings: show the accounts that hold the row"},
+			{"a", "Asset allocation report"},
+			{"Enter", "Allocation: show the holdings of the class"},
+			{"e", "Allocation: edit the security"},
 		},
 	}
 }

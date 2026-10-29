@@ -264,6 +264,10 @@ tmoney -f personal.tdb account balance
   percentage of the total and a bar, plus one Cash row, so the total is the
   investment value in net worth. Enter (or `report holdings --ticker`) shows
   how a security splits across the accounts
+- Asset allocation: the holdings grouped by asset class (Large, Mid and
+  Small Cap Stock, bonds, cash, and more), with each class's percentage and a
+  bar in the class color. Enter on a class shows its holdings, and `e` there
+  edits a security's class (`report allocation` on the CLI)
 
 ### Prices
 - Manual entry, CSV import, and history per security
@@ -306,7 +310,7 @@ The TUI has several views accessible via number keys or the menu bar:
 |-----|------|-------------|
 | `1` | Dashboard | Net worth, account balances, due scheduled transactions |
 | `2` | Scheduled | Due and upcoming scheduled transactions |
-| `3` | Reports | Net worth, spending by category, and holdings reports |
+| `3` | Reports | Net worth, spending by category, holdings, and asset allocation reports |
 | `4` | Securities | Security master list with add/edit/hide/delete and `u` to refresh prices |
 | `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history; `u` to refresh prices |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
@@ -435,6 +439,10 @@ register.
 | `s` | Spending report |
 | `i` | Holdings report |
 | `Enter` | Holdings: show how the row splits across the accounts (also double-click) |
+| `a` | Asset allocation report |
+| `Enter` | Allocation: show the holdings of the class, then a holding's split (also double-click) |
+| `e` | Allocation: edit the security under the cursor |
+| `Left/Right` | Allocation: change the currency (with more than one) |
 | `t` | Toggle including categorized transfers (spending report; session-only) |
 | `y` | Yearly view |
 | `m` | Monthly view |
@@ -977,6 +985,10 @@ tmoney report spending --month 2026-07 --include-transfers
 # Holdings across all investment accounts, and one security's split
 tmoney report holdings
 tmoney report holdings --ticker ACME
+
+# Holdings by asset class, and the holdings in one class
+tmoney report allocation
+tmoney report allocation --asset-class mid_cap_stock
 ```
 
 ### Prices

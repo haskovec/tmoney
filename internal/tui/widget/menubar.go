@@ -50,6 +50,7 @@ const (
 	MenuActionNetWorth
 	MenuActionSpendingByCategory
 	MenuActionHoldings
+	MenuActionAssetAllocation
 
 	// Edit menu actions
 	MenuActionUndo
@@ -196,6 +197,7 @@ func DefaultMenus() []Menu {
 				{Label: "Net Worth", Action: MenuActionNetWorth},
 				{Label: "Spending by Category", Action: MenuActionSpendingByCategory},
 				{Label: "Holdings", Action: MenuActionHoldings},
+				{Label: "Asset Allocation", Action: MenuActionAssetAllocation},
 			},
 		},
 		{

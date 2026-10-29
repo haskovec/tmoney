@@ -216,8 +216,7 @@ func printHoldingsSection(w io.Writer, sec reportdom.HoldingsSection) {
 	if len(sec.Rows) > 0 {
 		largest = sec.Rows[0].Value
 	}
-	// tabwriter pads every cell it aligns, so a row whose last cells are
-	// empty would end in spaces; the buffer lets them be cut off.
+	// The buffer lets printTrimmed cut off the spaces at the line ends.
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "Security\tName\tShares\tPrice\tValue\t% Total\tCost Basis\tGain\t")
@@ -258,9 +257,7 @@ func printHoldingsSection(w io.Writer, sec reportdom.HoldingsSection) {
 		fmt.Fprintf(tw, "%s\t\t\t\t%s\t\t\t\t\n", total, formatTotal(sec.Value, sec.Currency, false, false))
 	}
 	tw.Flush()
-	for line := range strings.Lines(buf.String()) {
-		fmt.Fprintln(w, strings.TrimRight(line, " \n"))
-	}
+	printTrimmed(w, buf.String())
 }
 
 // printHoldingSplit prints how one security splits across the accounts, one
@@ -329,12 +326,17 @@ func notHeldError(rpt *reportdom.Holdings, ref string) error {
 // holdingsErrors returns one error naming every account that could not be
 // valued, or nil, as netWorthErrors does for net worth.
 func holdingsErrors(rpt *reportdom.Holdings) error {
-	if len(rpt.Failed) == 0 {
+	return failedAccountsError(rpt.Failed)
+}
+
+// failedAccountsError is one error naming every account in failed, or nil.
+func failedAccountsError(failed []reportdom.AccountFailure) error {
+	if len(failed) == 0 {
 		return nil
 	}
-	failed := make([]string, len(rpt.Failed))
-	for i, f := range rpt.Failed {
-		failed[i] = fmt.Sprintf("%s: %v", f.Name, f.Err)
+	reasons := make([]string, len(failed))
+	for i, f := range failed {
+		reasons[i] = fmt.Sprintf("%s: %v", f.Name, f.Err)
 	}
-	return fmt.Errorf("could not value %d account(s): %s", len(failed), strings.Join(failed, "; "))
+	return fmt.Errorf("could not value %d account(s): %s", len(reasons), strings.Join(reasons, "; "))
 }

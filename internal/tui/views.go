@@ -131,23 +131,18 @@ func init() {
 		{
 			id:     ViewReports,
 			name:   "Reports",
-			render: func(a *App) string { return a.reports.render(a.styles, a.height) },
+			render: func(a *App) string { return a.reports.render(a.styles, a.height, !a.lightBackground) },
 			onKey: func(a *App, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				// Keys always go to the report. A click in the sidebar took
-				// the focus, and with it the holdings cursor, so take it back.
+				// the focus, and with it the report's cursor, so take it back.
 				if a.sidebar.IsFocused() {
 					a.focusContent()
 				}
 				return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
 			},
-			hints: func(a *App) string {
-				if a.reports.holdingsReport() != nil {
-					return a.reports.holdingsHints() + "  " + commonKeyHints
-				}
-				return "←→ period  n net worth  s spending  i holdings  y year  m month  esc back  " + commonKeyHints
-			},
+			hints:     func(a *App) string { return a.reports.hints() + "  " + commonKeyHints },
 			shortcuts: reportsShortcuts,
-			table:     func(a *App) *widget.Table { return a.reports.holdingsTableOnScreen() },
+			table:     func(a *App) *widget.Table { return a.reports.tableOnScreen() },
 			reload: func(a *App) []tea.Cmd {
 				if a.reports.data != nil {
 					return []tea.Cmd{a.reports.load(a.reportsDeps(),
@@ -156,9 +151,9 @@ func init() {
 				}
 				return nil
 			},
-			// An open holdings split is a drill-down, not a place: coming back
-			// to Reports shows the holdings table.
-			leave: func(a *App) { a.reports.closeSplit() },
+			// An open split or class drill-down is a drill-down, not a place:
+			// coming back to Reports shows the report's top table.
+			leave: func(a *App) { a.reports.closeDrillDowns() },
 			focus: func(a *App) {
 				// Reports view doesn't use sidebar focus
 				a.sidebar.SetFocused(false)

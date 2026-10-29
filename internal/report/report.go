@@ -3,6 +3,7 @@ package report
 import (
 	"time"
 
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -104,11 +105,12 @@ type HoldingRow struct {
 	Shares     types.Quantity // zero on the Cash row
 	Price      types.Money    // zero on the Cash row and when Estimated
 	Value      types.Money
-	CostBasis  types.Money      // the cash itself on the Cash row
-	Gain       types.Money      // Value - CostBasis; zero on the Cash row and when Estimated
-	Percent    float64          // of the section's Value
-	Estimated  bool             // no price: Value is the cost basis
-	Accounts   []HoldingAccount // largest Value first
+	CostBasis  types.Money         // the cash itself on the Cash row
+	Gain       types.Money         // Value - CostBasis; zero on the Cash row and when Estimated
+	Percent    float64             // of the section's Value
+	Estimated  bool                // no price: Value is the cost basis
+	Accounts   []HoldingAccount    // largest Value first
+	AssetClass security.AssetClass // AssetClassCash on the Cash row
 }
 
 // HoldingAccount is one account's part of a HoldingRow.
@@ -118,6 +120,48 @@ type HoldingAccount struct {
 	Shares    types.Quantity // zero on the Cash row
 	Value     types.Money
 	Percent   float64 // of the row's Value
+}
+
+// Allocation is the asset allocation report: the holdings report grouped by
+// the asset class of each security. There is one section per currency;
+// money in different currencies is never added.
+type Allocation struct {
+	AsOfDate     types.Date
+	AccountCount int // as in Holdings
+	// Sections are sorted by currency code.
+	Sections []AllocationSection
+	Failed   []AccountFailure // as in Holdings
+}
+
+// AllocationSection is the allocation of one currency.
+type AllocationSection struct {
+	Currency string
+	// Classes are largest Value first, with Unclassified always last. A class
+	// whose holdings all have no price is here, with a Value of zero, so that
+	// its NoPrice rows can be named; it has no Holdings.
+	Classes []ClassRow
+	Value   types.Money // the sum of the Classes' Value
+	// Available is false when an account in this currency could not be
+	// valued, as in HoldingsSection.
+	Available bool
+}
+
+// ClassRow is one asset class in one currency.
+type ClassRow struct {
+	Class    security.AssetClass
+	Value    types.Money    // the sum of Holdings' Value
+	Percent  float64        // of the section's Value
+	Holdings []ClassHolding // largest Value first
+	// NoPrice are the holdings of this class that have no price. They are
+	// not in Value, Percent or Count. Sorted by Label.
+	NoPrice []HoldingRow
+}
+
+// ClassHolding is one holdings row in its class.
+type ClassHolding struct {
+	HoldingRow
+	PercentOfClass float64 // of the class's Value
+	PercentOfTotal float64 // of the section's Value
 }
 
 // AccountFailure is an account that a report could not value.

@@ -303,15 +303,8 @@ func (a *App) handleSecurityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case key.Matches(msg, a.keys.Enter):
 		// Open edit dialog for selected security
-		sec := a.selectedSecurity()
-		if sec != nil {
-			d := buildEditSecurityDialog(sec)
-			d.SetVisible(true)
-			a.security = securitySurface{
-				modalSurface: modalSurface{dlg: d},
-				mode:         securityDialogModeEdit,
-				editID:       sec.ID,
-			}
+		if sec := a.selectedSecurity(); sec != nil {
+			a.openEditSecurity(sec)
 		}
 		return a, nil
 	case msg.String() == "h":
@@ -664,9 +657,27 @@ func (a *App) updateSecurity(id types.ID, ticker, name, isin string, secType sec
 	}
 }
 
-// afterSecurityChange notes the change and reloads the securities view. Every
-// security CRUD result ends this way; only the note differs.
+// openEditSecurity opens the Edit Security dialog on sec. The Securities
+// view and the allocation report's drill-down both open it.
+func (a *App) openEditSecurity(sec *security.Security) {
+	d := buildEditSecurityDialog(sec)
+	d.SetVisible(true)
+	a.security = securitySurface{
+		modalSurface: modalSurface{dlg: d},
+		mode:         securityDialogModeEdit,
+		editID:       sec.ID,
+	}
+}
+
+// afterSecurityChange notes the change and reloads the securities view, and
+// the allocation report when it is on screen: a new class moves a holding
+// to another slice. Every security CRUD result ends this way; only the note
+// differs.
 func (a *App) afterSecurityChange(note string) tea.Cmd {
 	a.statusbar.AddNotification(note, widget.NotificationInfo)
-	return a.loadSecurityViewData()
+	cmds := []tea.Cmd{a.loadSecurityViewData()}
+	if d := a.reports.data; a.currentView == ViewReports && a.reports.allocationReport() != nil {
+		cmds = append(cmds, a.reports.load(a.reportsDeps(), reportTypeAllocation, d.year, d.month, d.includeTransfers))
+	}
+	return tea.Batch(cmds...)
 }

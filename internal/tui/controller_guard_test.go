@@ -218,6 +218,7 @@ var viewControllers = []controllerSurface{
 			d := a.reportsDeps()
 			return []func() any{
 				func() any { return d.reports() },
+				func() any { return d.securities() },
 				func() any { return d.file() },
 			}
 		},
