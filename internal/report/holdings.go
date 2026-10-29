@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -73,12 +74,14 @@ func (s *Service) Holdings() (*Holdings, error) {
 type securityLabel struct {
 	label string // the ticker, or the name when there is no ticker
 	name  string
+	class security.AssetClass
 }
 
-// securityLabels reads the label of every security, hidden ones included: a
-// hidden security that is still held is still a holding.
+// securityLabels reads the label and the asset class of every security,
+// hidden ones included: a hidden security that is still held is still a
+// holding.
 func (s *Service) securityLabels() (map[types.ID]securityLabel, error) {
-	rows, err := s.db.Conn().Query(`SELECT id, ticker, name FROM securities`)
+	rows, err := s.db.Conn().Query(`SELECT id, ticker, name, asset_class FROM securities`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read securities: %w", err)
 	}
@@ -87,14 +90,15 @@ func (s *Service) securityLabels() (map[types.ID]securityLabel, error) {
 	for rows.Next() {
 		var id types.ID
 		var ticker, name string
-		if err := rows.Scan(&id, &ticker, &name); err != nil {
+		var class security.AssetClass
+		if err := rows.Scan(&id, &ticker, &name, &class); err != nil {
 			return nil, fmt.Errorf("failed to scan security: %w", err)
 		}
 		label := ticker
 		if label == "" {
 			label = name
 		}
-		out[id] = securityLabel{label: label, name: name}
+		out[id] = securityLabel{label: label, name: name, class: class}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating securities: %w", err)
@@ -118,7 +122,7 @@ func newHoldingsBuilder(currency string) *holdingsBuilder {
 		cash: HoldingRow{
 			SecurityID: types.NilID, Cash: true, Label: "Cash", Name: "Uninvested cash",
 			Shares: types.ZeroQuantity, Price: types.ZeroMoney, Value: types.ZeroMoney,
-			CostBasis: types.ZeroMoney, Gain: types.ZeroMoney,
+			CostBasis: types.ZeroMoney, Gain: types.ZeroMoney, AssetClass: security.AssetClassCash,
 		},
 	}
 }
@@ -144,10 +148,16 @@ func (b *holdingsBuilder) addHolding(acct *account.Account, h HoldingFigure, sec
 		if label == "" {
 			label = h.SecurityID.String()
 		}
+		// A security with no label (no foreign key keeps a position's
+		// security in the table) has no class to read either.
+		class := sec.class
+		if class == "" {
+			class = security.AssetClassUnclassified
+		}
 		row = &HoldingRow{
 			SecurityID: h.SecurityID, Label: label, Name: sec.name,
 			Shares: types.ZeroQuantity, Price: types.ZeroMoney, Value: types.ZeroMoney,
-			CostBasis: types.ZeroMoney, Gain: types.ZeroMoney,
+			CostBasis: types.ZeroMoney, Gain: types.ZeroMoney, AssetClass: class,
 		}
 		b.rows[h.SecurityID] = row
 	}

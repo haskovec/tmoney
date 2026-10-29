@@ -195,6 +195,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.buildScheduledTable()
 		return a, nil
 
+	case tea.BackgroundColorMsg:
+		a.lightBackground = !msg.IsDark()
+		return a, nil
+
+	case reportsEditSecurityMsg:
+		a.openEditSecurity(msg.sec)
+		return a, nil
+
 	case reportsViewDataLoadedMsg:
 		a.reports.setData(msg.data)
 		return a, nil

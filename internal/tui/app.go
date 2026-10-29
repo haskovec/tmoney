@@ -165,6 +165,9 @@ type App struct {
 
 	// Reports view state
 	reports reportsViewState
+	// lightBackground is true when the terminal said that its background is
+	// light. Until it says so, the class colors are the dark set (C3).
+	lightBackground bool
 
 	// Reconciliation view state, and its start dialog (a modal)
 	reconciliation reconciliationViewState
@@ -371,6 +374,7 @@ func (a *App) Init() tea.Cmd {
 		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
 		a.dashboard.load(a.dashboardDeps()),
+		tea.RequestBackgroundColor,
 	}
 	// If NewApp surfaced a startup theme issue/failure, the toast is
 	// already on the status bar — schedule its auto-clear here so it
@@ -538,9 +542,9 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewCorporateActions && a.corporateActions.detail != nil {
 			return a.handleCorporateActionViewKeys(msg)
 		}
-		// With a holdings row's split open, Esc goes back to the holdings
-		// table and stays in the view.
-		if a.currentView == ViewReports && a.reports.splitOpen() {
+		// With a holdings row's split, or a class drill-down, open, Esc goes
+		// back one level and stays in the view.
+		if a.currentView == ViewReports && a.reports.claimsEsc() {
 			return a, a.reports.handleKey(a.reportsDeps(), msg, a.keys)
 		}
 		// Go back to previous view or dashboard, and refresh that view's

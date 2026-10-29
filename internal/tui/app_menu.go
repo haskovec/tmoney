@@ -116,6 +116,11 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 		now := time.Now()
 		return a, a.reports.load(a.reportsDeps(), reportTypeHoldings, now.Year(), int(now.Month()), false)
 
+	case widget.MenuActionAssetAllocation:
+		a.switchView(ViewReports)
+		now := time.Now()
+		return a, a.reports.load(a.reportsDeps(), reportTypeAllocation, now.Year(), int(now.Month()), false)
+
 	case widget.MenuActionSecurities:
 		a.switchView(ViewSecurities)
 		return a, a.loadSecurityViewData()

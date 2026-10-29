@@ -364,10 +364,17 @@ The "Primary deposit" line is the schedule's parent account; its amount is compu
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-`n`, `s` and `i` switch between the net worth, spending and holdings
-reports. The holdings report is a table with a bar column; Enter or a double
-click on a row shows how it splits across the accounts, and Esc goes back.
-See [`design-holdings-report.md`](design-holdings-report.md).
+`n`, `s`, `i` and `a` switch between the net worth, spending, holdings and
+asset allocation reports. The holdings report is a table with a bar column;
+Enter or a double click on a row shows how it splits across the accounts,
+and Esc goes back. See [`design-holdings-report.md`](design-holdings-report.md).
+
+The asset allocation report is a table of the asset classes, with a bar in
+the color of each class. Enter or a double click on a class shows its
+holdings; Enter on a holding shows its split across the accounts; `e` on a
+holding opens Edit Security, and a save reloads the report. Esc goes back
+one level. With more than one currency, `←`/`→` change the currency. See
+[`design-asset-allocation-report.md`](design-asset-allocation-report.md).
 
 ## Menu Bar
 
@@ -425,6 +432,7 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 - Net Worth
 - Spending by Category
 - Holdings
+- Asset Allocation
 
 ### Help Menu
 - Keyboard Shortcuts

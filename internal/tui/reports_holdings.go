@@ -139,9 +139,17 @@ const holdingsDefaultWidth = holdingsWidthAll
 
 // setData stores loaded report data. A holdings report gets a new table; the
 // cursor stays on the row it was on, by security, and an open split closes.
+// An allocation report stays where it was (see setAllocation).
 func (s *reportsViewState) setData(data *reportsViewData) {
 	keep, hadKeep := s.selectedHoldingKey()
+	place, hadPlace := s.allocationPlace()
 	s.data = data
+	s.setHoldings(keep, hadKeep)
+	s.setAllocation(place, hadPlace)
+}
+
+// setHoldings lays out newly loaded holdings data.
+func (s *reportsViewState) setHoldings(keep holdingsKey, hadKeep bool) {
 	width := s.holdings.width
 	s.holdings = holdingsViewState{clicks: s.holdings.clicks}
 	rpt := s.holdingsReport()
@@ -403,7 +411,7 @@ func (s *reportsViewState) holdingsHints() string {
 	if s.splitOpen() {
 		return "↑↓ navigate  esc back to holdings"
 	}
-	return "↑↓ navigate  enter accounts  n net worth  s spending  esc back"
+	return "↑↓ navigate  enter accounts  n net worth  s spending  a allocation  esc back"
 }
 
 // The app's own rows around the view: its header line and its status bar.
@@ -437,8 +445,8 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 	}
 	// The hint leaves out whole hints to fit, the current view's first; "esc
 	// back" and "enter accounts" stay longest.
-	hints := []string{"enter accounts", "n net worth", "s spending", "i holdings", "esc back"}
-	hint := styles.Muted.Render("  " + widget.FitParts(hints, "  ", tableWidth-2, []int{3, 2, 1, 0}))
+	hints := []string{"enter accounts", "n net worth", "s spending", "i holdings", "a allocation", "esc back"}
+	hint := styles.Muted.Render("  " + widget.FitParts(hints, "  ", tableWidth-2, []int{3, 4, 2, 1, 0}))
 	if len(rpt.Sections) == 0 && len(rpt.Failed) == 0 {
 		empty := "  No holdings in the investment accounts."
 		if rpt.AccountCount == 0 {
@@ -459,7 +467,7 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 		footer = append(footer, styles.Muted.Render("~ No price on file: the value is the cost basis."))
 	}
 	for _, f := range rpt.Failed {
-		footer = append(footer, styles.Error.Render(fmt.Sprintf("%s: could not be valued (%v)", f.Name, f.Err)))
+		footer = append(footer, styles.Error.UnsetPadding().Render(fmt.Sprintf("%s: could not be valued (%v)", f.Name, f.Err)))
 	}
 	if len(rpt.Failed) > 0 {
 		footer = append(footer, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
@@ -559,18 +567,31 @@ func (s *reportsViewState) renderHoldingsSplit(styles widget.Styles, height, tab
 	ref := s.holdings.splitRef
 	sec := s.data.holdings.Sections[ref.section]
 	row := sec.Rows[ref.row]
+	value := formatDashboardMoneyIn(row.Value, sec.Currency)
+	if row.Estimated {
+		// The same mark as the row in the table and its TOTAL (C2).
+		value = "~" + value
+	}
+	share := fmt.Sprintf("%s  %.1f%% of total", value, row.Percent)
+	out, pageRows := renderSplit(styles, height, tableWidth, s.holdings.split, row, sec.Currency, share, sec.Available, "esc back to holdings")
+	s.holdings.pageRows = pageRows
+	return out
+}
 
+// renderSplit renders how one holdings row splits across the accounts, in
+// tbl: the holding and share as the title, the accounts, the Total line, the
+// notes, and back as the hint. It returns the rows and the number of data
+// rows on screen.
+func renderSplit(styles widget.Styles, height, tableWidth int, tbl *widget.Table, row report.HoldingRow,
+	currency, share string, available bool, back string) (string, int) {
 	title := row.Label
 	if row.Name != "" && row.Name != row.Label {
 		title += "  " + row.Name
 	}
-	value := formatDashboardMoneyIn(row.Value, sec.Currency)
 	if row.Estimated {
-		// The same marks as the row in the table and its TOTAL (C2).
+		// The same mark as the row in the table (C2).
 		title = "~" + title
-		value = "~" + value
 	}
-	share := fmt.Sprintf("%s  %.1f%% of total", value, row.Percent)
 	sections := []string{
 		reportTitleRow(styles, title, share, tableWidth),
 		styles.Muted.Render(strings.Repeat("═", tableWidth)),
@@ -578,30 +599,28 @@ func (s *reportsViewState) renderHoldingsSplit(styles widget.Styles, height, tab
 
 	footer := []string{
 		styles.Muted.Render(strings.Repeat("─", tableWidth)),
-		styles.Bold.Render(strings.TrimRight(alignedLine(s.holdings.split.Columns(),
-			splitCells(row, "Total", row.Shares, row.Value, 100, sec.Currency)), " ")),
+		styles.Bold.Render(strings.TrimRight(alignedLine(tbl.Columns(),
+			splitCells(row, "Total", row.Shares, row.Value, 100, currency)), " ")),
 	}
 	if row.Estimated {
 		footer = append(footer, styles.Muted.Render("~ No price on file: the value is the cost basis."))
 	}
-	if !sec.Available {
+	if !available {
 		footer = append(footer, styles.Muted.Render("Percentages leave out accounts that could not be valued."))
 	}
-	footer = append(footer, "", styles.Muted.Render("  esc back to holdings"))
+	footer = append(footer, "", styles.Muted.Render("  "+back))
 	avail := max(height-appChromeRows-2-2-len(footer), 3)
-	tbl := s.holdings.split
 	dataRows := avail - 2
 	if tbl.RowCount() > dataRows {
 		dataRows--
 	}
 	dataRows = max(min(dataRows, tbl.RowCount()), 1)
-	s.holdings.pageRows = dataRows
 	sections = append(sections, tbl.Render(styles, tableWidth, dataRows+2))
 	if info := tbl.ScrollInfo(dataRows); info != "" {
 		sections = append(sections, styles.Muted.Render(info))
 	}
 	sections = append(sections, footer...)
-	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n"))
+	return lipgloss.NewStyle().Padding(1, 2).Render(strings.Join(sections, "\n")), dataRows
 }
 
 // alignedLine lays cells out in fixed-width columns, as a table row is.

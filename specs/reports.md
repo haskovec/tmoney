@@ -2,7 +2,7 @@
 
 ## Overview
 
-Reports provide insights into financial data through summaries, charts, and analysis. There are three reports: Net Worth, Spending by Category, and Holdings.
+Reports provide insights into financial data through summaries, charts, and analysis. There are four reports: Net Worth, Spending by Category, Holdings, and Asset Allocation.
 
 ## Net Worth Report
 
@@ -313,6 +313,18 @@ the uninvested cash, so the total is the investment value in net worth. Enter
 on a row shows how it splits across the accounts. The full design is in
 [`design-holdings-report.md`](design-holdings-report.md).
 
+## Asset Allocation Report
+
+Groups the rows of the holdings report by the asset class of each security:
+one row per class with its number of holdings, its value, its percentage of
+the total, and a bar in the class color. The Cash class holds the uninvested
+cash and each security of class Cash. A holding with no price is left out of
+every value and percentage, and a note names it. Unclassified is always the
+last row. Enter on a class shows its holdings, Enter on a holding shows its
+split across the accounts, and `e` there edits the security, so a class can
+be fixed from the report. The full design is in
+[`design-asset-allocation-report.md`](design-asset-allocation-report.md).
+
 ## Report Data Models
 
 ### NetWorthReport
@@ -367,6 +379,10 @@ tmoney report net-worth --as-of 2024-01-01
 # Holdings report, and one security's split across the accounts
 tmoney report holdings
 tmoney report holdings --ticker ACME
+
+# Asset allocation report, and the holdings in one class
+tmoney report allocation
+tmoney report allocation --asset-class mid_cap_stock
 
 # Spending report
 tmoney report spending --month 2024-01

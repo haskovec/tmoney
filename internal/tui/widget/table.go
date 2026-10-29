@@ -2,7 +2,10 @@ package widget
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
+
+	"charm.land/lipgloss/v2"
 )
 
 // ColumnAlign specifies the text alignment within a table column.
@@ -51,6 +54,9 @@ type Table struct {
 	// Row style overrides (row index -> RowStyle)
 	rowStyles map[int]RowStyle
 
+	// cellColors are foreground colors of single cells, by row and column.
+	cellColors map[cellKey]color.Color
+
 	// Navigation state
 	cursor       int
 	scrollOffset int
@@ -81,15 +87,31 @@ func (t *Table) SetRowStyle(rowIndex int, style RowStyle) {
 	t.rowStyles[rowIndex] = style
 }
 
+// cellKey names one cell of the table.
+type cellKey struct{ row, col int }
+
+// SetCellColor sets the foreground color of one cell, over the style of its
+// row: the selected row keeps the color too. A cell's text must be plain,
+// because the widths and the cut are worked out on the text; the color is
+// put on after. SetRows clears every cell color.
+func (t *Table) SetCellColor(row, col int, c color.Color) {
+	if t.cellColors == nil {
+		t.cellColors = make(map[cellKey]color.Color)
+	}
+	t.cellColors[cellKey{row, col}] = c
+}
+
 // ClearRowStyles removes all row style overrides.
 func (t *Table) ClearRowStyles() {
 	t.rowStyles = nil
 }
 
-// SetRows replaces all row data. Resets scroll offset, clamps cursor, and clears row styles.
+// SetRows replaces all row data. Resets scroll offset, clamps cursor, and
+// clears row styles and cell colors.
 func (t *Table) SetRows(rows [][]string) {
 	t.rows = rows
 	t.rowStyles = nil
+	t.cellColors = nil
 	t.clampCursor()
 	t.clampScroll(0)
 }
@@ -338,14 +360,43 @@ func (t *Table) renderRow(styles Styles, rowIndex int, colWidths []int, totalWid
 	// Pad or truncate to total width
 	line = padOrTruncate(line, totalWidth)
 
-	isCursor := t.focused && rowIndex == t.cursor
-	if isCursor {
-		return styles.SelectedRow.Render(line)
+	style := styles.TableRow
+	if t.focused && rowIndex == t.cursor {
+		style = styles.SelectedRow
+	} else if rs, ok := t.rowStyles[rowIndex]; ok && rs == RowStyleVoid {
+		style = styles.VoidRow
 	}
-	if rs, ok := t.rowStyles[rowIndex]; ok && rs == RowStyleVoid {
-		return styles.VoidRow.Render(line)
+	return t.styleCells(style, rowIndex, colWidths, line)
+}
+
+// styleCells renders a row's plain line in its style, with each colored
+// cell in its own color on the same style. The cells are cut out of the line
+// by the column widths, so a cell that the line's cut ends is colored up to
+// the cut.
+func (t *Table) styleCells(style lipgloss.Style, rowIndex int, colWidths []int, line string) string {
+	if len(t.cellColors) == 0 {
+		return style.Render(line)
 	}
-	return styles.TableRow.Render(line)
+	runes := []rune(line)
+	var b strings.Builder
+	done, start := 0, 0
+	for col, w := range colWidths {
+		if c, ok := t.cellColors[cellKey{rowIndex, col}]; ok {
+			from, to := min(start, len(runes)), min(start+w, len(runes))
+			if from > done {
+				b.WriteString(style.Render(string(runes[done:from])))
+			}
+			if to > from {
+				b.WriteString(style.Foreground(c).Render(string(runes[from:to])))
+			}
+			done = max(done, to)
+		}
+		start += w + 1 // the separator
+	}
+	if done < len(runes) {
+		b.WriteString(style.Render(string(runes[done:])))
+	}
+	return b.String()
 }
 
 // clampCursor ensures the cursor is within valid bounds.

@@ -151,8 +151,8 @@ func (a *App) handleMouseDashboard(m tea.Mouse, contentY, contentStartX int) (te
 
 // handleMouseTable handles mouse clicks in the table/content area.
 // Single click moves the cursor; on tables that support drill-in
-// (the prices list and the holdings report), a second click on the same
-// row within the double-click threshold opens the row.
+// (the prices list, and the holdings and allocation reports), a second click
+// on the same row within the double-click threshold opens the row.
 func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd) {
 	tableY := contentY - a.tableContentRowOffset()
 
@@ -173,10 +173,10 @@ func (a *App) handleMouseTable(_ tea.MouseMsg, contentY int) (tea.Model, tea.Cmd
 		return a.toggleReconciliationCheck()
 	}
 
-	// Holdings report: a click selects the row, and a second click on the
-	// same row within the threshold opens its split across the accounts.
+	// Holdings and allocation reports: a click selects the row, and a
+	// second click on the same row within the threshold opens it.
 	if a.currentView == ViewReports {
-		a.reports.clickHoldingsRow(rowIdx)
+		a.reports.clickRow(rowIdx)
 		return a, nil
 	}
 
