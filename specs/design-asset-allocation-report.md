@@ -457,13 +457,19 @@ The table width `W` is the content width minus the padding of 4 cells.
 |---|---|---|
 | Asset Class | 19 | left |
 | Holdings | 8 | right |
-| Value | 13 | right |
+| Value | 13, or the widest amount | right |
 | % Total | 7 | right |
 | bar (no header) | spare, 10 to 40 | left |
 
 `spare` is `W` minus the fixed widths and one separator between each two
 columns. Below 61 cells (all columns with a bar of 10) the Holdings column
 goes. Below 52 cells the table cuts the right side, as other tables do.
+
+The Value column is as wide as the widest class value or TOTAL of the
+section when that is wider than 13 cells, so that no amount is cut. A
+currency code makes an amount wider: `JPY 1500000.00` is 14 cells. The 61
+and the 52 above then grow by the same cells. The class view, the pie's
+legend and the split do the same with their own amounts.
 
 At `W` = 96:
 
@@ -528,8 +534,8 @@ Total                                                               $45000.00   
 ```
 
 - The `■` is in the class color.
-- Columns: Security (8), Name (flex), Value (13), % of Class (10),
-  % Total (7).
+- Columns: Security (8), Name (flex), Value (13, or the widest amount, the
+  Total too), % of Class (10), % Total (7).
 - The rows are `ClassRow.Holdings`, then `ClassRow.NoPrice`, with
   `no price` in the Value column and no percentages. The `Not included`
   note of §5.3.2 is under the Total line. When the names do not fit, it
@@ -778,8 +784,10 @@ Other conditions, before `Show`:
 - `C` is `round(R × cellHeight / cellWidth)`, so the pie is round.
 - The legend table is 52 cells: the swatch (1), Asset Class (19),
   Holdings (8), Value (13), % Total (7), and four separators. There is no
-  bar column. It fits when `W ≥ C + 3 + 52`. If not, try a smaller `R`,
-  down to 8. If it still does not fit, show the table of §5.5.2.
+  bar column. A wider Value column (§5.5.2) makes it wider by the same
+  cells. It fits when `W ≥ C + 3 +` the legend width. If not, try a
+  smaller `R`, down to 8. If it still does not fit, show the table of
+  §5.5.2.
 - The pie image is `C × cellWidth` by `R × cellHeight` pixels, so it is
   sharp. The app draws and transmits it again when the data (each load),
   `R`, `C`, the cell size, the currency or the light/dark choice changes.

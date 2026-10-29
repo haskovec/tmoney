@@ -35,39 +35,42 @@ type allocationColumn struct {
 	widget.Column
 }
 
-// The table width below which the Holdings column goes, and the limits of
-// the bar. See specs/design-asset-allocation-report.md §5.5.2.
+// The table width below which the Holdings column goes, the limits of the
+// bar, and the usual width of the Value column. See
+// specs/design-asset-allocation-report.md §5.5.2.
 const (
 	allocationWidthAll = 61
 	allocationMinBar   = 10
 	allocationMaxBar   = 40
+	allocationValueMin = 13
 )
 
-// The pie of the class table: its most and fewest rows, the cells between it
-// and its legend, and the legend width (§6.5).
+// The pie of the class table: its most and fewest rows, and the cells
+// between it and its legend (§6.5).
 const (
-	allocationPieMaxRows  = 20
-	allocationPieMinRows  = 8
-	allocationPieGap      = 3
-	allocationLegendWidth = 52
+	allocationPieMaxRows = 20
+	allocationPieMinRows = 8
+	allocationPieGap     = 3
 )
 
-// allocationColumns returns the columns for a table of width cells. The bar
-// gets the spare width, from allocationMinBar to allocationMaxBar; below
-// allocationWidthAll the Holdings column goes. A table still too wide is cut
-// on the right, as other tables are.
-func allocationColumns(width int) []allocationColumn {
+// allocationColumns returns the columns for a table of width cells, with a
+// Value column of valueWidth cells (allocationValueWidth). The bar gets the
+// spare width, from allocationMinBar to allocationMaxBar; below
+// allocationWidthAll, and the cells that a wider Value column adds, the
+// Holdings column goes. A table still too wide is cut on the right, as
+// other tables are.
+func allocationColumns(width, valueWidth int) []allocationColumn {
 	all := []allocationColumn{
 		{allocationColClass, widget.Column{Header: "Asset Class", Width: 19}},
 		{allocationColCount, widget.Column{Header: "Holdings", Width: 8, Align: widget.AlignRight}},
-		{allocationColValue, widget.Column{Header: "Value", Width: 13, Align: widget.AlignRight}},
+		{allocationColValue, widget.Column{Header: "Value", Width: valueWidth, Align: widget.AlignRight}},
 		{allocationColPercent, widget.Column{Header: "% Total", Width: 7, Align: widget.AlignRight}},
 		{allocationColBar, widget.Column{}},
 	}
 	var cols []allocationColumn
 	spare := width
 	for _, c := range all {
-		if c.col == allocationColCount && width < allocationWidthAll {
+		if c.col == allocationColCount && width < allocationWidthAll+valueWidth-allocationValueMin {
 			continue
 		}
 		cols = append(cols, c)
@@ -78,16 +81,45 @@ func allocationColumns(width int) []allocationColumn {
 	return cols
 }
 
-// allocationLegendColumns are the columns of the legend beside the pie:
-// the swatch in place of the bar, allocationLegendWidth cells in all.
-func allocationLegendColumns() []allocationColumn {
+// allocationLegendColumns are the columns of the legend beside the pie,
+// with a Value column of valueWidth cells: the swatch in place of the bar,
+// 52 cells in all with the usual Value column.
+func allocationLegendColumns(valueWidth int) []allocationColumn {
 	return []allocationColumn{
 		{allocationColSwatch, widget.Column{Width: 1}},
 		{allocationColClass, widget.Column{Header: "Asset Class", Width: 19}},
 		{allocationColCount, widget.Column{Header: "Holdings", Width: 8, Align: widget.AlignRight}},
-		{allocationColValue, widget.Column{Header: "Value", Width: 13, Align: widget.AlignRight}},
+		{allocationColValue, widget.Column{Header: "Value", Width: valueWidth, Align: widget.AlignRight}},
 		{allocationColPercent, widget.Column{Header: "% Total", Width: 7, Align: widget.AlignRight}},
 	}
+}
+
+// columnsWidth is the width of a table with cols: the columns and one
+// separator cell between each two.
+func columnsWidth(cols []allocationColumn) int {
+	w := len(cols) - 1
+	for _, c := range cols {
+		w += c.Width
+	}
+	return w
+}
+
+// allocationValueWidth is the width of a section's Value column: the widest
+// class value or TOTAL, at least allocationValueMin (fitWidth).
+func allocationValueWidth(sec report.AllocationSection) int {
+	values := []string{allocationTotalValue(sec)}
+	for _, c := range sec.Shown() {
+		values = append(values, formatDashboardMoneyIn(c.Value, sec.Currency))
+	}
+	return fitWidth(allocationValueMin, values...)
+}
+
+// allocationTotalValue is the amount of a section's TOTAL line.
+func allocationTotalValue(sec report.AllocationSection) string {
+	if !sec.Available {
+		return "not available"
+	}
+	return formatDashboardMoneyIn(sec.Value, sec.Currency)
 }
 
 // drillRef is the holding behind a row of the class drill-down: one of the
@@ -233,15 +265,15 @@ func (s *reportsViewState) setAllocation(p allocationPlace, kept bool) {
 func (s *reportsViewState) layoutAllocation(width int, dark, legend bool) {
 	a := &s.allocation
 	a.width, a.dark, a.legend = width, dark, legend
-	a.columns = allocationColumns(width)
+	sec, _ := s.allocationSection()
+	a.columns = allocationColumns(width, allocationValueWidth(sec))
 	if legend {
-		a.columns = allocationLegendColumns()
+		a.columns = allocationLegendColumns(allocationValueWidth(sec))
 	}
 	cols := make([]widget.Column, len(a.columns))
 	for i, c := range a.columns {
 		cols[i] = c.Column
 	}
-	sec, _ := s.allocationSection()
 	shown := sec.Shown()
 	largest := types.ZeroMoney
 	for _, c := range shown {
@@ -305,13 +337,18 @@ func (s *reportsViewState) changeCurrency(step int) {
 	s.layoutAllocation(a.width, a.dark, a.legend)
 }
 
-// drillColumns are the columns of the class drill-down. Name gets the
-// width that the fixed columns leave.
-func drillColumns(width int) []widget.Column {
+// drillColumns are the columns of the drill-down of class. Name gets the
+// width that the fixed columns leave. Value is as wide as the widest amount,
+// the Total too, and at least allocationValueMin cells.
+func drillColumns(width int, class report.ClassRow, currency string) []widget.Column {
+	values := []string{formatDashboardMoneyIn(class.Value, currency)}
+	for _, h := range class.Holdings {
+		values = append(values, formatDashboardMoneyIn(h.Value, currency))
+	}
 	cols := []widget.Column{
 		{Header: "Security", Width: 8},
 		{Header: "Name"},
-		{Header: "Value", Width: 13, Align: widget.AlignRight},
+		{Header: "Value", Width: fitWidth(allocationValueMin, values...), Align: widget.AlignRight},
 		{Header: "% of Class", Width: 10, Align: widget.AlignRight},
 		{Header: "% Total", Width: 7, Align: widget.AlignRight},
 	}
@@ -348,7 +385,7 @@ func (s *reportsViewState) openDrill() {
 		a.drillRefs = append(a.drillRefs, drillRef{noPrice: true, index: i})
 		rows = append(rows, []string{row.Label, row.Name, "no price", "", ""})
 	}
-	a.drill = widget.NewTable(drillColumns(a.width))
+	a.drill = widget.NewTable(drillColumns(a.width, class, sec.Currency))
 	a.drill.SetRows(rows)
 }
 
@@ -392,7 +429,7 @@ func (s *reportsViewState) openAllocationSplit() {
 	}
 	sec, _ := s.allocationSection()
 	a.splitRef = a.drillRefs[c]
-	a.split = widget.NewTable(splitColumns(a.width, row.Cash))
+	a.split = widget.NewTable(splitColumns(a.width, row, sec.Currency))
 	rows := make([][]string, len(row.Accounts))
 	for i, acct := range row.Accounts {
 		rows[i] = splitCells(row, acct.Name, acct.Shares, acct.Value, acct.Percent, sec.Currency)
@@ -578,12 +615,13 @@ func (s *reportsViewState) renderAllocation(styles widget.Styles, height int, lo
 		s.layoutAllocation(tableWidth, look.dark, hasPie)
 		// Only the widths change, so the drill-down and the split keep their
 		// cursors.
-		if a.drill != nil {
-			a.drill.SetColumns(drillColumns(tableWidth))
+		sec, _ := s.allocationSection()
+		if class, ok := sec.Class(a.drillClass); ok && a.drill != nil {
+			a.drill.SetColumns(drillColumns(tableWidth, class, sec.Currency))
 		}
 		if a.split != nil {
 			if row, ok := s.drillRefHolding(a.splitRef); ok {
-				a.split.SetColumns(splitColumns(tableWidth, row.Cash))
+				a.split.SetColumns(splitColumns(tableWidth, row, sec.Currency))
 			}
 		}
 	}
@@ -709,10 +747,11 @@ func (s *reportsViewState) allocationPie(styles widget.Styles, height int, look 
 		return pieKey{}, false
 	}
 	width := allocationTableWidth(styles)
+	legend := columnsWidth(allocationLegendColumns(allocationValueWidth(sec)))
 	free := freeRows(height, len(s.allocationNotes(styles, sec, width, pieNotesRoom(height), "")))
 	for rows := min(allocationPieMaxRows, free); rows >= allocationPieMinRows; rows-- {
 		cols, w, h := termimg.Placement(rows, look.pie.term.cellW, look.pie.term.cellH)
-		if cols+allocationPieGap+allocationLegendWidth <= width {
+		if cols+allocationPieGap+legend <= width {
 			return pieKey{rpt: rpt, section: s.allocation.section, rows: rows, cols: cols, w: w, h: h, dark: look.dark}, true
 		}
 	}
@@ -733,12 +772,13 @@ func (s *reportsViewState) renderAllocationPie(styles widget.Styles, key pieKey,
 	}
 	dataRows = max(min(dataRows, a.table.RowCount()), 1)
 	a.pageRows = dataRows
-	legend := strings.Split(a.table.Render(styles, allocationLegendWidth, dataRows+2), "\n")
+	legendWidth := columnsWidth(a.columns)
+	legend := strings.Split(a.table.Render(styles, legendWidth, dataRows+2), "\n")
 	if info := a.table.ScrollInfo(dataRows); info != "" {
 		legend = append(legend, styles.Muted.Render(info))
 	}
 	legend = append(legend,
-		styles.Muted.Render(strings.Repeat("─", allocationLegendWidth)),
+		styles.Muted.Render(strings.Repeat("─", legendWidth)),
 		s.allocationTotalLine(styles, sec))
 
 	gap := strings.Repeat(" ", allocationPieGap)
@@ -850,11 +890,7 @@ func (s *reportsViewState) allocationTotalLine(styles widget.Styles, sec report.
 			}
 			cells = append(cells, widget.AlignText(count, c.Width, c.Align))
 		case allocationColValue:
-			value := "not available"
-			if sec.Available {
-				value = formatDashboardMoneyIn(sec.Value, sec.Currency)
-			}
-			cells = append(cells, styles.Bold.Render(widget.AlignText(value, c.Width, c.Align)))
+			cells = append(cells, styles.Bold.Render(widget.AlignText(allocationTotalValue(sec), c.Width, c.Align)))
 		case allocationColPercent:
 			// The classes are 0% of a total that is zero or less (negative
 			// cash), so the total is not 100% of them either.
