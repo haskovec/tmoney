@@ -151,22 +151,23 @@ func TestRenderAllocation_WideAmounts(t *testing.T) {
 	noCutAmount(t, "split", app.renderedReports(), "JPY 12345678.00")
 }
 
-// The pie needs room for the wider legend.
+// The pie needs room for the wider legend. At 96 columns the table is 72
+// cells; with square cells the pie's columns are its rows, so the 54-cell
+// legend leaves 72 - 3 - 54 = 15 rows. The usual 52-cell legend would leave
+// 17.
 func TestAllocationPie_WideLegendFit(t *testing.T) {
-	app := newPieApp(180, 40, yenAllocationReport())
-	app.pie.cellW, app.pie.cellH = 20, 20 // cols = rows
-	width := allocationTableWidth(app.styles)
-	sec, _ := app.reports.allocationSection()
-	legend := columnsWidth(allocationLegendColumns(allocationValueWidth(sec)))
-	for rows := allocationPieMaxRows; rows >= allocationPieMinRows; rows-- {
-		if rows+allocationPieGap+legend <= width {
-			if key, _ := app.wantedPie(); key.rows != rows {
-				t.Errorf("table width %d, legend %d: %d rows, want %d", width, legend, key.rows, rows)
-			}
-			return
-		}
+	app := newPieApp(96, 40, yenAllocationReport())
+	app.pie.cellW, app.pie.cellH = 20, 20
+	if w := allocationTableWidth(app.styles); w != 72 {
+		t.Fatalf("table width %d, want 72", w)
 	}
-	t.Fatal("no pie fits")
+	sec, _ := app.reports.allocationSection()
+	if w := columnsWidth(allocationLegendColumns(allocationValueWidth(sec))); w != 54 {
+		t.Fatalf("legend width %d, want 54", w)
+	}
+	if key, ok := app.wantedPie(); !ok || key.rows != 15 {
+		t.Errorf("pie rows %d (ok %v), want 15", key.rows, ok)
+	}
 }
 
 // The Holdings column goes at the usual width plus the cells a wider Value
