@@ -434,6 +434,10 @@ that can desync and block a write:
 - Migration 033 drops `scheduled_transactions(account_id)`. Both queries on that
   column compare `CAST(account_id AS VARCHAR)`, which hides the column from the
   index, so it was never reachable and cost only risk.
+- Migration 037 rebuilds `securities` (to add `mid_cap_stock` and remove
+  `index`) and does not create its five secondary indexes again. The table is
+  small, none of the indexes was UNIQUE, and the asset allocation report
+  updates `asset_class` often, so an index on it was only risk.
 
 Narrowing an `UPDATE` only helps when the narrowed set excludes every indexed
 column. It does not help `scheduled_transactions`, because the advance writes

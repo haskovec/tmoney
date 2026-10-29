@@ -375,7 +375,7 @@ func TestRepository_Update(t *testing.T) {
 		sec.Ticker = "AAPL2"
 		sec.Name = "Apple Inc. Updated"
 		sec.SecurityType = TypeETF
-		sec.AssetClass = AssetClassIndex
+		sec.AssetClass = AssetClassMidCapStock
 		sec.Currency = "EUR"
 		sec.SetExchange("NYSE")
 		sec.Hidden = true
@@ -398,8 +398,8 @@ func TestRepository_Update(t *testing.T) {
 		if retrieved.SecurityType != TypeETF {
 			t.Errorf("Expected type ETF, got %q", retrieved.SecurityType)
 		}
-		if retrieved.AssetClass != AssetClassIndex {
-			t.Errorf("Expected asset class index, got %q", retrieved.AssetClass)
+		if retrieved.AssetClass != AssetClassMidCapStock {
+			t.Errorf("Expected asset class mid_cap_stock, got %q", retrieved.AssetClass)
 		}
 		if retrieved.Currency != "EUR" {
 			t.Errorf("Expected currency EUR, got %q", retrieved.Currency)

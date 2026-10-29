@@ -95,9 +95,9 @@ type AssetClass string
 
 const (
 	AssetClassLargeCapStock      AssetClass = "large_cap_stock"
+	AssetClassMidCapStock        AssetClass = "mid_cap_stock"
 	AssetClassSmallCapStock      AssetClass = "small_cap_stock"
 	AssetClassInternationalStock AssetClass = "international_stock"
-	AssetClassIndex              AssetClass = "index"
 	AssetClassDomesticBond       AssetClass = "domestic_bond"
 	AssetClassForeignBond        AssetClass = "foreign_bond"
 	AssetClassCash               AssetClass = "cash"
@@ -112,9 +112,9 @@ const (
 func AllAssetClasses() []AssetClass {
 	return []AssetClass{
 		AssetClassLargeCapStock,
+		AssetClassMidCapStock,
 		AssetClassSmallCapStock,
 		AssetClassInternationalStock,
-		AssetClassIndex,
 		AssetClassDomesticBond,
 		AssetClassForeignBond,
 		AssetClassCash,
@@ -134,8 +134,8 @@ func (ac AssetClass) String() string {
 // IsValid returns true if the AssetClass is a valid class.
 func (ac AssetClass) IsValid() bool {
 	switch ac {
-	case AssetClassLargeCapStock, AssetClassSmallCapStock, AssetClassInternationalStock,
-		AssetClassIndex, AssetClassDomesticBond, AssetClassForeignBond,
+	case AssetClassLargeCapStock, AssetClassMidCapStock, AssetClassSmallCapStock,
+		AssetClassInternationalStock, AssetClassDomesticBond, AssetClassForeignBond,
 		AssetClassCash, AssetClassCommodity, AssetClassCrypto,
 		AssetClassAssetMixture, AssetClassRealEstate, AssetClassUnclassified:
 		return true
@@ -148,12 +148,12 @@ func (ac AssetClass) DisplayName() string {
 	switch ac {
 	case AssetClassLargeCapStock:
 		return "Large Cap Stock"
+	case AssetClassMidCapStock:
+		return "Mid Cap Stock"
 	case AssetClassSmallCapStock:
 		return "Small Cap Stock"
 	case AssetClassInternationalStock:
 		return "International Stock"
-	case AssetClassIndex:
-		return "Index"
 	case AssetClassDomesticBond:
 		return "Domestic Bond"
 	case AssetClassForeignBond:
