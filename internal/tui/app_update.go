@@ -226,6 +226,10 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pieDrawnMsg:
 		return a, a.pieDrawn(msg)
 
+	case pieWrittenMsg:
+		a.pieWritten(msg)
+		return a, nil
+
 	case reportsEditSecurityMsg:
 		// While the security loaded, the drill-down can have closed or
 		// another dialog opened; then the reply is stale.

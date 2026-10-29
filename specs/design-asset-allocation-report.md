@@ -790,6 +790,12 @@ Other conditions, before `Show`:
   ends after the screen changed is not sent; the image the screen needs
   then is drawn. Until the terminal has the image, the pie's cells are
   blank, and the layout does not move.
+- Bubble Tea runs each command in its own goroutine, so two writes from two
+  commands can pass each other. The writes to the terminal (a transmit or a
+  delete) go one at a time: each is a `tea.Sequence` of the `tea.Raw` and a
+  message that comes back after it is written. The app counts an image as
+  sent only when that message comes. A quit waits for the write in flight,
+  so its delete is the last write.
 - The pie and the legend start on the line under the separator. The legend
   rows, their separator and the TOTAL are in the legend column, beside the
   pie, as in the drawing. The notes are under the taller of the two. When
@@ -849,7 +855,12 @@ ASSET ALLOCATION                                                                
   (`ESC[c`), and reads until the DA1 reply or 300 ms. A kitty "OK" before
   DA1 means support. The OSC 11 reply picks the colors (C3).
 - `R` is 16. `C` follows from the cell size. It fits when the terminal
-  width (`term.GetSize` on stdout) is at least `C + 3 + 52`.
+  width (`term.GetSize` on stdout) is at least `C + 3 + 52`. The legend is
+  52 cells when no value is wider than 13 cells; a currency code makes a
+  value wider (`JPY 1500000.00` is 14), and then the Value column takes the
+  widest value of the section, so the rows stay aligned. Each section
+  checks its own legend width, and a section whose legend does not fit
+  prints as text: a wrapped line would break the pie.
 - The output is the text report of §5.3.1, with the pie in place of the
   bar column: each section transmits its own image with its own random ID,
   places it, and prints the R placeholder lines with the legend lines on

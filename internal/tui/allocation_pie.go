@@ -36,12 +36,24 @@ type pieKey struct {
 // each transmit replaces the image with that ID (C5).
 type pieState struct {
 	pieTerm
-	id   termimg.ID
-	sent pieKey // the image the terminal has; zero when it has none
+	id termimg.ID
+	// sent is the image the terminal has, by the last write that came back
+	// written (pieWrittenMsg); zero when it has none.
+	sent pieKey
+	// writing is true from a write to the terminal, a transmit or a delete,
+	// until its pieWrittenMsg. Bubble Tea runs each command in its own
+	// goroutine, so two writes from two commands can pass each other: the
+	// writes go one at a time, and a delete cannot pass the transmit before
+	// it.
+	writing bool
+	// held is the command of a quit that waits for the write in flight, so
+	// that the delete goes after it.
+	held tea.Cmd
 	// drawing is true while a draw command runs. One runs at a time, so a
 	// resize does not start a draw for each size it goes through.
 	drawing bool
-	failed  pieKey // an image that could not be encoded; not tried again
+	drawn   *pieDrawnMsg // an encoded image that waits for its write
+	failed  pieKey       // an image that could not be encoded; not tried again
 }
 
 // pieView is what the class table needs to show the pie.
@@ -101,6 +113,10 @@ type pieDrawnMsg struct {
 	err error
 }
 
+// pieWrittenMsg comes back after a write to the terminal: key is the image
+// the terminal then has, zero after a delete.
+type pieWrittenMsg struct{ key pieKey }
+
 // drawPie draws and encodes a pie image. It runs as a command, not in
 // Update: a large pie takes long enough to delay the frame after a resize.
 func drawPie(key pieKey, id termimg.ID, slices []chart.Slice) tea.Cmd {
@@ -124,32 +140,56 @@ func (a *App) wantedPie() (pieKey, bool) {
 
 // syncPie keeps the image in the terminal in step with the screen. Update
 // calls it after each message, with the message's command. It starts a draw
-// when the screen needs an image the terminal does not have, and deletes the
-// image when the screen needs none. The delete goes before cmd, so that it
-// is written before a quit.
+// when the screen needs an image the terminal does not have, writes it when
+// it is drawn, and deletes the image when the screen needs none. A write
+// waits for the write in flight; a quit waits too, so that its delete is
+// the last write.
 func (a *App) syncPie(cmd tea.Cmd) tea.Cmd {
+	p := &a.pie
+	if p.writing {
+		if a.quitting {
+			p.held = tea.Batch(p.held, cmd)
+			return nil
+		}
+		return cmd
+	}
+	cmd = tea.Batch(p.held, cmd)
+	p.held = nil
 	key, ok := a.wantedPie()
+	if p.drawn != nil && (!ok || p.drawn.key != key) {
+		p.drawn = nil // the screen changed while it was drawn
+	}
 	switch {
 	case !ok:
-		if a.pie.sent == (pieKey{}) {
+		if p.sent == (pieKey{}) {
 			return cmd
 		}
-		a.pie.sent = pieKey{}
-		del := tea.Raw(termimg.Delete(a.pie.id))
-		if cmd == nil {
-			return del
-		}
-		return tea.Sequence(del, cmd)
-	case key == a.pie.sent || key == a.pie.failed || a.pie.drawing:
+		return a.writePie(termimg.Delete(p.id), pieKey{}, cmd)
+	case key == p.sent:
+		return cmd
+	case p.drawn != nil:
+		seq := p.drawn.seq
+		p.drawn = nil
+		return a.writePie(seq, key, cmd)
+	case key == p.failed || p.drawing:
 		return cmd
 	}
 	sec, _ := a.reports.allocationSection()
-	a.pie.drawing = true
-	return tea.Batch(cmd, drawPie(key, a.pie.id, sec.PieSlices(key.dark)))
+	p.drawing = true
+	return tea.Batch(cmd, drawPie(key, p.id, sec.PieSlices(key.dark)))
 }
 
-// pieDrawn sends a drawn image to the terminal, if the screen still needs
-// it. Else syncPie starts the draw of the image it needs now.
+// writePie writes seq to the terminal, then runs cmd. The pieWrittenMsg
+// after the write carries key, the image the terminal then has. A sequence
+// sends its messages in order to the one event loop, which writes the
+// tea.Raw before Update gets the pieWrittenMsg.
+func (a *App) writePie(seq string, key pieKey, cmd tea.Cmd) tea.Cmd {
+	a.pie.writing = true
+	return tea.Sequence(tea.Raw(seq), func() tea.Msg { return pieWrittenMsg{key: key} }, cmd)
+}
+
+// pieDrawn keeps a drawn image for its write, if the screen still needs it.
+// Else syncPie starts the draw of the image it needs now.
 func (a *App) pieDrawn(msg pieDrawnMsg) tea.Cmd {
 	a.pie.drawing = false
 	if key, ok := a.wantedPie(); !ok || key != msg.key {
@@ -160,6 +200,12 @@ func (a *App) pieDrawn(msg pieDrawnMsg) tea.Cmd {
 		a.statusbar.SetToast("Could not draw the pie: "+msg.err.Error(), widget.NotificationAlert)
 		return widget.ClearToastCmd()
 	}
+	a.pie.drawn = &msg
+	return nil
+}
+
+// pieWritten records the image the terminal has after a write.
+func (a *App) pieWritten(msg pieWrittenMsg) {
+	a.pie.writing = false
 	a.pie.sent = msg.key
-	return tea.Raw(msg.seq)
 }

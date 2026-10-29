@@ -414,3 +414,38 @@ func TestAllocationPie_CycleSetting(t *testing.T) {
 		t.Errorf("menu item = %q", items[1].Label)
 	}
 }
+
+// Bubble Tea runs each command in its own goroutine, so the writes to the
+// terminal go one at a time. Here the transmit has not run when the owner
+// leaves Reports and quits: the delete waits for the transmit, and the quit
+// for the delete.
+func TestAllocationPie_WritesInOrder(t *testing.T) {
+	app := newPieApp(180, 40, allocationTestReport())
+	app.ready = true
+	_, draw := app.Update(tea.WindowSizeMsg{Width: 180, Height: 40})
+	_, write := app.Update(draw())
+	if !app.pie.writing || write == nil {
+		t.Fatal("the drawn pie is not being written")
+	}
+	if app.pie.sent != (pieKey{}) {
+		t.Error("the pie counts as sent before its write came back")
+	}
+
+	app.switchView(ViewDashboard)
+	if _, cmd := app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); strings.Contains(terminalOutput(t, app, cmd, 4), termimg.Delete(testPieID)) {
+		t.Error("the delete did not wait for the transmit")
+	}
+	if _, cmd := app.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl}); cmd != nil {
+		t.Error("the quit did not wait for the transmit")
+	}
+
+	out := terminalOutput(t, app, write, 6)
+	transmit := strings.Index(out, "\x1b_Ga=p,U=1,")
+	del := strings.Index(out, termimg.Delete(testPieID))
+	if transmit < 0 || del < transmit || !strings.HasSuffix(out, termimg.Delete(testPieID)+"<quit>") {
+		t.Errorf("wrote %q, want the transmit, the delete, then the quit", out)
+	}
+	if app.pie.sent != (pieKey{}) || app.pie.writing {
+		t.Errorf("after the quit: sent %+v, writing %v", app.pie.sent, app.pie.writing)
+	}
+}

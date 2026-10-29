@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
+	reportdom "github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/termimg"
 	"github.com/haskovec/tmoney/internal/types"
@@ -18,7 +19,7 @@ import (
 // text in a class color, and there are no bars.
 func TestPrintAllocationReport_Pie(t *testing.T) {
 	var out bytes.Buffer
-	printAllocationReport(&out, specAllocation(), &cliPie{cols: 32, w: 64, h: 64, dark: true})
+	printAllocationReport(&out, specAllocation(), &cliPie{cols: 32, w: 64, h: 64, dark: true, width: 200})
 	s := out.String()
 
 	if n := strings.Count(s, "\x1b_Ga=p,U=1,"); n != 1 {
@@ -38,13 +39,13 @@ func TestPrintAllocationReport_Pie(t *testing.T) {
 	}
 	legend := []string{
 		"  Asset Class         Holdings         Value % Total",
-		strings.Repeat("─", allocationLegendWidth),
+		strings.Repeat("─", allocationLegendMinWidth),
 		"■ Large Cap Stock            2    $110175.75   33.6%",
 		"■ Asset Mixture              1     $58226.45   17.7%",
 	}
 	for y, want := range legend {
-		if ansi.StringWidth(want) != allocationLegendWidth {
-			t.Errorf("legend line %d is %d cells, want %d", y, ansi.StringWidth(want), allocationLegendWidth)
+		if ansi.StringWidth(want) != allocationLegendMinWidth {
+			t.Errorf("legend line %d is %d cells, want %d", y, ansi.StringWidth(want), allocationLegendMinWidth)
 		}
 		if !strings.HasSuffix(strings.TrimRight(pie[y], "\n"), "   "+want) {
 			t.Errorf("line %d = %q, want it to end with %q", y, pie[y], want)
@@ -80,7 +81,7 @@ func TestPrintAllocationReport_NoPie(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	printAllocationReport(&out, rpt, &cliPie{cols: 32, w: 64, h: 64, dark: true})
+	printAllocationReport(&out, rpt, &cliPie{cols: 32, w: 64, h: 64, dark: true, width: 200})
 	s := out.String()
 	if strings.Contains(s, "\x1b") {
 		t.Errorf("output has an escape code: %q", s)
@@ -105,6 +106,43 @@ func TestProbeCLIPie_NotATerminal(t *testing.T) {
 		}
 		if pie := probeCLIPie(w, mode); pie != nil {
 			t.Errorf("%s, a pipe: pie = %+v, want nil", mode, pie)
+		}
+	}
+}
+
+// A currency code makes a value wider than 13 cells. The Value column takes
+// the widest value, so the rows stay aligned, and the pie prints only when
+// the wider legend fits beside it: a wrapped line would break the pie.
+func TestPrintAllocationReport_PieWideValues(t *testing.T) {
+	m := types.MustNewMoney
+	sec := reportdom.AllocationSection{Currency: "JPY", Value: m("1600000.00"), Available: true, Classes: []reportdom.ClassRow{
+		{Class: security.AssetClassLargeCapStock, Value: m("1500000.00"), Percent: 93.75, Holdings: []reportdom.ClassHolding{{}}},
+		{Class: security.AssetClassCash, Value: m("100000.00"), Percent: 6.25, Holdings: []reportdom.ClassHolding{{}}},
+	}}
+	legend, width := allocationLegend(sec, true)
+	if width != allocationLegendMinWidth+1 {
+		t.Errorf("legend width = %d, want %d for \"JPY 1600000.00\"", width, allocationLegendMinWidth+1)
+	}
+	for i, line := range legend {
+		if w := ansi.StringWidth(line); w != width {
+			t.Errorf("legend line %d is %d cells, want %d: %q", i, w, width, ansi.Strip(line))
+		}
+	}
+	rpt := &reportdom.Allocation{AsOfDate: types.NewDate(2024, 1, 15), AccountCount: 1, Sections: []reportdom.AllocationSection{sec}}
+	for _, tc := range []struct {
+		width int
+		pie   bool
+	}{
+		{32 + allocationPieGap + width - 1, false},
+		{32 + allocationPieGap + width, true},
+	} {
+		var out bytes.Buffer
+		printAllocationReport(&out, rpt, &cliPie{cols: 32, w: 64, h: 64, dark: true, width: tc.width})
+		if got := strings.Contains(out.String(), "\x1b_G"); got != tc.pie {
+			t.Errorf("terminal width %d: pie %v, want %v", tc.width, got, tc.pie)
+		}
+		if !tc.pie && !strings.Contains(out.String(), "JPY 1500000.00") {
+			t.Errorf("terminal width %d: the text report lacks the value:\n%s", tc.width, out.String())
 		}
 	}
 }
