@@ -89,7 +89,7 @@ func TestHoldingsColumns_DropOrder(t *testing.T) {
 		{57, "Security Value % Total "},
 	}
 	for _, tt := range tests {
-		cols := holdingsColumns(tt.width, 26)
+		cols := holdingsColumns(tt.width, 26, nil)
 		if got := strings.Join(holdingsHeaders(cols), " "); got != tt.want {
 			t.Errorf("width %d: columns %q, want %q", tt.width, got, tt.want)
 		}
@@ -114,23 +114,23 @@ func TestHoldingsColumns_NameAndBarShareTheSpare(t *testing.T) {
 	}
 	// At each drop threshold the two get their minimums.
 	for _, w := range []int{109, 85, 58} {
-		cols := holdingsColumns(w, 26)
+		cols := holdingsColumns(w, 26, nil)
 		if n, b := width(cols, holdingsColName), width(cols, holdingsColBar); n != 16 || b != 10 {
 			t.Errorf("width %d: name %d, bar %d; want 16 and 10", w, n, b)
 		}
 	}
 	// With room, Name stops at the longest name and the bar at 40.
-	cols := holdingsColumns(200, 26)
+	cols := holdingsColumns(200, 26, nil)
 	if n, b := width(cols, holdingsColName), width(cols, holdingsColBar); n != 26 || b != 40 {
 		t.Errorf("width 200: name %d, bar %d; want 26 and 40", n, b)
 	}
 	// Short names never go below the minimum.
-	if n := width(holdingsColumns(150, 4), holdingsColName); n != 16 {
+	if n := width(holdingsColumns(150, 4, nil), holdingsColName); n != 16 {
 		t.Errorf("short names: name %d, want 16", n)
 	}
 	// With no Name column, Security is one cell wider for "TOTAL USD", and
 	// the bar takes the spare.
-	cols = holdingsColumns(50, 26)
+	cols = holdingsColumns(50, 26, nil)
 	if sw := width(cols, holdingsColSecurity); sw != holdingsSecurityNoName {
 		t.Errorf("width 50: security %d, want %d", sw, holdingsSecurityNoName)
 	}

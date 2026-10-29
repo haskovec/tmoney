@@ -107,7 +107,7 @@ func TestAllocationColumns_WidthRule(t *testing.T) {
 		{51, 10, 52, false},
 		{120, 40, 91, true},
 	} {
-		cols := allocationColumns(tc.width)
+		cols := allocationColumns(tc.width, allocationValueMin)
 		headers := strings.Join(classHeaders(cols), "|")
 		if strings.Contains(headers, "Holdings") != tc.count {
 			t.Errorf("width %d: columns %s, want Holdings %v", tc.width, headers, tc.count)

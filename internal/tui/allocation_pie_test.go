@@ -167,9 +167,10 @@ func TestAllocationPie_Size(t *testing.T) {
 	// A narrow screen: a smaller pie that leaves room for the legend.
 	app := newPieApp(180, 40, allocationTestReport())
 	width := allocationTableWidth(app.styles)
+	legend := columnsWidth(allocationLegendColumns(allocationValueMin))
 	app.pie.cellW, app.pie.cellH = 20, 20 // cols = rows
 	for rows := allocationPieMaxRows; rows >= allocationPieMinRows; rows-- {
-		if rows+allocationPieGap+allocationLegendWidth <= width {
+		if rows+allocationPieGap+legend <= width {
 			if key, _ := app.wantedPie(); key.rows != rows {
 				t.Errorf("square cells, table width %d: %d rows, want %d", width, key.rows, rows)
 			}
@@ -177,7 +178,7 @@ func TestAllocationPie_Size(t *testing.T) {
 		}
 	}
 	app = newPieApp(70, 40, allocationTestReport())
-	if width := allocationTableWidth(app.styles); width >= 2*allocationPieMinRows+allocationPieGap+allocationLegendWidth {
+	if width := allocationTableWidth(app.styles); width >= 2*allocationPieMinRows+allocationPieGap+legend {
 		t.Fatalf("table width %d is not too narrow for the test", width)
 	}
 	if key, ok := app.wantedPie(); ok {

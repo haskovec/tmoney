@@ -48,12 +48,27 @@ const (
 	holdingsSecurityNoName = 9
 )
 
+// fitWidth is the width of a column that cuts none of its cells: its usual
+// width, or its widest cell when that is wider. A money column needs more
+// than its usual width for a currency code: "JPY 1500000.00" is 14 cells.
+// A cut amount would lose digits.
+func fitWidth(usual int, cells ...string) int {
+	w := usual
+	for _, c := range cells {
+		w = max(w, utf8.RuneCountInString(c))
+	}
+	return w
+}
+
 // holdingsColumns returns the columns that fit a table of width cells, each
 // with a fixed width so the bar width is known when the rows are built.
 // Shares and Price go first, then Cost Basis and Gain, then Name; Security,
 // Value, % Total and the bar always stay. Name and the bar share the spare
 // width: Name stops at the longest name, and the bar at holdingsMaxBar.
-func holdingsColumns(width, longestName int) []holdingsColumn {
+// money gives a money column a width wider than its usual one (see
+// holdingsMoneyWidths); the widths at which columns drop grow by the same
+// cells.
+func holdingsColumns(width, longestName int, money map[holdingsCol]int) []holdingsColumn {
 	all := []holdingsColumn{
 		{holdingsColSecurity, widget.Column{Header: "Security", Width: 8}},
 		{holdingsColName, widget.Column{Header: "Name"}},
@@ -65,14 +80,25 @@ func holdingsColumns(width, longestName int) []holdingsColumn {
 		{holdingsColGain, widget.Column{Header: "Gain", Width: 12, Align: widget.AlignRight}},
 		{holdingsColBar, widget.Column{}},
 	}
+	extra := make(map[holdingsCol]int)
+	for i := range all {
+		if w := money[all[i].col]; w > all[i].Width {
+			extra[all[i].col] = w - all[i].Width
+			all[i].Width = w
+		}
+	}
+	// Each width counts the money columns that show at it.
+	widthName := holdingsWidthName + extra[holdingsColValue]
+	widthCost := holdingsWidthCost + extra[holdingsColValue] + extra[holdingsColCost] + extra[holdingsColGain]
+	widthAll := holdingsWidthAll + extra[holdingsColPrice] + extra[holdingsColValue] + extra[holdingsColCost] + extra[holdingsColGain]
 	dropped := func(c holdingsCol) bool {
 		switch c {
 		case holdingsColShares, holdingsColPrice:
-			return width < holdingsWidthAll
+			return width < widthAll
 		case holdingsColCost, holdingsColGain:
-			return width < holdingsWidthCost
+			return width < widthCost
 		case holdingsColName:
-			return width < holdingsWidthName
+			return width < widthName
 		}
 		return false
 	}
@@ -221,7 +247,7 @@ func (s *reportsViewState) layoutHoldings(width int) {
 	}
 	h := &s.holdings
 	h.width = width
-	h.columns = holdingsColumns(width, longest)
+	h.columns = holdingsColumns(width, longest, holdingsMoneyWidths(rpt))
 	cols := make([]widget.Column, len(h.columns))
 	for i, c := range h.columns {
 		cols[i] = c.Column
@@ -235,6 +261,31 @@ func (s *reportsViewState) layoutHoldings(width int) {
 	h.table.SetColumns(cols)
 	h.table.SetRows(rows)
 	h.table.SetCursor(cursor)
+}
+
+// holdingsMoneyWidths is the width of each money column that cuts none of
+// its amounts, in the rows and in the TOTAL lines.
+func holdingsMoneyWidths(rpt *report.Holdings) map[holdingsCol]int {
+	all := holdingsColumns(holdingsWidthAll, 0, nil) // every column
+	cells := make(map[holdingsCol][]string)
+	for _, sec := range rpt.Sections {
+		for _, row := range sec.Rows {
+			for i, cell := range holdingsCells(all, sec, row) {
+				cells[all[i].col] = append(cells[all[i].col], cell)
+			}
+		}
+		for col, cell := range holdingsTotals(sec) {
+			cells[col] = append(cells[col], cell)
+		}
+	}
+	out := make(map[holdingsCol]int)
+	for _, c := range all {
+		switch c.col {
+		case holdingsColPrice, holdingsColValue, holdingsColCost, holdingsColGain:
+			out[c.col] = fitWidth(c.Width, cells[c.col]...)
+		}
+	}
+	return out
 }
 
 // holdingsCells is one row of the table, in the order of cols.
@@ -313,7 +364,8 @@ func (s *reportsViewState) openSplit() {
 	}
 	row := s.data.holdings.Sections[ref.section].Rows[ref.row]
 	s.holdings.splitRef = ref
-	s.holdings.split = widget.NewTable(splitColumns(s.holdings.width, row.Cash))
+	currency := s.data.holdings.Sections[ref.section].Currency
+	s.holdings.split = widget.NewTable(splitColumns(s.holdings.width, row, currency))
 	rows := make([][]string, len(row.Accounts))
 	for i, a := range row.Accounts {
 		rows[i] = splitCells(row, a.Name, a.Shares, a.Value, a.Percent, s.data.holdings.Sections[ref.section].Currency)
@@ -340,16 +392,21 @@ func (s *reportsViewState) clickHoldingsRow(row int) {
 	}
 }
 
-// splitColumns are the columns of a split, all fixed: the Cash row's split
-// has no Shares column.
-func splitColumns(width int, cash bool) []widget.Column {
+// splitColumns are the columns of the split of row, all fixed: the Cash
+// row's split has no Shares column. Value is as wide as the widest amount,
+// the Total too, and at least 13 cells.
+func splitColumns(width int, row report.HoldingRow, currency string) []widget.Column {
+	values := []string{formatDashboardMoneyIn(row.Value, currency)}
+	for _, a := range row.Accounts {
+		values = append(values, formatDashboardMoneyIn(a.Value, currency))
+	}
 	cols := []widget.Column{
 		{Header: "Account"},
 		{Header: "Shares", Width: 12, Align: widget.AlignRight},
-		{Header: "Value", Width: 13, Align: widget.AlignRight},
+		{Header: "Value", Width: fitWidth(13, values...), Align: widget.AlignRight},
 		{Header: "% of Holding", Width: 12, Align: widget.AlignRight},
 	}
-	if cash {
+	if row.Cash {
 		cols = append(cols[:1], cols[2:]...)
 	}
 	account := width - (len(cols) - 1)
@@ -432,7 +489,8 @@ func (s *reportsViewState) renderHoldings(styles widget.Styles, height int) stri
 		if split := s.holdings.split; split != nil {
 			// Only the widths change, so the split keeps its cursor.
 			ref := s.holdings.splitRef
-			split.SetColumns(splitColumns(tableWidth, rpt.Sections[ref.section].Rows[ref.row].Cash))
+			sec := rpt.Sections[ref.section]
+			split.SetColumns(splitColumns(tableWidth, sec.Rows[ref.row], sec.Currency))
 		}
 	}
 	if s.holdings.split != nil {
@@ -501,14 +559,7 @@ func (s *reportsViewState) holdingsTotalLine(styles widget.Styles, sec report.Ho
 	if withCurrency {
 		label += " " + sec.Currency
 	}
-	money := func(m types.Money) string { return formatDashboardMoneyIn(m, sec.Currency) }
-	value := "not available"
-	if sec.Available {
-		value = money(sec.Value)
-		if sec.Estimated {
-			value = "~" + value
-		}
-	}
+	totals := holdingsTotals(sec)
 
 	var cells []string
 	labelWidth := 0
@@ -524,7 +575,7 @@ func (s *reportsViewState) holdingsTotalLine(styles widget.Styles, sec report.Ho
 			}
 			cells = append(cells, styles.Bold.Render(widget.AlignText(label, labelWidth, widget.AlignLeft)))
 		case holdingsColValue:
-			cells = append(cells, styles.Bold.Render(widget.AlignText(value, c.Width, c.Align)))
+			cells = append(cells, styles.Bold.Render(widget.AlignText(totals[c.col], c.Width, c.Align)))
 		case holdingsColPercent:
 			// The rows are 0% of a total that is zero or less (negative
 			// cash), so the total is not 100% of them either.
@@ -534,17 +585,9 @@ func (s *reportsViewState) holdingsTotalLine(styles widget.Styles, sec report.Ho
 			}
 			cells = append(cells, widget.AlignText(pct, c.Width, c.Align))
 		case holdingsColCost:
-			cost := ""
-			if sec.Available {
-				cost = money(sec.CostBasis)
-			}
-			cells = append(cells, widget.AlignText(cost, c.Width, c.Align))
+			cells = append(cells, widget.AlignText(totals[c.col], c.Width, c.Align))
 		case holdingsColGain:
-			gain := ""
-			if sec.Available {
-				gain = money(sec.Gain)
-			}
-			cell := widget.AlignText(gain, c.Width, c.Align)
+			cell := widget.AlignText(totals[c.col], c.Width, c.Align)
 			switch {
 			case !sec.Available:
 			case sec.Gain.IsNegative():
@@ -559,6 +602,23 @@ func (s *reportsViewState) holdingsTotalLine(styles widget.Styles, sec report.Ho
 		}
 	}
 	return strings.TrimRight(strings.Join(cells, " "), " ")
+}
+
+// holdingsTotals are the amounts of a section's TOTAL line, by column.
+func holdingsTotals(sec report.HoldingsSection) map[holdingsCol]string {
+	if !sec.Available {
+		return map[holdingsCol]string{holdingsColValue: "not available"}
+	}
+	money := func(m types.Money) string { return formatDashboardMoneyIn(m, sec.Currency) }
+	value := money(sec.Value)
+	if sec.Estimated {
+		value = "~" + value
+	}
+	return map[holdingsCol]string{
+		holdingsColValue: value,
+		holdingsColCost:  money(sec.CostBasis),
+		holdingsColGain:  money(sec.Gain),
+	}
 }
 
 // renderHoldingsSplit renders how one holdings row splits across the

@@ -381,14 +381,22 @@ Which columns show:
 | 58 to 84 | also no Cost Basis, no Gain |
 | less than 58 | also no Name |
 
+A money column (Price, Value, Cost Basis, Gain) is as wide as its widest
+amount in the rows and the TOTAL lines when that is wider than the width in
+the table, so that no amount is cut. A currency code makes an amount wider:
+`JPY 1500000.00` is 14 cells. Each `W` in the second table then grows by
+the cells that the wider columns showing at that `W` add. The split's Value
+column does the same with its amounts.
+
 `spare` is `W`, minus one separator cell between each two columns, minus the
 fixed widths. `Name = max(16, min(longest name, spare / 2))`, and
 `bar = min(spare − Name, 40)`. With no Name column, `bar = min(spare, 40)`.
 Below 41 cells the bar gets narrower and the table cuts the right side, as
 other tables do.
 
-One pure function, `holdingsColumns(width, longestName int)`, returns the
-columns. The view sets all widths as fixed widths, so it knows
+One pure function, `holdingsColumns(width, longestName int, money
+map[holdingsCol]int)`, returns the columns; `money` has the widths of the
+money columns (`holdingsMoneyWidths`). The view sets all widths as fixed widths, so it knows
 the bar width when it builds the rows. The TOTAL line uses the same widths,
 so it lines up with the table.
 
