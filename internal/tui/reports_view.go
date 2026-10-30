@@ -12,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
+	"github.com/haskovec/tmoney/internal/types"
 )
 
 // reportType represents which report is being displayed.
@@ -314,9 +315,11 @@ func (s *reportsViewState) renderNetWorth(styles widget.Styles) string {
 	// mouse hit-test rows.
 	sections = append(sections, renderAssetLiabilityColumns(styles, nw, contentWidth, nil, nil))
 
-	// Navigation hints
+	// Navigation hints. They leave out whole hints to fit, the current
+	// view's first; "esc back" stays.
+	hints := []string{"n net worth", "s spending", "i holdings", "a allocation", "esc back"}
 	sections = append(sections, "")
-	sections = append(sections, styles.Muted.Render("  n net worth  s spending  i holdings  a allocation  esc back"))
+	sections = append(sections, styles.Muted.Render("  "+widget.FitParts(hints, "  ", sepWidth-2, []int{0, 3, 2, 1})))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
@@ -354,47 +357,48 @@ func (s *reportsViewState) renderSpending(styles widget.Styles) string {
 		sections = append(sections, "")
 		sections = append(sections, styles.Muted.Render("  No spending data for this period"))
 	} else {
-		// widget.Column header
+		// widget.Column header. Each cell is padded to its column before it
+		// is styled: a style's color codes are not cells, so a width in the
+		// format string would count them and the columns would not line up.
 		tableWidth := max(contentWidth-4, 1)
+		amountWidth := spendingAmountWidth(sr)
 		barWidth := max(
-			// Reserve space for name(20), amount(12), percent(8), gaps(2)
-			tableWidth-42, 4)
+			// Reserve space for indent(2), name(20), amount, percent(7), gaps(4)
+			tableWidth-33-amountWidth, 4)
+		pad := func(m types.Money) string { return fmt.Sprintf("%*s", amountWidth, formatDashboardMoney(m)) }
 
-		headerLine := fmt.Sprintf("  %-20s %12s %7s  %s", "Category", "Amount", "% Total", "")
+		headerLine := fmt.Sprintf("  %-20s %*s %7s  %s", "Category", amountWidth, "Amount", "% Total", "")
 		sections = append(sections, styles.TableHeader.Render(headerLine))
 
 		// Category rows
 		for _, cat := range sr.Categories {
 			// Parent category row with bar
-			name := widget.Truncate(cat.Name, 20)
-			amount := formatDashboardMoney(cat.Amount)
+			name := widget.PadRight(widget.Truncate(cat.Name, 20), 20)
 			pct := fmt.Sprintf("%.1f%%", cat.Percentage)
 			bar := renderSpendingBar(cat.Percentage, barWidth)
 
-			line := fmt.Sprintf("  %-20s %12s %7s  %s",
+			line := fmt.Sprintf("  %s %s %7s  %s",
 				styles.Bold.Render(name),
-				styles.Negative.Render(amount),
+				styles.Negative.Render(pad(cat.Amount)),
 				pct,
 				styles.Negative.Render(bar))
 			sections = append(sections, line)
 
 			// Subcategory rows
 			for _, sub := range cat.Subcategories {
-				subName := "  " + widget.Truncate(sub.Name, 18)
-				subAmount := formatDashboardMoney(sub.Amount)
-				subLine := fmt.Sprintf("  %-20s %12s",
+				subName := widget.PadRight("  "+widget.Truncate(sub.Name, 18), 20)
+				subLine := fmt.Sprintf("  %s %s",
 					styles.Muted.Render(subName),
-					styles.Muted.Render(subAmount))
+					styles.Muted.Render(pad(sub.Amount)))
 				sections = append(sections, subLine)
 			}
 		}
 
 		// Total row
 		sections = append(sections, styles.Muted.Render("  "+strings.Repeat("─", tableWidth-2)))
-		totalAmount := formatDashboardMoney(sr.TotalSpending)
-		totalLine := fmt.Sprintf("  %-20s %12s %7s",
-			styles.Bold.Render("TOTAL"),
-			styles.Negative.Bold(true).Render(totalAmount),
+		totalLine := fmt.Sprintf("  %s %s %7s",
+			styles.Bold.Render(widget.PadRight("TOTAL", 20)),
+			styles.Negative.Bold(true).Render(pad(sr.TotalSpending)),
 			"100.0%")
 		sections = append(sections, totalLine)
 	}
@@ -408,16 +412,31 @@ func (s *reportsViewState) renderSpending(styles widget.Styles) string {
 		styles.Muted.Render(fmt.Sprintf("%s >", nextPeriod)))
 	sections = append(sections, navLine)
 
-	// Navigation hints
+	// Navigation hints. They leave out whole hints to fit, the current
+	// view's first; "esc back" stays.
 	modeHint := "m monthly"
 	if s.data.month > 0 {
 		modeHint = "y yearly"
 	}
-	sections = append(sections, styles.Muted.Render(fmt.Sprintf("  <-> period  %s  t transfers  n net worth  s spending  i holdings  a allocation  esc back", modeHint)))
+	hints := []string{"<-> period", modeHint, "t transfers", "n net worth", "s spending", "i holdings", "a allocation", "esc back"}
+	sections = append(sections, styles.Muted.Render("  "+widget.FitParts(hints, "  ", contentWidth-6, []int{4, 6, 5, 3, 2, 1, 0})))
 
 	return lipgloss.NewStyle().
 		Padding(1, 2).
 		Render(strings.Join(sections, "\n"))
+}
+
+// spendingAmountWidth is the width of the spending report's Amount column:
+// 12 cells, or its widest amount when that is wider.
+func spendingAmountWidth(sr *report.Spending) int {
+	cells := []string{formatDashboardMoney(sr.TotalSpending)}
+	for _, cat := range sr.Categories {
+		cells = append(cells, formatDashboardMoney(cat.Amount))
+		for _, sub := range cat.Subcategories {
+			cells = append(cells, formatDashboardMoney(sub.Amount))
+		}
+	}
+	return fitWidth(12, cells...)
 }
 
 // adjacentPeriods returns display strings for the previous and next periods.

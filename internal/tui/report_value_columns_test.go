@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/haskovec/tmoney/internal/report"
 	"github.com/haskovec/tmoney/internal/security"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -178,5 +180,50 @@ func TestAllocationColumns_WideValue(t *testing.T) {
 	}
 	if !has(allocationColumns(63, 15)) || has(allocationColumns(62, 15)) {
 		t.Error("with a Value of 15 cells, Holdings must show from 63 cells")
+	}
+}
+
+// The spending report's amounts end under the end of the Amount header, in
+// color too: the color codes are not cells. The Amount column is as wide as
+// its widest amount, and no line is wider than the content.
+func TestRenderSpending_ColumnsAlign(t *testing.T) {
+	styles := widget.NewStyles()
+	styles.Resize(120, 30)
+	s := reportsViewState{data: &reportsViewData{rtype: reportTypeSpending, year: 2024, month: 1, spending: &report.Spending{
+		Period:        "January 2024",
+		TotalSpending: types.MustNewMoney("123456789"),
+		Categories: []report.CategorySpending{
+			{Name: "Housing", Amount: types.MustNewMoney("1500"), Percentage: 0.1,
+				Subcategories: []report.CategorySpending{{Name: "Rent", Amount: types.MustNewMoney("1500")}}},
+			{Name: "Transportation", Amount: types.MustNewMoney("123455289"), Percentage: 99.9},
+		},
+	}}}
+	lines := strings.Split(ansi.Strip(s.renderSpending(styles)), "\n")
+
+	end := -1
+	for _, l := range lines {
+		if strings.Contains(l, "Category") {
+			end = strings.Index(l, "Amount") + len("Amount")
+		}
+	}
+	if end < 0 {
+		t.Fatal("no header line")
+	}
+	found := 0
+	for _, l := range lines {
+		for _, amount := range []string{"$1500.00", "$123455289.00", "$123456789.00"} {
+			if i := strings.Index(l, amount); i >= 0 {
+				found++
+				if i+len(amount) != end {
+					t.Errorf("%q ends at %d, want %d: %q", amount, i+len(amount), end, l)
+				}
+			}
+		}
+		if w := lipgloss.Width(l); w > styles.ContentWidth() {
+			t.Errorf("line is %d cells, wider than the content (%d): %q", w, styles.ContentWidth(), l)
+		}
+	}
+	if found != 4 {
+		t.Errorf("found %d amounts, want 4", found)
 	}
 }
