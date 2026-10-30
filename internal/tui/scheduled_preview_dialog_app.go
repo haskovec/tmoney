@@ -43,9 +43,12 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 	svc := a.services
 	file := a.fileOfOpen()
 	return func() tea.Msg {
+		// All accounts, closed included, so the names and the currency of a
+		// closed account's schedule show; buildSplitTransferAccountOptions
+		// offers only the active ones as transfer targets.
 		var accounts []*account.Account
 		if svc.Account != nil {
-			acs, err := svc.Account.List(true)
+			acs, err := svc.Account.List(false)
 			if err != nil {
 				return errMsg{err: err, fileOf: file}
 			}

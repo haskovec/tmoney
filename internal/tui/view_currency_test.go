@@ -238,3 +238,44 @@ func TestOpeners_AccountCurrency(t *testing.T) {
 		t.Errorf("seed currency = %q (ok %v), want EUR", seed.currency, ok)
 	}
 }
+
+// A closed account keeps its schedules until they are redirected. The
+// scheduled view, the Dashboard and the posting preview still show their
+// amounts in its currency, and the scheduled view shows its name.
+func TestSchedules_ClosedAccountCurrency(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	env.acct.Currency = "EUR"
+	if err := account.NewRepository(env.database).Update(env.acct); err != nil {
+		t.Fatalf("Update account: %v", err)
+	}
+	if err := env.app.services.Account.Close(env.acct.ID, types.Today()); err != nil {
+		t.Fatalf("Close account: %v", err)
+	}
+
+	sched, ok := env.app.loadScheduledViewData()().(scheduledViewDataLoadedMsg)
+	if !ok {
+		t.Fatal("the scheduled loader did not return its data")
+	}
+	if got := sched.data.accountCurrencies[env.acct.ID]; got != "EUR" {
+		t.Errorf("scheduled view currency = %q, want EUR", got)
+	}
+	if got := sched.data.accountNames[env.acct.ID]; got != env.acct.Name {
+		t.Errorf("scheduled view account name = %q, want %q", got, env.acct.Name)
+	}
+
+	dash, ok := env.app.dashboard.load(env.app.dashboardDeps())().(dashboardLoadedMsg)
+	if !ok {
+		t.Fatal("the Dashboard loader did not return its data")
+	}
+	if got := dash.data.accountCurrencies[env.acct.ID]; got != "EUR" {
+		t.Errorf("Dashboard currency = %q, want EUR", got)
+	}
+
+	preview, ok := env.app.loadSchedulePreviewData()().(schedulePreviewDataMsg)
+	if !ok {
+		t.Fatal("the preview loader did not return its data")
+	}
+	if got := accountCurrencyByID(preview.accounts, env.acct.ID); got != "EUR" {
+		t.Errorf("preview currency = %q, want EUR", got)
+	}
+}

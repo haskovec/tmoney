@@ -161,9 +161,10 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			}
 		}
 
-		// Load account names
+		// Load account names, closed accounts included: a closed account
+		// keeps its schedules until they are redirected.
 		if svc.Account != nil {
-			accounts, err := svc.Account.List(true)
+			accounts, err := svc.Account.List(false)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name

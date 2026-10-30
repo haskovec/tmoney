@@ -806,8 +806,12 @@ leaves out whole hints to fit the width.
 
 An amount shows in its account's currency ("$", "€", "£", or the code, as
 in "JPY 1500000.00"), in the views and in the dialogs of that account. A
-price shows in its security's currency. The spending report and the
-ledger-move message add amounts from many accounts, and show dollars.
+closed account's schedules also show in its currency. In the Prices view, a
+price shows in its security's currency. A holding's price in the Portfolio
+view shows in its account's currency, as in the holdings report: tmoney does
+not convert currencies, and the market value is the shares times that price.
+The spending report and the ledger-move message add amounts from many
+accounts, and show dollars.
 
 ## Accessibility
 

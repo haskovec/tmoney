@@ -143,9 +143,10 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 			}
 		}
 
-		// Load account names
+		// Load account names, closed accounts included: a closed account
+		// keeps its schedules until they are redirected.
 		if accountSvc := d.accounts(); accountSvc != nil {
-			accounts, err := accountSvc.List(true)
+			accounts, err := accountSvc.List(false)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
