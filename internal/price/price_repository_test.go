@@ -574,6 +574,29 @@ func TestRepository_GetLatestPrices(t *testing.T) {
 		}
 	})
 
+	t.Run("carries the security's currency", func(t *testing.T) {
+		database := createTestDB(t)
+		secRepo := security.NewRepository(database)
+		priceRepo := NewRepository(database)
+
+		sec := security.NewSecurity("FICT", "Fictional Fund", security.TypeMutualFund)
+		sec.Currency = "EUR"
+		if err := secRepo.Create(sec); err != nil {
+			t.Fatalf("create security: %v", err)
+		}
+		if err := priceRepo.Create(NewPrice(sec.ID, types.NewDate(2024, time.January, 15), mustMoney(t, "42.50"), SourceManual)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		got, err := priceRepo.GetLatestPrices()
+		if err != nil {
+			t.Fatalf("GetLatestPrices() error = %v", err)
+		}
+		if len(got) != 1 || got[0].Currency != "EUR" {
+			t.Fatalf("got %+v, want one row with currency EUR", got)
+		}
+	})
+
 	t.Run("excludes hidden securities", func(t *testing.T) {
 		database := createTestDB(t)
 		secRepo := security.NewRepository(database)

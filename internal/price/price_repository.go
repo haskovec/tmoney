@@ -224,7 +224,7 @@ func (r *Repository) GetPriceHistory(securityID types.ID, from *types.Date, to *
 // list in stable order.
 func (r *Repository) GetLatestPrices() ([]*LatestPrice, error) {
 	query := `
-		SELECT s.id, s.ticker, s.name, p.date, p.price
+		SELECT s.id, s.ticker, s.name, s.currency, p.date, p.price
 		FROM securities s
 		JOIN (
 			SELECT security_id, date, price,
@@ -244,7 +244,7 @@ func (r *Repository) GetLatestPrices() ([]*LatestPrice, error) {
 	out := make([]*LatestPrice, 0)
 	for rows.Next() {
 		lp := &LatestPrice{}
-		if err := rows.Scan(&lp.SecurityID, &lp.Ticker, &lp.Name, &lp.Date, &lp.Price); err != nil {
+		if err := rows.Scan(&lp.SecurityID, &lp.Ticker, &lp.Name, &lp.Currency, &lp.Date, &lp.Price); err != nil {
 			return nil, fmt.Errorf("failed to scan latest price: %w", err)
 		}
 		out = append(out, lp)

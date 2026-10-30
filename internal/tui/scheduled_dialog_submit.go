@@ -176,6 +176,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			accountOptions:  accountOptions,
 			accountIDs:      accountIDs,
 			accountID:       accountID,
+			currency:        accountCurrencyByID(a.sched.data.accounts, accountID),
 		}
 		// Seed the split dialog from existing children when editing a
 		// schedule that already carries a multi-line template.

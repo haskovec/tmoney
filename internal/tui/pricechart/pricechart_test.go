@@ -51,7 +51,7 @@ func TestSinglePriceMessage(t *testing.T) {
 		Price: m,
 	}
 
-	got := singlePriceMessage(p)
+	got := singlePriceMessage(p, "")
 	if !strings.Contains(got, "Only one price on file") {
 		t.Errorf("singlePriceMessage missing leading sentence; got %q", got)
 	}
@@ -67,7 +67,7 @@ func TestSinglePriceMessage(t *testing.T) {
 }
 
 func TestSinglePriceMessageNil(t *testing.T) {
-	got := singlePriceMessage(nil)
+	got := singlePriceMessage(nil, "")
 	if got == "" {
 		t.Errorf("singlePriceMessage(nil) returned empty string; expected fallback message")
 	}

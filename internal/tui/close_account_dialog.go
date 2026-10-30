@@ -63,7 +63,7 @@ func (a *App) showCloseAccountDialog() {
 
 	d := buildCloseAccountDialog(acct, scheduledCount)
 	d.SetVisible(true)
-	a.closeAcct = closeAcctSurface{modalSurface: modalSurface{dlg: d}, targetID: accountID}
+	a.closeAcct = closeAcctSurface{modalSurface: modalSurface{dlg: d}, targetID: accountID, currency: acct.Currency}
 }
 
 // closeAcctSurface is the Close Account dialog's state. targetID is captured at
@@ -72,6 +72,7 @@ func (a *App) showCloseAccountDialog() {
 type closeAcctSurface struct {
 	modalSurface
 	targetID types.ID
+	currency string // the account's currency code, for a balance in an error
 }
 
 // IsVisible must be declared here rather than promoted from modalSurface — see
@@ -112,7 +113,7 @@ func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
 
 	cmd := undo.NewCloseAccountCommand(a.services.Account, accountID, closeDate)
 	if err := a.undoManager.Execute(cmd); err != nil {
-		a.closeAcct.dlg.SetErrorMsg(closeAccountErrorMessage(err))
+		a.closeAcct.dlg.SetErrorMsg(closeAccountErrorMessage(err, a.closeAcct.currency))
 		return a, nil
 	}
 
@@ -122,20 +123,20 @@ func (a *App) submitCloseAccountDialog() (tea.Model, tea.Cmd) {
 }
 
 // closeAccountErrorMessage renders a friendly dialog message for the typed
-// close failures.
-func closeAccountErrorMessage(err error) string {
+// close failures, with a balance in the account's currency.
+func closeAccountErrorMessage(err error, currency string) string {
 	var balErr *account.HasBalanceError
 	var dateErr *account.InvalidCloseDateError
 	switch {
 	case errors.As(err, &balErr) && balErr.RegisterRows:
 		return fmt.Sprintf("Cannot close: the account has register transactions that total %s. Delete or move them first.",
-			formatDashboardMoney(balErr.Balance))
+			formatDashboardMoneyIn(balErr.Balance, currency))
 	case errors.As(err, &balErr) && balErr.HoldsShares && !balErr.Balance.IsZero():
-		return fmt.Sprintf("Cannot close: the account still holds shares and cash of %s.", formatDashboardMoney(balErr.Balance))
+		return fmt.Sprintf("Cannot close: the account still holds shares and cash of %s.", formatDashboardMoneyIn(balErr.Balance, currency))
 	case errors.As(err, &balErr) && balErr.HoldsShares:
 		return "Cannot close: the account still holds shares."
 	case errors.As(err, &balErr) && balErr.InvestmentCash:
-		return fmt.Sprintf("Cannot close: the account has cash of %s. Move the cash out first.", formatDashboardMoney(balErr.Balance))
+		return fmt.Sprintf("Cannot close: the account has cash of %s. Move the cash out first.", formatDashboardMoneyIn(balErr.Balance, currency))
 	case errors.As(err, &balErr):
 		return "Cannot close: the account balance must be zero."
 	case errors.As(err, &dateErr):

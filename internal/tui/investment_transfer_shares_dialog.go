@@ -67,6 +67,7 @@ func buildTransferSharesDialog(
 	accountIDs []types.ID,
 	securityIDs []types.ID,
 	lots []*investment.Lot,
+	currency string,
 ) *dialog.Dialog {
 	d := dialog.NewDialog("Transfer Shares")
 	d.SetWidth(70)
@@ -113,7 +114,7 @@ func buildTransferSharesDialog(
 
 	// Lot allocation fields (only for lot-tracking source accounts)
 	for _, lot := range lots {
-		d.AddNumericField(buildLotLabel(lot), "", "0", 12)
+		d.AddNumericField(buildLotLabel(lot, currency), "", "0", 12)
 	}
 
 	// Memo
@@ -208,7 +209,7 @@ func (s *transferSharesSurface) applyData(data *transferSharesDialogData, seed i
 	acctOptions, acctIDs := buildInvestmentAccountOptions(data.investmentAccounts, excludeAccountID)
 	s.accountIDs = acctIDs
 	s.lots = data.lots
-	s.dlg = buildTransferSharesDialog(acctOptions, secOptions, seed.editTxn, acctIDs, secIDs, data.lots)
+	s.dlg = buildTransferSharesDialog(acctOptions, secOptions, seed.editTxn, acctIDs, secIDs, data.lots, seed.currency)
 	if seed.editTxn == nil {
 		s.dlg.SeedDateField(seed.stickyDate)
 		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)

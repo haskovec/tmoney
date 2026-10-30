@@ -137,11 +137,13 @@ func (sp *Price) IsValid() bool {
 
 // LatestPrice is a row in the "latest price per security" summary used by
 // the prices view's top-level list. It pairs the security identity needed
-// to drill in (ID, ticker, name) with the most recent price on file.
+// to drill in (ID, ticker, name) with the most recent price on file, and
+// the security's currency to show the price in.
 type LatestPrice struct {
 	SecurityID types.ID
 	Ticker     string
 	Name       string
+	Currency   string
 	Date       types.Date
 	Price      types.Money
 }

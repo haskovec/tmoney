@@ -806,6 +806,15 @@ the number columns at their full widths. Beside the price chart, the prices
 list is as wide as its columns, and the chart gets the rest. A key-hint line
 leaves out whole hints to fit the width.
 
+An amount shows in its account's currency ("$", "€", "£", or the code, as
+in "JPY 1500000.00"), in the views and in the dialogs of that account. A
+closed account's schedules also show in its currency. In the Prices view, a
+price shows in its security's currency. A holding's price in the Portfolio
+view shows in its account's currency, as in the holdings report: tmoney does
+not convert currencies, and the market value is the shares times that price.
+The spending report and the ledger-move message add amounts from many
+accounts, and show dollars.
+
 ## Accessibility
 
 - High contrast mode support

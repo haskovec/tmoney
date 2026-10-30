@@ -129,16 +129,17 @@ func (w *PaycheckWizard) Render(styles widget.Styles) string {
 
 	// Net total.
 	total := w.computeTotal()
-	depositName := ""
+	depositName, currency := "", ""
 	if w.accountField != nil && w.accountField.SelectedIndex >= 0 && w.accountField.SelectedIndex < len(w.accountField.Options) {
 		depositName = w.accountField.Options[w.accountField.SelectedIndex]
+		currency = w.accountCurrencies[w.lookupAccountID(w.accountField.SelectedIndex)]
 	}
 	addLine(fillStyle.Render(strings.Repeat("─", contentWidth)))
 	totalLabel := "Net to deposit account"
 	if depositName != "" {
 		totalLabel = "Net to " + depositName
 	}
-	addLine(fillStyle.Render(fmt.Sprintf("%s: %s", totalLabel, formatDashboardMoney(total))))
+	addLine(fillStyle.Render(fmt.Sprintf("%s: %s", totalLabel, formatDashboardMoneyIn(total, currency))))
 	addLine("")
 
 	// Error.

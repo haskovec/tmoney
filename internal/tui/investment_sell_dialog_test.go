@@ -20,7 +20,7 @@ func TestBuildSellDialog_NumericFields(t *testing.T) {
 		CostPerShare: types.MustNewMoney("150.00"),
 		PurchaseDate: types.NewDate(2023, time.June, 15),
 	}
-	d := buildSellDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()}, []*investment.Lot{lot})
+	d := buildSellDialog([]string{"AAPL - Apple Inc."}, nil, []types.ID{types.NewID()}, []*investment.Lot{lot}, "")
 	assertNumericFields(t, d,
 		[]string{"Shares", "Total", "Price/Share", "Commission"},
 		[]string{"Memo"},
@@ -31,7 +31,7 @@ func TestBuildSellDialog_NewTransaction_NonLotTracking(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{types.NewID(), types.NewID()}
 
-	d := buildSellDialog(options, nil, ids, nil)
+	d := buildSellDialog(options, nil, ids, nil, "")
 
 	if d == nil {
 		t.Fatal("dialog should not be nil")
@@ -124,7 +124,7 @@ func TestBuildSellDialog_WithLots(t *testing.T) {
 		PurchaseDate: types.NewDate(2024, time.January, 10),
 	}
 
-	d := buildSellDialog(options, nil, ids, []*investment.Lot{lot1, lot2})
+	d := buildSellDialog(options, nil, ids, []*investment.Lot{lot1, lot2}, "")
 
 	fields := d.Fields()
 	// With lots: Security, Date, Shares, Total, Price/Share, Commission, Memo + 2 lot fields = 9 fields
@@ -176,7 +176,7 @@ func TestBuildSellDialog_EditTransaction(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{secID, types.NewID()}
 
-	d := buildSellDialog(options, txn, ids, nil)
+	d := buildSellDialog(options, txn, ids, nil, "")
 	fields := d.Fields()
 
 	// Date
@@ -229,7 +229,7 @@ func TestBuildSellDialog_EditPreSelectsCorrectSecurity(t *testing.T) {
 	options := []string{"AAPL - Apple Inc.", "MSFT - Microsoft Corp."}
 	ids := []types.ID{secID1, secID2}
 
-	d := buildSellDialog(options, txn, ids, nil)
+	d := buildSellDialog(options, txn, ids, nil, "")
 	fields := d.Fields()
 
 	if fields[1].SelectedIndex != 1 {
@@ -283,7 +283,7 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 	secIDs := []types.ID{types.NewID()}
 
 	app := &App{
-		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{"AAPL - Apple Inc."}, nil, secIDs, nil)},
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{"AAPL - Apple Inc."}, nil, secIDs, nil, "")},
 			data: &sellDialogData{
 				securities: []*security.Security{},
 			},
@@ -332,7 +332,7 @@ func TestSubmitSellDialog_ValidationErrors(t *testing.T) {
 
 func TestSubmitSellDialog_NoSecurities(t *testing.T) {
 	app := &App{
-		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{}, nil, []types.ID{}, nil)},
+		sell: sellSurface{modalSurface: modalSurface{dlg: buildSellDialog([]string{}, nil, []types.ID{}, nil, "")},
 			data: &sellDialogData{
 				securities: []*security.Security{},
 			},
@@ -366,6 +366,7 @@ func TestSubmitSellDialog_ValidWithPricePerShare(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -408,6 +409,7 @@ func TestSubmitSellDialog_ValidWithTotal(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -449,6 +451,7 @@ func TestSubmitSellDialog_InvalidCommission(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -489,6 +492,7 @@ func TestSubmitSellDialog_InvalidPrice(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -529,6 +533,7 @@ func TestSubmitSellDialog_InvalidTotal(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -570,6 +575,7 @@ func TestSubmitSellDialog_WithCommissionAndMemo(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -612,6 +618,7 @@ func TestSubmitSellDialog_DollarSignInCommission(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -671,6 +678,7 @@ func TestSubmitSellDialog_WithLotAllocations(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			lots,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -730,6 +738,7 @@ func TestSubmitSellDialog_LotAllocationMismatch(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			lots,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -785,6 +794,7 @@ func TestSubmitSellDialog_LotAllocationExceedsAvailable(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			lots,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -840,6 +850,7 @@ func TestSubmitSellDialog_InvalidLotAllocation(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			lots,
+			"",
 		)},
 
 			data: &sellDialogData{
@@ -886,6 +897,7 @@ func TestHandleSellDialogKey_Cancel(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -946,6 +958,7 @@ func TestCloseSellDialog(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil,
+			"",
 		)},
 
 			data:        &sellDialogData{},
@@ -976,7 +989,7 @@ func TestBuildLotLabel(t *testing.T) {
 		PurchaseDate: types.NewDate(2023, time.June, 15),
 	}
 
-	label := buildLotLabel(lot)
+	label := buildLotLabel(lot, "")
 	expected := "Lot: 06/15/2023 - 100 shares @ $150.00"
 	if label != expected {
 		t.Errorf("lot label = %q, want %q", label, expected)
@@ -990,7 +1003,7 @@ func TestBuildLotLabel_SmallShares(t *testing.T) {
 		PurchaseDate: types.NewDate(2024, time.February, 29),
 	}
 
-	label := buildLotLabel(lot)
+	label := buildLotLabel(lot, "")
 	expected := "Lot: 02/29/2024 - 0.5 shares @ $50000.00"
 	if label != expected {
 		t.Errorf("lot label = %q, want %q", label, expected)
@@ -1054,6 +1067,7 @@ func TestSubmitSellDialog_NewSell_LotTracked_NoRepo_DoesNotPanic(t *testing.T) {
 			nil,
 			[]types.ID{secID},
 			nil, // new sell: no lots -> no per-lot fields
+			"",
 		)},
 
 			data: &sellDialogData{

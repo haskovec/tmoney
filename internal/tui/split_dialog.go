@@ -105,9 +105,12 @@ type splitDialogSavedMsg struct {
 
 // SplitDialog is a custom dialog for editing split transaction entries.
 type SplitDialog struct {
-	visible         bool
-	width           int
-	totalAmount     types.Money
+	visible     bool
+	width       int
+	totalAmount types.Money
+	// currency is the parent account's currency code, for the total,
+	// remaining and imbalance; "" shows dollars.
+	currency        string
 	rows            []splitRow
 	focus           splitDialogFocus
 	rowIndex        int

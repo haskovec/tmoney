@@ -294,6 +294,7 @@ func (p *SchedulePreviewDialog) reseedLoanSplits(ls *scheduled.LoanSplits, date 
 	p.splitDialog.width = 62
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(p.accounts)
 	p.splitDialog.SetTransferTargets(accountOptions, accountIDs, p.template.AccountID)
+	p.splitDialog.currency = accountCurrencyByID(p.accounts, p.template.AccountID)
 	p.setSplitFocus(p.splitFocus)
 	f := p.headerAmountField()
 	f.Value = ls.ParentAmount.String()

@@ -55,7 +55,7 @@ func TestCloseAccountErrorMessage_NamesTheCause(t *testing.T) {
 		{&account.HasBalanceError{Balance: types.MustNewMoney("-40"), RegisterRows: true}, "Cannot close: the account has register transactions that total -$40.00. Delete or move them first."},
 	}
 	for _, tc := range cases {
-		if got := closeAccountErrorMessage(tc.err); got != tc.want {
+		if got := closeAccountErrorMessage(tc.err, ""); got != tc.want {
 			t.Errorf("closeAccountErrorMessage(%v) = %q, want %q", tc.err, got, tc.want)
 		}
 	}

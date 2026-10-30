@@ -4,6 +4,7 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -19,6 +20,16 @@ func formatDashboardMoney(m types.Money) string {
 // as the CLI (types.Money.Format), so a EUR balance never reads as dollars.
 func formatDashboardMoneyIn(m types.Money, currency string) string {
 	return m.Format(currency)
+}
+
+// accountMoney formats m in acct's currency, so that a EUR account's amounts
+// never read as dollars; in dollars while acct is nil (before a view's data
+// loads).
+func accountMoney(m types.Money, acct *account.Account) string {
+	if acct == nil {
+		return formatDashboardMoney(m)
+	}
+	return formatDashboardMoneyIn(m, acct.Currency)
 }
 
 // fitWidth is the width of a column that cuts none of its cells: its usual

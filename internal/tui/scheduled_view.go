@@ -35,6 +35,10 @@ type scheduledViewData struct {
 	payeeNames    map[types.ID]string
 	accountNames  map[types.ID]string
 	categoryNames map[types.ID]string
+	// accountCurrencies maps an account to its currency code, so a
+	// schedule's amount shows in its account's currency. An account not in
+	// it shows dollars.
+	accountCurrencies map[types.ID]string
 }
 
 // scheduledViewDataLoadedMsg is sent when scheduled view data has been loaded.
@@ -101,9 +105,10 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 	file := a.fileOfOpen()
 	return func() tea.Msg {
 		data := &scheduledViewData{
-			payeeNames:    make(map[types.ID]string),
-			accountNames:  make(map[types.ID]string),
-			categoryNames: make(map[types.ID]string),
+			payeeNames:        make(map[types.ID]string),
+			accountNames:      make(map[types.ID]string),
+			categoryNames:     make(map[types.ID]string),
+			accountCurrencies: make(map[types.ID]string),
 		}
 
 		// Load due scheduled transactions
@@ -156,12 +161,14 @@ func (a *App) loadScheduledViewData() tea.Cmd {
 			}
 		}
 
-		// Load account names
+		// Load account names, closed accounts included: a closed account
+		// keeps its schedules until they are redirected.
 		if svc.Account != nil {
-			accounts, err := svc.Account.List(true)
+			accounts, err := svc.Account.List(false)
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
+					data.accountCurrencies[acc.ID] = acc.Currency
 				}
 			}
 		}
@@ -420,7 +427,7 @@ func (a *App) formatScheduledRow(st *scheduled.Transaction, isDue bool) []string
 	// Amount
 	amount := "~variable"
 	if st.HasAmount() {
-		amount = formatDashboardMoney(st.Amount.Money)
+		amount = formatDashboardMoneyIn(st.Amount.Money, a.scheduled.data.accountCurrencies[st.AccountID])
 	}
 
 	// Frequency

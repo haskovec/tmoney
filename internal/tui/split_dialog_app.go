@@ -69,6 +69,8 @@ type splitOpen struct {
 	// accountID is the parent's own account, excluded from the transfer
 	// targets so a row cannot transfer to the account it is already in.
 	accountID types.ID
+	// currency is the parent account's currency code.
+	currency string
 }
 
 // openForTransaction builds the editor over a regular transaction's pending
@@ -91,6 +93,7 @@ func newSplitEditor(o splitOpen) *SplitDialog {
 		editor = NewSplitDialog(o.amount, o.categoryOptions, o.categoryIDs)
 	}
 	editor.SetTransferTargets(o.accountOptions, o.accountIDs, o.accountID)
+	editor.currency = o.currency
 	return editor
 }
 

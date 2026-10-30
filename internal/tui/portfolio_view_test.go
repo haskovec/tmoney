@@ -338,7 +338,7 @@ func TestFormatLotDetailRow(t *testing.T) {
 		GainPct:      50.0,
 	}
 
-	row := formatLotDetailRow(lot)
+	row := formatLotDetailRow(lot, nil)
 
 	if len(row) != 7 {
 		t.Fatalf("expected 7 columns, got %d", len(row))
@@ -386,7 +386,7 @@ func TestFormatLotDetailRow_NegativeGain(t *testing.T) {
 		GainPct:      -20.0,
 	}
 
-	row := formatLotDetailRow(lot)
+	row := formatLotDetailRow(lot, nil)
 
 	if row[5] != "-$900.00" {
 		t.Errorf("gain/loss = %q, want %q", row[5], "-$900.00")
