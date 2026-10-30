@@ -185,7 +185,8 @@ func (s *priceViewState) drillIntoSelectedListRow(d priceDeps) tea.Cmd {
 	}
 	if sec == nil {
 		// Fall back: synthesize from the LatestPrice row.
-		sec = &security.Security{Ticker: s.data.latestPrices[cursor].Ticker, Name: s.data.latestPrices[cursor].Name}
+		lp := s.data.latestPrices[cursor]
+		sec = &security.Security{Ticker: lp.Ticker, Name: lp.Name, Currency: lp.Currency}
 		sec.ID = targetID
 	}
 	s.data.mode = pricesViewDetail

@@ -43,14 +43,15 @@ func noPriceHistoryMessage() string {
 
 // singlePriceMessage returns the muted placeholder shown in the chart
 // panel when the highlighted security has exactly one price on file —
-// a chart needs at least two points.
-func singlePriceMessage(p *price.Price) string {
+// a chart needs at least two points. The price shows in currency, the
+// security's.
+func singlePriceMessage(p *price.Price, currency string) string {
 	if p == nil {
 		return "Only one price on file — chart needs ≥ 2 points"
 	}
 	return fmt.Sprintf(
-		"Only one price on file — chart needs ≥ 2 points\n$%.2f on %s",
-		p.Price.Float64(),
+		"Only one price on file — chart needs ≥ 2 points\n%s on %s",
+		p.Price.Format(currency),
 		p.Date.Time().Format("2006-01-02"),
 	)
 }
@@ -117,7 +118,7 @@ func Panel(width, height int, sec *security.Security, prices []*price.Price) str
 	case 0:
 		inner = noPriceHistoryMessage()
 	case 1:
-		inner = singlePriceMessage(prices[0])
+		inner = singlePriceMessage(prices[0], sec.Currency)
 	default:
 		inner = renderTimeSeriesChart(innerW, innerH, prices)
 	}

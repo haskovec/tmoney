@@ -674,6 +674,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			accountOptions:  accountOptions,
 			accountIDs:      accountIDs,
 			accountID:       accountID,
+			currency:        accountCurrencyByID(a.txn.data.accounts, accountID),
 		}
 		// Seed the editor with the existing splits when editing a transaction
 		// that already had them.

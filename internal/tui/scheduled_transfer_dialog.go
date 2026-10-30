@@ -189,6 +189,17 @@ func accountNameByID(accounts []*account.Account, id types.ID) string {
 	return ""
 }
 
+// accountCurrencyByID is the currency code of the account with id in
+// accounts, or "" (dollars) when it is not there.
+func accountCurrencyByID(accounts []*account.Account, id types.ID) string {
+	for _, acct := range accounts {
+		if acct.ID == id {
+			return acct.Currency
+		}
+	}
+	return ""
+}
+
 // indexOfID returns the position of id in ids, or -1 if not found.
 //
 // Reporting -1 rather than 0 is deliberate. A combo seeded with 0 for an ID it

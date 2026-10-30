@@ -166,7 +166,7 @@ func (s *amortizationViewState) buildTable() {
 	rows := d.projection.Rows
 	tableRows := make([][]string, len(rows))
 	for i := range rows {
-		tableRows[i] = formatAmortizationRow(&rows[i])
+		tableRows[i] = formatAmortizationRow(&rows[i], d.account)
 	}
 
 	columns := fitNumberColumns([]widget.Column{
@@ -187,16 +187,17 @@ func (s *amortizationViewState) buildTable() {
 	s.table.SetFocused(true)
 }
 
-// formatAmortizationRow formats one projection row into table cells.
-func formatAmortizationRow(r *loan.Row) []string {
+// formatAmortizationRow formats one projection row into table cells, its
+// amounts in the loan account's currency.
+func formatAmortizationRow(r *loan.Row, acct *account.Account) []string {
 	return []string{
 		strconv.Itoa(r.N),
 		r.Date.String(),
-		formatDashboardMoney(r.TotalDraft),
-		formatDashboardMoney(r.Interest),
-		formatDashboardMoney(r.Principal),
-		formatDashboardMoney(r.Escrow),
-		formatDashboardMoney(r.BalanceAfter),
+		accountMoney(r.TotalDraft, acct),
+		accountMoney(r.Interest, acct),
+		accountMoney(r.Principal, acct),
+		accountMoney(r.Escrow, acct),
+		accountMoney(r.BalanceAfter, acct),
 	}
 }
 
@@ -240,13 +241,13 @@ func (s *amortizationViewState) statsLine(styles widget.Styles, width int) strin
 	}
 
 	line1Parts := []string{
-		pair("Balance", formatDashboardMoney(d.owed)),
+		pair("Balance", accountMoney(d.owed, d.account)),
 		pair("APR", aprStr),
 	}
 	if d.hasSchedule {
-		line1Parts = append(line1Parts, pair("P&I", formatDashboardMoney(d.piPayment)))
+		line1Parts = append(line1Parts, pair("P&I", accountMoney(d.piPayment, d.account)))
 		if !d.escrowTotal.IsZero() {
-			line1Parts = append(line1Parts, pair("Escrow", formatDashboardMoney(d.escrowTotal)))
+			line1Parts = append(line1Parts, pair("Escrow", accountMoney(d.escrowTotal, d.account)))
 		}
 	}
 	var drop1 []int // Escrow, P&I, then APR go; Balance stays
@@ -270,7 +271,7 @@ func (s *amortizationViewState) statsLine(styles widget.Styles, width int) strin
 		interestRem = "100y+"
 	case st.PaymentsRemaining > 0:
 		payoff = st.PayoffDate.String()
-		interestRem = formatDashboardMoney(st.TotalInterestRemaining)
+		interestRem = accountMoney(st.TotalInterestRemaining, d.account)
 	}
 	line2 := widget.FitParts([]string{
 		pair("Payments left", paymentsLeft),

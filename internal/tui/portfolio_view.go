@@ -203,12 +203,12 @@ func (s *portfolioViewState) formatHoldingRow(h *investment.Holding) []string {
 	shares := h.Shares.String()
 
 	// Avg Cost
-	avgCost := formatDashboardMoney(h.AvgCost)
+	avgCost := accountMoney(h.AvgCost, s.data.account)
 
 	// Current price
 	price := ""
 	if h.HasPricing {
-		price = formatDashboardMoney(h.CurrentPrice)
+		price = accountMoney(h.CurrentPrice, s.data.account)
 	} else {
 		price = "N/A"
 	}
@@ -220,21 +220,21 @@ func (s *portfolioViewState) formatHoldingRow(h *investment.Holding) []string {
 	}
 
 	// Market value
-	mktValue := formatDashboardMoney(h.MarketValue)
+	mktValue := accountMoney(h.MarketValue, s.data.account)
 
 	// Cost basis
-	costBasis := formatDashboardMoney(h.CostBasis)
+	costBasis := accountMoney(h.CostBasis, s.data.account)
 
 	// Unrealized gain (legacy Gain/Loss = MarketValue - CostBasis)
-	unreal := formatDashboardMoney(h.GainLoss)
+	unreal := accountMoney(h.GainLoss, s.data.account)
 
 	// Cash dividends received against this position (DRIPs excluded — see spec)
-	div := formatDashboardMoney(h.DividendsReceived)
+	div := accountMoney(h.DividendsReceived, s.data.account)
 
 	// Realized gain (from sells / fee liquidations). Non-lot accounts can't
 	// replay realized gain across corporate actions, in which case the
 	// holding flags it unavailable.
-	real := formatDashboardMoney(h.RealizedGain)
+	real := accountMoney(h.RealizedGain, s.data.account)
 	if h.RealizedGainUnavailable {
 		real = "n/a"
 	}
@@ -242,13 +242,13 @@ func (s *portfolioViewState) formatHoldingRow(h *investment.Holding) []string {
 	// Fees paid (commissions). Stored as positive magnitude on the holding;
 	// displayed negative so the subtraction in the total-return formula
 	// reads naturally on the row.
-	fees := formatDashboardMoney(h.FeesPaid)
+	fees := accountMoney(h.FeesPaid, s.data.account)
 	if !h.FeesPaid.IsZero() {
-		fees = formatDashboardMoney(h.FeesPaid.Neg())
+		fees = accountMoney(h.FeesPaid.Neg(), s.data.account)
 	}
 
 	// Total return = unreal + real + div − fees (per investment-total-return spec)
-	totalRet := formatDashboardMoney(h.TotalReturn)
+	totalRet := accountMoney(h.TotalReturn, s.data.account)
 
 	// Return % over total cost deployed. Nil when no buys ever (shares only
 	// received via transfer) — show placeholder.
@@ -269,7 +269,7 @@ func (s *portfolioViewState) buildLotsTable() {
 	lots := s.data.lotDetails
 	rows := make([][]string, len(lots))
 	for i, lot := range lots {
-		rows[i] = formatLotDetailRow(&lot)
+		rows[i] = formatLotDetailRow(&lot, s.data.account)
 	}
 
 	columns := fitNumberColumns([]widget.Column{
@@ -290,14 +290,15 @@ func (s *portfolioViewState) buildLotsTable() {
 	s.lotsTable.SetRows(rows)
 }
 
-// formatLotDetailRow formats a lot detail into table row strings.
-func formatLotDetailRow(lot *investment.LotDetail) []string {
+// formatLotDetailRow formats a lot detail into table row strings, its
+// amounts in acct's currency.
+func formatLotDetailRow(lot *investment.LotDetail, acct *account.Account) []string {
 	purchaseDate := lot.PurchaseDate.Time().Format("01/02/06")
 	shares := lot.Shares.String()
-	costPerShare := formatDashboardMoney(lot.CostPerShare)
-	costBasis := formatDashboardMoney(lot.CostBasis)
-	currentValue := formatDashboardMoney(lot.CurrentValue)
-	gainLoss := formatDashboardMoney(lot.GainLoss)
+	costPerShare := accountMoney(lot.CostPerShare, acct)
+	costBasis := accountMoney(lot.CostBasis, acct)
+	currentValue := accountMoney(lot.CurrentValue, acct)
+	gainLoss := accountMoney(lot.GainLoss, acct)
 	glPct := fmt.Sprintf("%.2f%%", lot.GainPct)
 
 	return []string{purchaseDate, shares, costPerShare, costBasis, currentValue, gainLoss, glPct}
@@ -340,11 +341,11 @@ func (s *portfolioViewState) renderSummary(styles widget.Styles, contentWidth in
 	}
 
 	metrics := []metric{
-		{label: "Cash", value: formatDashboardMoney(v.CashBalance), money: v.CashBalance},
-		{label: "Mkt Value", value: formatDashboardMoney(v.MarketValue), money: v.MarketValue},
-		{label: "Total", value: formatDashboardMoney(v.TotalValue), money: v.TotalValue},
-		{label: "Cost Basis", value: formatDashboardMoney(v.TotalCostBasis), money: v.TotalCostBasis},
-		{label: "Gain/Loss", value: formatDashboardMoney(v.TotalGainLoss), money: v.TotalGainLoss},
+		{label: "Cash", value: accountMoney(v.CashBalance, s.data.account), money: v.CashBalance},
+		{label: "Mkt Value", value: accountMoney(v.MarketValue, s.data.account), money: v.MarketValue},
+		{label: "Total", value: accountMoney(v.TotalValue, s.data.account), money: v.TotalValue},
+		{label: "Cost Basis", value: accountMoney(v.TotalCostBasis, s.data.account), money: v.TotalCostBasis},
+		{label: "Gain/Loss", value: accountMoney(v.TotalGainLoss, s.data.account), money: v.TotalGainLoss},
 		{label: "G/L %", value: fmt.Sprintf("%.2f%%", v.TotalGainPct)},
 	}
 
@@ -388,7 +389,7 @@ func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles, width i
 	v := s.data.valuation
 
 	money := func(m types.Money) string {
-		str := formatDashboardMoney(m)
+		str := accountMoney(m, s.data.account)
 		switch {
 		case m.IsNegative():
 			return styles.Negative.Render(str)
@@ -399,10 +400,10 @@ func (s *portfolioViewState) renderTotalReturnLine(styles widget.Styles, width i
 		}
 	}
 
-	feeStr := formatDashboardMoney(v.FeesPaid)
+	feeStr := accountMoney(v.FeesPaid, s.data.account)
 	feeRendered := styles.Bold.Render(feeStr)
 	if !v.FeesPaid.IsZero() {
-		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
+		feeStr = accountMoney(v.FeesPaid.Neg(), s.data.account)
 		feeRendered = styles.Negative.Render(feeStr)
 	}
 

@@ -29,6 +29,11 @@ func (sd *SplitDialog) remaining() types.Money {
 	return sd.totalAmount.Sub(sum)
 }
 
+// money formats m in the parent account's currency.
+func (sd *SplitDialog) money(m types.Money) string {
+	return formatDashboardMoneyIn(m, sd.currency)
+}
+
 // addRow appends a new empty split row.
 func (sd *SplitDialog) addRow() {
 	sd.rows = append(sd.rows, splitRow{
@@ -91,7 +96,7 @@ func (sd *SplitDialog) validate() error {
 	rem := sd.remaining()
 	if !rem.IsZero() {
 		return fmt.Errorf("splits must sum to %s (remaining: %s)",
-			formatDashboardMoney(sd.totalAmount), formatDashboardMoney(rem))
+			sd.money(sd.totalAmount), sd.money(rem))
 	}
 
 	return nil

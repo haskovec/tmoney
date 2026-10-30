@@ -66,6 +66,9 @@ type PaycheckWizard struct {
 	categoryIDs     []types.ID
 	accountOptions  []string
 	accountIDs      []types.ID
+	// accountCurrencies maps an account to its currency code, for the net
+	// total in the deposit account's currency.
+	accountCurrencies map[types.ID]string
 
 	// Focus state. focusIndex is an index into the focusables list
 	// recomputed each render/key handle by collectFocusables().
@@ -277,6 +280,10 @@ func NewPaycheckWizard(categoryOptions []string, categoryIDs []types.ID, account
 		accountOptions:  accountOptions,
 		accountIDs:      accountIDs,
 		combinedOptions: combined,
+	}
+	w.accountCurrencies = make(map[types.ID]string, len(accounts))
+	for _, acct := range accounts {
+		w.accountCurrencies[acct.ID] = acct.Currency
 	}
 
 	w.employerField = &dialog.Field{

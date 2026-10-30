@@ -68,7 +68,7 @@ func (s *investmentRegisterViewState) buildTable(styles widget.Styles) {
 			opening = s.data.account.OpeningBalance
 		}
 		for i, cash := range runningCash(txns, opening) {
-			rows[i] = append(rows[i], formatDashboardMoney(cash))
+			rows[i] = append(rows[i], accountMoney(cash, s.data.account))
 		}
 		s.withBalance = fitNumberColumns(investmentRegisterColumns(true), rows)
 	}
@@ -139,11 +139,11 @@ func (s *investmentRegisterViewState) formatRow(txn *investment.Transaction) []s
 	// Price per share
 	price := ""
 	if txn.PricePerShare.Valid {
-		price = formatDashboardMoney(txn.PricePerShare.Money)
+		price = accountMoney(txn.PricePerShare.Money, s.data.account)
 	}
 
 	// Total amount
-	total := formatDashboardMoney(txn.TotalAmount)
+	total := accountMoney(txn.TotalAmount, s.data.account)
 
 	return []string{dateStr, status, txnType, sec, shares, price, total}
 }
@@ -162,7 +162,7 @@ func (s *investmentRegisterViewState) render(styles widget.Styles, height int) s
 
 	// Title row: account name + cash balance
 	acctName := strings.ToUpper(s.data.account.Name)
-	cashStr := "Cash: " + formatDashboardMoney(s.data.cashBalance)
+	cashStr := "Cash: " + accountMoney(s.data.cashBalance, s.data.account)
 
 	maxNameWidth := max(contentWidth-lipgloss.Width(cashStr)-6, 10)
 	acctName = widget.Truncate(acctName, maxNameWidth)
@@ -291,7 +291,7 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 	v := s.data.valuation
 
 	money := func(m types.Money) string {
-		str := formatDashboardMoney(m)
+		str := accountMoney(m, s.data.account)
 		switch {
 		case m.IsNegative():
 			return styles.Negative.Render(str)
@@ -304,9 +304,9 @@ func (s *investmentRegisterViewState) renderTotalReturnLines(styles widget.Style
 
 	// Fees are displayed as a negative magnitude so the subtraction in the
 	// total-return formula is visually obvious. Zero stays zero.
-	feeStr := formatDashboardMoney(v.FeesPaid)
+	feeStr := accountMoney(v.FeesPaid, s.data.account)
 	if !v.FeesPaid.IsZero() {
-		feeStr = formatDashboardMoney(v.FeesPaid.Neg())
+		feeStr = accountMoney(v.FeesPaid.Neg(), s.data.account)
 	}
 	feeRendered := styles.Bold.Render(feeStr)
 	if !v.FeesPaid.IsZero() {

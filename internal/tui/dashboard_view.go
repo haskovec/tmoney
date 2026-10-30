@@ -41,6 +41,7 @@ type dashboardData struct {
 	upcomingTxns       []*scheduled.Transaction
 	payeeNames         map[types.ID]string
 	accountNames       map[types.ID]string
+	accountCurrencies  map[types.ID]string                       // account ID -> currency code
 	investmentHoldings map[types.ID]*investment.AccountValuation // account ID -> valuation with holdings
 	securityTickers    map[types.ID]string                       // security ID -> ticker
 }
@@ -92,8 +93,9 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 	file := d.file()
 	return func() tea.Msg {
 		data := &dashboardData{
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames:        make(map[types.ID]string),
+			accountNames:      make(map[types.ID]string),
+			accountCurrencies: make(map[types.ID]string),
 		}
 
 		// Load net worth report
@@ -147,6 +149,7 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 			if err == nil {
 				for _, acc := range accounts {
 					data.accountNames[acc.ID] = acc.Name
+					data.accountCurrencies[acc.ID] = acc.Currency
 				}
 			}
 		}
@@ -665,7 +668,7 @@ func (s *dashboardViewState) formatScheduledItem(styles widget.Styles, st *sched
 	// Amount
 	var amount string
 	if st.HasAmount() {
-		amount = formatDashboardMoney(st.Amount.Money)
+		amount = formatDashboardMoneyIn(st.Amount.Money, s.data.accountCurrencies[st.AccountID])
 	} else {
 		amount = "~variable"
 	}

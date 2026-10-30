@@ -804,6 +804,11 @@ the number columns at their full widths. Beside the price chart, the prices
 list is as wide as its columns, and the chart gets the rest. A key-hint line
 leaves out whole hints to fit the width.
 
+An amount shows in its account's currency ("$", "€", "£", or the code, as
+in "JPY 1500000.00"), in the views and in the dialogs of that account. A
+price shows in its security's currency. The spending report and the
+ledger-move message add amounts from many accounts, and show dollars.
+
 ## Accessibility
 
 - High contrast mode support

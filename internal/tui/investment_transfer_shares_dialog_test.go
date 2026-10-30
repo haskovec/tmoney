@@ -78,6 +78,7 @@ func TestBuildTransferSharesDialog_NumericFields(t *testing.T) {
 		[]types.ID{types.NewID()},
 		[]types.ID{types.NewID()},
 		[]*investment.Lot{lot},
+		"",
 	)
 	assertNumericFields(t, d, []string{"Shares"}, []string{"Memo"})
 }
@@ -88,7 +89,7 @@ func TestBuildTransferSharesDialog_Basic(t *testing.T) {
 	acctIDs := []types.ID{types.NewID()}
 	secIDs := []types.ID{types.NewID(), types.NewID()}
 
-	d := buildTransferSharesDialog(acctOptions, secOptions, nil, acctIDs, secIDs, nil)
+	d := buildTransferSharesDialog(acctOptions, secOptions, nil, acctIDs, secIDs, nil, "")
 
 	if d == nil {
 		t.Fatal("dialog should not be nil")
@@ -174,7 +175,7 @@ func TestBuildTransferSharesDialog_WithLots(t *testing.T) {
 	}
 	lots := []*investment.Lot{lot1, lot2}
 
-	d := buildTransferSharesDialog(acctOptions, secOptions, nil, acctIDs, secIDs, lots)
+	d := buildTransferSharesDialog(acctOptions, secOptions, nil, acctIDs, secIDs, lots, "")
 
 	fields := d.Fields()
 	// With 2 lots: Date(0), Security(1), To Account(2), Shares(3), Lot1(4), Lot2(5), Memo(6) = 7 fields
@@ -216,7 +217,7 @@ func TestBuildTransferSharesDialog_EditTransaction(t *testing.T) {
 	acctOptions := []string{"401k", "IRA"}
 	secOptions := []string{"AAPL - Apple", "MSFT - Microsoft"}
 
-	d := buildTransferSharesDialog(acctOptions, secOptions, txn, acctIDs, secIDs, nil)
+	d := buildTransferSharesDialog(acctOptions, secOptions, txn, acctIDs, secIDs, nil, "")
 	fields := d.Fields()
 
 	// Date (index 0)
@@ -254,7 +255,7 @@ func TestSubmitTransferSharesDialog_ValidationErrors(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -301,7 +302,7 @@ func TestSubmitTransferSharesDialog_NoAccounts(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{}, []string{"AAPL - Apple"}, nil, nil, secIDs, nil,
+			[]string{}, []string{"AAPL - Apple"}, nil, nil, secIDs, nil, "",
 		)},
 
 			data:        &transferSharesDialogData{},
@@ -337,7 +338,7 @@ func TestSubmitTransferSharesDialog_NoSecurities(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{}, nil, destAcctIDs, nil, nil,
+			[]string{"IRA"}, []string{}, nil, destAcctIDs, nil, nil, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -376,7 +377,7 @@ func TestSubmitTransferSharesDialog_ValidTransfer(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -415,7 +416,7 @@ func TestSubmitTransferSharesDialog_ValidWithMemo(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, nil, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -469,7 +470,7 @@ func TestSubmitTransferSharesDialog_WithLotAllocations(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -522,7 +523,7 @@ func TestSubmitTransferSharesDialog_LotAllocationMismatch(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -578,7 +579,7 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots,
+			[]string{"IRA"}, []string{"AAPL - Apple"}, nil, destAcctIDs, secIDs, lots, "",
 		)},
 
 			data: &transferSharesDialogData{
@@ -624,7 +625,7 @@ func TestSubmitTransferSharesDialog_LotExceedsAvailable(t *testing.T) {
 func TestHandleTransferSharesDialogKey_Cancel(t *testing.T) {
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil,
+			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil, "",
 		)}},
 	}
 
@@ -671,7 +672,7 @@ func TestSubmitTransferSharesDialog_NilDialog(t *testing.T) {
 func TestCloseTransferSharesDialog(t *testing.T) {
 	app := &App{
 		transferShares: transferSharesSurface{modalSurface: modalSurface{dlg: buildTransferSharesDialog(
-			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil,
+			[]string{"IRA"}, []string{"AAPL"}, nil, nil, nil, nil, "",
 		)},
 
 			data:        &transferSharesDialogData{},

@@ -204,6 +204,9 @@ type investmentDialogSeed struct {
 	stickyDate types.Date
 	// preselect is the security to pre-select in new mode, or NilID.
 	preselect types.ID
+	// currency is the investment account's currency code, for amounts the
+	// dialog shows (a lot's cost per share).
+	currency string
 }
 
 // takeInvestmentDialogSeed gathers the seed and consumes the one-shot
@@ -219,6 +222,9 @@ func (a *App) takeInvestmentDialogSeed() (investmentDialogSeed, bool) {
 		editTxn:    editTxn,
 		stickyDate: a.txnDialogLastSavedDate,
 		preselect:  a.investmentNewTxnSecurityID,
+	}
+	if d := a.investmentRegister.data; d != nil && d.account != nil {
+		seed.currency = d.account.Currency
 	}
 	a.investmentNewTxnSecurityID = types.NilID
 	return seed, true

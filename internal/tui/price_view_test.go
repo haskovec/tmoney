@@ -95,7 +95,7 @@ func TestFormatPriceRow(t *testing.T) {
 
 	p := price.NewPrice(secID, d, m, price.SourceManual)
 
-	row := formatPriceRow(p)
+	row := formatPriceRow(p, nil)
 
 	if len(row) != 3 {
 		t.Fatalf("expected 3 columns, got %d", len(row))
@@ -129,7 +129,7 @@ func TestFormatPriceRow_Sources(t *testing.T) {
 
 	for _, tt := range tests {
 		p := price.NewPrice(secID, d, m, tt.source)
-		row := formatPriceRow(p)
+		row := formatPriceRow(p, nil)
 		if row[2] != tt.expected {
 			t.Errorf("source %q: got %q, want %q", tt.source, row[2], tt.expected)
 		}

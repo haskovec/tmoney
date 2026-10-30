@@ -35,12 +35,13 @@ type sellDialogSavedMsg struct {
 	fileOf
 }
 
-// buildLotLabel creates a display label for a lot allocation field.
-func buildLotLabel(lot *investment.Lot) string {
-	return fmt.Sprintf("Lot: %s - %s shares @ $%.2f",
+// buildLotLabel creates a display label for a lot allocation field, its cost
+// per share in the account's currency.
+func buildLotLabel(lot *investment.Lot, currency string) string {
+	return fmt.Sprintf("Lot: %s - %s shares @ %s",
 		lot.PurchaseDate.Time().Format("01/02/2006"),
 		lot.Shares.String(),
-		lot.CostPerShare.Float64(),
+		formatDashboardMoneyIn(lot.CostPerShare, currency),
 	)
 }
 
@@ -50,7 +51,7 @@ func buildLotLabel(lot *investment.Lot) string {
 // Price/Share, Commission, Memo. Total leads Price/Share because the
 // common workflow is to type the total (from a brokerage statement) and
 // let Price/Share auto-compute.
-func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot) *dialog.Dialog {
+func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, securityIDs []types.ID, lots []*investment.Lot, currency string) *dialog.Dialog {
 	d := dialog.NewDialog("Sell Securities")
 	d.SetWidth(70)
 
@@ -84,7 +85,7 @@ func buildSellDialog(securityOptions []string, editTxn *investment.Transaction, 
 
 	// Lot allocation fields (only for lot-tracking accounts)
 	for _, lot := range lots {
-		d.AddNumericField(buildLotLabel(lot), "", "0", 12)
+		d.AddNumericField(buildLotLabel(lot, currency), "", "0", 12)
 	}
 
 	// Total Amount
@@ -187,7 +188,7 @@ func (s *sellSurface) applyData(data *sellDialogData, seed investmentDialogSeed)
 	secOptions, secIDs := buildSecurityOptions(data.securities)
 	s.securityIDs = secIDs
 	s.lots = data.lots
-	s.dlg = buildSellDialog(secOptions, seed.editTxn, secIDs, data.lots)
+	s.dlg = buildSellDialog(secOptions, seed.editTxn, secIDs, data.lots, seed.currency)
 	if seed.editTxn == nil {
 		s.dlg.SeedDateField(seed.stickyDate)
 		preselectSecurityCombo(s.dlg, secIDs, seed.preselect)

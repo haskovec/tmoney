@@ -472,7 +472,7 @@ func (a *App) buildRegisterTable() {
 	balances := runningBalances(a.register.data.transactions, opening)
 	rows := make([][]string, len(a.register.data.transactions))
 	for i, txn := range a.register.data.transactions {
-		rows[i] = append(a.formatRegisterRow(txn), formatDashboardMoney(balances[i]))
+		rows[i] = append(a.formatRegisterRow(txn), accountMoney(balances[i], a.register.data.account))
 	}
 
 	// Running-balance column — shown only when the register is wide enough to
@@ -559,7 +559,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	}
 
 	// Amount
-	amount := formatDashboardMoney(txn.Amount)
+	amount := accountMoney(txn.Amount, a.register.data.account)
 
 	return []string{dateStr, status, payee, category, amount}
 }
@@ -588,7 +588,7 @@ func (a *App) renderRegister() string {
 	acctName := strings.ToUpper(a.register.data.account.Name)
 	balStr := ""
 	if a.register.data.balance != nil {
-		balStr = "Bal: " + formatDashboardMoney(a.register.data.balance.CurrentBalance)
+		balStr = "Bal: " + accountMoney(a.register.data.balance.CurrentBalance, a.register.data.account)
 	}
 	// widget.Truncate account name if it would overflow available space
 	maxNameWidth := max(

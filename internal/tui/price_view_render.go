@@ -26,7 +26,7 @@ func (s *priceViewState) buildListTable() {
 		rows[i] = []string{
 			lp.Ticker,
 			lp.Name,
-			fmt.Sprintf("$%.2f", lp.Price.Float64()),
+			formatDashboardMoneyIn(lp.Price, lp.Currency),
 			lp.Date.Time().Format("2006-01-02"),
 		}
 	}
@@ -56,7 +56,7 @@ func (s *priceViewState) buildTable() {
 
 	rows := make([][]string, len(s.data.prices))
 	for i, p := range s.data.prices {
-		rows[i] = formatPriceRow(p)
+		rows[i] = formatPriceRow(p, s.data.selectedSecurity)
 	}
 
 	columns := fitNumberColumns([]widget.Column{
@@ -74,11 +74,16 @@ func (s *priceViewState) buildTable() {
 	s.table.SetFocused(true)
 }
 
-// formatPriceRow formats a price into a table row.
-func formatPriceRow(p *price.Price) []string {
+// formatPriceRow formats a price into a table row, in sec's currency
+// (dollars while sec is nil).
+func formatPriceRow(p *price.Price, sec *security.Security) []string {
+	currency := ""
+	if sec != nil {
+		currency = sec.Currency
+	}
 	return []string{
 		p.Date.Time().Format("2006-01-02"),
-		fmt.Sprintf("$%.2f", p.Price.Float64()),
+		formatDashboardMoneyIn(p.Price, currency),
 		p.Source.DisplayName(),
 	}
 }

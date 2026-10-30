@@ -401,7 +401,7 @@ func (a *App) formatReconciliationRow(txn *transaction.Transaction) []string {
 	}
 
 	// Amount
-	amount := formatDashboardMoney(txn.Amount)
+	amount := accountMoney(txn.Amount, a.reconciliation.data.account)
 
 	return []string{checkbox, dateStr, status, payee, category, amount}
 }
@@ -471,10 +471,10 @@ func (a *App) renderReconciliation() string {
 	// Sticky footer
 	sections = append(sections, a.styles.Muted.Render(strings.Repeat("─", sepWidth)))
 
-	stmtBal := formatDashboardMoney(a.reconciliation.data.session.StatementBalance)
-	clrTotal := formatDashboardMoney(a.reconciliation.data.clearedTotal)
+	stmtBal := accountMoney(a.reconciliation.data.session.StatementBalance, a.reconciliation.data.account)
+	clrTotal := accountMoney(a.reconciliation.data.clearedTotal, a.reconciliation.data.account)
 	difference := a.reconciliation.data.session.StatementBalance.Sub(a.reconciliation.data.clearedTotal)
-	diffStr := formatDashboardMoney(difference)
+	diffStr := accountMoney(difference, a.reconciliation.data.account)
 
 	// Color the difference
 	diffStyle := a.styles.Positive
@@ -597,9 +597,9 @@ func (a *App) finishReconciliation() (tea.Model, tea.Cmd) {
 	// Check difference first (before needing the service)
 	difference := a.reconciliation.data.session.StatementBalance.Sub(a.reconciliation.data.clearedTotal)
 	if !difference.IsZero() {
-		diffStr := formatDashboardMoney(difference)
+		diffStr := accountMoney(difference, a.reconciliation.data.account)
 		a.statusbar.AddNotification(
-			fmt.Sprintf("Cannot finish: difference is %s (must be $0.00)", diffStr),
+			fmt.Sprintf("Cannot finish: difference is %s (must be %s)", diffStr, accountMoney(types.ZeroMoney, a.reconciliation.data.account)),
 			widget.NotificationAlert,
 		)
 		return a, nil

@@ -26,8 +26,8 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	lines = append(lines, strings.Repeat("─", contentWidth))
 
 	// Total and remaining
-	totalStr := formatDashboardMoney(sd.totalAmount)
-	remainStr := formatDashboardMoney(sd.remaining())
+	totalStr := sd.money(sd.totalAmount)
+	remainStr := sd.money(sd.remaining())
 	remainStyle := styles.Positive
 	rem := sd.remaining()
 	if !rem.IsZero() {
@@ -103,7 +103,7 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	// row list so the user's eyes catch it on the way to the Save
 	// button — which stays disabled while this is non-zero.
 	imb := sd.remaining()
-	imbalText := "Imbalance: " + formatDashboardMoney(imb)
+	imbalText := "Imbalance: " + sd.money(imb)
 	if imb.IsZero() {
 		imbalText = styles.Muted.Render(imbalText)
 	} else {
