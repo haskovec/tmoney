@@ -15,12 +15,14 @@ import (
 
 // investmentRegisterColumns returns the investment register's column set at
 // its usual widths; when withBalance is true it appends the trailing running
-// cash-balance column. buildTable fits the number columns to the rows.
+// cash-balance column. buildTable fits the number columns to the rows. Type
+// can give up width to a wide number on a narrow table; at 10 cells it
+// still shows all but the four longest type names.
 func investmentRegisterColumns(withBalance bool) []widget.Column {
 	cols := []widget.Column{
 		{Header: "Date", Width: 10, Align: widget.AlignLeft},
 		{Header: "S", Width: 1, Align: widget.AlignCenter},
-		{Header: "Type", Width: 19, Align: widget.AlignLeft},
+		{Header: "Type", Width: 19, MinWidth: 10, Align: widget.AlignLeft},
 		{Header: "Security", Width: 10, Align: widget.AlignLeft},
 		{Header: "Shares", Width: 12, Align: widget.AlignRight},
 		{Header: "Price", Width: 12, Align: widget.AlignRight},

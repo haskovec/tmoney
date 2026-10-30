@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -319,6 +320,32 @@ func TestTable_ComputeColumnWidths_MinWidth(t *testing.T) {
 
 	if widths[1] != 10 {
 		t.Errorf("flex col with MinWidth: width = %d, want 10", widths[1])
+	}
+}
+
+// When the row is wider than the table, the fixed columns with a MinWidth
+// give up width down to their MinWidth: the text columns first, then the
+// right-aligned columns. A flex column stays at its MinWidth.
+func TestTable_ComputeColumnWidths_NarrowsToFit(t *testing.T) {
+	tbl := NewTable([]Column{
+		{Header: "Date", Width: 10},
+		{Header: "Type", Width: 19, MinWidth: 10},
+		{Header: "Payee", MinWidth: 5},
+		{Header: "Total", Width: 16, MinWidth: 12, Align: AlignRight},
+	})
+	for _, tc := range []struct {
+		width int
+		want  []int
+	}{
+		{53, []int{10, 19, 5, 16}}, // 50 cells and 3 separators: it fits
+		{48, []int{10, 14, 5, 16}}, // Type gives 5
+		{41, []int{10, 10, 5, 13}}, // Type gives 9, then Total gives 3
+		{30, []int{10, 10, 5, 12}}, // each at its minimum; the row is cut
+	} {
+		got := tbl.computeColumnWidths(tc.width)
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("width %d: widths = %v, want %v", tc.width, got, tc.want)
+		}
 	}
 }
 

@@ -27,7 +27,9 @@ type Column struct {
 	// Width is the fixed width of the column in characters.
 	// If 0, the column will flex to fill remaining space.
 	Width int
-	// MinWidth is the minimum width for flex columns.
+	// MinWidth is the minimum width for flex columns. A fixed column with a
+	// MinWidth can give up width, down to MinWidth, when the row is wider
+	// than the table (see computeColumnWidths).
 	MinWidth int
 	// Align specifies the text alignment within the column.
 	Align ColumnAlign
@@ -270,7 +272,9 @@ func (t *Table) Render(styles Styles, width, height int) string {
 
 // computeColumnWidths calculates the actual width of each column.
 // Fixed-width columns use their Width value; flex columns (Width == 0)
-// share remaining space equally.
+// share remaining space equally. When the row is still wider than the
+// table, narrowToFit takes the excess from the fixed columns that have a
+// MinWidth.
 func (t *Table) computeColumnWidths(totalWidth int) []int {
 	if len(t.columns) == 0 {
 		return nil
@@ -316,7 +320,40 @@ func (t *Table) computeColumnWidths(totalWidth int) []int {
 		}
 	}
 
+	used := 0
+	for _, w := range widths {
+		used += w
+	}
+	t.narrowToFit(widths, used-available)
+
 	return widths
+}
+
+// narrowToFit takes over cells from the fixed columns that have a MinWidth,
+// down to their MinWidth: first the text columns, then the right-aligned
+// (number) columns, so that a name is cut before a number. In each group
+// the column with the most cells to spare gives each cell. When the
+// columns are all at their minimum, the row is still too wide and
+// renderRow cuts it.
+func (t *Table) narrowToFit(widths []int, over int) {
+	for _, numbers := range []bool{false, true} {
+		for over > 0 {
+			best, spare := -1, 0
+			for i, col := range t.columns {
+				if col.Width == 0 || (col.Align == AlignRight) != numbers {
+					continue
+				}
+				if s := widths[i] - col.MinWidth; col.MinWidth > 0 && s > spare {
+					best, spare = i, s
+				}
+			}
+			if best < 0 {
+				break
+			}
+			widths[best]--
+			over--
+		}
+	}
 }
 
 // renderHeader renders the table header row.

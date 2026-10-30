@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -11,6 +12,7 @@ import (
 	"github.com/haskovec/tmoney/internal/price"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/transaction"
+	"github.com/haskovec/tmoney/internal/tui/pricechart"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
@@ -73,6 +75,9 @@ func TestFitNumberColumns(t *testing.T) {
 		if got[i].Width != w {
 			t.Errorf("%s width = %d, want %d", got[i].Header, got[i].Width, w)
 		}
+	}
+	if got[3].MinWidth != 6 {
+		t.Errorf("Amount MinWidth = %d, want its usual width 6", got[3].MinWidth)
 	}
 	if cols[3].Width != 6 {
 		t.Errorf("fitNumberColumns changed its input: Amount width = %d, want 6", cols[3].Width)
@@ -301,4 +306,77 @@ func TestBuildAmortizationTable_WideAmounts(t *testing.T) {
 	}}
 	s.buildTable()
 	wantNumbersFit(t, s.table, "123456", "$1234567890.00", "$123456789.00", "$12345678901.00")
+}
+
+// A wide number must not push the columns on its right out of a narrow
+// table. Without Balance the investment register is 82 cells; a 16-cell
+// share count makes it 86, so at 84 cells the Type column gives up 2 cells
+// and the Shares and Total cells stay whole.
+func TestInvestmentRegister_WideSharesNarrowTable(t *testing.T) {
+	app := investmentRegisterApp(widthForTable(t, 84), "-100.12")
+	txn := app.investmentRegister.data.transactions[0]
+	txn.Shares = types.NullableQuantity{Quantity: types.MustNewQuantity("100.123456789012"), Valid: true}
+	app.investmentRegister.buildTable(app.styles)
+	if got := len(app.investmentRegister.table.Columns()); got != 7 {
+		t.Fatalf("columns = %d, want 7 (Balance hidden)", got)
+	}
+
+	out := app.investmentRegister.table.Render(app.styles, 84, 4)
+	for _, want := range []string{"Buy", "100.123456789012", "-$100.12"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered table cut %q:\n%s", want, out)
+		}
+	}
+}
+
+// When the table has no text column that can give width, a wide amount goes
+// back to its usual width: only that cell is cut, and the other amounts stay
+// whole. The reconciliation table needs 53 cells, or 55 with a 14-cell
+// amount.
+func TestReconciliation_WideAmountNarrowTable(t *testing.T) {
+	txn := func(amount string) *transaction.Transaction {
+		return &transaction.Transaction{
+			BaseModel: types.BaseModel{ID: types.NewID()},
+			Date:      types.Today(),
+			Amount:    types.MustNewMoney(amount),
+		}
+	}
+	app := &App{
+		reconciliation: reconciliationViewState{data: &reconciliationViewData{
+			candidates:    []*transaction.Transaction{txn("-123456789"), txn("-25")},
+			checkedIDs:    make(map[types.ID]bool),
+			payeeNames:    make(map[types.ID]string),
+			categoryNames: make(map[types.ID]string),
+			accountNames:  make(map[types.ID]string),
+		}},
+	}
+	app.buildReconciliationTable()
+
+	out := app.reconciliation.table.Render(widget.NewStyles(), 53, 4)
+	if !strings.Contains(out, "-$25.00") {
+		t.Errorf("rendered table cut -$25.00:\n%s", out)
+	}
+}
+
+// The prices list beside the chart is as wide as its columns, so a wide price
+// does not cut the name or the date.
+func TestPriceList_WidePriceBesideChart(t *testing.T) {
+	name := "Fictional Total World Stock Fund" // 32 cells, the Name column's width
+	s := priceViewState{data: &priceViewData{
+		latestPrices: []*price.LatestPrice{{
+			SecurityID: types.NewID(),
+			Ticker:     "FICT",
+			Name:       name,
+			Date:       types.NewDate(2025, time.March, 14),
+			Price:      types.MustNewMoney("1000000000000000"),
+		}},
+	}}
+	s.buildListTable()
+
+	out := s.composeListBody(widget.NewStyles(), pricechart.MinContentWidth, 4)
+	for _, want := range []string{name, "$1000000000000000.00", "2025-03-14"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered list cut %q:\n%s", want, out)
+		}
+	}
 }
