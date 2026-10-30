@@ -406,7 +406,6 @@ func TestApp_View_TallDashboardKeepsStatusBar(t *testing.T) {
 				investmentHoldings: holdings,
 				securityTickers:    tickers,
 				payeeNames:         make(map[types.ID]string),
-				accountNames:       make(map[types.ID]string),
 			},
 		},
 	}

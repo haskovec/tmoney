@@ -90,7 +90,6 @@ func TestScheduledAndDashboard_AccountCurrency(t *testing.T) {
 
 	dash := dashboardViewState{data: &dashboardData{
 		payeeNames:        make(map[types.ID]string),
-		accountNames:      make(map[types.ID]string),
 		accountCurrencies: currencies,
 	}}
 	if line := dash.formatScheduledItem(widget.NewStyles(), st, true); !strings.Contains(line, "-£50.00") {
