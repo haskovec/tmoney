@@ -19,6 +19,10 @@ import (
 type registerViewState struct {
 	data  *registerData
 	table *widget.Table
+	// withBalance is the column set with the running-balance column, its
+	// number columns fitted to the loaded rows. buildRegisterTable sets it,
+	// and the resize-time fit check uses it.
+	withBalance []widget.Column
 }
 
 // registerData holds the loaded data for the account register view.
@@ -429,9 +433,9 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// registerColumns returns the regular register's column set; when withBalance
-// is true it appends the trailing running-balance column. Single source of
-// truth shared by buildRegisterTable and the resize-time fit check.
+// registerColumns returns the regular register's column set at its usual
+// widths; when withBalance is true it appends the trailing running-balance
+// column. buildRegisterTable fits the number columns to the rows.
 func registerColumns(withBalance bool) []widget.Column {
 	cols := []widget.Column{
 		{Header: "Date", Width: 10, Align: widget.AlignLeft},
@@ -447,11 +451,12 @@ func registerColumns(withBalance bool) []widget.Column {
 }
 
 // shouldShowRegisterBalance reports whether the register is currently wide
-// enough to include the running-balance column. The table width here must
-// match renderRegister's (ContentWidth - 4).
+// enough to include the running-balance column, with the Amount and Balance
+// columns as wide as the loaded rows need. The table width here must match
+// renderRegister's (ContentWidth - 4).
 func (a *App) shouldShowRegisterBalance() bool {
 	tableWidth := max(a.styles.ContentWidth()-4, 1)
-	return columnsFitWidth(registerColumns(true), tableWidth, registerFlexMargin)
+	return columnsFitWidth(a.register.withBalance, tableWidth, registerFlexMargin)
 }
 
 // buildRegisterTable creates and populates the table for the register view.
@@ -460,33 +465,32 @@ func (a *App) buildRegisterTable() {
 		return
 	}
 
-	// Running-balance column — shown only when the register is wide enough to
-	// fit it without squeezing Payee/Category below a readable width.
-	showBalance := a.shouldShowRegisterBalance()
-	columns := registerColumns(showBalance)
+	opening := types.ZeroMoney
+	if a.register.data.account != nil {
+		opening = a.register.data.account.OpeningBalance
+	}
+	balances := runningBalances(a.register.data.transactions, opening)
+	rows := make([][]string, len(a.register.data.transactions))
+	for i, txn := range a.register.data.transactions {
+		rows[i] = append(a.formatRegisterRow(txn), formatDashboardMoney(balances[i]))
+	}
 
-	var balances []types.Money
-	if showBalance {
-		opening := types.ZeroMoney
-		if a.register.data.account != nil {
-			opening = a.register.data.account.OpeningBalance
+	// Running-balance column — shown only when the register is wide enough to
+	// fit it without squeezing Payee/Category below a readable width. The
+	// Amount and Balance columns are as wide as their widest amount.
+	a.register.withBalance = fitNumberColumns(registerColumns(true), rows)
+	columns := a.register.withBalance
+	if !a.shouldShowRegisterBalance() {
+		columns = columns[:len(columns)-1]
+		for i := range rows {
+			rows[i] = rows[i][:len(columns)]
 		}
-		balances = runningBalances(a.register.data.transactions, opening)
 	}
 
 	if a.register.table == nil {
 		a.register.table = widget.NewTable(columns)
 	} else {
 		a.register.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(a.register.data.transactions))
-	for i, txn := range a.register.data.transactions {
-		row := a.formatRegisterRow(txn)
-		if showBalance {
-			row = append(row, formatDashboardMoney(balances[i]))
-		}
-		rows[i] = row
 	}
 	a.register.table.SetRows(rows)
 

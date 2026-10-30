@@ -163,7 +163,13 @@ func (s *amortizationViewState) buildTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	rows := d.projection.Rows
+	tableRows := make([][]string, len(rows))
+	for i := range rows {
+		tableRows[i] = formatAmortizationRow(&rows[i])
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: "#", Width: 5, Align: widget.AlignRight},
 		{Header: "DATE", Width: 12, Align: widget.AlignLeft},
 		{Header: "PAYMENT", Width: 13, Align: widget.AlignRight},
@@ -171,17 +177,11 @@ func (s *amortizationViewState) buildTable() {
 		{Header: "PRINCIPAL", Width: 13, Align: widget.AlignRight},
 		{Header: "ESCROW", Width: 12, Align: widget.AlignRight},
 		{Header: "BALANCE", Width: 14, Align: widget.AlignRight},
-	}
+	}, tableRows)
 	if s.table == nil {
 		s.table = widget.NewTable(columns)
 	} else {
 		s.table.SetColumns(columns)
-	}
-
-	rows := d.projection.Rows
-	tableRows := make([][]string, len(rows))
-	for i := range rows {
-		tableRows[i] = formatAmortizationRow(&rows[i])
 	}
 	s.table.SetRows(tableRows)
 	s.table.SetFocused(true)

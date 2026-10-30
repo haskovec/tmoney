@@ -363,7 +363,12 @@ func (a *App) buildScheduledTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	rows := make([][]string, len(a.scheduled.data.allTxns))
+	for i, st := range a.scheduled.data.allTxns {
+		rows[i] = a.formatScheduledRow(st, i < a.scheduled.data.dueCount)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: " ", Width: 3, Align: widget.AlignCenter},
 		{Header: "Next Date", Width: 10, Align: widget.AlignLeft},
 		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
@@ -371,17 +376,12 @@ func (a *App) buildScheduledTable() {
 		{Header: "Frequency", Width: 10, Align: widget.AlignLeft},
 		{Header: "Account", MinWidth: 10, Align: widget.AlignLeft},
 		{Header: "Auto", Width: 10, Align: widget.AlignLeft},
-	}
+	}, rows)
 
 	if a.scheduled.table == nil {
 		a.scheduled.table = widget.NewTable(columns)
 	} else {
 		a.scheduled.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(a.scheduled.data.allTxns))
-	for i, st := range a.scheduled.data.allTxns {
-		rows[i] = a.formatScheduledRow(st, i < a.scheduled.data.dueCount)
 	}
 	a.scheduled.table.SetRows(rows)
 }

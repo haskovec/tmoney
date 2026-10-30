@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"slices"
+	"unicode/utf8"
+
 	"github.com/haskovec/tmoney/internal/config"
 	"github.com/haskovec/tmoney/internal/investment"
+	"github.com/haskovec/tmoney/internal/tui/widget"
 	"github.com/haskovec/tmoney/internal/types"
 )
 
@@ -15,6 +19,42 @@ func formatDashboardMoney(m types.Money) string {
 // as the CLI (types.Money.Format), so a EUR balance never reads as dollars.
 func formatDashboardMoneyIn(m types.Money, currency string) string {
 	return m.Format(currency)
+}
+
+// fitWidth is the width of a column that cuts none of its cells: its usual
+// width, or its widest cell when that is wider. A money column needs more
+// than its usual width for a currency code: "JPY 1500000.00" is 14 cells.
+// A cut amount would lose digits.
+func fitWidth(usual int, cells ...string) int {
+	w := usual
+	for _, c := range cells {
+		w = max(w, utf8.RuneCountInString(c))
+	}
+	return w
+}
+
+// fitNumberColumns returns cols with each fixed, right-aligned column as wide
+// as its widest cell in rows, and never narrower than its usual width. Those
+// columns hold amounts, prices, share counts and percentages. A cell wider
+// than its column is cut with "…" and loses digits: "-$123456789.00" in 12
+// cells shows as "-$123456789…". The usual width becomes the column's
+// MinWidth: when the row is wider than the table, the column goes back to
+// it after the text columns give up their width, so a wide number cuts only
+// its own cell and does not push the columns on its right out of the table.
+func fitNumberColumns(cols []widget.Column, rows [][]string) []widget.Column {
+	out := slices.Clone(cols)
+	for i, c := range out {
+		if c.Width == 0 || c.Align != widget.AlignRight {
+			continue
+		}
+		out[i].MinWidth = c.Width
+		for _, row := range rows {
+			if i < len(row) {
+				out[i].Width = fitWidth(out[i].Width, row[i])
+			}
+		}
+	}
+	return out
 }
 
 // valuationOptions returns the ValuationOptions struct that callers

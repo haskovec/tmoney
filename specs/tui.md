@@ -793,6 +793,17 @@ The layout adapts to terminal size:
 - **Medium** (80-120 cols): Standard two-pane layout
 - **Large** (> 120 cols): Additional detail panels
 
+A number column (amount, price, share count, percentage) is as wide as its
+widest cell, and never narrower than its usual width. A text column (payee,
+name, memo) can be cut with "…". When a row is wider than the table, the
+investment Type and the prices Name columns become narrower first. Then a
+number column goes back to its usual width, so that only a cell wider than
+that is cut. A wide number never pushes the columns on its right out of the
+table. The registers show the running-balance column only when it fits with
+the number columns at their full widths. Beside the price chart, the prices
+list is as wide as its columns, and the chart gets the rest. A key-hint line
+leaves out whole hints to fit the width.
+
 ## Accessibility
 
 - High contrast mode support

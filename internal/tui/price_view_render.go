@@ -21,19 +21,6 @@ func (s *priceViewState) buildListTable() {
 		return
 	}
 
-	columns := []widget.Column{
-		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
-		{Header: "Name", Width: 32, Align: widget.AlignLeft},
-		{Header: "Latest Price", Width: 15, Align: widget.AlignRight},
-		{Header: "Date", Width: 12, Align: widget.AlignLeft},
-	}
-
-	if s.listTable == nil {
-		s.listTable = widget.NewTable(columns)
-	} else {
-		s.listTable.SetColumns(columns)
-	}
-
 	rows := make([][]string, len(s.data.latestPrices))
 	for i, lp := range s.data.latestPrices {
 		rows[i] = []string{
@@ -42,6 +29,20 @@ func (s *priceViewState) buildListTable() {
 			fmt.Sprintf("$%.2f", lp.Price.Float64()),
 			lp.Date.Time().Format("2006-01-02"),
 		}
+	}
+
+	// Name can give up width to a wide price on a narrow table.
+	columns := fitNumberColumns([]widget.Column{
+		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
+		{Header: "Name", Width: 32, MinWidth: 16, Align: widget.AlignLeft},
+		{Header: "Latest Price", Width: 15, Align: widget.AlignRight},
+		{Header: "Date", Width: 12, Align: widget.AlignLeft},
+	}, rows)
+
+	if s.listTable == nil {
+		s.listTable = widget.NewTable(columns)
+	} else {
+		s.listTable.SetColumns(columns)
 	}
 	s.listTable.SetRows(rows)
 	s.listTable.SetFocused(true)
@@ -53,21 +54,21 @@ func (s *priceViewState) buildTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	rows := make([][]string, len(s.data.prices))
+	for i, p := range s.data.prices {
+		rows[i] = formatPriceRow(p)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: "Date", Width: 12, Align: widget.AlignLeft},
 		{Header: "Price", Width: 15, Align: widget.AlignRight},
 		{Header: "Source", Width: 12, Align: widget.AlignLeft},
-	}
+	}, rows)
 
 	if s.table == nil {
 		s.table = widget.NewTable(columns)
 	} else {
 		s.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(s.data.prices))
-	for i, p := range s.data.prices {
-		rows[i] = formatPriceRow(p)
 	}
 	s.table.SetRows(rows)
 	s.table.SetFocused(true)
@@ -110,14 +111,25 @@ func (s *priceViewState) render(styles widget.Styles, width, height int) string 
 	return s.renderList(styles, width, height)
 }
 
-// priceListNaturalTableWidth is the width the prices list table is
-// rendered at when the chart panel is shown beside it. It is the sum of
-// the four column widths (10 + 32 + 15 + 12 = 69) plus the three
-// inter-column separators (3) plus a small visual gutter (3) so the
-// chart border doesn't sit directly against the last column. Below
-// pricechart.MinContentWidth the table reverts to filling the full
-// content area as before.
-const priceListNaturalTableWidth = 75
+// priceListChartGutter is the gap between the prices list table and the
+// chart panel beside it, so the chart border doesn't sit directly against
+// the last column.
+const priceListChartGutter = 3
+
+// listTableNaturalWidth is the width the prices list table is rendered at
+// when the chart panel is shown beside it: the column widths, Latest Price
+// fitted to the prices (10 + 32 + 15 + 12 = 69 at the usual widths), the
+// three inter-column separators and priceListChartGutter. The chart gets
+// the rest. Below pricechart.MinContentWidth the table fills the full
+// content area.
+func (s *priceViewState) listTableNaturalWidth() int {
+	cols := s.listTable.Columns()
+	w := len(cols) - 1 + priceListChartGutter
+	for _, c := range cols {
+		w += c.Width
+	}
+	return w
+}
 
 // renderList renders the landing-page summary table, optionally composing the
 // price-history chart panel beside it on wide terminals.
@@ -180,7 +192,7 @@ func (s *priceViewState) composeListBody(styles widget.Styles, contentWidth, hei
 		return s.listTable.Render(styles, tableWidth, height)
 	}
 
-	tableWidth := priceListNaturalTableWidth
+	tableWidth := s.listTableNaturalWidth()
 	if tableWidth >= contentWidth {
 		tableWidth = max(contentWidth-4, 1)
 		return s.listTable.Render(styles, tableWidth, height)

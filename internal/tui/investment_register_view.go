@@ -38,6 +38,11 @@ type investmentRegisterViewState struct {
 	// when it sorts into the middle of the list. The save paths set it; NilID
 	// means "no pending selection"; the build step clears it after applying.
 	pendingSelectID types.ID
+
+	// withBalance is the column set with the running cash-balance column, its
+	// number columns fitted to the rows; nil while the filter is active.
+	// buildTable sets it, and the resize-time fit check uses it.
+	withBalance []widget.Column
 }
 
 // investmentRegisterData holds the loaded data for the investment account register view.
