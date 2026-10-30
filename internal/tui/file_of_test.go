@@ -70,7 +70,7 @@ func TestALoadOfTheOldFileShowsNothing(t *testing.T) {
 				case registerLoadedMsg:
 					readA = m.data.account.ID == acct.ID
 				case dashboardLoadedMsg:
-					_, readA = m.data.accountNames[acct.ID]
+					_, readA = m.data.accountCurrencies[acct.ID]
 				case errMsg:
 					readA = switches == 2 && strings.Contains(m.err.Error(), "database is closed")
 				}

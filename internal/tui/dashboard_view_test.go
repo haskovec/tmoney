@@ -56,7 +56,6 @@ func TestApp_RenderDashboard_WithData(t *testing.T) {
 			dueTxns:      nil,
 			upcomingTxns: nil,
 			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -108,8 +107,7 @@ func TestApp_RenderDashboard_NegativeNetWorth(t *testing.T) {
 				Liabilities: []report.AccountBalance{{Name: "Loan", Balance: types.MustNewMoney("-5000.00")}},
 				Totals:      usdTotals(types.MustNewMoney("0"), types.MustNewMoney("-5000.00"), types.MustNewMoney("-5000.00")),
 			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -141,8 +139,7 @@ func TestApp_RenderDashboard_CreditBalanceLiability(t *testing.T) {
 				Liabilities: []report.AccountBalance{{Name: "Apple Card", Type: "credit_card", Balance: types.MustNewMoney("625.21")}},
 				Totals:      usdTotals(types.MustNewMoney("1000.00"), types.MustNewMoney("625.21"), types.MustNewMoney("1625.21")),
 			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -216,7 +213,6 @@ func TestApp_RenderDashboard_WithScheduled(t *testing.T) {
 			},
 			upcomingTxns: nil,
 			payeeNames:   map[types.ID]string{payeeID: "Landlord"},
-			accountNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -248,8 +244,7 @@ func TestApp_RenderDashboard_EmptyData(t *testing.T) {
 			netWorth: &report.NetWorth{
 				Totals: usdTotals(types.ZeroMoney, types.ZeroMoney, types.ZeroMoney),
 			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -275,8 +270,7 @@ func TestApp_Update_DashboardLoaded(t *testing.T) {
 		netWorth: &report.NetWorth{
 			Totals: usdTotals(types.MustNewMoney("5000"), types.ZeroMoney, types.MustNewMoney("5000")),
 		},
-		payeeNames:   make(map[types.ID]string),
-		accountNames: make(map[types.ID]string),
+		payeeNames: make(map[types.ID]string),
 	}
 
 	msg := dashboardLoadedMsg{data: data}
@@ -307,8 +301,7 @@ func TestApp_RenderDashboard_SmallWidth(t *testing.T) {
 				Assets: []report.AccountBalance{{Name: "Checking", Balance: types.MustNewMoney("100")}},
 				Totals: usdTotals(types.MustNewMoney("100"), types.ZeroMoney, types.MustNewMoney("100")),
 			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -328,9 +321,8 @@ func TestApp_RenderDashboard_NilNetWorth(t *testing.T) {
 		height:      24,
 		styles:      styles,
 		dashboard: dashboardViewState{data: &dashboardData{
-			netWorth:     nil,
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			netWorth:   nil,
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 
@@ -381,8 +373,7 @@ func TestApp_RenderDashboard_InvestmentAccountWithHoldings(t *testing.T) {
 					securityID1: "AAPL",
 					securityID2: "GOOG",
 				},
-				payeeNames:   make(map[types.ID]string),
-				accountNames: make(map[types.ID]string),
+				payeeNames: make(map[types.ID]string),
 			},
 		},
 	}
@@ -451,7 +442,6 @@ func TestApp_RenderDashboard_InvestmentAccountCollapsed(t *testing.T) {
 				},
 				securityTickers: map[types.ID]string{securityID: "AAPL"},
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -506,7 +496,6 @@ func TestApp_RenderDashboard_InvestmentAccountEstimatedValue(t *testing.T) {
 				},
 				securityTickers: map[types.ID]string{securityID: "VXUS"},
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -554,7 +543,6 @@ func TestApp_RenderDashboard_InvestmentNoHoldings(t *testing.T) {
 				},
 				securityTickers: make(map[types.ID]string),
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -611,7 +599,6 @@ func TestApp_RenderDashboard_InvestmentTopHoldingsLimit(t *testing.T) {
 				},
 				securityTickers: tickers,
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -662,7 +649,6 @@ func TestApp_RenderDashboard_InvestmentHoldingsNilMap(t *testing.T) {
 				investmentHoldings: nil, // nil map
 				securityTickers:    nil,
 				payeeNames:         make(map[types.ID]string),
-				accountNames:       make(map[types.ID]string),
 			},
 		},
 	}
@@ -708,7 +694,6 @@ func TestApp_RenderDashboard_InvestmentAccountTRRow(t *testing.T) {
 				},
 				securityTickers: map[types.ID]string{},
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -757,7 +742,6 @@ func TestApp_RenderDashboard_InvestmentAccountTRRowNegative(t *testing.T) {
 			},
 			securityTickers: map[types.ID]string{},
 			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		}},
 	}
 
@@ -801,7 +785,6 @@ func TestApp_RenderDashboard_InvestmentAccountTRPctNilRendersDash(t *testing.T) 
 			},
 			securityTickers: map[types.ID]string{},
 			payeeNames:      make(map[types.ID]string),
-			accountNames:    make(map[types.ID]string),
 		}},
 	}
 
@@ -838,7 +821,6 @@ func TestApp_RenderDashboard_NonInvestmentAccountNoTRRow(t *testing.T) {
 			investmentHoldings: map[types.ID]*investment.AccountValuation{},
 			securityTickers:    map[types.ID]string{},
 			payeeNames:         make(map[types.ID]string),
-			accountNames:       make(map[types.ID]string),
 		}},
 	}
 
@@ -965,7 +947,6 @@ func dashboardToggleApp(t *testing.T, acct *account.Account, holdings []investme
 				},
 				securityTickers: tickers,
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -1112,7 +1093,6 @@ func dashboardMouseApp(t *testing.T) (*App, map[types.ID]string) {
 				},
 				securityTickers: map[types.ID]string{secA: "AAA", secB: "BBB"},
 				payeeNames:      make(map[types.ID]string),
-				accountNames:    make(map[types.ID]string),
 			},
 		},
 	}
@@ -1296,7 +1276,6 @@ func TestApp_Dashboard_HoldingsStartCollapsed(t *testing.T) {
 		},
 		securityTickers: map[types.ID]string{secID: "AAA"},
 		payeeNames:      make(map[types.ID]string),
-		accountNames:    make(map[types.ID]string),
 	}
 	model, _ := app.Update(dashboardLoadedMsg{data: data})
 	app = model.(*App)
@@ -1335,7 +1314,6 @@ func TestApp_Dashboard_ExpansionSurvivesReload(t *testing.T) {
 		},
 		securityTickers: map[types.ID]string{},
 		payeeNames:      make(map[types.ID]string),
-		accountNames:    make(map[types.ID]string),
 	}}
 	model, _ := app.Update(reload)
 	app = model.(*App)
@@ -1371,8 +1349,7 @@ func TestApp_RenderDashboard_PerCurrencyWithFailedRow(t *testing.T) {
 					{Currency: "USD", Liabilities: m("-30.00"), NetWorth: m("-30.00"), LiabilitiesAvailable: true},
 				},
 			},
-			payeeNames:   make(map[types.ID]string),
-			accountNames: make(map[types.ID]string),
+			payeeNames: make(map[types.ID]string),
 		}},
 	}
 

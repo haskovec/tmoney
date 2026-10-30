@@ -40,7 +40,6 @@ type dashboardData struct {
 	dueTxns            []*scheduled.Transaction
 	upcomingTxns       []*scheduled.Transaction
 	payeeNames         map[types.ID]string
-	accountNames       map[types.ID]string
 	accountCurrencies  map[types.ID]string                       // account ID -> currency code
 	investmentHoldings map[types.ID]*investment.AccountValuation // account ID -> valuation with holdings
 	securityTickers    map[types.ID]string                       // security ID -> ticker
@@ -94,7 +93,6 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 	return func() tea.Msg {
 		data := &dashboardData{
 			payeeNames:        make(map[types.ID]string),
-			accountNames:      make(map[types.ID]string),
 			accountCurrencies: make(map[types.ID]string),
 		}
 
@@ -143,13 +141,12 @@ func (s *dashboardViewState) load(d dashboardDeps) tea.Cmd {
 			}
 		}
 
-		// Load account names, closed accounts included: a closed account
-		// keeps its schedules until they are redirected.
+		// Load account currencies, closed accounts included: a closed
+		// account keeps its schedules until they are redirected.
 		if accountSvc := d.accounts(); accountSvc != nil {
 			accounts, err := accountSvc.List(false)
 			if err == nil {
 				for _, acc := range accounts {
-					data.accountNames[acc.ID] = acc.Name
 					data.accountCurrencies[acc.ID] = acc.Currency
 				}
 			}
