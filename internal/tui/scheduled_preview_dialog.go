@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
@@ -19,9 +20,10 @@ import (
 //	Date(0) Payee(1) Category(2) Amount(3) Memo(4) Status(5)
 //
 // Multi-line preview header fields (lines live in the embedded
-// SplitDialog; the header carries no scalar category or amount):
+// SplitDialog; the header carries no scalar category, and its Amount is the
+// parent amount the lines must sum to):
 //
-//	Date(0) Payee(1) Memo(2) Status(3)
+//	Date(0) Payee(1) Amount(2) Memo(3) Status(4)
 const (
 	previewFieldDate          = 0
 	previewFieldPayee         = 1
@@ -29,8 +31,9 @@ const (
 	previewSingleFieldAmount  = 3
 	previewSingleFieldMemo    = 4
 	previewSingleFieldStatus  = 5
-	previewMultiFieldMemo     = 2
-	previewMultiFieldStatus   = 3
+	previewMultiFieldAmount   = 2
+	previewMultiFieldMemo     = 3
+	previewMultiFieldStatus   = 4
 	previewStatusUnclearedIdx = 0
 
 	// Transfer preview fields. From/To render as a read-only body message
@@ -56,9 +59,11 @@ const (
 //     category / amount / memo / status fields, mirroring the regular
 //     transaction edit dialog.
 //   - For a multi-line schedule it owns a header dialog.Dialog (date / payee /
-//     memo / status) plus an embedded SplitDialog seeded from the
-//     template's children. The header carries no scalar category or
-//     amount since the lines own those.
+//     amount / memo / status) plus an embedded SplitDialog seeded from the
+//     template's children. The header carries no scalar category since the
+//     lines own those. Its Amount is the parent amount: the split editor's
+//     total follows it, so a one-off line change (a tax a cent higher than
+//     the template) can be balanced by a one-off parent amount.
 //
 // MS-018 introduces the scaffolding only — the wiring that opens this
 // dialog from the Scheduled view (MS-019) and the save/cancel handlers
@@ -72,8 +77,8 @@ type SchedulePreviewDialog struct {
 
 	// headerDialog carries the editable parent-transaction fields. For
 	// a single-line schedule this includes Category and Amount; for a
-	// multi-line schedule those live in splitDialog and the header is
-	// only date / payee / memo / status.
+	// multi-line schedule the categories live in splitDialog and the header
+	// is date / payee / amount / memo / status.
 	headerDialog *dialog.Dialog
 
 	// splitDialog is non-nil for multi-line schedules and edits the
@@ -121,6 +126,10 @@ type SchedulePreviewDialog struct {
 	// freezes reseeding (a category/memo edit is user intent the reseed would
 	// otherwise silently discard when it rebuilds the editor).
 	loanSeededRows []string
+
+	// loanSeededAmount is the header Amount right after each loan (re)seed.
+	// An Amount the user changes from it freezes reseeding too.
+	loanSeededAmount string
 
 	// accounts / categoryOptions are stashed at construction so a
 	// date-change reseed can rebuild the embedded split editor exactly as
@@ -252,9 +261,16 @@ func (p *SchedulePreviewDialog) currentLineSignatures() []string {
 	return out
 }
 
+// userEdited reports whether the user changed the parent Amount or any
+// split-editor row since the last loan seed. Any such edit freezes reseeding
+// (user values win).
+func (p *SchedulePreviewDialog) userEdited() bool {
+	return p.headerAmountField().Value != p.loanSeededAmount || p.userEditedLines()
+}
+
 // userEditedLines reports whether any split-editor row differs from the last
 // loan seed — a line amount, category, transfer target, or memo edit, or an
-// added/removed row. Any such edit freezes reseeding (user values win).
+// added/removed row.
 func (p *SchedulePreviewDialog) userEditedLines() bool {
 	cur := p.currentLineSignatures()
 	if len(cur) != len(p.loanSeededRows) {
@@ -279,8 +295,31 @@ func (p *SchedulePreviewDialog) reseedLoanSplits(ls *scheduled.LoanSplits, date 
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(p.accounts)
 	p.splitDialog.SetTransferTargets(accountOptions, accountIDs, p.template.AccountID)
 	p.setSplitFocus(p.splitFocus)
+	f := p.headerAmountField()
+	f.Value = ls.ParentAmount.String()
+	f.MoveCursorEnd()
 	p.loanSeedDate = date
 	p.loanSeededRows = p.currentLineSignatures()
+	p.loanSeededAmount = f.Value
+}
+
+// headerAmountField is the multi-line header's Amount field: the parent
+// amount.
+func (p *SchedulePreviewDialog) headerAmountField() *dialog.Field {
+	return p.headerDialog.Fields()[previewMultiFieldAmount]
+}
+
+// syncSplitTotal sets the split editor's total to the header's Amount, so
+// that Remaining and the imbalance follow the parent amount as the user
+// types it. An Amount that does not parse (a partly typed "-") leaves the
+// total as it was; Save reports it.
+func (p *SchedulePreviewDialog) syncSplitTotal() {
+	if p.splitDialog == nil {
+		return
+	}
+	if m, err := parseAmountInput(strings.TrimSpace(p.headerAmountField().Value)); err == nil {
+		p.splitDialog.totalAmount = m
+	}
 }
 
 // schedulePreviewDataMsg carries the dependencies needed to construct a

@@ -156,16 +156,19 @@ func TestSchedulePreviewDialog_OpensWithTemplateValues(t *testing.T) {
 			t.Fatal("HeaderDialog should be non-nil")
 		}
 		fields := hd.Fields()
-		// Multi-line preview header carries date, payee, memo, status —
-		// no scalar category or amount (those live in the split editor).
-		if len(fields) != 4 {
-			t.Fatalf("expected 4 header fields on multi-line preview, got %d", len(fields))
+		// Multi-line preview header carries date, payee, the parent amount,
+		// memo, status — no scalar category (the lines own those).
+		if len(fields) != 5 {
+			t.Fatalf("expected 5 header fields on multi-line preview, got %d", len(fields))
 		}
 		if got, want := fields[previewFieldDate].Value, "01/23/2026"; got != want {
 			t.Errorf("date field = %q, want %q", got, want)
 		}
 		if got, want := fields[previewFieldPayee].Value, "Employer Inc"; got != want {
 			t.Errorf("payee field = %q, want %q", got, want)
+		}
+		if got, want := fields[previewMultiFieldAmount].Value, netAmount.String(); got != want {
+			t.Errorf("amount field = %q, want %q", got, want)
 		}
 		if got, want := fields[previewMultiFieldMemo].Value, "Paycheck"; got != want {
 			t.Errorf("memo field = %q, want %q", got, want)
@@ -982,6 +985,93 @@ func TestSchedulePreview_ImbalancedSaveDisabled(t *testing.T) {
 		t.Errorf("schedule next_date = %s, want unchanged %s",
 			reloaded.NextDate.Time().Format("2006-01-02"),
 			env.originalNext.Time().Format("2006-01-02"))
+	}
+}
+
+// TestSchedulePreview_EditParentAmount_OneOff covers a paycheck whose tax is
+// one cent more than the template: the lines then net to one cent less, and
+// the user types that net into the header Amount. The split editor's total
+// follows the Amount as it is typed, Save posts the edited Amount, and the
+// template keeps its own amount and lines.
+func TestSchedulePreview_EditParentAmount_OneOff(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	app := env.app
+	p := app.schedPreviewDialog
+	sd := p.SplitDialog()
+
+	sd.rows[1].amountField.Value = "-100.01"
+	if sd.IsSaveEnabled() {
+		t.Fatal("a tax one cent more should leave the lines imbalanced")
+	}
+
+	// Type the last digit of the new net pay into the header Amount.
+	header := p.HeaderDialog()
+	header.SetFocusIndex(previewMultiFieldAmount)
+	amount := header.Fields()[previewMultiFieldAmount]
+	amount.Value = "899.9"
+	amount.MoveCursorEnd()
+	app.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: '9', Text: "9"})
+
+	want := types.MustNewMoney("899.99")
+	if !sd.totalAmount.Equal(want) {
+		t.Fatalf("split total = %s, want %s (it follows the Amount)", sd.totalAmount, want)
+	}
+	if !sd.IsSaveEnabled() {
+		t.Fatalf("the lines should balance the new Amount; remaining=%s", sd.remaining())
+	}
+	if out := p.Render(app.styles); !strings.Contains(out, "$899.99") {
+		t.Error("the split panel should show the new total $899.99")
+	}
+
+	_, cmd := app.submitSchedulePreviewDialog()
+	if cmd == nil {
+		t.Fatalf("Save must return a tea.Cmd (header error %q)", header.ErrorMsg())
+	}
+	if msg, ok := cmd().(errMsg); ok {
+		t.Fatalf("Save command produced an error: %v", msg.err)
+	}
+
+	posted, err := env.txnRepo.ListByAccount(env.acct.ID)
+	if err != nil || len(posted) != 1 {
+		t.Fatalf("posted = %d transactions (err %v), want 1", len(posted), err)
+	}
+	if !posted[0].Amount.Equal(want) {
+		t.Errorf("posted amount = %s, want %s", posted[0].Amount, want)
+	}
+	reloaded, err := env.schedRepo.GetByID(env.dueTxn.ID)
+	if err != nil {
+		t.Fatalf("reload schedule: %v", err)
+	}
+	if !reloaded.Amount.Money.Equal(env.netAmount) {
+		t.Errorf("template amount = %s, want unchanged %s", reloaded.Amount.Money, env.netAmount)
+	}
+	for _, sp := range reloaded.Splits {
+		if sp.CategoryID.ID == env.taxCat.ID && !sp.Amount.Equal(env.taxAmount) {
+			t.Errorf("template tax line = %s, want unchanged %s", sp.Amount, env.taxAmount)
+		}
+	}
+}
+
+// TestSchedulePreview_InvalidParentAmount covers an Amount that is not a
+// number: Save keeps the preview open with the error on the field, and posts
+// nothing.
+func TestSchedulePreview_InvalidParentAmount(t *testing.T) {
+	env := newSchedulePreviewMultiLineEnv(t)
+	amount := env.app.schedPreviewDialog.HeaderDialog().Fields()[previewMultiFieldAmount]
+	amount.Value = "abc"
+
+	model, cmd := env.app.submitSchedulePreviewDialog()
+	if cmd != nil {
+		t.Errorf("an invalid Amount should not post; got a %T", cmd)
+	}
+	if model.(*App).schedPreviewDialog == nil {
+		t.Fatal("the preview should stay open")
+	}
+	if amount.Error != "Invalid amount" {
+		t.Errorf("Amount error = %q, want %q", amount.Error, "Invalid amount")
+	}
+	if posted, _ := env.txnRepo.ListByAccount(env.acct.ID); len(posted) != 0 {
+		t.Errorf("posted %d transactions, want 0", len(posted))
 	}
 }
 

@@ -95,8 +95,6 @@ func NewSchedulePreviewDialog(
 	}
 
 	if len(template.Splits) > 0 {
-		p.headerDialog = buildPreviewHeaderMulti(dateStr, payeeName, memo)
-
 		// A loan-shaped schedule seeds its interest/principal split from the
 		// live-balance recompute the caller supplied, not the stored template
 		// (which is only a month-one snapshot). Everything else — a paycheck
@@ -119,6 +117,7 @@ func NewSchedulePreviewDialog(
 			seedSplits = loanSplits.Splits
 		}
 
+		p.headerDialog = buildPreviewHeaderMulti(dateStr, payeeName, parentAmount.String(), memo)
 		p.splitDialog = NewSplitDialogFromExisting(parentAmount, categoryOptions, categoryIDs, seedSplits)
 		// Match the header dialog's width so the two stacked panels line up.
 		p.splitDialog.width = 62
@@ -129,6 +128,7 @@ func NewSchedulePreviewDialog(
 
 		if p.loanShaped {
 			p.loanSeededRows = p.currentLineSignatures()
+			p.loanSeededAmount = p.headerAmountField().Value
 		}
 		return p
 	}
@@ -180,8 +180,9 @@ func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, catego
 // buildPreviewHeaderMulti builds the header dialog for a multi-line
 // preview. The lines (and their imbalance indicator) live in the
 // embedded SplitDialog; the header only carries scalar fields that
-// apply to the parent transaction as a whole.
-func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *dialog.Dialog {
+// apply to the parent transaction as a whole. Its Amount is the parent
+// amount, which the lines must sum to.
+func buildPreviewHeaderMulti(dateStr, payeeName, amountStr, memo string) *dialog.Dialog {
 	d := dialog.NewDialog("Post Scheduled Transaction")
 	d.SetWidth(62)
 
@@ -189,6 +190,8 @@ func buildPreviewHeaderMulti(dateStr, payeeName, memo string) *dialog.Dialog {
 	f.Required = true
 
 	d.AddTextField("Payee", payeeName, "Payee name", 0)
+	af := d.AddTextField("Amount", amountStr, "-50.00", 12)
+	af.Required = true
 	d.AddTextField("Memo", memo, "Optional memo", 0)
 	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, previewStatusUnclearedIdx)
 

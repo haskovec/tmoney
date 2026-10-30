@@ -365,8 +365,10 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 			return a, nil
 		}
 		action := header.HandleKey(msg)
+		// The split editor's total follows the Amount as it is typed.
+		p.syncSplitTotal()
 		// A Date edit reseeds a loan-shaped preview's split from the balance
-		// as of the new date, until the user edits a line amount.
+		// as of the new date, until the user edits the Amount or a line.
 		a.maybeReseedLoanPreview()
 		return a.schedulePreviewAction(action)
 	}
@@ -384,8 +386,8 @@ func (a *App) handleSchedulePreviewMultiLineKey(msg tea.KeyPressMsg) (tea.Model,
 
 // maybeReseedLoanPreview recomputes a loan-shaped preview's interest/principal
 // split when the Date field has been edited to a new occurrence date — until
-// the user edits a line amount, after which user values win and Date edits no
-// longer reseed (the reseed rule in specs/loan-wizard.md). A recompute failure
+// the user edits the Amount or a line, after which user values win and Date
+// edits no longer reseed (the reseed rule in specs/loan-wizard.md). A recompute failure
 // (e.g. the loan is already paid off at the new date) leaves the current seed
 // in place.
 func (a *App) maybeReseedLoanPreview() {
@@ -393,7 +395,7 @@ func (a *App) maybeReseedLoanPreview() {
 	if p == nil || !p.loanShaped || p.loanSeedFrozen || a.services.Scheduled == nil {
 		return
 	}
-	if p.userEditedLines() {
+	if p.userEdited() {
 		p.loanSeedFrozen = true
 		return
 	}
@@ -417,13 +419,14 @@ func (a *App) maybeReseedLoanPreview() {
 }
 
 // freezeLoanSeedIfEdited permanently freezes loan reseeding once the user has
-// edited any line amount (or added/removed a row) in a loan-shaped preview.
+// edited the Amount or any line (or added/removed a row) in a loan-shaped
+// preview.
 func (a *App) freezeLoanSeedIfEdited() {
 	p := a.schedPreviewDialog
 	if p == nil || !p.loanShaped || p.loanSeedFrozen {
 		return
 	}
-	if p.userEditedLines() {
+	if p.userEdited() {
 		p.loanSeedFrozen = true
 	}
 }

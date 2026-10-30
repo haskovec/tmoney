@@ -217,10 +217,10 @@ func TestSplitDialog_HandleMouseLocal_RowBelowPanel(t *testing.T) {
 // TestBuildPreviewHeaderMulti_NoButtons verifies the multi-line preview
 // header carries no Save/Cancel buttons of its own.
 func TestBuildPreviewHeaderMulti_NoButtons(t *testing.T) {
-	h := buildPreviewHeaderMulti("05/15/2026", "Employer", "")
-	// 4 fields (Date, Payee, Memo, Status), 0 buttons.
-	if got := h.FocusableCount(); got != 4 {
-		t.Errorf("FocusableCount() = %d, want 4 (fields only, no buttons)", got)
+	h := buildPreviewHeaderMulti("05/15/2026", "Employer", "900.00", "")
+	// 5 fields (Date, Payee, Amount, Memo, Status), 0 buttons.
+	if got := h.FocusableCount(); got != 5 {
+		t.Errorf("FocusableCount() = %d, want 5 (fields only, no buttons)", got)
 	}
 	out := h.Render(widget.NewStyles())
 	if strings.Contains(out, "[ Save ]") || strings.Contains(out, "[ Cancel ]") {

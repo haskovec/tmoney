@@ -229,10 +229,11 @@ Pressing Enter on a due scheduled transaction (Scheduled view or Dashboard's Due
 │                                                              │
 │  Date:      [01/23/2026]                                     │
 │  Payee:     [Employer________________]  ▼                    │
-│  Account:   [Checking ▼]                                     │
+│  Amount:    [3067.50_____]                                   │
 │  Memo:      [_______________________________________]        │
+│  Status:    (•) Uncleared  ( ) Cleared                       │
 │                                                              │
-│  Parent: +3,067.50                                           │
+│  Total: $3067.50                     Remaining: $0.00        │
 │  ───────────────────────────────────────────────────         │
 │  Category / Target          Amount      Memo                 │
 │  Income > Salary           +5,000.00                         │
@@ -255,6 +256,7 @@ Semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multiline-s
 
 - Date edits are **one-off**: the schedule's `next_date` advances per the template, not the edit.
 - Amount and line edits are **one-off**: edits do not modify the template.
+- The **Amount** field is the parent amount. The lines must sum to it, and the split panel's total follows it as the user types. When a line differs from the template (for example, a tax one cent more), the user sets Amount to the real net amount.
 - Save is disabled while a multi-line preview is imbalanced.
 - To modify the template for all future occurrences, press `e` (Edit Series) on the scheduled item in the list instead of `Enter`.
 
