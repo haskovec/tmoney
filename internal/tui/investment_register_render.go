@@ -13,10 +13,9 @@ import (
 	"github.com/haskovec/tmoney/internal/types"
 )
 
-// investmentRegisterColumns returns the investment register's column set; when
-// withBalance is true it appends the trailing running cash-balance column.
-// Single source of truth shared by buildTable and the
-// resize-time fit check.
+// investmentRegisterColumns returns the investment register's column set at
+// its usual widths; when withBalance is true it appends the trailing running
+// cash-balance column. buildTable fits the number columns to the rows.
 func investmentRegisterColumns(withBalance bool) []widget.Column {
 	cols := []widget.Column{
 		{Header: "Date", Width: 10, Align: widget.AlignLeft},
@@ -33,13 +32,15 @@ func investmentRegisterColumns(withBalance bool) []widget.Column {
 	return cols
 }
 
-// shouldShowInvestmentBalance reports whether the investment register is wide
-// enough to include the running cash-balance column. The investment register
-// has seven fixed columns, so Balance only fits on a fairly wide terminal
-// (table width ≈ 98). The width must match the view's render.
-func shouldShowInvestmentBalance(styles widget.Styles) bool {
+// showsBalance reports whether the investment register shows the running
+// cash-balance column: the security filter is off, and the register is wide
+// enough for the column set with Balance, its number columns fitted to the
+// rows (withBalance). The investment register has seven fixed columns, so
+// Balance only fits on a fairly wide terminal (table width ≈ 98). The width
+// must match the view's render.
+func (s *investmentRegisterViewState) showsBalance(styles widget.Styles) bool {
 	tableWidth := max(styles.ContentWidth()-4, 1)
-	return columnsFitWidth(investmentRegisterColumns(true), tableWidth, registerFlexMargin)
+	return !s.filterActive() && columnsFitWidth(s.withBalance, tableWidth, registerFlexMargin)
 }
 
 // buildTable creates and populates the table for the investment register view.
@@ -48,35 +49,39 @@ func (s *investmentRegisterViewState) buildTable(styles widget.Styles) {
 		return
 	}
 
-	// The running-balance column is account-wide and can't be sliced per
-	// security, so it is suppressed whenever the filter is active.
-	showBalance := shouldShowInvestmentBalance(styles) && !s.filterActive()
-	columns := investmentRegisterColumns(showBalance)
-
 	txns := s.visibleTransactions()
+	rows := make([][]string, len(txns))
+	for i, txn := range txns {
+		rows[i] = s.formatRow(txn)
+	}
 
-	var cash []types.Money
-	if showBalance {
+	// The running-balance column is account-wide and can't be sliced per
+	// security, so it is suppressed whenever the filter is active. The
+	// Shares, Price, Total and Balance columns are as wide as their widest
+	// cell.
+	s.withBalance = nil
+	if !s.filterActive() {
 		opening := types.ZeroMoney
 		if s.data.account != nil {
 			opening = s.data.account.OpeningBalance
 		}
-		cash = runningCash(txns, opening)
+		for i, cash := range runningCash(txns, opening) {
+			rows[i] = append(rows[i], formatDashboardMoney(cash))
+		}
+		s.withBalance = fitNumberColumns(investmentRegisterColumns(true), rows)
+	}
+	columns := s.withBalance
+	if !s.showsBalance(styles) {
+		columns = fitNumberColumns(investmentRegisterColumns(false), rows)
+		for i := range rows {
+			rows[i] = rows[i][:len(columns)]
+		}
 	}
 
 	if s.table == nil {
 		s.table = widget.NewTable(columns)
 	} else {
 		s.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(txns))
-	for i, txn := range txns {
-		row := s.formatRow(txn)
-		if showBalance {
-			row = append(row, formatDashboardMoney(cash[i]))
-		}
-		rows[i] = row
 	}
 	s.table.SetRows(rows)
 

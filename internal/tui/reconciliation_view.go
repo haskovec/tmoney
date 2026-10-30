@@ -336,24 +336,24 @@ func (a *App) buildReconciliationTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	rows := make([][]string, len(a.reconciliation.data.candidates))
+	for i, txn := range a.reconciliation.data.candidates {
+		rows[i] = a.formatReconciliationRow(txn)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: " ", Width: 3, Align: widget.AlignCenter}, // Checkbox
 		{Header: "Date", Width: 10, Align: widget.AlignLeft},
 		{Header: "S", Width: 1, Align: widget.AlignCenter}, // Cleared indicator
 		{Header: "Payee", MinWidth: 12, Align: widget.AlignLeft},
 		{Header: "Category", MinWidth: 10, Align: widget.AlignLeft},
 		{Header: "Amount", Width: 12, Align: widget.AlignRight},
-	}
+	}, rows)
 
 	if a.reconciliation.table == nil {
 		a.reconciliation.table = widget.NewTable(columns)
 	} else {
 		a.reconciliation.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(a.reconciliation.data.candidates))
-	for i, txn := range a.reconciliation.data.candidates {
-		rows[i] = a.formatReconciliationRow(txn)
 	}
 	a.reconciliation.table.SetRows(rows)
 	a.reconciliation.table.SetFocused(true)

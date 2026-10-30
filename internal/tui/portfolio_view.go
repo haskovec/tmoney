@@ -155,7 +155,16 @@ func (s *portfolioViewState) buildHoldingsTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	holdings := s.data.valuation.Holdings
+	sort.SliceStable(holdings, func(i, j int) bool {
+		return holdings[i].MarketValue.Cmp(holdings[j].MarketValue) > 0
+	})
+	rows := make([][]string, len(holdings))
+	for i, h := range holdings {
+		rows[i] = s.formatHoldingRow(&h)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: "Security", Width: 8, Align: widget.AlignLeft},
 		{Header: "Shares", Width: 9, Align: widget.AlignRight},
 		{Header: "Avg Cost", Width: 10, Align: widget.AlignRight},
@@ -169,21 +178,12 @@ func (s *portfolioViewState) buildHoldingsTable() {
 		{Header: "Fees", Width: 9, Align: widget.AlignRight},
 		{Header: "Total Ret", Width: 12, Align: widget.AlignRight},
 		{Header: "Ret %", Width: 8, Align: widget.AlignRight},
-	}
+	}, rows)
 
 	if s.holdingsTable == nil {
 		s.holdingsTable = widget.NewTable(columns)
 	} else {
 		s.holdingsTable.SetColumns(columns)
-	}
-
-	holdings := s.data.valuation.Holdings
-	sort.SliceStable(holdings, func(i, j int) bool {
-		return holdings[i].MarketValue.Cmp(holdings[j].MarketValue) > 0
-	})
-	rows := make([][]string, len(holdings))
-	for i, h := range holdings {
-		rows[i] = s.formatHoldingRow(&h)
 	}
 	s.holdingsTable.SetRows(rows)
 }
@@ -266,7 +266,13 @@ func (s *portfolioViewState) buildLotsTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	lots := s.data.lotDetails
+	rows := make([][]string, len(lots))
+	for i, lot := range lots {
+		rows[i] = formatLotDetailRow(&lot)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: "Purchase Date", Width: 13, Align: widget.AlignLeft},
 		{Header: "Shares", Width: 12, Align: widget.AlignRight},
 		{Header: "Cost/Share", Width: 12, Align: widget.AlignRight},
@@ -274,18 +280,12 @@ func (s *portfolioViewState) buildLotsTable() {
 		{Header: "Cur. Value", Width: 14, Align: widget.AlignRight},
 		{Header: "Gain/Loss", Width: 14, Align: widget.AlignRight},
 		{Header: "G/L %", Width: 8, Align: widget.AlignRight},
-	}
+	}, rows)
 
 	if s.lotsTable == nil {
 		s.lotsTable = widget.NewTable(columns)
 	} else {
 		s.lotsTable.SetColumns(columns)
-	}
-
-	lots := s.data.lotDetails
-	rows := make([][]string, len(lots))
-	for i, lot := range lots {
-		rows[i] = formatLotDetailRow(&lot)
 	}
 	s.lotsTable.SetRows(rows)
 }

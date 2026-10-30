@@ -21,19 +21,6 @@ func (s *priceViewState) buildListTable() {
 		return
 	}
 
-	columns := []widget.Column{
-		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
-		{Header: "Name", Width: 32, Align: widget.AlignLeft},
-		{Header: "Latest Price", Width: 15, Align: widget.AlignRight},
-		{Header: "Date", Width: 12, Align: widget.AlignLeft},
-	}
-
-	if s.listTable == nil {
-		s.listTable = widget.NewTable(columns)
-	} else {
-		s.listTable.SetColumns(columns)
-	}
-
 	rows := make([][]string, len(s.data.latestPrices))
 	for i, lp := range s.data.latestPrices {
 		rows[i] = []string{
@@ -42,6 +29,19 @@ func (s *priceViewState) buildListTable() {
 			fmt.Sprintf("$%.2f", lp.Price.Float64()),
 			lp.Date.Time().Format("2006-01-02"),
 		}
+	}
+
+	columns := fitNumberColumns([]widget.Column{
+		{Header: "Ticker", Width: 10, Align: widget.AlignLeft},
+		{Header: "Name", Width: 32, Align: widget.AlignLeft},
+		{Header: "Latest Price", Width: 15, Align: widget.AlignRight},
+		{Header: "Date", Width: 12, Align: widget.AlignLeft},
+	}, rows)
+
+	if s.listTable == nil {
+		s.listTable = widget.NewTable(columns)
+	} else {
+		s.listTable.SetColumns(columns)
 	}
 	s.listTable.SetRows(rows)
 	s.listTable.SetFocused(true)
@@ -53,21 +53,21 @@ func (s *priceViewState) buildTable() {
 		return
 	}
 
-	columns := []widget.Column{
+	rows := make([][]string, len(s.data.prices))
+	for i, p := range s.data.prices {
+		rows[i] = formatPriceRow(p)
+	}
+
+	columns := fitNumberColumns([]widget.Column{
 		{Header: "Date", Width: 12, Align: widget.AlignLeft},
 		{Header: "Price", Width: 15, Align: widget.AlignRight},
 		{Header: "Source", Width: 12, Align: widget.AlignLeft},
-	}
+	}, rows)
 
 	if s.table == nil {
 		s.table = widget.NewTable(columns)
 	} else {
 		s.table.SetColumns(columns)
-	}
-
-	rows := make([][]string, len(s.data.prices))
-	for i, p := range s.data.prices {
-		rows[i] = formatPriceRow(p)
 	}
 	s.table.SetRows(rows)
 	s.table.SetFocused(true)

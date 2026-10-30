@@ -48,18 +48,6 @@ const (
 	holdingsSecurityNoName = 9
 )
 
-// fitWidth is the width of a column that cuts none of its cells: its usual
-// width, or its widest cell when that is wider. A money column needs more
-// than its usual width for a currency code: "JPY 1500000.00" is 14 cells.
-// A cut amount would lose digits.
-func fitWidth(usual int, cells ...string) int {
-	w := usual
-	for _, c := range cells {
-		w = max(w, utf8.RuneCountInString(c))
-	}
-	return w
-}
-
 // holdingsColumns returns the columns that fit a table of width cells, each
 // with a fixed width so the bar width is known when the rows are built.
 // Shares and Price go first, then Cost Basis and Gain, then Name; Security,

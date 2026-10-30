@@ -793,6 +793,12 @@ The layout adapts to terminal size:
 - **Medium** (80-120 cols): Standard two-pane layout
 - **Large** (> 120 cols): Additional detail panels
 
+A table never cuts a number. A number column (amount, price, share count,
+percentage) is as wide as its widest cell, and never narrower than its usual
+width. A text column (payee, name, memo) can be cut with "…". The registers
+show the running-balance column only when it fits with the number columns
+at those widths. A key-hint line leaves out whole hints to fit the width.
+
 ## Accessibility
 
 - High contrast mode support
