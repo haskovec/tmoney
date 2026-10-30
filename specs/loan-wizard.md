@@ -315,7 +315,7 @@ into the loan).
 
 | Path | Behavior |
 |------|----------|
-| TUI post-time preview | Seeds the preview's lines with computed values instead of template values. **Reseed rule**: editing the preview's Date recomputes the seed for the new date, *until* the user edits any line amount — after that, user values win and date changes no longer reseed. Saves via `PostWithEdits` (no recompute after user edits). |
+| TUI post-time preview | Seeds the preview's lines with computed values instead of template values. **Reseed rule**: editing the preview's Date recomputes the seed for the new date (the lines and the header Amount), *until* the user edits the Amount or any line — after that, user values win and date changes no longer reseed. Saves via `PostWithEdits` (no recompute after user edits). |
 | `scheduled post` (CLI) / `Post`/`PostWithDate` | `buildMultiLineTransaction` uses computed splits for loan-shaped schedules. `--amount` override remains rejected for multi-line, unchanged. |
 | Auto-post | Same computed splits (never stale). The wizard **defaults auto-post off**. Any loan-computation error (paid off, negative-am, missing APR, missing interest line) **skips that schedule with a reason** — the existing skip-with-reason mechanism used for closed accounts — and must never abort the rest of the auto-post batch. |
 | Manual post of a paid-off loan | If `owed ≤ 0` at post time, refuse with a typed "loan is paid off" error **and mark the schedule completed on the spot** (see below). |

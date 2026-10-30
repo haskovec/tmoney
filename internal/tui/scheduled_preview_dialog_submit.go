@@ -82,8 +82,7 @@ func (a *App) submitSchedulePreviewTransfer(template *scheduled.Transaction, hea
 
 // submitSchedulePreviewDialog parses the preview dialog fields, builds
 // the parent transaction (and, for multi-line previews, the split rows
-// frozen at template values until MS-021 lands per-instance line edits)
-// with any user edits applied, and dispatches a
+// and the parent Amount as edited) with any user edits applied, and dispatches a
 // PostScheduledTransactionWithEditsCommand through the undo manager.
 // The schedule advances by one cadence using the template's original
 // next_date as the basis, so a date edit in the preview never shifts
@@ -150,19 +149,23 @@ func (a *App) submitSchedulePreviewDialog() (tea.Model, tea.Cmd) {
 			amount = ls.ParentAmount
 		default:
 			// Generic multi-line, or a loan preview the user edited (frozen):
-			// post the split editor's rows verbatim (user values win). The
-			// lines are validated to sum to the editor total.
+			// post the header Amount and the split editor's rows verbatim
+			// (user values win). The lines are validated to sum to the
+			// Amount.
+			m, perr := parseAmountInput(strings.TrimSpace(fields[previewMultiFieldAmount].Value))
+			if perr != nil {
+				fields[previewMultiFieldAmount].Error = "Invalid amount"
+				return a, nil
+			}
+			amount = m
 			if sd != nil {
+				sd.totalAmount = amount
 				built, err := sd.buildSplits()
 				if err != nil {
 					header.SetErrorMsg(err.Error())
 					return a, nil
 				}
 				multiSplits = built
-			}
-			amount = template.Amount.Money
-			if a.schedPreviewDialog.loanShaped && sd != nil {
-				amount = sd.totalAmount
 			}
 		}
 	} else {

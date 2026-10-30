@@ -238,7 +238,7 @@ Pressing Enter on a due scheduled transaction in the Scheduled view (or from the
 
 - The dialog is pre-filled with the schedule's template values (date = `next_date`, amounts = template line amounts).
 - The user can edit any field: date, payee, memo, individual line amounts, parent amount.
-- For multi-line schedules, lines render as a mini-split table with live imbalance indicator.
+- For multi-line schedules, lines render as a mini-split table with live imbalance indicator. The parent amount is the header's Amount field; the split table's total follows it as the user types.
 - For single-line schedules, the dialog matches the existing single-transaction entry dialog with template values pre-filled.
 - Save creates the real transaction and advances the schedule.
 - Cancel returns to the scheduled list with no changes.

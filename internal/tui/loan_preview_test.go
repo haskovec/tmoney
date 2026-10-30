@@ -631,6 +631,81 @@ func TestSchedulePreview_LoanMemoEditFreezesReseed(t *testing.T) {
 	}
 }
 
+// TestSchedulePreview_LoanReseedUpdatesAmount covers that a Date reseed puts
+// the new parent amount in the header Amount: here the new date makes the
+// payment the final, smaller one.
+func TestSchedulePreview_LoanReseedUpdatesAmount(t *testing.T) {
+	nextDate := types.NewDate(2024, time.July, 1)
+	env := newLoanPreviewEnv(t, "250000.00", "6.5", "1580.17", nextDate)
+	// Extra principal after the July date leaves 1000 owed in August.
+	env.addLoanTxn(t, types.NewDate(2024, time.July, 15), "249000.00")
+
+	env.openPreview(t)
+	p := env.app.schedPreviewDialog
+	july, err := env.schedSvc.ComputeLoanSplits(env.dueTxn, nextDate)
+	if err != nil {
+		t.Fatalf("ComputeLoanSplits: %v", err)
+	}
+	if got := p.headerAmountField().Value; got != july.ParentAmount.String() {
+		t.Fatalf("Amount = %s, want %s", got, july.ParentAmount)
+	}
+
+	p.HeaderDialog().Fields()[previewFieldDate].Value = "08/01/2024"
+	env.app.maybeReseedLoanPreview()
+
+	august, err := env.schedSvc.ComputeLoanSplits(env.dueTxn, types.NewDate(2024, time.August, 1))
+	if err != nil {
+		t.Fatalf("ComputeLoanSplits: %v", err)
+	}
+	if august.ParentAmount.Equal(july.ParentAmount) {
+		t.Fatal("the August payment should differ from July's")
+	}
+	if got := p.headerAmountField().Value; got != august.ParentAmount.String() {
+		t.Errorf("Amount after reseed = %s, want %s", got, august.ParentAmount)
+	}
+	if !p.SplitDialog().IsSaveEnabled() {
+		t.Errorf("the reseeded lines should balance the Amount; remaining=%s", p.SplitDialog().remaining())
+	}
+	if p.loanSeedFrozen {
+		t.Error("a reseed is not a user edit; reseeding should stay on")
+	}
+}
+
+// TestSchedulePreview_LoanAmountEditFreezesReseed covers that typing in the
+// header Amount freezes reseeding, so a later Date edit does not replace the
+// user's amount and lines.
+func TestSchedulePreview_LoanAmountEditFreezesReseed(t *testing.T) {
+	nextDate := types.NewDate(2024, time.July, 1)
+	env := newLoanPreviewEnv(t, "250000.00", "6.5", "1580.17", nextDate)
+	env.addLoanTxn(t, types.NewDate(2024, time.July, 15), "50000.00")
+
+	env.openPreview(t)
+	p := env.app.schedPreviewDialog
+	header := p.HeaderDialog()
+	header.SetFocusIndex(previewMultiFieldAmount)
+	amount := p.headerAmountField()
+	seeded := amount.Value
+	amount.Value = seeded[:len(seeded)-1]
+	amount.MoveCursorEnd()
+	env.app.handleSchedulePreviewMultiLineKey(tea.KeyPressMsg{Code: '9', Text: "9"})
+	edited := amount.Value
+	if edited == seeded {
+		t.Fatalf("Amount = %s, want an edit of %s", edited, seeded)
+	}
+	if !p.loanSeedFrozen {
+		t.Fatal("typing in the Amount should freeze loan reseeding")
+	}
+
+	header.Fields()[previewFieldDate].Value = "08/01/2024"
+	env.app.maybeReseedLoanPreview()
+	if !p.loanSeedDate.Equal(nextDate) {
+		t.Errorf("frozen preview reseeded to %s", p.loanSeedDate)
+	}
+	if amount.Value != edited {
+		t.Errorf("Amount = %s, want the user's %s", amount.Value, edited)
+	}
+}
+
 // TestSchedulePreview_GenericMultiLineNotLoanShaped guards that a generic
 // (non-loan) multi-line schedule is untouched: the loader attaches no
 // loanSplits and the preview is not marked loan-shaped, so it seeds from the
