@@ -33,7 +33,8 @@ func (sd *SplitDialog) Render(styles widget.Styles) string {
 	if !rem.IsZero() {
 		remainStyle = styles.Alert
 	}
-	summaryLine := "Total: " + totalStr + strings.Repeat(" ", max(contentWidth-len("Total: "+totalStr)-len("Remaining: "+remainStr)-2, 1)) + "Remaining: " + remainStyle.Render(remainStr)
+	// Measure in cells, not bytes: "€" and "£" are one cell but 3 and 2 bytes.
+	summaryLine := "Total: " + totalStr + strings.Repeat(" ", max(contentWidth-lipgloss.Width("Total: "+totalStr)-lipgloss.Width("Remaining: "+remainStr)-2, 1)) + "Remaining: " + remainStyle.Render(remainStr)
 	lines = append(lines, summaryLine)
 
 	// Separator

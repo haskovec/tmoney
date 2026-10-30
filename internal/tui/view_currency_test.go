@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/investment"
 	"github.com/haskovec/tmoney/internal/loan"
@@ -163,17 +164,36 @@ func TestAmortization_AccountCurrency(t *testing.T) {
 }
 
 func TestSplitDialog_AccountCurrency(t *testing.T) {
-	editor := newSplitEditor(splitOpen{
-		amount:          types.MustNewMoney("100"),
-		categoryOptions: []string{"(None)"},
-		categoryIDs:     []types.ID{types.NilID},
-		currency:        "EUR",
-	})
-	out := editor.Render(widget.NewStyles())
+	// remainingAt is the cell where "Remaining" starts on the summary line.
+	remainingAt := func(out string) int {
+		for line := range strings.SplitSeq(out, "\n") {
+			if i := strings.Index(line, "Remaining"); i >= 0 {
+				return lipgloss.Width(line[:i])
+			}
+		}
+		t.Fatal("no Remaining on the summary line")
+		return 0
+	}
+	render := func(currency string) string {
+		editor := newSplitEditor(splitOpen{
+			amount:          types.MustNewMoney("100"),
+			categoryOptions: []string{"(None)"},
+			categoryIDs:     []types.ID{types.NilID},
+			currency:        currency,
+		})
+		editor.width = 80
+		return editor.Render(widget.NewStyles())
+	}
+
+	out := render("EUR")
 	for _, want := range []string{"Total: €100.00", "Imbalance: €100.00"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("split dialog should show %q", want)
 		}
+	}
+	// "€" is 3 bytes but 1 cell, so Remaining lines up as it does with "$".
+	if got, want := remainingAt(out), remainingAt(render("USD")); got != want {
+		t.Errorf("Remaining starts at cell %d in euros, want %d as in dollars", got, want)
 	}
 }
 
