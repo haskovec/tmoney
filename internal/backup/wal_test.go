@@ -691,7 +691,15 @@ func TestRestoreKeepsAnIgnoredWAL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary.LittleEndian.PutUint64(wal[8:], 0xffffffff) // the size of the first entry
+	// The log starts with a header that ends with the end-of-object marker
+	// 0xffff. The first entry comes next and starts with its size. The header
+	// has no fixed length: DuckDB 2.0 added the database identifier to it, as
+	// varints, and a varint byte 0xff is never followed by a second 0xff there.
+	end := bytes.Index(wal, []byte{0xff, 0xff})
+	if end < 0 || end+10 > len(wal) {
+		t.Fatalf("setup: no end of the header in the %d bytes of the log", len(wal))
+	}
+	binary.LittleEndian.PutUint64(wal[end+2:], 0xffffffff) // the size of the first entry
 	if err := os.WriteFile(path+".wal", wal, 0o600); err != nil {
 		t.Fatal(err)
 	}
