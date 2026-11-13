@@ -29,7 +29,7 @@ jobs:
 
       # Installs and caches the tools in mise.toml. The DuckDB bindings are
       # cgo; the runner's gcc builds them, and mise.toml sets CGO_ENABLED=1.
-      - uses: jdx/mise-action@v5.2.6
+      - uses: jdx/mise-action@v5.2.7
 
       - name: Find the Go caches
         id: go-env
