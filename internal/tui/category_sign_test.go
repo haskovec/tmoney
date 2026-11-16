@@ -33,6 +33,8 @@ func TestSignedAmountText(t *testing.T) {
 		{"expense turns plus into minus", "+52.10", "", categorySignNegative, "-52.10", true},
 		{"expense turns dollar plus into minus", "$+52.10", "", categorySignNegative, "$-52.10", true},
 		{"expense leaves double sign", "--52.10", "", categorySignNegative, "--52.10", false},
+		{"expense negates exponent at the front", "1e+2", "", categorySignNegative, "-1e+2", true},
+		{"expense turns dollar plus exponent", "$+1e+2", "", categorySignNegative, "$-1e+2", true},
 
 		// Income
 		{"income leaves empty", "", "", categorySignPositive, "", false},
@@ -44,6 +46,7 @@ func TestSignedAmountText(t *testing.T) {
 		{"income keeps positive", "52.10", "", categorySignPositive, "52.10", false},
 		{"income keeps loaded negative", "-120.00", "-120.00", categorySignPositive, "-120.00", false},
 		{"income leaves double sign", "--52.10", "", categorySignPositive, "--52.10", false},
+		{"income negates exponent at the front", "-1e-2", "", categorySignPositive, "1e-2", true},
 
 		// None / system
 		{"none leaves empty", "", "", categorySignNone, "", false},
@@ -104,13 +107,14 @@ func TestCategorySignAt(t *testing.T) {
 	}
 }
 
-func TestApplyCategorySignMovesCursorToEnd(t *testing.T) {
-	f := &dialog.Field{Type: dialog.FieldText}
-	if !applyCategorySign(f, "", categorySignNegative) {
-		t.Fatal("applyCategorySign on an empty field under an expense reported no change")
-	}
+func TestApplyCategorySignMovesCursorToEndAndClearsError(t *testing.T) {
+	f := &dialog.Field{Type: dialog.FieldText, Error: "Invalid amount"}
+	applyCategorySign(f, "", categorySignNegative)
 	if f.Value != "-" || f.CursorPos() != 1 {
 		t.Fatalf("field = %q cursor %d, want \"-\" cursor 1", f.Value, f.CursorPos())
+	}
+	if f.Error != "" {
+		t.Errorf("Error = %q after the rule changed the value, want it cleared", f.Error)
 	}
 	for _, r := range "52.10" {
 		f.InsertChar(r)
@@ -119,7 +123,20 @@ func TestApplyCategorySignMovesCursorToEnd(t *testing.T) {
 		t.Errorf("typed digits after the fill = %q, want -52.10", f.Value)
 	}
 
-	if applyCategorySign(nil, "", categorySignNegative) {
-		t.Error("applyCategorySign(nil) reported a change")
+	// No change keeps the error: it is still about the text in the field.
+	f = &dialog.Field{Type: dialog.FieldText, Value: "5x", Error: "Invalid amount"}
+	applyCategorySign(f, "", categorySignNegative)
+	if f.Error != "Invalid amount" {
+		t.Errorf("Error = %q after no change, want it kept", f.Error)
+	}
+}
+
+func TestLeadingSignIndex(t *testing.T) {
+	for s, want := range map[string]int{
+		"-50": 0, "+50": 0, "$-50": 1, "$+50": 1, "50": -1, "$50": -1, "1e-2": -1, "": -1, "$": -1,
+	} {
+		if got := leadingSignIndex(s); got != want {
+			t.Errorf("leadingSignIndex(%q) = %d, want %d", s, got, want)
+		}
 	}
 }

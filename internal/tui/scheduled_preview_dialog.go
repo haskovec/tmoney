@@ -86,10 +86,10 @@ type SchedulePreviewDialog struct {
 	// line items.
 	splitDialog *SplitDialog
 
-	// categoryIDs parallels the headerDialog's category combo options,
-	// so the submit handler can map the selected index back to a
-	// category ID. Nil for multi-line previews (the header has no
-	// scalar category field).
+	// categoryIDs parallels categoryOptions: the header's Category combo on
+	// single-line and transfer previews, so the submit handler can map the
+	// selected index back to a category ID, and the split editor's picker on
+	// multi-line previews (reseedLoanSplits rebuilds the editor from it).
 	categoryIDs []types.ID
 
 	// payees is the snapshot of payees passed to the constructor. The
@@ -148,11 +148,8 @@ type SchedulePreviewDialog struct {
 }
 
 // SetCategories gives the preview the category list behind its pickers, so
-// the category sign rule can read each category's type. On a single-line
-// preview it also runs the rule for the category the preview opened with: a
-// variable bill (no template amount) under an Expense category opens with
-// "-" in its Amount, so the digits typed next make a negative amount. A
-// stored template amount keeps its sign.
+// the category sign rule can read each category's type. Amounts do not
+// change here: see applyOpenSign.
 func (p *SchedulePreviewDialog) SetCategories(cats []*category.Category) {
 	if p == nil {
 		return
@@ -161,14 +158,30 @@ func (p *SchedulePreviewDialog) SetCategories(cats []*category.Category) {
 	if p.splitDialog != nil {
 		p.splitDialog.SetCategories(cats)
 	}
-	if p.IsTransfer() || p.IsMultiLine() || p.headerDialog == nil {
-		return
+}
+
+// applyOpenSign runs the category sign rule once for the category a
+// single-line preview opened with: a variable bill (no template amount) under
+// an Expense category opens with "-" in its Amount, so the digits typed next
+// make a negative amount. A stored template amount keeps its sign. Call it
+// once, after SetCategories, as the preview opens.
+func (p *SchedulePreviewDialog) applyOpenSign() {
+	if amount := p.singleLineAmount(); amount != nil {
+		p.sign.applyOpen(amount, p.categories)
+	}
+}
+
+// singleLineAmount returns the single-line header's Amount field, or nil on
+// the transfer and multi-line shapes, whose header field indices differ.
+func (p *SchedulePreviewDialog) singleLineAmount() *dialog.Field {
+	if p == nil || p.IsTransfer() || p.IsMultiLine() || p.headerDialog == nil {
+		return nil
 	}
 	fields := p.headerDialog.Fields()
 	if len(fields) <= previewSingleFieldAmount {
-		return
+		return nil
 	}
-	applyCategorySign(fields[previewSingleFieldAmount], p.sign.loadedAmount, categorySignOf(cats, p.sign.categoryID))
+	return fields[previewSingleFieldAmount]
 }
 
 // syncCategorySign runs the category sign rule on the single-line header's
@@ -176,15 +189,12 @@ func (p *SchedulePreviewDialog) SetCategories(cats []*category.Category) {
 // it only records the category (see categorySignState.sync). No-op on the
 // transfer and multi-line shapes, whose header field indices differ.
 func (p *SchedulePreviewDialog) syncCategorySign(apply bool) {
-	if p == nil || p.IsTransfer() || p.IsMultiLine() || p.headerDialog == nil {
+	amount := p.singleLineAmount()
+	if amount == nil {
 		return
 	}
-	fields := p.headerDialog.Fields()
-	if len(fields) <= previewSingleFieldAmount {
-		return
-	}
-	id := categoryIDAt(p.categoryIDs, fields[previewSingleFieldCat].SelectedIndex)
-	p.sign.sync(fields[previewSingleFieldAmount], id, p.categories, apply)
+	id := categoryIDAt(p.categoryIDs, p.headerDialog.Fields()[previewSingleFieldCat].SelectedIndex)
+	p.sign.sync(amount, id, p.categories, apply)
 }
 
 // IsTransfer reports whether this preview is for a single-line transfer

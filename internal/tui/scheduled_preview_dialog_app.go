@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -164,8 +165,11 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	headerLines := strings.Count(header.Render(a.styles), "\n") + 1
 
 	m := msg.Mouse()
-	relY := m.Y - startRow
-	if relY < 0 {
+	relX, relY := m.X-startCol, m.Y-startRow
+	if relX < 0 || relX >= lipgloss.Width(overlay) || relY < 0 || relY >= lipgloss.Height(overlay) {
+		// A click outside the dialog does nothing, as on the other dialogs.
+		// It used to take header focus, which commits an open split picker
+		// (and so ran the category sign rule on that line).
 		return a, nil
 	}
 
@@ -272,14 +276,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 		return a, nil
 	}
 	catField := fields[catIdx]
-	query := catField.Query
-	// Consume the trigger and clear the typed query — the create-category
-	// dialog now owns it. This way, when we restore the preview, its
-	// Category combo doesn't carry stale typed text. ClearComboQuery also
-	// puts the highlight back on the selection: left on the add-new row's
-	// position, a Cancel followed by Tab committed an unrelated category.
-	catField.AddNewTriggered = false
-	catField.ClearComboQuery()
+	query := catField.TakeAddNewQuery()
 
 	parents := a.createCatParentsFor(createCatSourceSchedPreview)
 	parent, name := splitCategoryQuery(query)

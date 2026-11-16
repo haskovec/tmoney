@@ -73,7 +73,7 @@ type splitOpen struct {
 	// currency is the parent account's currency code.
 	currency string
 	// categories is the category list behind categoryIDs, for the category
-	// sign rule. Nil turns the rule off for the editor.
+	// sign rule. Nil gives every pick no sign: a pick only clears a lone "-".
 	categories []*category.Category
 }
 

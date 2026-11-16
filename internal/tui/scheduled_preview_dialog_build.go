@@ -89,7 +89,6 @@ func NewSchedulePreviewDialog(
 				}
 			}
 		}
-		p.categoryIDs = categoryIDs
 		p.headerDialog = buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo, categoryOptions, catIdx)
 		return p
 	}
@@ -149,10 +148,9 @@ func NewSchedulePreviewDialog(
 		amountStr = template.Amount.Money.String()
 	}
 
-	p.categoryIDs = categoryIDs
 	p.headerDialog = buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr, categoryOptions, catIdx)
 	// The template's amount and category are what the preview opened with.
-	// SetCategories runs the sign rule for that category once.
+	// applyOpenSign runs the sign rule for that category once.
 	p.sign.open(amountStr, categoryIDAt(categoryIDs, catIdx))
 	return p
 }

@@ -586,3 +586,33 @@ func TestFieldCombo_BackspaceRemovesOneCharacter(t *testing.T) {
 		}
 	}
 }
+
+// TakeAddNewQuery hands the typed query to the create-category divert and
+// resets the combo so that, after a Cancel, a Tab keeps the selection: the
+// highlight left on the add-new row's position used to commit an unrelated
+// option.
+func TestField_TakeAddNewQuery_ResetsForTheReturn(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddComboField("Category", []string{"(None)", "Dining", "Groceries", "Rent"}, 0)
+	f.AddNewLabel = "[+ Add new category…]"
+	d.SetFocusIndex(0)
+	for _, r := range "Groc" {
+		d.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	f.ComboHighlight = len(f.FilteredIndices()) // the add-new row
+	if action := d.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter}); action != DialogActionAddNew {
+		t.Fatalf("Enter on the add-new row = %v, want DialogActionAddNew", action)
+	}
+
+	if q := f.TakeAddNewQuery(); q != "Groc" {
+		t.Errorf("TakeAddNewQuery = %q, want Groc", q)
+	}
+	if f.AddNewTriggered || f.Query != "" || f.ComboHighlight != f.SelectedIndex {
+		t.Errorf("after take: triggered %v query %q highlight %d, want false, \"\", %d",
+			f.AddNewTriggered, f.Query, f.ComboHighlight, f.SelectedIndex)
+	}
+	d.HandleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if f.SelectedIndex != 0 {
+		t.Errorf("Tab after the divert selected %q, want (None)", f.SelectedOption())
+	}
+}

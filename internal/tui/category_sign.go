@@ -87,16 +87,22 @@ func (st *categorySignState) open(amount string, categoryID types.ID) {
 // sync runs the rule on amount when categoryID differs from the category it
 // last saw, reading the category's type from cats. With apply false it only
 // records categoryID: a click on Save can commit a category in the same
-// event, and Save never changes the sign. It reports whether amount changed.
-func (st *categorySignState) sync(amount *dialog.Field, categoryID types.ID, cats []*category.Category, apply bool) bool {
+// event, and Save never changes the sign.
+func (st *categorySignState) sync(amount *dialog.Field, categoryID types.ID, cats []*category.Category, apply bool) {
 	if categoryID == st.categoryID {
-		return false
+		return
 	}
 	st.categoryID = categoryID
-	if !apply {
-		return false
+	if apply {
+		applyCategorySign(amount, st.loadedAmount, categorySignOf(cats, categoryID))
 	}
-	return applyCategorySign(amount, st.loadedAmount, categorySignOf(cats, categoryID))
+}
+
+// applyOpen runs the rule once for the category the dialog opened with. Only
+// an empty Amount can change (to "-" under an Expense category): the text
+// the dialog opened with is the loaded text, which keeps its sign.
+func (st *categorySignState) applyOpen(amount *dialog.Field, cats []*category.Category) {
+	applyCategorySign(amount, st.loadedAmount, categorySignOf(cats, st.categoryID))
 }
 
 // signedAmountText applies the category sign rule to an amount's text. loaded
@@ -127,35 +133,45 @@ func signedAmountText(value, loaded string, sign categorySign) (string, bool) {
 		// reports it.
 		return value, false
 	}
-	// parseAmountInput accepts at most one sign ("-50", "$-50", "+50",
-	// "+$50"), so the first sign rune found is the amount's only one.
+	i := leadingSignIndex(trimmed)
 	switch {
 	case sign == categorySignNegative && m.IsPositive():
-		if strings.Contains(trimmed, "+") {
-			return strings.Replace(trimmed, "+", "-", 1), true
+		if i >= 0 { // a "+"
+			return trimmed[:i] + "-" + trimmed[i+1:], true
 		}
 		return "-" + trimmed, true
 	case sign == categorySignPositive && m.IsNegative():
-		return strings.Replace(trimmed, "-", "", 1), true
+		return trimmed[:i] + trimmed[i+1:], true // a negative amount has its "-" there
 	}
 	return value, false
+}
+
+// leadingSignIndex returns the byte index of an amount's sign, which
+// parseAmountInput takes before or after a "$" ("-50", "$-50", "+$50"), or
+// -1 when the amount has none. A sign later in the text (an exponent's) is
+// not the amount's.
+func leadingSignIndex(s string) int {
+	isSign := func(i int) bool { return i < len(s) && (s[i] == '-' || s[i] == '+') }
+	switch {
+	case isSign(0):
+		return 0
+	case strings.HasPrefix(s, "$") && isSign(1):
+		return 1
+	}
+	return -1
 }
 
 // applyCategorySign rewrites f's amount for sign and moves the cursor to the
 // end when the text changes, so digits typed next land after a new "-". A
 // changed value also clears f's inline error, the same as typing does: the
 // error was about the text it replaced. loaded is the text f held when its
-// dialog opened. It reports whether f changed.
-func applyCategorySign(f *dialog.Field, loaded string, sign categorySign) bool {
-	if f == nil {
-		return false
-	}
+// dialog opened.
+func applyCategorySign(f *dialog.Field, loaded string, sign categorySign) {
 	next, changed := signedAmountText(f.Value, loaded, sign)
 	if !changed {
-		return false
+		return
 	}
 	f.Value = next
 	f.MoveCursorEnd()
 	f.Error = ""
-	return true
 }

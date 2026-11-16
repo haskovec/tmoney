@@ -250,11 +250,13 @@ func TestMouseGate_CorporateActionDetailSwallowsClicks(t *testing.T) {
 // symptom: the dispatcher a surface's key path uses is the one its mouse path
 // uses, tails included.
 func TestActionDispatcher_IsSharedIncludingTheHandlerTail(t *testing.T) {
-	// syncCategorySign is the category sign rule: a category picked by a
-	// click must change the Amount the same as one picked by keyboard.
+	// The syncCategorySign calls are the category sign rule: a category
+	// picked by a click must change the Amount the same as one picked by
+	// keyboard. They are pinned as the exact apply calls, because each
+	// dispatcher also has a record-only call on another path.
 	tails := map[string][]string{
-		"transaction": {"checkPayeeAutoFill", "syncCategorySign"},
-		"scheduled":   {"refreshSchedCategoryOptionsForAccount", "syncCategorySign"},
+		"transaction": {"checkPayeeAutoFill", "a.txn.syncCategorySign(action != dialog.DialogActionSubmit)"},
+		"scheduled":   {"refreshSchedCategoryOptionsForAccount", "a.sched.syncCategorySign(true)"},
 		"account":     {"updateAccountFieldVisibility"},
 		"stockSplit":  {"refreshStockSplitDialogMessage"},
 	}

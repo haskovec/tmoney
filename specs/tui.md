@@ -688,9 +688,12 @@ confirming; the default is just a head-start, not a constraint.
 On confirm the new category (and parent, if needed) is persisted
 immediately; the originating dialog reopens with all other field
 values preserved, the new category auto-selected, and focus advanced
-to Amount. The new category is a category change, so the Amount
-follows the category sign rule (see `specs/transactions.md`). Cancel
-returns to the originating dialog with the previous selection intact.
+to Amount. On the surfaces the category sign rule covers (New/Edit
+Transaction, New/Edit Scheduled Transaction, the single-line Post
+Scheduled Transaction dialog, and split lines), the new category is a
+category change, so the Amount follows the rule (see
+`specs/transactions.md`). Cancel returns to the originating dialog with
+the previous selection intact.
 
 ## Mouse Support
 

@@ -167,13 +167,7 @@ func (s *loanSurface) beginCreateCategory() (query string, fieldIdx int, ok bool
 		return "", -1, false
 	}
 	catField := fields[fieldIdx]
-	query = catField.Query
-	// Consume the trigger and clear the typed query — the sub-dialog owns it now.
-	// ClearComboQuery also puts the highlight back on the selection: left on
-	// the add-new row's position, a Cancel followed by Tab committed an
-	// unrelated category.
-	catField.AddNewTriggered = false
-	catField.ClearComboQuery()
+	query = catField.TakeAddNewQuery()
 	s.dlg.SetVisible(false)
 	return query, fieldIdx, true
 }

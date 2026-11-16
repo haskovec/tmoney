@@ -91,6 +91,7 @@ func TestParseAmountInput(t *testing.T) {
 		{"plus dollar", "+$25.00", "25.00"},
 		{"dollar plus", "$+25.00", "25.00"},
 		{"padded", "  -7.25  ", "-7.25"},
+		{"exponent sign is not a second sign", "-1e-2", "-0.01"},
 		{"whole number", "42", "42"},
 	}
 

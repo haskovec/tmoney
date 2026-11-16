@@ -237,6 +237,23 @@ func TestTxnSign_EditPayeeFocusKeepsSavedCategory(t *testing.T) {
 	}
 }
 
+// Edit of an uncategorized transaction (an import): the payee default still
+// fills when focus reaches Payee, and the loaded amount keeps its sign.
+func TestTxnSign_EditUncategorizedFillsPayeeDefault(t *testing.T) {
+	f := newSignFixture()
+	existing := transaction.NewTransactionFull(types.NewID(), types.Today(), types.MustNewMoney("20"),
+		f.kroger.ID, types.NilID, "")
+	a := newSignTxnApp(t, f, existing, nil)
+	a.txn.dlg.SetFocusIndex(0)
+	txnType(a, signTab)
+	if got := a.txn.dlg.Fields()[2].SelectedOption(); got != "Groceries" {
+		t.Errorf("category after Tab into Payee = %q, want the payee default Groceries", got)
+	}
+	if got := txnAmount(a).Value; got != "20" {
+		t.Errorf("loaded amount = %q, want 20", got)
+	}
+}
+
 // A Save click can commit a category in the same event. Save never changes
 // the sign, and the category is recorded so a later key does not apply it.
 func TestTxnSign_SubmitRecordsWithoutApplying(t *testing.T) {
@@ -293,6 +310,24 @@ func TestTxnAddNewCancel_KeepsSelectionOnNextTab(t *testing.T) {
 	}
 	if got := txnAmount(a).Value; got != "" {
 		t.Errorf("Amount = %q, want empty", got)
+	}
+}
+
+// A category picked by a mouse click on the combo panel takes the rule, the
+// same as one picked by keyboard.
+func TestTxnSign_MousePickAppliesRule(t *testing.T) {
+	a := newSignTxnApp(t, newSignFixture(), nil, nil)
+	a.txn.dlg.SetFocusIndex(2)
+	txnType(a, typed("Groc")...)
+	rendered := a.txn.dlg.Render(a.styles)
+	startCol, startRow, _, _ := a.txn.dlg.DialogBounds(a.width, a.height)
+	row, col := findLabel(t, rendered, "Groceries")
+	a.handleMouseEvent(tea.MouseClickMsg{X: startCol + col + 1, Y: startRow + row, Button: tea.MouseLeft})
+	if got := a.txn.dlg.Fields()[2].SelectedOption(); got != "Groceries" {
+		t.Fatalf("mouse pick = %q, want Groceries", got)
+	}
+	if got := txnAmount(a).Value; got != "-" {
+		t.Errorf("Amount after a mouse pick = %q, want \"-\"", got)
 	}
 }
 
@@ -379,6 +414,49 @@ func TestSchedSign_EditVariableBillOpensEmpty(t *testing.T) {
 	}
 }
 
+func TestSchedSign_MousePickAppliesRule(t *testing.T) {
+	a := newSignSchedApp(t, newSignFixture(), nil)
+	a.height = 70 // the whole form fits, so the panel is on screen
+	a.sched.dlg.SetFocusIndex(schedFieldCategory)
+	schedType(a, typed("Groc")...)
+	rendered := a.sched.dlg.Render(a.styles)
+	startCol, startRow, _, _ := a.sched.dlg.DialogBounds(a.width, a.height)
+	row, col := findLabel(t, rendered, "Groceries")
+	a.handleMouseEvent(tea.MouseClickMsg{X: startCol + col + 1, Y: startRow + row, Button: tea.MouseLeft})
+	if got := a.sched.dlg.Fields()[schedFieldCategory].SelectedOption(); got != "Groceries" {
+		t.Fatalf("mouse pick = %q, want Groceries", got)
+	}
+	if got := a.sched.dlg.Fields()[schedFieldAmount].Value; got != "-" {
+		t.Errorf("Amount after a mouse pick = %q, want \"-\"", got)
+	}
+}
+
+// A Save click that commits a category records it without the rule; the
+// next key does not apply it either.
+func TestSchedSign_SubmitRecordsWithoutApplying(t *testing.T) {
+	a := newSignSchedApp(t, newSignFixture(), nil)
+	fields := a.sched.dlg.Fields()
+	fields[schedFieldInterval].Value = "0" // invalid interval keeps the dialog open
+	amt := fields[schedFieldAmount]
+	amt.Value = "52.10"
+	cat := fields[schedFieldCategory]
+	cat.Query = "Groc"
+	cat.ComboHighlight = 0
+	cat.CommitComboHighlight() // what the Save click's blur commit does
+
+	a.scheduledDialogAction(dialog.DialogActionSubmit)
+	if a.sched.dlg == nil {
+		t.Fatal("dialog closed; the invalid interval should keep it open")
+	}
+	if amt.Value != "52.10" {
+		t.Fatalf("Amount after Save = %q, want 52.10 (Save never changes the sign)", amt.Value)
+	}
+	schedType(a, signTab)
+	if amt.Value != "52.10" {
+		t.Errorf("Amount after the next key = %q, want 52.10", amt.Value)
+	}
+}
+
 func TestSchedSign_InlineCreateAppliesRule(t *testing.T) {
 	f := newSignFixture()
 	a := newSignSchedApp(t, f, nil)
@@ -396,6 +474,7 @@ func newSignPreview(f signFixture, template *scheduled.Transaction) *SchedulePre
 	options, ids := buildCategoryOptions(f.cats)
 	p := NewSchedulePreviewDialog(template, nil, nil, options, ids, nil)
 	p.SetCategories(f.cats)
+	p.applyOpenSign()
 	return p
 }
 
@@ -454,16 +533,85 @@ func TestPreviewSign_CategoryPickAppliesRule(t *testing.T) {
 }
 
 // The transfer preview has its own field layout (index 3 is Memo); the rule
-// must leave it alone.
+// must leave it alone, at open and on a category pick.
 func TestPreviewSign_TransferUntouched(t *testing.T) {
 	f := newSignFixture()
 	st := signTemplate(f.groceries.ID, "100")
 	st.TransferAccountID = types.NullableID{ID: types.NewID(), Valid: true}
-	p := newSignPreview(f, st)
-	fields := p.HeaderDialog().Fields()
+	a := newModalTestApp()
+	a.schedPreviewDialog = newSignPreview(f, st)
+	header := a.schedPreviewDialog.HeaderDialog()
+	fields := header.Fields()
 	if fields[previewXferFieldAmount].Value != "100" || fields[previewXferFieldMemo].Value != "" {
-		t.Errorf("transfer preview Amount %q Memo %q, want 100 and empty",
+		t.Fatalf("transfer preview opened with Amount %q Memo %q, want 100 and empty",
 			fields[previewXferFieldAmount].Value, fields[previewXferFieldMemo].Value)
+	}
+
+	header.SetFocusIndex(previewXferFieldCategory)
+	for _, k := range append(typed("Din"), signTab) {
+		a.handleSchedulePreviewDialogKey(k)
+	}
+	if got := fields[previewXferFieldCategory].SelectedOption(); got != "Dining" {
+		t.Fatalf("category = %q, want Dining", got)
+	}
+	if fields[previewXferFieldAmount].Value != "100" || fields[previewXferFieldMemo].Value != "" {
+		t.Errorf("after a category pick: Amount %q Memo %q, want 100 and empty",
+			fields[previewXferFieldAmount].Value, fields[previewXferFieldMemo].Value)
+	}
+}
+
+// A Save click that commits a category records it without the rule; the
+// next key does not apply it either.
+func TestPreviewSign_SubmitRecordsWithoutApplying(t *testing.T) {
+	f := newSignFixture()
+	a := newModalTestApp()
+	a.schedPreviewDialog = newSignPreview(f, signTemplate(f.salary.ID, ""))
+	header := a.schedPreviewDialog.HeaderDialog()
+	fields := header.Fields()
+	fields[previewFieldDate].Value = "13/45/2024" // invalid date keeps the dialog open
+	amt := fields[previewSingleFieldAmount]
+	amt.Value = "52.10"
+	cat := fields[previewSingleFieldCat]
+	cat.Query = "Groc"
+	cat.ComboHighlight = 0
+	cat.CommitComboHighlight() // what the Save click's blur commit does
+
+	a.schedulePreviewAction(dialog.DialogActionSubmit)
+	if a.schedPreviewDialog == nil {
+		t.Fatal("preview closed; the invalid date should keep it open")
+	}
+	if amt.Value != "52.10" {
+		t.Fatalf("Amount after Save = %q, want 52.10 (Save never changes the sign)", amt.Value)
+	}
+	a.handleSchedulePreviewDialogKey(signTab)
+	if amt.Value != "52.10" {
+		t.Errorf("Amount after the next key = %q, want 52.10", amt.Value)
+	}
+}
+
+// A click outside the multi-line preview does nothing. It used to take header
+// focus, which committed an open split picker and ran the rule on its line.
+func TestPreviewSign_MultiLineOutsideClickCommitsNothing(t *testing.T) {
+	f := newSignFixture()
+	st := signTemplate(types.NilID, "-100")
+	st.CategoryID = types.NullableID{}
+	st.Splits = append(st.Splits,
+		scheduled.NewCategorizedSplit(st.ID, f.groceries.ID, types.MustNewMoney("-60")),
+		scheduled.NewCategorizedSplit(st.ID, f.dining.ID, types.MustNewMoney("-40")))
+	a := newModalTestApp()
+	a.schedPreviewDialog = newSignPreview(f, st)
+	clickLabel(t, a, "[+ Add split]")
+	sd := a.schedPreviewDialog.SplitDialog()
+	for _, k := range typed("Gr") {
+		a.handleKeyPress(k)
+	}
+	_, y := screenCellOf(t, a.viewContent(), "Memo:")
+	a.handleMouseEvent(tea.MouseClickMsg{X: 1, Y: y, Button: tea.MouseLeft})
+
+	row := sd.rows[2]
+	if got := sd.categoryOptions[row.categoryIndex]; got != "(None)" || row.amountField.Value != "" {
+		t.Errorf("click outside the dialog changed the new line: category %q Amount %q, want (None) and empty",
+			got, row.amountField.Value)
 	}
 }
 
@@ -532,9 +680,14 @@ func TestSplitSign_SeededRowKeepsLoadedAmount(t *testing.T) {
 	}
 }
 
+// A transfer pick never takes the rule, also from a line that was on an
+// Expense category.
 func TestSplitSign_TransferPickUntouched(t *testing.T) {
 	sd := newSignSplit(newSignFixture(), nil)
+	splitType(sd, typed("Groc")...)
+	splitType(sd, signTab)
 	sd.rows[0].amountField.Value = "50"
+	sd.fieldFocus = splitFieldCategory
 	splitType(sd, typed("Savings")...)
 	splitType(sd, signTab)
 	if !sd.rows[0].transferMode {
@@ -547,16 +700,34 @@ func TestSplitSign_TransferPickUntouched(t *testing.T) {
 
 // A Save click commits an open picker in the same click; Save never changes
 // the sign.
-func TestSplitSign_SaveCommitSkipsRule(t *testing.T) {
+func TestSplitSign_SaveClickSkipsRule(t *testing.T) {
 	sd := newSignSplit(newSignFixture(), nil)
 	sd.rows[0].amountField.Value = "100"
 	splitType(sd, typed("Groc")...) // picker open with Groceries highlighted
-	sd.commitPicker(false)
-	if got := sd.rows[0].amountField.Value; got != "100" {
-		t.Errorf("Amount after a Save commit = %q, want 100", got)
+	app, overlay, startCol, startRow := splitDialogMouseEnv(t, sd)
+	x, y := findRenderedText(t, overlay, "[ Save ]", startCol, startRow)
+	app.handleMouseEvent(tea.MouseClickMsg{X: x + 2, Y: y, Button: tea.MouseLeft})
+	if got := sd.categoryOptions[sd.rows[0].categoryIndex]; got != "Groceries" {
+		t.Fatalf("Save click kept category %q, want the picked Groceries", got)
 	}
-	if sd.categoryOptions[sd.rows[0].categoryIndex] != "Groceries" {
-		t.Errorf("Save commit did not keep the picked category")
+	if got := sd.rows[0].amountField.Value; got != "100" {
+		t.Errorf("Amount after a Save click = %q, want 100", got)
+	}
+}
+
+// A category picked by a mouse click on the picker panel takes the rule, the
+// same as one picked by keyboard.
+func TestSplitSign_MousePickAppliesRule(t *testing.T) {
+	sd := newSignSplit(newSignFixture(), nil)
+	splitType(sd, typed("Groc")...)
+	app, overlay, startCol, startRow := splitDialogMouseEnv(t, sd)
+	x, y := findRenderedText(t, overlay, "Groceries", startCol, startRow)
+	app.handleMouseEvent(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
+	if got := sd.categoryOptions[sd.rows[0].categoryIndex]; got != "Groceries" {
+		t.Fatalf("mouse pick = %q, want Groceries", got)
+	}
+	if got := sd.rows[0].amountField.Value; got != "-" {
+		t.Errorf("row Amount after a mouse pick = %q, want \"-\"", got)
 	}
 }
 

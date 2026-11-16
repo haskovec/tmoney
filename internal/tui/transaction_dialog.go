@@ -91,7 +91,7 @@ func (a *App) investmentDialogOpeningDateError(d types.Date) string {
 
 // parseAmountInput parses a money string with an optional "$" and at most one
 // sign, before or after the "$": -50.00, -$50.00, $-50.00, +50.00, +$50.00.
-// A second sign ("--50", "-$-50") is an error, not a negative amount.
+// A second sign ("--50", "-$-50", "+-5") is an error, not a negative amount.
 func parseAmountInput(input string) (types.Money, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
@@ -113,7 +113,7 @@ func parseAmountInput(input string) (types.Money, error) {
 	takeSign()
 	s = strings.TrimPrefix(s, "$")
 	takeSign()
-	if strings.ContainsAny(s, "+-") {
+	if s != "" && (s[0] == '-' || s[0] == '+') {
 		return types.ZeroMoney, fmt.Errorf("invalid amount %q: more than one sign", input)
 	}
 
@@ -444,12 +444,18 @@ func (s *txnSurface) applyData(data *transactionDialogData, selected *account.Ac
 	s.categoryIDs = categoryIDs
 	s.dlg = buildTransactionDialog(data, categoryOptions, categoryIDs, stickyDate)
 
-	// What the dialog opened with is not a change, for the sign rule or for
-	// payee auto-fill. The category comes from the built combo, not from
-	// data.existing, because a category the picker hides opens as "(None)".
+	// What the dialog opened with is not a change for the sign rule. The
+	// category comes from the built combo, not from data.existing, because a
+	// category the picker hides opens as "(None)".
 	fields := s.dlg.Fields()
-	s.checkedPayee = strings.ToLower(strings.TrimSpace(fields[1].Value))
 	s.sign.open(fields[3].Value, categoryIDAt(s.categoryIDs, fields[2].SelectedIndex))
+	// An Edit that opens with a category has a choice for auto-fill to keep,
+	// so its loaded payee counts as checked. One that opens on "(None)" (an
+	// uncategorized import) lets the payee default fill on the first visit.
+	s.checkedPayee = ""
+	if fields[2].SelectedIndex > 0 {
+		s.checkedPayee = strings.ToLower(strings.TrimSpace(fields[1].Value))
+	}
 }
 
 // syncCategorySign runs the category sign rule on the Amount when the
@@ -568,14 +574,7 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	catField := fields[2]
-	query := catField.Query
-	// Consume the trigger and clear the typed query — the create-category
-	// dialog now owns it. This way, when we restore the txn dialog, its
-	// Category combo doesn't carry stale typed text. ClearComboQuery also
-	// puts the highlight back on the selection: left on the add-new row's
-	// position, a Cancel followed by Tab committed an unrelated category.
-	catField.AddNewTriggered = false
-	catField.ClearComboQuery()
+	query := catField.TakeAddNewQuery()
 
 	parents := a.createCatParentsFor(createCatSourceTxnDialog)
 	parent, name := splitCategoryQuery(query)
