@@ -449,8 +449,11 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 	}
 	catField := fields[schedXferFieldCategory]
 	query := catField.Query
+	// ClearComboQuery also puts the highlight back on the selection: left on
+	// the add-new row's position, a Cancel followed by Tab committed an
+	// unrelated category.
 	catField.AddNewTriggered = false
-	catField.Query = ""
+	catField.ClearComboQuery()
 
 	parents := a.createCatParentsFor(createCatSourceSchedTransferDialog)
 	parent, name := splitCategoryQuery(query)

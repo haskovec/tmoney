@@ -848,8 +848,11 @@ func (s *transferSurface) beginCreateCategory() (query string, parents []string,
 	}
 	catField := fields[idx]
 	query = catField.Query
+	// ClearComboQuery also puts the highlight back on the selection: left on
+	// the add-new row's position, a Cancel followed by Tab committed an
+	// unrelated category.
 	catField.AddNewTriggered = false
-	catField.Query = ""
+	catField.ClearComboQuery()
 
 	parents, _ = s.parentCategoryNames()
 	s.dlg.SetVisible(false)

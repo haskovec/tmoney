@@ -469,6 +469,9 @@ func TestInferCategoryTypeFromAmount(t *testing.T) {
 		{"0", category.TypeExpense},
 		{"0.00", category.TypeExpense},
 		{"+25", category.TypeIncome},
+		{"+$25", category.TypeIncome},
+		{"--5", category.TypeExpense},
+		{"-", category.TypeExpense},
 	}
 	for _, tc := range cases {
 		got := inferCategoryTypeFromAmount(tc.in)

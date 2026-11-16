@@ -39,9 +39,10 @@ func (sd *SplitDialog) addRow() {
 	sd.rows = append(sd.rows, splitRow{
 		categoryIndex: 0,
 		amountField: dialog.Field{
-			Type:        dialog.FieldText,
-			Placeholder: "0.00",
-			Width:       12,
+			Type:         dialog.FieldText,
+			Placeholder:  "0.00",
+			Width:        12,
+			SignedAmount: true,
 		},
 		memoField: dialog.Field{
 			Type:        dialog.FieldText,

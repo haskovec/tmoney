@@ -295,6 +295,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.template, msg.accounts, msg.payees,
 			msg.categoryOptions, msg.categoryIDs, msg.loanSplits,
 		)
+		a.schedPreviewDialog.SetCategories(msg.categories)
 		return a, nil
 
 	case schedulePreviewLoanBlockedMsg:

@@ -478,3 +478,55 @@ func TestDialog_HandleKey_NumericField_SpaceKeyDoesNotClearError(t *testing.T) {
 		t.Error("Error should remain after a rejected space on a numeric field")
 	}
 }
+
+func TestDialog_HandleKey_SignedAmountField_KeepsOneSign(t *testing.T) {
+	cases := []struct {
+		name, start, typed, want string
+	}{
+		{"minus over prefilled minus", "-", "-52.10", "-52.10"},
+		{"plus over prefilled minus", "-", "+52.10", "+52.10"},
+		{"minus over plus", "+5", "-", "-5"},
+		{"first minus inserts", "", "-5", "-5"},
+		{"dollar then minus", "", "$-5", "$-5"},
+		{"second minus mid-value", "-5", "0-", "-50"},
+		{"digits unaffected", "", "12.34", "12.34"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDialog("Test")
+			f := d.AddTextField("Amount", tc.start, "", 12)
+			f.SignedAmount = true
+			typeRunes(d, tc.typed)
+			if f.Value != tc.want {
+				t.Errorf("start %q, typed %q: Value = %q, want %q", tc.start, tc.typed, f.Value, tc.want)
+			}
+		})
+	}
+}
+
+// A sign that replaces the existing one leaves the cursor where it was, so the
+// digits typed next still land at the end.
+func TestDialog_HandleKey_SignedAmountField_ReplaceKeepsCursor(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Amount", "-5", "", 12)
+	f.SignedAmount = true
+	typeRunes(d, "+")
+	if f.Value != "+5" || f.CursorPos() != 2 {
+		t.Fatalf("Value %q cursor %d, want \"+5\" cursor 2", f.Value, f.CursorPos())
+	}
+	typeRunes(d, "0")
+	if f.Value != "+50" {
+		t.Errorf("Value = %q, want +50", f.Value)
+	}
+}
+
+// Without the flag a text field takes every '-' (Memo and the other text
+// fields keep their behavior).
+func TestDialog_HandleKey_PlainTextField_AcceptsManyMinus(t *testing.T) {
+	d := NewDialog("Test")
+	f := d.AddTextField("Memo", "", "", 0)
+	typeRunes(d, "a-b-c")
+	if f.Value != "a-b-c" {
+		t.Errorf("Value = %q, want a-b-c", f.Value)
+	}
+}

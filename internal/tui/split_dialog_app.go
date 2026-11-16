@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
@@ -71,6 +72,9 @@ type splitOpen struct {
 	accountID types.ID
 	// currency is the parent account's currency code.
 	currency string
+	// categories is the category list behind categoryIDs, for the category
+	// sign rule. Nil turns the rule off for the editor.
+	categories []*category.Category
 }
 
 // openForTransaction builds the editor over a regular transaction's pending
@@ -94,6 +98,7 @@ func newSplitEditor(o splitOpen) *SplitDialog {
 	}
 	editor.SetTransferTargets(o.accountOptions, o.accountIDs, o.accountID)
 	editor.currency = o.currency
+	editor.SetCategories(o.categories)
 	return editor
 }
 
@@ -272,7 +277,10 @@ func (s *splitSurface) applyCreatedCategory(newCat *category.Category, cats []*c
 		return
 	}
 
-	options, ids := buildCategoryOptions(cats)
+	// Keep Value Adjustment when the editor offered it (a schedule on an
+	// asset account): rebuilt without it, a row on it fell back to "(None)".
+	includeVA := slices.Contains(sd.categoryOptions, category.ValueAdjustmentCategoryName)
+	options, ids := buildCategoryOptionsFor(cats, includeVA)
 
 	// Build a map from old categoryID to new index so non-originating
 	// rows preserve their selection by identity, not by stale index.
@@ -296,6 +304,7 @@ func (s *splitSurface) applyCreatedCategory(newCat *category.Category, cats []*c
 
 	sd.categoryOptions = options
 	sd.categoryIDs = ids
+	sd.categories = cats
 
 	// Re-map non-originating rows to their preserved category by ID.
 	for i := range sd.rows {
@@ -323,6 +332,12 @@ func (s *splitSurface) applyCreatedCategory(newCat *category.Category, cats []*c
 		}
 		sd.rows[originRow].transferMode = false
 		sd.rows[originRow].categoryIndex = newIdx
+		sd.applyRowSign(&sd.rows[originRow])
+		// Focus advances to the row's Amount, as on the other surfaces
+		// (specs/tui.md, inline category creation).
+		if originRow == sd.rowIndex && sd.focus == splitFocusRows {
+			sd.fieldFocus = splitFieldAmount
+		}
 	}
 
 	// The picker holds the old options and selection; reload it on next use.

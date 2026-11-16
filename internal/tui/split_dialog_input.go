@@ -59,15 +59,15 @@ func (sd *SplitDialog) handlePickerNavigationKey(p *dialog.Field, keyStr string)
 		if p.IsAddNewHighlighted() {
 			return true, dialog.DialogActionAddNew
 		}
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.focusNext()
 		return true, dialog.DialogActionNone
 	case "tab":
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.focusNext()
 		return true, dialog.DialogActionNone
 	case "shift+tab":
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.focusPrev()
 		return true, dialog.DialogActionNone
 	}
@@ -255,7 +255,7 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 		if picker != nil && rel == sd.rowIndex && field == splitFieldCategory {
 			return dialog.DialogActionNone // the open picker's own cell
 		}
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.focus = splitFocusRows
 		sd.rowIndex = rel
 		sd.fieldFocus = field
@@ -266,7 +266,7 @@ func (sd *SplitDialog) HandleMouseLocal(localX, localY int) dialog.DialogAction 
 	// they commit it first, the same as Tab.
 	addLine := rowsStart + len(sd.rows) + panelRows
 	if localY == addLine {
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.addRow()
 		sd.focus = splitFocusRows
 		sd.rowIndex = len(sd.rows) - 1
@@ -297,7 +297,7 @@ func (sd *SplitDialog) clickPickerLine(p *dialog.Field, line int) dialog.DialogA
 	case addNew:
 		return dialog.DialogActionAddNew
 	case picked:
-		sd.commitPicker()
+		sd.commitPicker(true)
 		sd.focusNext()
 	}
 	return dialog.DialogActionNone
@@ -329,7 +329,9 @@ func (sd *SplitDialog) hitTestButtonRow(localX, contentWidth int) dialog.DialogA
 	switch dialog.ButtonRowHitTest([]string{"Save", "Cancel"}, localX, contentWidth) {
 	case 0: // Save
 		// Save the entry an open picker shows, not the one it was opened on.
-		sd.commitPicker()
+		// Save never changes a sign, so the pick skips the category sign
+		// rule here.
+		sd.commitPicker(false)
 		if err := sd.validate(); err != nil {
 			sd.errorMsg = err.Error()
 			return dialog.DialogActionNone

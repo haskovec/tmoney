@@ -604,9 +604,10 @@ This applies to:
 - **Transfer Shares** — Shares and the per-lot allocation fields
 
 All of these are positive magnitudes, so no sign is ever accepted.
-The regular transaction **Amount** field is a normal text field and
-is unaffected — it still accepts a leading `-` for expenses. (Memo
-fields on these dialogs are likewise plain text.)
+The regular transaction **Amount** field is unaffected: it accepts one
+sign (`-` or `+`), and a second sign typed replaces the first. It
+follows the type of the chosen category — see "Category Sign Rule" in
+`specs/transactions.md`. (Memo fields on these dialogs are plain text.)
 
 ### Category Combo Box
 
@@ -687,8 +688,9 @@ confirming; the default is just a head-start, not a constraint.
 On confirm the new category (and parent, if needed) is persisted
 immediately; the originating dialog reopens with all other field
 values preserved, the new category auto-selected, and focus advanced
-to Amount. Cancel returns to the originating dialog with the previous
-selection intact.
+to Amount. The new category is a category change, so the Amount
+follows the category sign rule (see `specs/transactions.md`). Cancel
+returns to the originating dialog with the previous selection intact.
 
 ## Mouse Support
 

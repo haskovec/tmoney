@@ -250,30 +250,34 @@ func TestMouseGate_CorporateActionDetailSwallowsClicks(t *testing.T) {
 // symptom: the dispatcher a surface's key path uses is the one its mouse path
 // uses, tails included.
 func TestActionDispatcher_IsSharedIncludingTheHandlerTail(t *testing.T) {
-	tails := map[string]string{
-		"transaction": "checkPayeeAutoFill",
-		"scheduled":   "refreshSchedCategoryOptionsForAccount",
-		"account":     "updateAccountFieldVisibility",
-		"stockSplit":  "refreshStockSplitDialogMessage",
+	// syncCategorySign is the category sign rule: a category picked by a
+	// click must change the Amount the same as one picked by keyboard.
+	tails := map[string][]string{
+		"transaction": {"checkPayeeAutoFill", "syncCategorySign"},
+		"scheduled":   {"refreshSchedCategoryOptionsForAccount", "syncCategorySign"},
+		"account":     {"updateAccountFieldVisibility"},
+		"stockSplit":  {"refreshStockSplitDialogMessage"},
 	}
 	src := appMethodSources(t)
-	for surface, tail := range tails {
+	for surface, surfaceTails := range tails {
 		e := entryNamed(t, newModalTestApp(), surface)
 		if e.onAction == nil {
-			t.Errorf("surface %q has no shared dispatcher, so its %s tail is keyboard-only", surface, tail)
+			t.Errorf("surface %q has no shared dispatcher, so its %v tails are keyboard-only", surface, surfaceTails)
 			continue
 		}
 		if e.onMouse != nil {
-			t.Errorf("surface %q overrides the mouse path, so it can skip its %s tail", surface, tail)
+			t.Errorf("surface %q overrides the mouse path, so it can skip its %v tails", surface, surfaceTails)
 		}
 		body, ok := src[methodName(e.onAction)]
 		if !ok {
 			t.Errorf("could not read %q's dispatcher source", surface)
 			continue
 		}
-		if !strings.Contains(body, tail) {
-			t.Errorf("%q's dispatcher no longer runs %s; if that tail moved back into "+
-				"the key handler, the mouse path silently lost it", surface, tail)
+		for _, tail := range surfaceTails {
+			if !strings.Contains(body, tail) {
+				t.Errorf("%q's dispatcher no longer runs %s; if that tail moved back into "+
+					"the key handler, the mouse path silently lost it", surface, tail)
+			}
 		}
 	}
 }

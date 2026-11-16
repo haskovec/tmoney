@@ -133,7 +133,11 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 		// A click on Save commits a moved Account highlight inside that
 		// click, so the refresh below has not seen the new account yet. Run
 		// it now. If it drops the chosen category, stop so the user sees it.
-		if a.refreshSchedCategoryOptionsForAccount() {
+		dropped := a.refreshSchedCategoryOptionsForAccount()
+		// The same click can commit a category; record it without the sign
+		// rule, because Save never changes the sign.
+		a.sched.syncCategorySign(false)
+		if dropped {
 			a.sched.dlg.Fields()[schedFieldCategory].Error = "Value Adjustment is only for asset accounts"
 			return a, nil
 		}
@@ -157,6 +161,9 @@ func (a *App) scheduledDialogAction(action dialog.DialogAction) (tea.Model, tea.
 	// dialog, which has no category field.
 	if a.sched.data != nil && !a.sched.data.isTransfer {
 		a.refreshSchedCategoryOptionsForAccount()
+		// A category pick (or the refresh dropping Value Adjustment) applies
+		// the sign rule now, so the user sees the Amount change.
+		a.sched.syncCategorySign(true)
 	}
 
 	return a, nil
@@ -217,6 +224,7 @@ func (a *App) refreshSchedCategoryOptionsForAccount() (dropped bool) {
 	options, ids := buildCategoryOptionsFor(cats, includeVA)
 	a.sched.categoryOptions = options
 	a.sched.categoryIDs = ids
+	a.sched.categories = cats
 	catField.Options = options
 
 	newIdx := -1
@@ -250,8 +258,11 @@ func (a *App) openCreateCategorySubDialogFromSched() (tea.Model, tea.Cmd) {
 	}
 	catField := fields[schedFieldCategory]
 	query := catField.Query
+	// ClearComboQuery also puts the highlight back on the selection: left on
+	// the add-new row's position, a Cancel followed by Tab committed an
+	// unrelated category.
 	catField.AddNewTriggered = false
-	catField.Query = ""
+	catField.ClearComboQuery()
 
 	parents := a.createCatParentsFor(createCatSourceSchedDialog)
 	parent, name := splitCategoryQuery(query)
@@ -277,6 +288,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 	options, ids := buildCategoryOptionsFor(cats, a.schedDialogIncludeValueAdjustment())
 	a.sched.categoryIDs = ids
 	a.sched.categoryOptions = options
+	a.sched.categories = cats
 
 	if len(a.sched.dlg.Fields()) > schedFieldCategory {
 		catField := a.sched.dlg.Fields()[schedFieldCategory]
@@ -289,6 +301,7 @@ func (a *App) applyCreatedCategoryToSched(newCat *category.Category, cats []*cat
 			}
 		}
 		catField.SelectIndex(newIdx)
+		a.sched.syncCategorySign(true)
 		// Focus advances to Amount so the user can keep typing.
 		a.sched.dlg.SetFocusIndex(schedFieldAmount)
 		a.sched.dlg.SetVisible(true)
