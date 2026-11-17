@@ -217,7 +217,7 @@ func TestTxnSign_PayeeRefocusKeepsUserCategory(t *testing.T) {
 	txnType(a, typed("Kroger")...)
 	txnType(a, signTab) // to Category
 	txnType(a, typed("Sal")...)
-	txnType(a, signTab)                   // commit Salary, focus Amount
+	txnType(a, signTab)                    // commit Salary, focus Amount
 	txnType(a, signShiftTab, signShiftTab) // back to Payee
 	if got := a.txn.dlg.Fields()[2].SelectedOption(); got != "Salary" {
 		t.Errorf("category after refocusing Payee = %q, want Salary", got)
