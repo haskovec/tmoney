@@ -405,6 +405,22 @@ func (a *App) searchTakesKey(msg tea.KeyPressMsg) bool {
 		k.MenuTransactions, k.MenuSecurities, k.MenuEdit, k.MenuView, k.MenuReports, k.MenuHelp)
 }
 
+// searchKeyHandler returns the key handler of the search or filter that is
+// being typed in the current view, or nil when none is.
+func (a *App) searchKeyHandler() func(tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching:
+		return a.handleInvestmentRegisterKeys
+	case a.currentView == ViewCorporateActions && a.corporateActions.filterEditing:
+		return a.handleCorporateActionViewKeys
+	case a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching:
+		return a.handlePriceViewKeys
+	case a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching:
+		return a.handleSecurityViewKeys
+	}
+	return nil
+}
+
 // handleKeyPress handles keyboard input.
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// If an error is displayed, any key press dismisses it
@@ -423,17 +439,8 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// While a search or filter is being typed, it gets its keys first, so a
 	// view-switch digit, "?" or Esc is query text or ends the entry, not a
 	// global key (see searchTakesKey for the keys it leaves alone).
-	if a.searchTakesKey(msg) {
-		switch {
-		case a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching:
-			return a.handleInvestmentRegisterKeys(msg)
-		case a.currentView == ViewCorporateActions && a.corporateActions.filterEditing:
-			return a.handleCorporateActionViewKeys(msg)
-		case a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching:
-			return a.handlePriceViewKeys(msg)
-		case a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching:
-			return a.handleSecurityViewKeys(msg)
-		}
+	if h := a.searchKeyHandler(); h != nil && a.searchTakesKey(msg) {
+		return h(msg)
 	}
 
 	// Undo/redo key bindings (handled before menus since they should

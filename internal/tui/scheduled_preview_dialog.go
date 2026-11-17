@@ -256,6 +256,19 @@ func (p *SchedulePreviewDialog) IsVisible() bool {
 	return p != nil && p.headerDialog.IsVisible()
 }
 
+// TextFocus returns the focused text field of the panel that has focus: the
+// split editor on a multi-line preview once Tab moved into it, else the
+// header dialog.
+func (p *SchedulePreviewDialog) TextFocus() *dialog.Field {
+	if !p.IsVisible() {
+		return nil
+	}
+	if p.splitFocus && p.splitDialog != nil {
+		return p.splitDialog.TextFocus()
+	}
+	return p.headerDialog.TextFocus()
+}
+
 // Render draws the preview. For a multi-line preview the header dialog and the
 // embedded split editor stack vertically; Tab transitions focus between the two
 // surfaces (header → split editor, Shift+Tab from split editor → header).

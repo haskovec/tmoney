@@ -552,6 +552,22 @@ All dialogs are modal and keyboard-navigable.
 - Cross-field errors (e.g., transfer from/to same account) appear as a dialog-level message above the buttons
 - Async/service errors after dialog close still use the full-screen error display
 
+### Paste
+
+The terminal's paste (bracketed paste) goes into the field that has focus,
+as if the user typed it. That field can be a text, date or combo field of a
+dialog, wizard or split line, or a search or filter that is being typed in a
+view. Because a paste is typed, the rules for typed text apply to it: a
+date field takes only the digits, a numeric field takes only digits and one
+decimal point, an amount keeps one sign, and a combo filters on the pasted
+text. Line breaks at the end of the paste are removed. Any other line break
+or tab becomes a space, and other control characters are removed, so a paste
+never presses Enter, Tab or Esc.
+
+A paste anywhere else does nothing: on a button, a checkbox or a list, over
+a view, while an error shows, or while the menu bar is open. Pasted text
+never runs a command.
+
 ### Date Fields
 
 Date fields use a fixed-width masked-input widget rather than free

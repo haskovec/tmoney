@@ -55,6 +55,8 @@ type modalSurface struct {
 
 func (m *modalSurface) Render(styles widget.Styles) string { return m.dlg.Render(styles) }
 
+func (m *modalSurface) TextFocus() *dialog.Field { return m.dlg.TextFocus() }
+
 func (m *modalSurface) SetMaxHeight(h int) { m.dlg.SetMaxHeight(h) }
 
 func (m *modalSurface) SetVisible(v bool) { m.dlg.SetVisible(v) }
@@ -64,6 +66,14 @@ func (m *modalSurface) Dialog() *dialog.Dialog { return m.dlg }
 
 func (m *modalSurface) HandleMouse(msg tea.MouseMsg, w, h int) dialog.DialogAction {
 	return m.dlg.HandleMouse(msg, w, h)
+}
+
+// textTarget is a surface that can take a paste. TextFocus returns the field
+// that has focus when the user can type text into it, or nil. Every surface
+// with a text field implements it (modalSurface and *dialog.Dialog do); a
+// surface without one (help, the merger y/n) drops a paste. See handlePaste.
+type textTarget interface {
+	TextFocus() *dialog.Field
 }
 
 // mouseTarget is a surface whose hit-testing needs only the screen size.

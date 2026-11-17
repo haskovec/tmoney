@@ -75,6 +75,8 @@ func (s *paycheckSurface) IsVisible() bool { return s != nil && s.wizard.IsVisib
 
 func (s *paycheckSurface) Render(styles widget.Styles) string { return s.wizard.Render(styles) }
 
+func (s *paycheckSurface) TextFocus() *dialog.Field { return s.wizard.TextFocus() }
+
 // paycheckWizardDataMsg carries the dependencies needed to construct
 // a PaycheckWizard. Dispatched asynchronously by open.
 type paycheckWizardDataMsg struct {

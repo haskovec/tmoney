@@ -43,6 +43,9 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return a.handleMouseEvent(msg)
 
+	case tea.PasteMsg:
+		return a.handlePaste(msg.Content)
+
 	case mouseOpenAccountMsg:
 		return a, a.openAccountFromMouse(msg.accountID)
 

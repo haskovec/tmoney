@@ -130,6 +130,17 @@ func (w *PaycheckWizard) HandleKey(msg tea.KeyPressMsg) dialog.DialogAction {
 	return dialog.DialogActionNone
 }
 
+// TextFocus returns the focused field when it takes typed text, or nil.
+func (w *PaycheckWizard) TextFocus() *dialog.Field {
+	if !w.IsVisible() {
+		return nil
+	}
+	if t := w.focusedTarget(); t.kind == wizardFocusField && t.field.TakesText() {
+		return t.field
+	}
+	return nil
+}
+
 // focusedCombo returns the focused field when it is a combo, otherwise nil.
 func (w *PaycheckWizard) focusedCombo() *dialog.Field {
 	target := w.focusedTarget()
