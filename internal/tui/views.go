@@ -117,9 +117,14 @@ func init() {
 					a.register.table.SetFocused(true)
 				}
 			},
-			// Leaving the register drops its search, so the account shows
-			// every row when it opens again.
-			leave: func(a *App) { a.register.resetSearch() },
+			// Leaving the register drops its search and shows every row
+			// again, so the account shows them all when it opens again, also
+			// before its reload ends.
+			leave: func(a *App) {
+				if a.register.searchActive() {
+					a.clearRegisterSearch()
+				}
+			},
 		},
 		{
 			id:     ViewScheduled,

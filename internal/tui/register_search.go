@@ -53,6 +53,20 @@ func (s *registerViewState) rowMatches(txn *transaction.Transaction, cells []str
 	return false
 }
 
+// hides reports whether the lower-cased query hides the loaded transaction
+// id. It is false for a nil id and for an id the register has not loaded.
+func (s *registerViewState) hides(id types.ID, lowerQuery string) bool {
+	if id.IsNil() {
+		return false
+	}
+	for _, txn := range s.data.transactions {
+		if txn.ID == id {
+			return !s.rowMatches(txn, s.formatRow(txn), lowerQuery)
+		}
+	}
+	return false
+}
+
 // selectRow puts the cursor on the row of the transaction id. It reports
 // false when no row shows that transaction.
 func (s *registerViewState) selectRow(id types.ID) bool {
@@ -85,12 +99,12 @@ func (s *registerViewState) searchLine(width int) string {
 	return ansi.Truncate(head, max(width-lipgloss.Width(tail), 0), "…") + tail
 }
 
-// startRegisterSearch starts a new search. The rows stay as they are until the
-// first character is typed.
+// startRegisterSearch starts a new search. It drops a kept query and shows
+// every row with the cursor on the same transaction, as Esc does. The rows
+// stay that way until the first character is typed.
 func (a *App) startRegisterSearch() {
+	a.clearRegisterSearch()
 	a.register.searching = true
-	a.register.query = ""
-	a.buildRegisterTable()
 }
 
 // clearRegisterSearch ends the search and shows every row again. The cursor

@@ -512,6 +512,12 @@ func (a *App) buildRegisterTable() {
 	// computed over every row and stays true on the rows a search shows.
 	balances := runningBalances(a.register.data.transactions, opening)
 	query := strings.ToLower(strings.TrimSpace(a.register.query))
+	if query != "" && a.register.hides(a.pendingRegisterSelectID, query) {
+		// The saved row does not match the search. The search ends, so the
+		// row shows and the cursor can go to it.
+		a.register.resetSearch()
+		query = ""
+	}
 	var rows [][]string
 	a.register.shown = a.register.shown[:0]
 	for i, txn := range a.register.data.transactions {

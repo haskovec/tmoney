@@ -252,14 +252,96 @@ func TestRegisterSearch_RowOffsetCountsTheSearchLine(t *testing.T) {
 	}
 }
 
+// / again starts a new search over every row, and the cursor stays on the row
+// the kept search found.
+func TestRegisterSearch_SlashAgainKeepsTheRow(t *testing.T) {
+	for name, slash := range map[string]func(*App){
+		"key":  func(a *App) { regKey(a, slashKey()) },
+		"menu": func(a *App) { a.menuSearchTransactions() },
+	} {
+		a, r := newRegisterSearchApp(t)
+		regKey(a, slashKey())
+		regType(a, "rent")
+		regKey(a, regEnter)
+
+		slash(a)
+
+		if !a.register.searching || a.register.query != "" || len(a.register.shown) != 4 {
+			t.Errorf("%s: searching=%v query=%q rows=%d, want a new search over all 4",
+				name, a.register.searching, a.register.query, len(a.register.shown))
+		}
+		if got := a.register.selectedTransaction(); got != r.rent {
+			t.Errorf("%s: the new search moved the cursor off the found row", name)
+		}
+	}
+}
+
+// A save selects the saved row. When the kept search hides that row, the
+// search ends so the cursor can go to it.
+func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
+	keep := func(t *testing.T, query string) (*App, searchRows) {
+		a, r := newRegisterSearchApp(t)
+		regKey(a, slashKey())
+		regType(a, query)
+		regKey(a, regEnter)
+		return a, r
+	}
+
+	t.Run("hidden by the search", func(t *testing.T) {
+		a, r := keep(t, "rent")
+		a.pendingRegisterSelectID = r.coffee.ID
+		a.buildRegisterTable()
+		if a.register.searchActive() {
+			t.Error("the search hides the saved row and stays")
+		}
+		if got := a.register.selectedTransaction(); got != r.coffee {
+			t.Error("the cursor is not on the saved row")
+		}
+		if !a.pendingRegisterSelectID.IsNil() {
+			t.Error("the pending selection stays set")
+		}
+	})
+
+	t.Run("shown by the search", func(t *testing.T) {
+		a, r := keep(t, "an") // Landlord and Bean There
+		a.pendingRegisterSelectID = r.coffee.ID
+		a.buildRegisterTable()
+		if a.register.query != "an" || len(a.register.shown) != 2 {
+			t.Errorf("query=%q rows=%d, want the search kept", a.register.query, len(a.register.shown))
+		}
+		if got := a.register.selectedTransaction(); got != r.coffee {
+			t.Error("the cursor is not on the saved row")
+		}
+	})
+
+	// A rebuild before the reload ends does not hold the saved row yet. The
+	// search and the pending selection stay for the reload.
+	t.Run("not loaded yet", func(t *testing.T) {
+		a, _ := keep(t, "rent")
+		pending := types.NewID()
+		a.pendingRegisterSelectID = pending
+		a.buildRegisterTable()
+		if a.register.query != "rent" || a.pendingRegisterSelectID != pending {
+			t.Errorf("query=%q, want the search and the pending selection kept", a.register.query)
+		}
+	})
+}
+
 func TestRegisterSearch_ClearedOnLeaveAndAccountOpen(t *testing.T) {
-	a, _ := newRegisterSearchApp(t)
+	a, r := newRegisterSearchApp(t)
 	regKey(a, slashKey())
 	regType(a, "rent")
 	regKey(a, regEnter)
 	a.switchView(ViewDashboard)
 	if a.register.searchActive() {
 		t.Error("leaving the register kept the search")
+	}
+	// The table shows every row at once, not only when the reload ends.
+	if n := len(a.register.table.Rows()); n != 4 {
+		t.Errorf("after leaving, the table shows %d rows, want all 4", n)
+	}
+	if got := a.register.selectedTransaction(); got != r.rent {
+		t.Error("after leaving, the cursor left the found row")
 	}
 
 	a, _ = newRegisterSearchApp(t)
