@@ -21,6 +21,12 @@ type viewEntry struct {
 	onKey  func(*App, tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	hints  func(*App) string // the status-bar key hints
 
+	// searching reports whether the view's search or filter is being typed.
+	// While it is, the view's onKey takes every key but the global commands
+	// (see searchTakesKey), and a paste goes into the query. It is nil for a
+	// view with no search.
+	searching func(*App) bool
+
 	shortcuts func() shortcutSection // the view's section in the help overlay
 
 	// table is the widget the mouse and the wheel address in this view. A
@@ -80,20 +86,25 @@ func init() {
 			},
 		},
 		{
-			id:     ViewRegister,
-			name:   "Register",
-			render: (*App).renderRegister,
-			onKey:  (*App).handleRegisterKeys,
+			id:        ViewRegister,
+			name:      "Register",
+			render:    (*App).renderRegister,
+			onKey:     (*App).handleRegisterKeys,
+			searching: func(a *App) bool { return a.register.searching },
 			hints: func(*App) string {
-				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  esc back  " + commonKeyHints
+				return "↑↓ navigate  enter edit  n new  t transfer  c clear  v void  r reconcile  d delete  / search  esc back  " + commonKeyHints
 			},
 			shortcuts: registerShortcuts,
 			table:     func(a *App) *widget.Table { return a.register.table },
 			tableRowOffset: func(a *App) int {
+				off := baseTableRowOffset
 				if a.registerShowsClosedBanner() {
-					return baseTableRowOffset + 1 // read-only banner
+					off++ // read-only banner
 				}
-				return baseTableRowOffset
+				if a.register.searchActive() {
+					off++ // search line
+				}
+				return off
 			},
 			reload: func(a *App) []tea.Cmd {
 				accountID := a.sidebar.SelectedAccountID()
@@ -106,6 +117,9 @@ func init() {
 					a.register.table.SetFocused(true)
 				}
 			},
+			// Leaving the register drops its search, so the account shows
+			// every row when it opens again.
+			leave: func(a *App) { a.register.resetSearch() },
 		},
 		{
 			id:     ViewScheduled,
@@ -193,6 +207,7 @@ func init() {
 			fullScreen: true,
 			render:     (*App).renderSecurityView,
 			onKey:      (*App).handleSecurityViewKeys,
+			searching:  func(a *App) bool { return a.securities.data != nil && a.securities.data.searching },
 			hints: func(*App) string {
 				return "↑↓ navigate  n new  enter edit  h hide/unhide  d delete  f filter hidden  u update prices  a actions  / search  esc back  " + commonKeyHints
 			},
@@ -214,7 +229,8 @@ func init() {
 			render: func(a *App) string {
 				return a.prices.render(a.styles, a.width, a.height)
 			},
-			onKey: (*App).handlePriceViewKeys,
+			onKey:     (*App).handlePriceViewKeys,
+			searching: func(a *App) bool { return a.prices.data != nil && a.prices.data.searching },
 			hints: func(a *App) string {
 				if a.prices.data != nil && a.prices.data.mode == pricesViewDetail {
 					return "↑↓ navigate  enter edit  n new  d delete  i import  / search  esc back  " + commonKeyHints
@@ -239,10 +255,11 @@ func init() {
 			},
 		},
 		{
-			id:     ViewInvestmentRegister,
-			name:   "Investment Register",
-			render: func(a *App) string { return a.investmentRegister.render(a.styles, a.height) },
-			onKey:  (*App).handleInvestmentRegisterKeys,
+			id:        ViewInvestmentRegister,
+			name:      "Investment Register",
+			render:    func(a *App) string { return a.investmentRegister.render(a.styles, a.height) },
+			onKey:     (*App).handleInvestmentRegisterKeys,
+			searching: func(a *App) bool { return a.investmentRegister.filterSearching },
 			hints: func(*App) string {
 				return "↑↓ navigate  enter edit  n new  c clear  d delete  p portfolio  esc back  " + commonKeyHints
 			},
@@ -301,7 +318,8 @@ func init() {
 			render: func(a *App) string {
 				return a.corporateActions.render(a.styles, a.height)
 			},
-			onKey: (*App).handleCorporateActionViewKeys,
+			onKey:     (*App).handleCorporateActionViewKeys,
+			searching: func(a *App) bool { return a.corporateActions.filterEditing },
 			hints: func(*App) string {
 				return "↑↓ navigate  / filter  enter details  d delete  esc back  " + commonKeyHints
 			},

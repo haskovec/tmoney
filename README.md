@@ -386,8 +386,13 @@ scheduled sections stay in view. Your choices persist for the session.
 | `t` | New transfer |
 | `r` | Reconcile account (start a new session) |
 | `a` | Amortization schedule (loan accounts only) |
-| `/` | Filter by security (investment accounts only) |
+| `/` | Search transactions (investment accounts: filter by security) |
 | `Tab` | Switch between sidebar and table |
+
+In a bank, card or loan register, `/` narrows the list as you type to the rows
+whose date, payee, category, amount, memo or check number holds the text.
+`Enter` keeps the found rows so the register keys act on them, and `Esc`
+shows every row again with the cursor kept on the row you found.
 
 On a **loan** account, `a` drills into a read-only **amortization view**: a
 header of live loan stats (balance owed, APR, P&I payment, payments left,

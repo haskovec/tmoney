@@ -534,7 +534,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 
 	// Clear all cached view data
 	a.dashboard.data = nil
-	a.register.data = nil
+	a.register.clearForLoad()
 	a.register.table = nil
 	a.scheduled.data = nil
 	a.scheduled.table = nil
