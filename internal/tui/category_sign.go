@@ -133,7 +133,7 @@ func signedAmountText(value, loaded string, sign categorySign) (string, bool) {
 		// reports it.
 		return value, false
 	}
-	i := leadingSignIndex(trimmed)
+	i := dialog.AmountSignIndex(trimmed)
 	switch {
 	case sign == categorySignNegative && m.IsPositive():
 		if i >= 0 { // a "+"
@@ -144,21 +144,6 @@ func signedAmountText(value, loaded string, sign categorySign) (string, bool) {
 		return trimmed[:i] + trimmed[i+1:], true // a negative amount has its "-" there
 	}
 	return value, false
-}
-
-// leadingSignIndex returns the byte index of an amount's sign, which
-// parseAmountInput takes before or after a "$" ("-50", "$-50", "+$50"), or
-// -1 when the amount has none. A sign later in the text (an exponent's) is
-// not the amount's.
-func leadingSignIndex(s string) int {
-	isSign := func(i int) bool { return i < len(s) && (s[i] == '-' || s[i] == '+') }
-	switch {
-	case isSign(0):
-		return 0
-	case strings.HasPrefix(s, "$") && isSign(1):
-		return 1
-	}
-	return -1
 }
 
 // applyCategorySign rewrites f's amount for sign and moves the cursor to the

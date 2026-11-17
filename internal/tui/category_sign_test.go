@@ -130,13 +130,3 @@ func TestApplyCategorySignMovesCursorToEndAndClearsError(t *testing.T) {
 		t.Errorf("Error = %q after no change, want it kept", f.Error)
 	}
 }
-
-func TestLeadingSignIndex(t *testing.T) {
-	for s, want := range map[string]int{
-		"-50": 0, "+50": 0, "$-50": 1, "$+50": 1, "50": -1, "$50": -1, "1e-2": -1, "": -1, "$": -1,
-	} {
-		if got := leadingSignIndex(s); got != want {
-			t.Errorf("leadingSignIndex(%q) = %d, want %d", s, got, want)
-		}
-	}
-}

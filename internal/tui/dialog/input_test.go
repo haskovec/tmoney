@@ -520,6 +520,37 @@ func TestDialog_HandleKey_SignedAmountField_ReplaceKeepsCursor(t *testing.T) {
 	}
 }
 
+// An exponent's sign is not the amount's sign: a sign typed before "1e-2"
+// becomes the amount's sign, and the exponent keeps its own.
+func TestDialog_HandleKey_SignedAmountField_ExponentSignIsNotTheAmounts(t *testing.T) {
+	for _, tc := range []struct{ start, typed, want string }{
+		{"1e-2", "-", "-1e-2"},
+		{"1e-2", "+", "+1e-2"},
+		{"-1e-2", "+", "+1e-2"},
+		{"1E+2", "-", "-1E+2"},
+	} {
+		d := NewDialog("Test")
+		f := d.AddTextField("Amount", tc.start, "", 12)
+		f.SignedAmount = true
+		d.HandleKey(tea.KeyPressMsg{Code: tea.KeyHome})
+		typeRunes(d, tc.typed)
+		if f.Value != tc.want {
+			t.Errorf("start %q, typed %q at Home: Value = %q, want %q", tc.start, tc.typed, f.Value, tc.want)
+		}
+	}
+}
+
+func TestAmountSignIndex(t *testing.T) {
+	for s, want := range map[string]int{
+		"-50": 0, "+50": 0, "$-50": 1, "$+50": 1, "50": -1, "$50": -1, "": -1, "$": -1,
+		"1e-2": -1, "1E+2": -1, "-1e-2": 0, "$+1e-2": 1, "5-": 1,
+	} {
+		if got := AmountSignIndex(s); got != want {
+			t.Errorf("AmountSignIndex(%q) = %d, want %d", s, got, want)
+		}
+	}
+}
+
 // Without the flag a text field takes every '-' (Memo and the other text
 // fields keep their behavior).
 func TestDialog_HandleKey_PlainTextField_AcceptsManyMinus(t *testing.T) {

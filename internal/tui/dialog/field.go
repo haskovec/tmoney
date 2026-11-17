@@ -158,9 +158,10 @@ type Field struct {
 	// to at most one sign. A '-' or '+' typed while the value already holds
 	// a sign replaces that sign in place instead of adding a second one, so
 	// "-" typed over a pre-filled "-" changes nothing and "+" turns it into
-	// a positive amount. Enforced in InsertChar, the one path every typed
-	// rune takes (Dialog fields and split-editor rows alike). Programmatic
-	// Value prefills are not filtered.
+	// a positive amount. An exponent's sign ("1e-2") is not the amount's
+	// sign (see AmountSignIndex). Enforced in InsertChar, the one path every
+	// typed rune takes (Dialog fields and split-editor rows alike).
+	// Programmatic Value prefills are not filtered.
 	SignedAmount bool
 	// DateMask describes the format of a FieldDate ('M', 'D', 'Y' mark
 	// digit positions; any other character is a literal separator).
@@ -194,6 +195,24 @@ func (f *Field) numericAccepts(r rune) bool {
 	return r == '.' && !strings.ContainsRune(f.Value, '.')
 }
 
+// AmountSignIndex returns the byte index of the amount's sign in s, or -1
+// when s has none. The amount's sign is the first '-' or '+' that does not
+// follow an 'e' or 'E'. A sign after an 'e' belongs to an exponent ("1e-2").
+// In text that parses as an amount, this sign is before or after the "$"
+// ("-50", "$-50", "+$50").
+func AmountSignIndex(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '-' && s[i] != '+' {
+			continue
+		}
+		if i > 0 && (s[i-1] == 'e' || s[i-1] == 'E') {
+			continue
+		}
+		return i
+	}
+	return -1
+}
+
 // InsertChar inserts a character at the cursor position. On a SignedAmount
 // field a sign typed while the value already holds one replaces that sign
 // instead (see SignedAmount).
@@ -202,7 +221,7 @@ func (f *Field) InsertChar(ch rune) {
 		return
 	}
 	if f.SignedAmount && (ch == '-' || ch == '+') {
-		if i := strings.IndexAny(f.Value, "-+"); i >= 0 {
+		if i := AmountSignIndex(f.Value); i >= 0 {
 			f.Value = f.Value[:i] + string(ch) + f.Value[i+1:]
 			return
 		}

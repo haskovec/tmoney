@@ -76,8 +76,9 @@ once:
   `-` saves as a variable amount.
 - An amount field holds at most one sign. A `-` or `+` typed while the
   field already holds a sign replaces it: `-` typed over the pre-filled `-`
-  changes nothing, and `+` turns it into a positive refund. A double sign
-  such as `--52.10` or `-$-50` does not parse.
+  changes nothing, and `+` turns it into a positive refund. The sign of an
+  exponent, as in `1e-2`, is not the amount's sign. A double sign such as
+  `--52.10` or `-$-50` does not parse.
 
 ## Transaction Status
 
