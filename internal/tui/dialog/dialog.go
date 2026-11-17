@@ -253,6 +253,18 @@ func (d *Dialog) FocusedField() *Field {
 	return d.fields[d.focusIndex]
 }
 
+// TextFocus returns the field with focus when it takes typed text (see
+// Field.TakesText), or nil. A nil or hidden dialog has no text focus.
+func (d *Dialog) TextFocus() *Field {
+	if !d.IsVisible() {
+		return nil
+	}
+	if f := d.FocusedField(); f.TakesText() {
+		return f
+	}
+	return nil
+}
+
 // IsFocusOnButton returns true if focus is on a button.
 func (d *Dialog) IsFocusOnButton() bool {
 	return d.focusIndex >= len(d.fields)

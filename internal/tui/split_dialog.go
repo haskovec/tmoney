@@ -474,4 +474,26 @@ type splitSurface struct {
 
 func (s *splitSurface) IsVisible() bool { return s != nil && s.editor.IsVisible() }
 
+func (s *splitSurface) TextFocus() *dialog.Field { return s.editor.TextFocus() }
+
+// TextFocus returns the focused row cell when it takes typed text (the
+// Category picker, Amount or Memo), or nil when focus is on a button or the
+// editor is blurred.
+func (sd *SplitDialog) TextFocus() *dialog.Field {
+	if !sd.IsVisible() || sd.blurred || sd.focus != splitFocusRows ||
+		sd.rowIndex < 0 || sd.rowIndex >= len(sd.rows) {
+		return nil
+	}
+	row := &sd.rows[sd.rowIndex]
+	switch sd.fieldFocus {
+	case splitFieldCategory:
+		return sd.focusedPicker()
+	case splitFieldAmount:
+		return &row.amountField
+	case splitFieldMemo:
+		return &row.memoField
+	}
+	return nil
+}
+
 func (s *splitSurface) Render(styles widget.Styles) string { return s.editor.Render(styles) }

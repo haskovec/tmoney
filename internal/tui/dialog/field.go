@@ -148,8 +148,9 @@ type Field struct {
 	// NumericOnly, when true on a FieldText, restricts typed input to the
 	// digits 0-9 and at most one decimal point. Any other rune (sign, '$',
 	// comma, letter, space) is silently dropped at the input layer, mirroring
-	// the digit-only filter on FieldDate. The field is otherwise an ordinary
-	// FieldText — cursor, edit, paste, and render behavior are unchanged.
+	// the digit-only filter on FieldDate. A paste is typed one rune at a time,
+	// so the filter applies to it too. The field is otherwise an ordinary
+	// FieldText — cursor, edit, and render behavior are unchanged.
 	// Set via AddNumericField; used by the investment-register dialogs whose
 	// Shares/Amount/Price/Total/Commission fields are always positive
 	// magnitudes. Programmatic Value prefills are not filtered.
@@ -193,6 +194,20 @@ func (f *Field) numericAccepts(r rune) bool {
 		return true
 	}
 	return r == '.' && !strings.ContainsRune(f.Value, '.')
+}
+
+// TakesText reports whether typed text goes into f: a text field, a date field
+// (its digits) or a combo (its query). A paste goes only into such a field. A
+// nil or hidden field takes no text.
+func (f *Field) TakesText() bool {
+	if f == nil || f.Hidden {
+		return false
+	}
+	switch f.Type {
+	case FieldText, FieldDate, FieldCombo:
+		return true
+	}
+	return false
 }
 
 // AmountSignIndex returns the byte index of the amount's sign in s, or -1
