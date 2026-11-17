@@ -86,6 +86,12 @@ func TestParseAmountInput(t *testing.T) {
 		{"negative", "-50.00", "-50.00"},
 		{"dollar sign", "$25.00", "25.00"},
 		{"negative dollar", "-$10.00", "-10.00"},
+		{"dollar negative", "$-10.00", "-10.00"},
+		{"plus sign", "+25.00", "25.00"},
+		{"plus dollar", "+$25.00", "25.00"},
+		{"dollar plus", "$+25.00", "25.00"},
+		{"padded", "  -7.25  ", "-7.25"},
+		{"exponent sign is not a second sign", "-1e-2", "-0.01"},
 		{"whole number", "42", "42"},
 	}
 
@@ -110,6 +116,13 @@ func TestParseAmountInput_Invalid(t *testing.T) {
 	}{
 		{"empty string", ""},
 		{"random text", "abc"},
+		{"lone minus", "-"},
+		{"lone dollar", "$"},
+		{"double minus", "--52.10"},
+		{"minus dollar minus", "-$-50"},
+		{"plus then minus", "+-5"},
+		{"minus then plus", "-+5"},
+		{"trailing minus", "5-"},
 	}
 
 	for _, tt := range tests {

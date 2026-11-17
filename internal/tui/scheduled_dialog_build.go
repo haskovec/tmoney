@@ -30,7 +30,7 @@ func buildNewScheduledDialog(accountOptions, categoryOptions []string) *dialog.D
 	catField.AddNewLabel = "[+ Add new category…]"
 
 	// Amount (empty = variable)
-	d.AddTextField("Amount", "", "Empty = variable", 12)
+	d.AddTextField("Amount", "", "Empty = variable", 12).SignedAmount = true
 
 	// Memo
 	d.AddTextField("Memo", "", "Optional memo", 0)
@@ -111,7 +111,7 @@ func buildEditScheduledDialog(st *scheduled.Transaction, accountOptions []string
 	if st.HasAmount() {
 		amountStr = fmt.Sprintf("%.2f", st.Amount.Money.Float64())
 	}
-	d.AddTextField("Amount", amountStr, "Empty = variable", 12)
+	d.AddTextField("Amount", amountStr, "Empty = variable", 12).SignedAmount = true
 
 	// Memo
 	memoStr := ""

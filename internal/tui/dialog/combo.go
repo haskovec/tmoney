@@ -321,13 +321,25 @@ func (f *Field) CommitComboHighlight() {
 }
 
 // ClearComboQuery resets Query and snaps the highlight back to SelectedIndex.
-// Used by Esc when the query is non-empty.
+// Used by Esc when the query is non-empty, and by TakeAddNewQuery.
 func (f *Field) ClearComboQuery() {
 	if f.Type != FieldCombo {
 		return
 	}
 	f.Query = ""
 	f.ComboHighlight = f.SelectedIndex
+}
+
+// TakeAddNewQuery consumes an add-new trigger: it returns the typed query for
+// the create-category sub-dialog, which now owns it, clears AddNewTriggered,
+// and clears the query. The highlight goes back to the selection, so the combo
+// keeps no stale text when it is shown again; a highlight left on the add-new
+// row's position made a Tab after a Cancel select an unrelated option.
+func (f *Field) TakeAddNewQuery() string {
+	q := f.Query
+	f.AddNewTriggered = false
+	f.ClearComboQuery()
+	return q
 }
 
 // comboQueryAppend adds a typed character to Query and resets the highlight

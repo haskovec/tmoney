@@ -448,9 +448,7 @@ func (a *App) openCreateCategorySubDialogFromSchedTransfer() (tea.Model, tea.Cmd
 		return a, nil
 	}
 	catField := fields[schedXferFieldCategory]
-	query := catField.Query
-	catField.AddNewTriggered = false
-	catField.Query = ""
+	query := catField.TakeAddNewQuery()
 
 	parents := a.createCatParentsFor(createCatSourceSchedTransferDialog)
 	parent, name := splitCategoryQuery(query)

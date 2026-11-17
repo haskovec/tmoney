@@ -201,40 +201,14 @@ func buildCreateCategoryDialog(name, parent string, existingParents []string, de
 // create-category sub-dialog with, based on the typed amount on the
 // originating row/dialog. A parseable strictly-positive value indicates
 // Income; anything else (empty, zero, negative, unparseable) indicates
-// Expense. The helper accepts the same lightweight money formats that
-// parseAmountInput does (a leading "$", a leading "+"/"-" sign).
+// Expense. It reads the amount with parseAmountInput, so it accepts the same
+// formats (a "$", one "+"/"-" sign).
 //
 // This drives the four amount-bearing surfaces (Transaction, Scheduled
 // new/edit, Scheduled Preview, Split row); the Paycheck Wizard picks its
 // default from the originating section instead.
 func inferCategoryTypeFromAmount(s string) category.Type {
-	trimmed := strings.TrimSpace(s)
-	if trimmed == "" {
-		return category.TypeExpense
-	}
-
-	negative := false
-	if strings.HasPrefix(trimmed, "-") {
-		negative = true
-		trimmed = trimmed[1:]
-	} else if strings.HasPrefix(trimmed, "+") {
-		trimmed = trimmed[1:]
-	}
-	trimmed = strings.TrimPrefix(trimmed, "$")
-	if strings.HasPrefix(trimmed, "-") {
-		negative = true
-		trimmed = trimmed[1:]
-	}
-
-	candidate := trimmed
-	if negative {
-		candidate = "-" + trimmed
-	}
-	m, err := types.NewMoney(candidate)
-	if err != nil {
-		return category.TypeExpense
-	}
-	if m.IsPositive() {
+	if m, err := parseAmountInput(s); err == nil && m.IsPositive() {
 		return category.TypeIncome
 	}
 	return category.TypeExpense

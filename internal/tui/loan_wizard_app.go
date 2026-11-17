@@ -167,10 +167,7 @@ func (s *loanSurface) beginCreateCategory() (query string, fieldIdx int, ok bool
 		return "", -1, false
 	}
 	catField := fields[fieldIdx]
-	query = catField.Query
-	// Consume the trigger and clear the typed query — the sub-dialog owns it now.
-	catField.AddNewTriggered = false
-	catField.Query = ""
+	query = catField.TakeAddNewQuery()
 	s.dlg.SetVisible(false)
 	return query, fieldIdx, true
 }

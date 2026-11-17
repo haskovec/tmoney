@@ -44,6 +44,42 @@ account balance is negative while money is owed (see the sign table in
 the net-worth views negate liability balances for display under their
 LIABILITIES headings.
 
+### Category Sign Rule (TUI)
+
+A missing leading `-` on an expense is the most common entry mistake, so
+the TUI's amount fields follow the type of the chosen category. The rule
+applies to the New/Edit Transaction dialog, the single-line Post Scheduled
+Transaction dialog, the New/Edit Scheduled Transaction dialog, and the
+category lines of the split editor. It does not apply to transfers (always
+entered positive), the paycheck wizard (each row's sign is chosen by
+design), or the CLI (a silent sign change cannot be seen before save).
+
+When the category of a dialog or split line changes — picked by key or
+mouse, set by payee auto-fill, or created inline — the Amount changes at
+once:
+
+| New category | Amount is empty | Amount is a lone `-` | Positive | Negative |
+|---|---|---|---|---|
+| Expense | `-` | `-` | negated | kept |
+| Income | empty | empty | kept | negated |
+| `(None)` or system (Value Adjustment) | empty | empty | kept | kept |
+
+- The cursor moves to the end of the Amount, so typed digits land after the `-`.
+- Only an amount typed or changed in the open dialog is negated. The amount
+  the dialog loaded (an imported refund, a stored schedule amount) keeps its
+  sign until it is edited; an empty or lone-`-` Amount always takes the rule.
+- Save never changes the sign. A refund is entered by deleting the `-`.
+- When a dialog opens with an Expense category and an empty, required
+  Amount — the Post Scheduled Transaction dialog for a variable bill — the
+  Amount is filled with `-`. The New/Edit Scheduled Transaction dialog does
+  not fill at open, because its empty Amount means "variable"; there a lone
+  `-` saves as a variable amount.
+- An amount field holds at most one sign. A `-` or `+` typed while the
+  field already holds a sign replaces it: `-` typed over the pre-filled `-`
+  changes nothing, and `+` turns it into a positive refund. The sign of an
+  exponent, as in `1e-2`, is not the amount's sign. A double sign such as
+  `--52.10` or `-$-50` does not parse.
+
 ## Transaction Status
 
 | Status | Description |

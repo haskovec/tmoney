@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
@@ -120,6 +121,7 @@ func (a *App) loadSchedulePreviewData() tea.Cmd {
 			payees:          payees,
 			categoryOptions: categoryOptions,
 			categoryIDs:     categoryIDs,
+			categories:      categories,
 			loanSplits:      loanSplits,
 			fileOf:          file,
 		}
@@ -163,8 +165,11 @@ func (a *App) handleSchedulePreviewMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	headerLines := strings.Count(header.Render(a.styles), "\n") + 1
 
 	m := msg.Mouse()
-	relY := m.Y - startRow
-	if relY < 0 {
+	relX, relY := m.X-startCol, m.Y-startRow
+	if relX < 0 || relX >= lipgloss.Width(overlay) || relY < 0 || relY >= lipgloss.Height(overlay) {
+		// A click outside the dialog does nothing, as on the other dialogs.
+		// It used to take header focus, which commits an open split picker
+		// (and so ran the category sign rule on that line).
 		return a, nil
 	}
 
@@ -218,6 +223,11 @@ func (a *App) handleSchedulePreviewDialogKey(msg tea.KeyPressMsg) (tea.Model, te
 // dialog, from either input path and for both the single-line and the
 // multi-line shape.
 func (a *App) schedulePreviewAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	// A single-line category pick applies the sign rule now, so the user sees
+	// the Amount change; a click on Save that also committed a category only
+	// records it.
+	a.schedPreviewDialog.syncCategorySign(action != dialog.DialogActionSubmit)
+
 	switch action {
 	case dialog.DialogActionCancel:
 		a.closeSchedulePreviewDialog()
@@ -266,12 +276,7 @@ func (a *App) openCreateCategorySubDialogFromSchedPreview() (tea.Model, tea.Cmd)
 		return a, nil
 	}
 	catField := fields[catIdx]
-	query := catField.Query
-	// Consume the trigger and clear the typed query — the create-category
-	// dialog now owns it. This way, when we restore the preview, its
-	// Category combo doesn't carry stale typed text.
-	catField.AddNewTriggered = false
-	catField.Query = ""
+	query := catField.TakeAddNewQuery()
 
 	parents := a.createCatParentsFor(createCatSourceSchedPreview)
 	parent, name := splitCategoryQuery(query)
@@ -322,6 +327,7 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 		options, ids = buildCategoryOptionsFor(cats, includeVA)
 	}
 	a.schedPreviewDialog.categoryIDs = ids
+	a.schedPreviewDialog.categories = cats
 
 	catField := header.Fields()[catIdx]
 	catField.Options = options
@@ -333,6 +339,7 @@ func (a *App) applyCreatedCategoryToSchedPreview(newCat *category.Category, cats
 		}
 	}
 	catField.SelectIndex(newIdx)
+	a.schedPreviewDialog.syncCategorySign(true)
 	// Focus advances to the field after Category so the user can keep typing.
 	header.SetFocusIndex(catIdx + 1)
 	header.SetVisible(true)

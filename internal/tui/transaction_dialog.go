@@ -89,29 +89,37 @@ func (a *App) investmentDialogOpeningDateError(d types.Date) string {
 	return openingDateFieldError(a.investmentRegister.data.account, d)
 }
 
-// parseAmountInput parses a money string, stripping "$" and handling negatives.
+// parseAmountInput parses a money string with an optional "$" and at most one
+// sign, before or after the "$": -50.00, -$50.00, $-50.00, +50.00, +$50.00.
+// A second sign ("--50", "-$-50", "+-5") is an error, not a negative amount.
 func parseAmountInput(input string) (types.Money, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
 		return types.ZeroMoney, fmt.Errorf("amount is required")
 	}
 
-	// Handle negative with $ sign: -$50.00 or $-50.00
-	negative := false
-	if strings.HasPrefix(s, "-") {
-		negative = true
-		s = s[1:]
+	negative, signed := false, false
+	takeSign := func() {
+		if signed || s == "" {
+			return
+		}
+		switch s[0] {
+		case '-':
+			negative, signed, s = true, true, s[1:]
+		case '+':
+			signed, s = true, s[1:]
+		}
 	}
+	takeSign()
 	s = strings.TrimPrefix(s, "$")
-	if strings.HasPrefix(s, "-") {
-		negative = true
-		s = s[1:]
+	takeSign()
+	if s != "" && (s[0] == '-' || s[0] == '+') {
+		return types.ZeroMoney, fmt.Errorf("invalid amount %q: more than one sign", input)
 	}
 
 	if negative {
 		s = "-" + s
 	}
-
 	return types.NewMoney(s)
 }
 
@@ -287,6 +295,7 @@ func buildTransactionDialog(data *transactionDialogData, categoryOptions []strin
 	}
 	f = d.AddTextField("Amount", amountValue, "-50.00", 12)
 	f.Required = true
+	f.SignedAmount = true
 
 	// Memo
 	memoValue := ""
@@ -415,6 +424,13 @@ type txnSurface struct {
 	modalSurface
 	data        *transactionDialogData
 	categoryIDs []types.ID
+
+	// sign is the category sign rule's state (specs/transactions.md).
+	sign categorySignState
+	// checkedPayee is the lower-cased Payee text that payee auto-fill last
+	// checked. Auto-fill runs only when the text changes, so moving focus
+	// back to Payee does not replace a category the user picked.
+	checkedPayee string
 }
 
 func (s *txnSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
@@ -427,6 +443,37 @@ func (s *txnSurface) applyData(data *transactionDialogData, selected *account.Ac
 	categoryOptions, categoryIDs := buildCategoryOptionsForAccount(data.categories, selected)
 	s.categoryIDs = categoryIDs
 	s.dlg = buildTransactionDialog(data, categoryOptions, categoryIDs, stickyDate)
+
+	// What the dialog opened with is not a change for the sign rule. The
+	// category comes from the built combo, not from data.existing, because a
+	// category the picker hides opens as "(None)".
+	fields := s.dlg.Fields()
+	s.sign.open(fields[3].Value, categoryIDAt(s.categoryIDs, fields[2].SelectedIndex))
+	// An Edit that opens with a category has a choice for auto-fill to keep,
+	// so its loaded payee counts as checked. One that opens on "(None)" (an
+	// uncategorized import) lets the payee default fill on the first visit.
+	s.checkedPayee = ""
+	if fields[2].SelectedIndex > 0 {
+		s.checkedPayee = strings.ToLower(strings.TrimSpace(fields[1].Value))
+	}
+}
+
+// syncCategorySign runs the category sign rule on the Amount when the
+// selected category has changed since the last call. With apply false it
+// only records the category (see categorySignState.sync).
+func (s *txnSurface) syncCategorySign(apply bool) {
+	if s.dlg == nil {
+		return
+	}
+	fields := s.dlg.Fields()
+	if len(fields) < 4 {
+		return
+	}
+	var cats []*category.Category
+	if s.data != nil {
+		cats = s.data.categories
+	}
+	s.sign.sync(fields[3], categoryIDAt(s.categoryIDs, fields[2].SelectedIndex), cats, apply)
 }
 
 // closeTransactionDialog clears the transaction dialog state.
@@ -448,6 +495,13 @@ func (a *App) checkPayeeAutoFill() {
 	}
 	payeeField := fields[1]
 	payeeName := strings.ToLower(strings.TrimSpace(payeeField.Value))
+	if payeeName == a.txn.checkedPayee {
+		// Only a change of the Payee text auto-fills. Without this, focus
+		// moving back to Payee (Shift+Tab, a click, Tab from Date in Edit)
+		// put the payee default over the category the user had chosen.
+		return
+	}
+	a.txn.checkedPayee = payeeName
 	if payeeName == "" {
 		return
 	}
@@ -461,12 +515,10 @@ func (a *App) checkPayeeAutoFill() {
 	defaultCatID := py.DefaultCategoryID.ID
 	for i, catID := range a.txn.categoryIDs {
 		if catID == defaultCatID {
-			// Category field is at index 2
+			// Category field is at index 2. SelectIndex also moves the
+			// combo highlight, so the dropdown opens on the auto-filled row.
 			if len(fields) > 2 {
-				fields[2].SelectedIndex = i
-				// Keep the combo's highlight cursor in sync with SelectedIndex
-				// so the dropdown highlights the auto-filled row when opened.
-				fields[2].ComboHighlight = i
+				fields[2].SelectIndex(i)
 			}
 			return
 		}
@@ -483,6 +535,11 @@ func (a *App) handleTransactionDialogKey(msg tea.KeyPressMsg) (tea.Model, tea.Cm
 
 // transactionDialogAction dispatches a DialogAction for the transaction dialog, from either input path.
 func (a *App) transactionDialogAction(action dialog.DialogAction) (tea.Model, tea.Cmd) {
+	// Every key and click has already changed the dialog. A category pick
+	// applies the sign rule now, so the user sees the Amount change; a click
+	// on Save that also committed a category only records it.
+	a.txn.syncCategorySign(action != dialog.DialogActionSubmit)
+
 	switch action {
 	case dialog.DialogActionSubmit:
 		return a.submitTransactionDialog()
@@ -496,6 +553,7 @@ func (a *App) transactionDialogAction(action dialog.DialogAction) (tea.Model, te
 	// Check for payee auto-fill after text input
 	if a.txn.dlg.FocusIndex() == 1 {
 		a.checkPayeeAutoFill()
+		a.txn.syncCategorySign(true)
 	}
 
 	return a, nil
@@ -516,12 +574,7 @@ func (a *App) openCreateCategorySubDialog() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	catField := fields[2]
-	query := catField.Query
-	// Consume the trigger and clear the typed query — the create-category
-	// dialog now owns it. This way, when we restore the txn dialog, its
-	// Category combo doesn't carry stale typed text.
-	catField.AddNewTriggered = false
-	catField.Query = ""
+	query := catField.TakeAddNewQuery()
 
 	parents := a.createCatParentsFor(createCatSourceTxnDialog)
 	parent, name := splitCategoryQuery(query)
@@ -574,6 +627,7 @@ func (a *App) applyCreatedCategoryToTxn(newCat *category.Category, cats []*categ
 			}
 		}
 		catField.SelectIndex(newIdx)
+		a.txn.syncCategorySign(true)
 		// Focus advances to Amount (field index 3).
 		a.txn.dlg.SetFocusIndex(3)
 		a.txn.dlg.SetVisible(true)
@@ -675,6 +729,7 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 			accountIDs:      accountIDs,
 			accountID:       accountID,
 			currency:        accountCurrencyByID(a.txn.data.accounts, accountID),
+			categories:      a.txn.data.categories,
 		}
 		// Seed the editor with the existing splits when editing a transaction
 		// that already had them.

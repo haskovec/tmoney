@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -55,6 +56,11 @@ type splitRow struct {
 	accountIndex  int
 	amountField   dialog.Field
 	memoField     dialog.Field
+
+	// loadedAmount is the amount text the row was seeded with ("" for a
+	// row the user added). The category sign rule never flips an amount
+	// still equal to it, so recategorizing a stored line keeps its sign.
+	loadedAmount string
 
 	// seedTransferAccountID remembers the transfer destination when a row
 	// is seeded from an existing transfer-split (NewSplitDialogFromExisting)
@@ -117,6 +123,10 @@ type SplitDialog struct {
 	fieldFocus      splitFieldFocus
 	categoryOptions []string
 	categoryIDs     []types.ID
+	// categories is the category list behind categoryIDs, which the
+	// category sign rule reads each category's type from (SetCategories).
+	// Nil leaves every pick without a sign: it only clears a lone "-".
+	categories []*category.Category
 
 	// Transfer-line picker (configured via SetTransferTargets). When
 	// transferAccountIDs is empty, the Transfer sentinel is non-functional
@@ -184,9 +194,10 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 		// prefillField, not a Value: field literal, so Backspace works and a
 		// typed character appends instead of prepending.
 		amountField := dialog.Field{
-			Type:        dialog.FieldText,
-			Placeholder: "0.00",
-			Width:       12,
+			Type:         dialog.FieldText,
+			Placeholder:  "0.00",
+			Width:        12,
+			SignedAmount: true,
 		}
 		prefillField(&amountField, s.Amount.String())
 		memoField := dialog.Field{
@@ -207,6 +218,7 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 				seedPaycheckSection:    s.PaycheckSection,
 				amountField:            amountField,
 				memoField:              memoField,
+				loadedAmount:           amountField.Value,
 			})
 			continue
 		}
@@ -223,6 +235,7 @@ func NewSplitDialogFromExisting(amount types.Money, categoryOptions []string, ca
 			seedPaycheckSection: s.PaycheckSection,
 			amountField:         amountField,
 			memoField:           memoField,
+			loadedAmount:        amountField.Value,
 		})
 	}
 	return sd
@@ -299,7 +312,7 @@ func (sd *SplitDialog) rowLabel(row splitRow) string {
 // panel showed is the one kept.
 func (sd *SplitDialog) SetBlurred(b bool) {
 	if b {
-		sd.commitPicker()
+		sd.commitPicker(true)
 	}
 	sd.blurred = b
 }
@@ -329,7 +342,12 @@ func (sd *SplitDialog) focusedPicker() *dialog.Field {
 // row it was loaded for, and closes the picker. No-op while it is closed.
 // Every path that moves focus off a Category cell calls it first, the same
 // as Tab on a Dialog combo.
-func (sd *SplitDialog) commitPicker() {
+//
+// When the commit changes the row to a different category, applySign runs
+// the category sign rule on the row's amount. A click on Save passes false:
+// it commits the open picker in the same click, and Save never changes the
+// sign. A transfer pick never takes the rule.
+func (sd *SplitDialog) commitPicker(applySign bool) {
 	if !sd.pickerOpen {
 		return
 	}
@@ -339,6 +357,7 @@ func (sd *SplitDialog) commitPicker() {
 	}
 	sd.picker.CommitComboHighlight()
 	row := &sd.rows[sd.pickerRow]
+	wasTransfer, wasIndex := row.transferMode, row.categoryIndex
 	idx := sd.picker.SelectedIndex
 	if n := len(sd.categoryOptions); idx < n {
 		row.transferMode = false
@@ -348,6 +367,24 @@ func (sd *SplitDialog) commitPicker() {
 		row.transferMode = true
 		row.accountIndex = idx - n
 	}
+	changed := wasTransfer != row.transferMode || wasIndex != row.categoryIndex
+	if applySign && changed && !row.transferMode {
+		sd.applyRowSign(row)
+	}
+}
+
+// SetCategories gives the editor the category list behind its picker, so the
+// category sign rule can read each category's type. Rows keep their amounts:
+// the rule runs when a row's category changes, not here.
+func (sd *SplitDialog) SetCategories(cats []*category.Category) {
+	sd.categories = cats
+}
+
+// applyRowSign runs the category sign rule (specs/transactions.md) on row's
+// amount for the category the row now has.
+func (sd *SplitDialog) applyRowSign(row *splitRow) {
+	sign := categorySignAt(sd.categories, sd.categoryIDs, row.categoryIndex)
+	applyCategorySign(&row.amountField, row.loadedAmount, sign)
 }
 
 // SetTransferTargets configures the account picker used when a split

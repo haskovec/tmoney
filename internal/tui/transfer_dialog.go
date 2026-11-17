@@ -847,9 +847,7 @@ func (s *transferSurface) beginCreateCategory() (query string, parents []string,
 		return "", nil, false
 	}
 	catField := fields[idx]
-	query = catField.Query
-	catField.AddNewTriggered = false
-	catField.Query = ""
+	query = catField.TakeAddNewQuery()
 
 	parents, _ = s.parentCategoryNames()
 	s.dlg.SetVisible(false)

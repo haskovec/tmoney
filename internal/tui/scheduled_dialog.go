@@ -246,9 +246,32 @@ type schedSurface struct {
 	accountIDs      []types.ID
 	categoryIDs     []types.ID
 	categoryOptions []string
+	// categories is the category list behind categoryIDs on the regular
+	// form, which the category sign rule reads each category's type from.
+	categories []*category.Category
+	// sign is the category sign rule's state on the regular form
+	// (specs/transactions.md). The transfer form has no sign rule.
+	sign categorySignState
 }
 
 func (s *schedSurface) IsVisible() bool { return s != nil && s.dlg.IsVisible() }
+
+// syncCategorySign runs the category sign rule on the regular form's Amount
+// when the selected category has changed since the last call. With apply
+// false it only records the category (see categorySignState.sync). The rule
+// never fills the Amount as the form opens: there an empty Amount means a
+// variable amount (specs/transactions.md).
+func (s *schedSurface) syncCategorySign(apply bool) {
+	if s.dlg == nil || s.data == nil || s.data.isTransfer {
+		return
+	}
+	fields := s.dlg.Fields()
+	if len(fields) <= schedFieldAmount {
+		return
+	}
+	id := categoryIDAt(s.categoryIDs, fields[schedFieldCategory].SelectedIndex)
+	s.sign.sync(fields[schedFieldAmount], id, s.categories, apply)
+}
 
 // applyData builds whichever of the three scheduled forms data describes:
 // the transfer form, the regular edit form, or the regular new form.
@@ -300,17 +323,24 @@ func (s *schedSurface) applyData(data *scheduledDialogData, categories []*catego
 	categoryOptions, categoryIDs := buildCategoryOptionsFor(categories, includeVA)
 	s.categoryIDs = categoryIDs
 	s.categoryOptions = categoryOptions
+	s.categories = categories
 
-	if data.mode != scheduledDialogModeEdit || data.scheduled == nil {
+	editing := data.mode == scheduledDialogModeEdit && data.scheduled != nil
+	if editing {
+		// Build payee name map for edit dialog
+		payeeNames := make(map[types.ID]string)
+		for _, p := range data.payees {
+			payeeNames[p.ID] = p.Name
+		}
+		s.dlg = buildEditScheduledDialog(data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
+	} else {
 		s.dlg = buildNewScheduledDialog(accountOptions, categoryOptions)
-		return false
 	}
 
-	// Build payee name map for edit dialog
-	payeeNames := make(map[types.ID]string)
-	for _, p := range data.payees {
-		payeeNames[p.ID] = p.Name
-	}
-	s.dlg = buildEditScheduledDialog(data.scheduled, accountOptions, accountIDs, categoryOptions, categoryIDs, payeeNames)
-	return true
+	// What the form opened with is not a change for the sign rule. The
+	// category comes from the built combo: a category the picker hides
+	// opens as "(None)".
+	fields := s.dlg.Fields()
+	s.sign.open(fields[schedFieldAmount].Value, categoryIDAt(categoryIDs, fields[schedFieldCategory].SelectedIndex))
+	return editing
 }

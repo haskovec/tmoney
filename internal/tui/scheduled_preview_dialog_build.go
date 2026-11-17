@@ -89,7 +89,6 @@ func NewSchedulePreviewDialog(
 				}
 			}
 		}
-		p.categoryIDs = categoryIDs
 		p.headerDialog = buildPreviewHeaderTransfer(fromName, toName, dateStr, amountStr, memo, categoryOptions, catIdx)
 		return p
 	}
@@ -149,8 +148,10 @@ func NewSchedulePreviewDialog(
 		amountStr = template.Amount.Money.String()
 	}
 
-	p.categoryIDs = categoryIDs
 	p.headerDialog = buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr, categoryOptions, catIdx)
+	// The template's amount and category are what the preview opened with.
+	// applyOpenSign runs the sign rule for that category once.
+	p.sign.open(amountStr, categoryIDAt(categoryIDs, catIdx))
 	return p
 }
 
@@ -170,6 +171,7 @@ func buildPreviewHeaderSingle(dateStr, payeeName, memo, amountStr string, catego
 
 	af := d.AddTextField("Amount", amountStr, "-50.00", 12)
 	af.Required = true
+	af.SignedAmount = true
 
 	d.AddTextField("Memo", memo, "Optional memo", 0)
 	d.AddRadioField("Status", []string{"Uncleared", "Cleared"}, previewStatusUnclearedIdx)

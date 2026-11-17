@@ -51,10 +51,11 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 		categoryID = a.sched.categoryIDs[catIdx]
 	}
 
-	// Amount (empty = variable)
+	// Amount (empty = variable). A lone "-" is the sign rule's pre-fill for
+	// an Expense category with no digits typed after it: also variable.
 	amountStr := strings.TrimSpace(fields[schedFieldAmount].Value)
 	var amount types.NullableMoney
-	if amountStr != "" {
+	if amountStr != "" && amountStr != "-" {
 		m, err := parseAmountInput(amountStr)
 		if err != nil {
 			fields[schedFieldAmount].Error = "Invalid amount"
@@ -177,6 +178,7 @@ func (a *App) submitScheduledDialog() (tea.Model, tea.Cmd) {
 			accountIDs:      accountIDs,
 			accountID:       accountID,
 			currency:        accountCurrencyByID(a.sched.data.accounts, accountID),
+			categories:      a.sched.categories,
 		}
 		// Seed the split dialog from existing children when editing a
 		// schedule that already carries a multi-line template.

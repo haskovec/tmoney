@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/haskovec/tmoney/internal/account"
+	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -85,10 +86,10 @@ type SchedulePreviewDialog struct {
 	// line items.
 	splitDialog *SplitDialog
 
-	// categoryIDs parallels the headerDialog's category combo options,
-	// so the submit handler can map the selected index back to a
-	// category ID. Nil for multi-line previews (the header has no
-	// scalar category field).
+	// categoryIDs parallels categoryOptions: the header's Category combo on
+	// single-line and transfer previews, so the submit handler can map the
+	// selected index back to a category ID, and the split editor's picker on
+	// multi-line previews (reseedLoanSplits rebuilds the editor from it).
 	categoryIDs []types.ID
 
 	// payees is the snapshot of payees passed to the constructor. The
@@ -136,6 +137,64 @@ type SchedulePreviewDialog struct {
 	// the constructor did (transfer targets + category resolution).
 	accounts        []*account.Account
 	categoryOptions []string
+
+	// categories is the category list behind categoryIDs, which the
+	// category sign rule reads each category's type from (SetCategories).
+	categories []*category.Category
+	// sign is the category sign rule's state for the single-line header
+	// (specs/transactions.md). Transfer and multi-line headers have no
+	// sign rule; the multi-line lines run it in the split editor.
+	sign categorySignState
+}
+
+// SetCategories gives the preview the category list behind its pickers, so
+// the category sign rule can read each category's type. Amounts do not
+// change here: see applyOpenSign.
+func (p *SchedulePreviewDialog) SetCategories(cats []*category.Category) {
+	if p == nil {
+		return
+	}
+	p.categories = cats
+	if p.splitDialog != nil {
+		p.splitDialog.SetCategories(cats)
+	}
+}
+
+// applyOpenSign runs the category sign rule once for the category a
+// single-line preview opened with: a variable bill (no template amount) under
+// an Expense category opens with "-" in its Amount, so the digits typed next
+// make a negative amount. A stored template amount keeps its sign. Call it
+// once, after SetCategories, as the preview opens.
+func (p *SchedulePreviewDialog) applyOpenSign() {
+	if amount := p.singleLineAmount(); amount != nil {
+		p.sign.applyOpen(amount, p.categories)
+	}
+}
+
+// singleLineAmount returns the single-line header's Amount field, or nil on
+// the transfer and multi-line shapes, whose header field indices differ.
+func (p *SchedulePreviewDialog) singleLineAmount() *dialog.Field {
+	if p == nil || p.IsTransfer() || p.IsMultiLine() || p.headerDialog == nil {
+		return nil
+	}
+	fields := p.headerDialog.Fields()
+	if len(fields) <= previewSingleFieldAmount {
+		return nil
+	}
+	return fields[previewSingleFieldAmount]
+}
+
+// syncCategorySign runs the category sign rule on the single-line header's
+// Amount when its category has changed since the last call. With apply false
+// it only records the category (see categorySignState.sync). No-op on the
+// transfer and multi-line shapes, whose header field indices differ.
+func (p *SchedulePreviewDialog) syncCategorySign(apply bool) {
+	amount := p.singleLineAmount()
+	if amount == nil {
+		return
+	}
+	id := categoryIDAt(p.categoryIDs, p.headerDialog.Fields()[previewSingleFieldCat].SelectedIndex)
+	p.sign.sync(amount, id, p.categories, apply)
 }
 
 // IsTransfer reports whether this preview is for a single-line transfer
@@ -292,6 +351,7 @@ func (p *SchedulePreviewDialog) userEditedLines() bool {
 func (p *SchedulePreviewDialog) reseedLoanSplits(ls *scheduled.LoanSplits, date types.Date) {
 	p.splitDialog = NewSplitDialogFromExisting(ls.ParentAmount, p.categoryOptions, p.categoryIDs, ls.Splits)
 	p.splitDialog.width = 62
+	p.splitDialog.SetCategories(p.categories)
 	accountOptions, accountIDs := buildSplitTransferAccountOptions(p.accounts)
 	p.splitDialog.SetTransferTargets(accountOptions, accountIDs, p.template.AccountID)
 	p.splitDialog.currency = accountCurrencyByID(p.accounts, p.template.AccountID)
@@ -333,6 +393,9 @@ type schedulePreviewDataMsg struct {
 	payees          []*payee.Payee
 	categoryOptions []string
 	categoryIDs     []types.ID
+	// categories is the full category list behind categoryIDs, for the
+	// category sign rule.
+	categories []*category.Category
 	// loanSplits is non-nil only for a loan-shaped schedule whose live-balance
 	// recompute succeeded — the preview seeds its lines from it.
 	loanSplits *scheduled.LoanSplits
