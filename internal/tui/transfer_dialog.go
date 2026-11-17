@@ -110,11 +110,22 @@ func buildAccountOptions(accounts []*account.Account) ([]string, []types.ID) {
 	ids := make([]types.ID, 0, len(accounts))
 
 	for _, acct := range accounts {
-		options = append(options, acct.Name)
+		options = append(options, accountPickerLabel(acct))
 		ids = append(ids, acct.ID)
 	}
 
 	return options, ids
+}
+
+// accountPickerLabel is acct's entry in an account picker. Pickers offer open
+// accounts only. A closed account is in a picker only in the Edit form of a
+// schedule that uses it (withScheduleAccounts), and the mark tells the user
+// why it is there.
+func accountPickerLabel(acct *account.Account) string {
+	if acct.IsClosed() {
+		return acct.Name + " (closed)"
+	}
+	return acct.Name
 }
 
 // buildTransferDialog creates a dialog.Dialog for entering a new transfer.

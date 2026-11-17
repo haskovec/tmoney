@@ -152,7 +152,8 @@ after the account's opening date and its latest transaction, and not in the
 future. Violations are hard errors and abort with a non-zero exit. A closed
 account is **frozen** — no new transactions, edits, deletes, status toggles, or
 transfers (a transfer is blocked if either leg is closed) — and it no longer
-appears in account pickers or in the New Scheduled flows. If any scheduled
+appears in account pickers (except as a schedule's own account in the TUI Edit
+Series form) or in the New Scheduled flows. If any scheduled
 transactions still reference the account, the command prints a warning and
 proceeds (those schedules are skipped on auto-post and refused on manual post
 until redirected or deleted).

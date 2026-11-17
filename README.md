@@ -114,7 +114,8 @@ tmoney -f personal.tdb account balance
 - Dynamic account dialog that shows only relevant fields for the selected account type
 - Open/close account lifecycle: closing records a (back-datable) close date and
   **freezes** the account — no new transactions, edits, or transfers, and it
-  drops out of every account picker — while staying viewable. Closed accounts
+  drops out of every account picker (Edit Series still shows a schedule's own
+  closed account, so you can redirect the schedule) — while staying viewable. Closed accounts
   collect in a dimmed section at the bottom of the sidebar; **Reopen** from the
   Accounts menu (or `account reopen`) brings one back.
 
@@ -668,7 +669,8 @@ tmoney account delete "Old Savings" --confirm
 
 Closing an account **freezes** it: no new transactions, edits, deletes, status
 toggles, or transfers (a transfer is refused if either leg is closed), and it no
-longer appears in any account picker or scheduled-transaction flow. The account
+longer appears in any account picker or New Scheduled flow (Edit Series still
+shows a schedule's own closed account, so you can redirect the schedule). The account
 stays viewable (read-only register/portfolio; `account balance` and
 `report net-worth --include-closed` still value it). Zero-balance and
 close-date-range violations are hard errors; if scheduled transactions still

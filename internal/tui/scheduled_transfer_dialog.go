@@ -53,7 +53,7 @@ func buildTransferAccountOptions(accounts []*account.Account) ([]string, []types
 	options := make([]string, 0, len(accounts))
 	ids := make([]types.ID, 0, len(accounts))
 	for _, acct := range accounts {
-		options = append(options, acct.Name)
+		options = append(options, accountPickerLabel(acct))
 		ids = append(ids, acct.ID)
 	}
 	return options, ids
@@ -135,10 +135,11 @@ func buildEditScheduledTransferDialog(st *scheduled.Transaction, accountOptions,
 	d := dialog.NewDialog("Edit Scheduled Transfer")
 	d.SetWidth(62)
 
-	// An endpoint the list does not contain must not silently become the first
-	// account. The pickers now hold every account, so this can only mean the
-	// referenced account was deleted; the field is left unselected and the save
-	// path refuses it rather than re-pointing the transfer.
+	// The edit loader puts both endpoints in the list, closed ones included
+	// (withScheduleAccounts). That matters: a combo cannot open with no
+	// selection (AddComboField turns -1 into 0), so an endpoint missing from
+	// the list would open as the first account and Save would re-point the
+	// transfer.
 	fromIdx := indexOfID(accountIDs, st.AccountID)
 	toIdx := -1
 	if st.TransferAccountID.Valid {
@@ -202,11 +203,12 @@ func accountCurrencyByID(accounts []*account.Account, id types.ID) string {
 
 // indexOfID returns the position of id in ids, or -1 if not found.
 //
-// Reporting -1 rather than 0 is deliberate. A combo seeded with 0 for an ID it
-// could not find looks identical to one the user chose, so the dialog would
-// present the FIRST account as the schedule's endpoint and save it — silently
-// re-pointing the transfer. Callers must decide what an unknown ID means: for
-// the account pickers it is a refusal, for the category combo it is "(None)".
+// Reporting -1 rather than 0 is deliberate: a caller that treats a missing ID
+// as the first entry presents an option the user did not choose. Callers
+// must decide what an unknown ID means. For the category combo it is
+// "(None)". The account pickers cannot express it, because a combo cannot
+// open with no selection, so the edit loader makes sure that the schedule's
+// accounts are in the list (withScheduleAccounts).
 func indexOfID(ids []types.ID, id types.ID) int {
 	for i, candidate := range ids {
 		if candidate == id {
@@ -270,6 +272,21 @@ func (a *App) submitScheduledTransferDialog() (tea.Model, tea.Cmd) {
 	}
 	if !fromID.IsNil() && fromID == toID {
 		a.sched.dlg.SetErrorMsg("From and To must be different accounts")
+		hasErrors = true
+	}
+	// The Edit form shows the schedule's own closed accounts, so that Save
+	// keeps the transfer where it is. Each leg may keep its closed account,
+	// but a swap must not put a closed account into the other leg.
+	wasFrom, wasTo := types.NilID, types.NilID
+	if st := a.sched.data.scheduled; a.sched.data.mode == scheduledDialogModeEdit && st != nil {
+		wasFrom, wasTo = st.AccountID, st.TransferAccountID.ID
+	}
+	if movesOntoClosed(a.sched.data.accounts, fromID, wasFrom) {
+		fields[schedXferFieldFrom].Error = closedAccountPickError
+		hasErrors = true
+	}
+	if movesOntoClosed(a.sched.data.accounts, toID, wasTo) {
+		fields[schedXferFieldTo].Error = closedAccountPickError
 		hasErrors = true
 	}
 

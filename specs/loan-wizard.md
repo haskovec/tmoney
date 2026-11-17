@@ -618,7 +618,11 @@ the delta) is a possible v2 on top of the same category.
 - **Closed accounts**: existing rules apply unchanged (schedules
   referencing closed accounts refuse to post and are skipped by
   auto-post; the payoff toast suggests closing the loan only after it
-  reaches zero).
+  reaches zero). A schedule whose loan account is closed is neither
+  loan-shaped nor loan-adoptable (both need an active loan account), so
+  Edit Series does not offer **Edit as loan →**. Reopen the account to
+  edit the loan. A closed pay-from account is no problem: edit mode keeps
+  it as it is.
 
 ## Out of Scope Summary
 

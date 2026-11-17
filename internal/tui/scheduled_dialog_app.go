@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
@@ -78,6 +79,10 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 			if err != nil {
 				return errMsg{err: err, fileOf: file}
 			}
+			accounts, err = withScheduleAccounts(accounts, st, svc.Account.GetByID)
+			if err != nil {
+				return errMsg{err: err, fileOf: file}
+			}
 			data.accounts = accounts
 		}
 
@@ -94,6 +99,48 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 
 		return scheduledDialogDataMsg{data: data, fileOf: file}
 	}
+}
+
+// withScheduleAccounts returns the open accounts plus each account that the
+// Edit form of st shows in a picker and that the open accounts do not
+// include: its source, and for a transfer its destination. Such an account is
+// closed. A combo cannot open with no selection, so without it the form would
+// open on the first open account, and Save would move the schedule there.
+// With it, Save keeps the schedule where it is, and the user can redirect it
+// to an open account (specs/accounts.md). get loads an account by ID.
+func withScheduleAccounts(accounts []*account.Account, st *scheduled.Transaction, get func(types.ID) (*account.Account, error)) ([]*account.Account, error) {
+	ids := []types.ID{st.AccountID}
+	if st.IsTransfer() {
+		ids = append(ids, st.TransferAccountID.ID)
+	}
+	for _, id := range ids {
+		if accountByID(accounts, id) != nil {
+			continue
+		}
+		acct, err := get(id)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, acct)
+	}
+	return accounts, nil
+}
+
+// closedAccountPickError is the field error for a pick that movesOntoClosed
+// refuses.
+const closedAccountPickError = "Closed account: pick an open one"
+
+// movesOntoClosed reports whether Save would put the schedule on a closed
+// account: id is the account picked for a role (source or destination) and
+// was is the account that role had when the form opened. A closed account
+// takes no new schedule, but keeping one is allowed: the schedule already
+// uses it, and Save must not move it. accounts is the list behind the picker.
+func movesOntoClosed(accounts []*account.Account, id, was types.ID) bool {
+	if id.IsNil() || id == was {
+		return false
+	}
+	acct := accountByID(accounts, id)
+	return acct != nil && acct.IsClosed()
 }
 
 // categoriesOrNil lists every category, or nil when the service is absent or
