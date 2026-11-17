@@ -179,10 +179,11 @@ func TestApp_SubmitTransferDialog_DispatchesRegToInv(t *testing.T) {
 // =============================================================================
 
 func TestBuildAccountOptions(t *testing.T) {
+	// Pickers list open accounts; a zero Account is closed (Active false).
 	accounts := []*account.Account{
-		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking"},
-		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Savings"},
-		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Credit Card"},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking", Active: true},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Savings", Active: true},
+		{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Credit Card", Active: true},
 	}
 
 	options, ids := buildAccountOptions(accounts)

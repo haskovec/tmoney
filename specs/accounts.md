@@ -170,7 +170,8 @@ Closed accounts:
   closed. The freeze is enforced at the service layer, so it holds across the
   TUI, the CLI, scheduled posting, and imports. Reopen to make changes.
 - No longer appear in any account picker (transfer, scheduled transfer,
-  investment share transfer, import, paycheck), and a schedule cannot be created
+  investment share transfer, import, paycheck), except that Edit Series shows a
+  schedule's own closed account (see below), and a schedule cannot be created
   against — or post into — a closed account.
 - Maintain historical data, and remain **viewable** (read-only register /
   portfolio valuation, net-worth `--include-closed`).
@@ -184,6 +185,20 @@ destination, or transfer-line split target becomes closed is handled as: a soft
 warning at close time (listing the affected schedules; the close still
 proceeds), a hard refusal on manual post (the schedule stays due), and a skip on
 auto-post (the batch is not aborted).
+
+To redirect such a schedule in the TUI, open Edit Series. The account picker
+shows the schedule's closed source or transfer destination, marked "(closed)",
+so Save keeps the schedule where it is until you pick an open account. A save
+cannot move a schedule onto a closed account: a transfer leg can keep its own
+closed account, but cannot take the closed account of the other leg. A transfer
+line of a multi-line schedule is different: the split editor does not show a
+closed target, and opens that line as a category line, so give it a new target
+or a category. The wizards cannot show a closed account. **Edit as paycheck →**
+refuses a closed deposit account or transfer-line target, and **Edit as loan →**
+is not offered when the loan account is closed (the schedule is then not
+loan-shaped). Reopen the account to use them. On the CLI,
+`tmoney scheduled edit --account` moves the source of a single-line schedule;
+the CLI cannot change a transfer destination or a multi-line schedule.
 
 ### Reopen Account
 
