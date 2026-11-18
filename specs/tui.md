@@ -283,7 +283,7 @@ Semantics (full detail in [`specs/multiline-splits-and-paycheck.md`](multiline-s
 - Save is disabled while a multi-line preview is imbalanced.
 - To modify the template for all future occurrences, press `e` (Edit Series) on the scheduled item in the list instead of `Enter`.
 
-For a single-line scheduled transaction, the preview renders the regular Transaction Entry/Edit Dialog shape pre-filled with template values. The Category combo on the single-line preview exposes a `[+ Add new category…]` action row to create a new category inline (see [Category Combo Box](#category-combo-box)).
+For a single-line scheduled transaction, the preview renders the regular Transaction Entry/Edit Dialog shape pre-filled with template values. The Category combo on the single-line preview exposes a `[+ Add new category…]` action row to create a new category inline (see [Category Combo Box](#category-combo-box)). On a multi-line preview, each line's Category picker has the same action row; the new category goes on that line, and the other lines and the header keep their values.
 
 ### Paycheck Schedule Wizard
 

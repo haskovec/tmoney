@@ -23,6 +23,9 @@ const (
 	createCatSourceSchedDialog
 	createCatSourceSchedTransferDialog
 	createCatSourceSchedPreview
+	// createCatSourceSchedPreviewSplit is a line of the multi-line schedule
+	// preview's embedded split editor; origin.splitRow names the line.
+	createCatSourceSchedPreviewSplit
 	createCatSourceSplitDialog
 	createCatSourcePaycheckWizard
 	createCatSourceLoanWizard
@@ -89,7 +92,8 @@ func (s *createCatSurface) close() { *s = createCatSurface{origin: newCreateCatO
 // their idle values (-1 for the indexes, nil for the line).
 type createCatOrigin struct {
 	surface createCategorySource
-	// splitRow is the split-editor row whose Category combo activated
+	// splitRow is the split-editor row (the split editor's, or a line of the
+	// multi-line schedule preview's) whose Category combo activated
 	// [+ Add new category…]. -1 when no split-sourced sub-dialog is in flight.
 	splitRow int
 	// line is the paycheck-wizard line whose select field activated
@@ -347,6 +351,8 @@ func (a *App) applyCreatedCategory(req createCategoryRequest) error {
 		a.applyCreatedCategoryToSchedTransfer(newCat, cats)
 	case createCatSourceSchedPreview:
 		a.applyCreatedCategoryToSchedPreview(newCat, cats)
+	case createCatSourceSchedPreviewSplit:
+		a.applyCreatedCategoryToSchedPreviewSplit(newCat, cats)
 	case createCatSourceSplitDialog:
 		a.applyCreatedCategoryToSplit(newCat, cats)
 	case createCatSourcePaycheckWizard:
@@ -402,7 +408,7 @@ func (a *App) cancelCreateCatDialog() {
 		if a.sched.dlg != nil {
 			a.sched.dlg.SetVisible(true)
 		}
-	case createCatSourceSchedPreview:
+	case createCatSourceSchedPreview, createCatSourceSchedPreviewSplit:
 		if a.schedPreviewDialog != nil {
 			if header := a.schedPreviewDialog.HeaderDialog(); header != nil {
 				header.SetVisible(true)

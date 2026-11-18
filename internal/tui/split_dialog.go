@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"slices"
+
 	"github.com/haskovec/tmoney/internal/category"
 	"github.com/haskovec/tmoney/internal/transaction"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
@@ -385,6 +387,99 @@ func (sd *SplitDialog) SetCategories(cats []*category.Category) {
 func (sd *SplitDialog) applyRowSign(row *splitRow) {
 	sign := categorySignAt(sd.categories, sd.categoryIDs, row.categoryIndex)
 	applyCategorySign(&row.amountField, row.loadedAmount, sign)
+}
+
+// beginCreateCategory reports the focused row, whose Category picker
+// activated the [+ Add new category…] row, with the query typed into the
+// picker and the category type the row's amount implies. The query is
+// cleared, the same as on the other typeahead-combo surfaces. The surface
+// that holds the editor hides itself and opens the sub-dialog;
+// applyCreatedCategory brings the new category back to the row.
+func (sd *SplitDialog) beginCreateCategory() (row int, query string, defaultType category.Type) {
+	row = sd.rowIndex
+	defaultType = category.TypeExpense
+	if row >= 0 && row < len(sd.rows) {
+		defaultType = inferCategoryTypeFromAmount(sd.rows[row].amountField.Value)
+	}
+	if p := sd.focusedPicker(); p != nil {
+		query = p.Query
+		p.ClearComboQuery()
+	}
+	return row, query, defaultType
+}
+
+// applyCreatedCategory rebuilds the editor's category option slices to include
+// the freshly-persisted category and points the originating row at it. Other
+// rows' selections are preserved by looking up their previously-selected
+// category ID in the rebuilt slice. Persistence already happened in
+// persistCategory; the router passes the fresh category in. Showing the
+// editor again is the caller's job.
+func (sd *SplitDialog) applyCreatedCategory(newCat *category.Category, cats []*category.Category, originRow int) {
+	// Keep Value Adjustment when the editor offered it (a schedule on an
+	// asset account): rebuilt without it, a row on it fell back to "(None)".
+	includeVA := slices.Contains(sd.categoryOptions, category.ValueAdjustmentCategoryName)
+	options, ids := buildCategoryOptionsFor(cats, includeVA)
+
+	// Build a map from old categoryID to new index so non-originating
+	// rows preserve their selection by identity, not by stale index.
+	idToNewIdx := make(map[types.ID]int, len(ids))
+	for i, id := range ids {
+		idToNewIdx[id] = i
+	}
+
+	// Snapshot each row's selected categoryID before swapping slices.
+	priorIDs := make([]types.ID, len(sd.rows))
+	for i, row := range sd.rows {
+		switch {
+		case row.transferMode:
+			priorIDs[i] = types.NilID
+		case row.categoryIndex >= 0 && row.categoryIndex < len(sd.categoryIDs):
+			priorIDs[i] = sd.categoryIDs[row.categoryIndex]
+		default:
+			priorIDs[i] = types.NilID
+		}
+	}
+
+	sd.categoryOptions = options
+	sd.categoryIDs = ids
+	sd.categories = cats
+
+	// Re-map non-originating rows to their preserved category by ID.
+	for i := range sd.rows {
+		if i == originRow {
+			continue
+		}
+		if sd.rows[i].transferMode {
+			continue
+		}
+		if newIdx, ok := idToNewIdx[priorIDs[i]]; ok {
+			sd.rows[i].categoryIndex = newIdx
+		} else {
+			sd.rows[i].categoryIndex = 0 // (None)
+		}
+	}
+
+	// Point the originating row at the new category.
+	if originRow >= 0 && originRow < len(sd.rows) {
+		newIdx := 0
+		for i, id := range ids {
+			if id == newCat.ID {
+				newIdx = i
+				break
+			}
+		}
+		sd.rows[originRow].transferMode = false
+		sd.rows[originRow].categoryIndex = newIdx
+		sd.applyRowSign(&sd.rows[originRow])
+		// Focus advances to the row's Amount, as on the other surfaces
+		// (specs/tui.md, inline category creation).
+		if originRow == sd.rowIndex && sd.focus == splitFocusRows {
+			sd.fieldFocus = splitFieldAmount
+		}
+	}
+
+	// The picker holds the old options and selection; reload it on next use.
+	sd.pickerOpen = false
 }
 
 // SetTransferTargets configures the account picker used when a split
