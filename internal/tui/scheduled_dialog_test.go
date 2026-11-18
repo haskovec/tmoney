@@ -487,7 +487,6 @@ func TestApp_Update_ScheduledDialogDataMsg_New(t *testing.T) {
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{{BaseModel: types.BaseModel{ID: types.NewID()}, Name: "Checking"}},
 		payees:   []*payee.Payee{},
-		payeeMap: make(map[string]*payee.Payee),
 	}
 
 	msg := scheduledDialogDataMsg{data: data}
@@ -533,7 +532,6 @@ func TestApp_Update_ScheduledDialogDataMsg_Edit(t *testing.T) {
 		scheduled: st,
 		accounts:  []*account.Account{{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking"}},
 		payees:    []*payee.Payee{{BaseModel: types.BaseModel{ID: payeeID}, Name: "Test Payee"}},
-		payeeMap:  map[string]*payee.Payee{"test payee": {BaseModel: types.BaseModel{ID: payeeID}, Name: "Test Payee"}},
 	}
 
 	msg := scheduledDialogDataMsg{data: data}
@@ -578,7 +576,6 @@ func TestScheduledDialog_ClickSave_DropsValueAdjustmentForNonAsset(t *testing.T)
 	app.Update(scheduledDialogDataMsg{data: &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{house, checking},
-		payeeMap: map[string]*payee.Payee{},
 	}})
 	d := app.sched.dlg
 	if d == nil {
@@ -637,7 +634,7 @@ func TestApp_HandleScheduledDialogKey_Cancel(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{types.NewID()},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -675,7 +672,7 @@ func TestApp_HandleScheduledDialogKey_TabCycles(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{types.NewID()},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -715,7 +712,7 @@ func TestApp_SubmitScheduledDialog_InvalidStartDate(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -750,7 +747,7 @@ func TestApp_SubmitScheduledDialog_InvalidAmount(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -785,7 +782,7 @@ func TestApp_SubmitScheduledDialog_InvalidInterval(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -820,7 +817,7 @@ func TestApp_SubmitScheduledDialog_ZeroInterval(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -859,7 +856,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_MissingEndDate(t *testing.T
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -898,7 +895,7 @@ func TestApp_SubmitScheduledDialog_DurationUntilDate_InvalidEndDate(t *testing.T
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -934,7 +931,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_MissingCount(t *testing.T
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -970,7 +967,7 @@ func TestApp_SubmitScheduledDialog_DurationOccurrences_InvalidCount(t *testing.T
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1005,7 +1002,7 @@ func TestApp_SubmitScheduledDialog_ValidNew(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID, types.NewID()}},
 	}
@@ -1045,7 +1042,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_VariableAmount(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1082,7 +1079,7 @@ func TestApp_SubmitScheduledDialog_DurationIndefinite_BlankEndDateAccepted(t *te
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1117,7 +1114,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithEndDate(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1152,7 +1149,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithOccurrences(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1193,7 +1190,6 @@ func TestApp_SubmitScheduledDialog_ValidEdit(t *testing.T) {
 			data: &scheduledDialogData{
 				mode:      scheduledDialogModeEdit,
 				scheduled: st,
-				payeeMap:  make(map[string]*payee.Payee),
 			},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
@@ -1604,7 +1600,7 @@ func TestApp_SubmitScheduledDialog_ValidNew_WithAutoPost(t *testing.T) {
 			return d
 		}()},
 
-			data:        &scheduledDialogData{mode: scheduledDialogModeNew, payeeMap: make(map[string]*payee.Payee)},
+			data:        &scheduledDialogData{mode: scheduledDialogModeNew},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID}},
 	}
@@ -1670,7 +1666,6 @@ func TestScheduledDialog_SplitToggle_OpensMultiLineEditor(t *testing.T) {
 				accounts: []*account.Account{
 					{BaseModel: types.BaseModel{ID: accountID}, Name: "Checking", Active: true, Type: account.TypeChecking},
 				},
-				payeeMap: make(map[string]*payee.Payee),
 			},
 			accountIDs:  []types.ID{accountID},
 			categoryIDs: []types.ID{types.NilID, categoryID}},
@@ -1766,7 +1761,6 @@ func TestScheduledDialog_MultiLineSave_PersistsChildren(t *testing.T) {
 	app.sched.data = &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{acct},
-		payeeMap: make(map[string]*payee.Payee),
 	}
 	app.sched.accountIDs = []types.ID{acct.ID}
 	app.sched.categoryIDs = categoryIDs
@@ -2192,8 +2186,7 @@ func newAppForSchedAddNew(t *testing.T, query string, categorySvc *category.Serv
 			Category: categorySvc,
 		},
 		sched: schedSurface{data: &scheduledDialogData{
-			mode:     scheduledDialogModeNew,
-			payeeMap: make(map[string]*payee.Payee),
+			mode: scheduledDialogModeNew,
 		},
 			accountIDs:      accountIDs,
 			categoryIDs:     categoryIDs,
@@ -2400,7 +2393,6 @@ func TestSubmitScheduledDialog_CategoryRoundTrip(t *testing.T) {
 	app.sched.data = &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{acct},
-		payeeMap: make(map[string]*payee.Payee),
 	}
 	app.sched.accountIDs = []types.ID{acct.ID}
 	app.sched.categoryIDs = categoryIDs

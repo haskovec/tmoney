@@ -2368,7 +2368,6 @@ func (env *paycheckEditEnv) openEditSeries(t *testing.T, st *scheduled.Transacti
 		scheduled: st,
 		accounts:  env.accounts,
 		payees:    env.payees,
-		payeeMap:  map[string]*payee.Payee{},
 	}
 	return env.app.sched.dlg
 }

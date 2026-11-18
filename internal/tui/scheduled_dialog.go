@@ -108,8 +108,7 @@ type scheduledDialogData struct {
 	scheduled  *scheduled.Transaction // non-nil when editing
 	accounts   []*account.Account
 	payees     []*payee.Payee
-	payeeMap   map[string]*payee.Payee // lowercase name -> payee
-	isTransfer bool                    // true for the single-line transfer dialog
+	isTransfer bool // true for the single-line transfer dialog
 }
 
 // scheduledDialogDataMsg is sent when scheduled dialog data has been loaded.

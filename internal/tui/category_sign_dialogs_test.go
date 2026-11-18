@@ -341,7 +341,6 @@ func newSignSchedApp(t *testing.T, f signFixture, existing *scheduled.Transactio
 	data := &scheduledDialogData{
 		mode:     scheduledDialogModeNew,
 		accounts: []*account.Account{acct},
-		payeeMap: map[string]*payee.Payee{},
 	}
 	if existing != nil {
 		existing.AccountID = acct.ID
