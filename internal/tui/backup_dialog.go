@@ -216,7 +216,7 @@ func (a *App) reloadAfterRestore() (tea.Model, tea.Cmd) {
 	a.undoManager.Clear()
 
 	a.dashboard.data = nil
-	a.register.data = nil
+	a.register.clearForLoad()
 	a.register.table = nil
 	a.scheduled.data = nil
 	a.scheduled.table = nil

@@ -193,22 +193,19 @@ func (a *App) handleMenuAction(action widget.MenuAction, data string) (tea.Model
 		return a, nil
 
 	case widget.MenuActionNewTransaction:
-		if a.currentView == ViewRegister {
-			if a.selectedAccountClosed() {
-				a.statusbar.AddNotification("Account is closed — reopen to add transactions", widget.NotificationAlert)
-				return a, nil
-			}
-			return a, a.loadTransactionDialogData()
-		}
+		return a.menuNewTransaction()
 
 	case widget.MenuActionNewTransfer:
-		if a.currentView == ViewRegister {
-			if a.selectedAccountClosed() {
-				a.statusbar.AddNotification("Account is closed — reopen to add transfers", widget.NotificationAlert)
-				return a, nil
-			}
-			return a, a.transfer.open(a.transferDeps())
-		}
+		return a.menuNewTransfer()
+
+	case widget.MenuActionEditTransaction:
+		return a.menuEditTransaction()
+
+	case widget.MenuActionDeleteTransaction:
+		return a.menuDeleteTransaction()
+
+	case widget.MenuActionSearch:
+		return a.menuSearchTransactions()
 
 	case widget.MenuActionLinkTransfers:
 		a.menubar.Deactivate()

@@ -103,6 +103,7 @@ func registerShortcuts() shortcutSection {
 			{"v", "Void transaction"},
 			{"t", "New transfer"},
 			{"r", "Reconcile account"},
+			{"/", "Search transactions"},
 			{"a", "Amortization schedule (loan accounts)"},
 			{"Tab", "Switch sidebar/table focus"},
 		},

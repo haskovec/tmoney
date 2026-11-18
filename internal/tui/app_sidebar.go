@@ -56,7 +56,7 @@ func (a *App) handleSidebarKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				a.switchView(ViewPortfolio)
 				return a, a.portfolio.load(a.portfolioDeps(), accountID)
 			}
-			a.register.data = nil // Clear old data while loading
+			a.register.clearForLoad() // Clear old data while loading
 			a.switchView(ViewRegister)
 			return a, a.loadRegisterData(accountID)
 		}

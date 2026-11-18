@@ -230,32 +230,17 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 		tableHeight := max(a.height-6, 1)
 		a.investmentRegister.table.PageDown(tableHeight)
 	case key.Matches(msg, a.keys.Search):
-		// Enter the security filter. Starting a new query drops any locked
-		// security so the user types fresh.
-		a.investmentRegister.filterSearching = true
-		a.investmentRegister.filterQuery = ""
-		a.investmentRegister.filterLockedSec = types.NilID
-		a.investmentRegister.buildTable(a.styles)
-		if a.investmentRegister.table != nil {
-			a.investmentRegister.table.SetCursor(0)
-		}
+		a.startInvestmentRegisterFilter()
 	case a.investmentRegister.data.account != nil && a.investmentRegister.data.account.IsClosed() &&
 		(msg.String() == "c" || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter) || key.Matches(msg, a.keys.Delete)):
 		// A closed account is frozen: navigation and `p` (portfolio) still
 		// work, but mutating actions are a no-op with an explanatory toast.
-		a.statusbar.AddNotification("Account is closed — reopen to make changes", widget.NotificationAlert)
+		a.statusbar.AddNotification(closedAccountChangesNotice, widget.NotificationAlert)
 		return a, nil
 	case key.Matches(msg, a.keys.New):
 		a.openInvestmentTypeSelector(false)
 	case key.Matches(msg, a.keys.Enter):
-		txn := a.investmentRegister.selectedTransaction()
-		if txn != nil {
-			if notice, refused := a.investmentRegister.shareTransferEditRefusal(a.investmentRegisterDeps(), txn); refused {
-				a.statusbar.AddNotification(notice, widget.NotificationAlert)
-				return a, nil
-			}
-			a.openInvestmentTypeSelector(true)
-		}
+		return a.editInvestmentTransaction()
 	case msg.String() == "c":
 		return a.toggleInvestmentTransactionStatus()
 	case msg.String() == "p":
@@ -266,62 +251,96 @@ func (a *App) handleInvestmentRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.
 			return a, a.portfolio.load(a.portfolioDeps(), a.investmentRegister.data.account.ID)
 		}
 	case key.Matches(msg, a.keys.Delete):
-		txn := a.investmentRegister.selectedTransaction()
-		if txn != nil {
-			txnID := txn.ID
-			// Transfer-typed rows have a paired counterpart in another
-			// account that must be deleted with them — surface that in
-			// the confirmation prompt so the user isn't surprised when
-			// the savings (or other-investment) side also disappears.
-			prompt := fmt.Sprintf("Delete this %s transaction?", txn.Type.DisplayName())
-			if txn.TransferID.Valid {
-				prompt = fmt.Sprintf("Delete this %s transaction? Both sides will be removed.", txn.Type.DisplayName())
-			}
-			// Classified here, synchronously: the confirm callback runs on a
-			// separate goroutine and must not re-read register state.
-			isTransferLeg := isCashTransferLeg(txn)
-			var transferID types.ID
-			if isTransferLeg {
-				transferID = txn.TransferID.ID
-			}
-			undoManager := a.undoManager
-			svc := a.services
-			file := a.fileOfOpen()
-			a.showConfirmDialog(
-				"Delete Transaction",
-				prompt,
-				func() tea.Msg {
-					if svc.Investment == nil {
-						return errMsg{err: fmt.Errorf("investment service not available")}
+		return a.confirmDeleteInvestmentTransaction()
+	}
+
+	return a, nil
+}
+
+// startInvestmentRegisterFilter starts the security filter: / in the
+// investment register, and Transactions → Search…. Starting a new query drops
+// any locked security so the user types fresh.
+func (a *App) startInvestmentRegisterFilter() {
+	a.investmentRegister.filterSearching = true
+	a.investmentRegister.filterQuery = ""
+	a.investmentRegister.filterLockedSec = types.NilID
+	a.investmentRegister.buildTable(a.styles)
+	if a.investmentRegister.table != nil {
+		a.investmentRegister.table.SetCursor(0)
+	}
+}
+
+// editInvestmentTransaction opens the edit flow for the selected row: Enter in
+// the investment register, and Transactions → Edit Transaction.
+func (a *App) editInvestmentTransaction() (tea.Model, tea.Cmd) {
+	txn := a.investmentRegister.selectedTransaction()
+	if txn != nil {
+		if notice, refused := a.investmentRegister.shareTransferEditRefusal(a.investmentRegisterDeps(), txn); refused {
+			a.statusbar.AddNotification(notice, widget.NotificationAlert)
+			return a, nil
+		}
+		a.openInvestmentTypeSelector(true)
+	}
+	return a, nil
+}
+
+// confirmDeleteInvestmentTransaction asks to delete the selected row: d in the
+// investment register, and Transactions → Delete Transaction.
+func (a *App) confirmDeleteInvestmentTransaction() (tea.Model, tea.Cmd) {
+	txn := a.investmentRegister.selectedTransaction()
+	if txn != nil {
+		txnID := txn.ID
+		// Transfer-typed rows have a paired counterpart in another
+		// account that must be deleted with them — surface that in
+		// the confirmation prompt so the user isn't surprised when
+		// the savings (or other-investment) side also disappears.
+		prompt := fmt.Sprintf("Delete this %s transaction?", txn.Type.DisplayName())
+		if txn.TransferID.Valid {
+			prompt = fmt.Sprintf("Delete this %s transaction? Both sides will be removed.", txn.Type.DisplayName())
+		}
+		// Classified here, synchronously: the confirm callback runs on a
+		// separate goroutine and must not re-read register state.
+		isTransferLeg := isCashTransferLeg(txn)
+		var transferID types.ID
+		if isTransferLeg {
+			transferID = txn.TransferID.ID
+		}
+		undoManager := a.undoManager
+		svc := a.services
+		file := a.fileOfOpen()
+		a.showConfirmDialog(
+			"Delete Transaction",
+			prompt,
+			func() tea.Msg {
+				if svc.Investment == nil {
+					return errMsg{err: fmt.Errorf("investment service not available")}
+				}
+				// A cash-transfer row is one LEG of a pair whose counterpart may
+				// live in the other ledger, so the transfer owner deletes it —
+				// investment.Service.DeleteTransaction refuses it outright, and
+				// deleting the leg alone would orphan the counterpart. Routing it
+				// through undo also makes it Ctrl+Z-able, which it never was.
+				//
+				// Share transfers stay on DeleteTransaction: both their legs are
+				// investment rows owned by this package, and their cascade also
+				// reverses lot and position effects.
+				if isTransferLeg {
+					if svc.Transfer == nil || undoManager == nil {
+						return errMsg{err: fmt.Errorf("transfer service not available")}
 					}
-					// A cash-transfer row is one LEG of a pair whose counterpart may
-					// live in the other ledger, so the transfer owner deletes it —
-					// investment.Service.DeleteTransaction refuses it outright, and
-					// deleting the leg alone would orphan the counterpart. Routing it
-					// through undo also makes it Ctrl+Z-able, which it never was.
-					//
-					// Share transfers stay on DeleteTransaction: both their legs are
-					// investment rows owned by this package, and their cascade also
-					// reverses lot and position effects.
-					if isTransferLeg {
-						if svc.Transfer == nil || undoManager == nil {
-							return errMsg{err: fmt.Errorf("transfer service not available")}
-						}
-						cmd := undo.NewDeleteTransferCommand(svc.Transfer, transferID)
-						if err := undoManager.Execute(cmd); err != nil {
-							return errMsg{err: err}
-						}
-						return investmentTransactionDeletedMsg{fileOf: file}
-					}
-					if err := svc.Investment.DeleteTransaction(txnID); err != nil {
+					cmd := undo.NewDeleteTransferCommand(svc.Transfer, transferID)
+					if err := undoManager.Execute(cmd); err != nil {
 						return errMsg{err: err}
 					}
 					return investmentTransactionDeletedMsg{fileOf: file}
-				},
-			)
-		}
+				}
+				if err := svc.Investment.DeleteTransaction(txnID); err != nil {
+					return errMsg{err: err}
+				}
+				return investmentTransactionDeletedMsg{fileOf: file}
+			},
+		)
 	}
-
 	return a, nil
 }
 

@@ -478,10 +478,11 @@ func TestApp_BuildRegisterTable_RowContent(t *testing.T) {
 	}
 }
 
-// TestApp_BuildRegisterTable_SelectsPendingByID verifies the cursor lands on
-// the just-saved transaction's row, matched by ID — even when that row sorts
-// into the middle of the list (e.g. a back-dated entry), not at the top.
-func TestApp_BuildRegisterTable_SelectsPendingByID(t *testing.T) {
+// TestApp_RegisterReload_SelectsPendingByID verifies the reload after a save
+// puts the cursor on the just-saved transaction's row, matched by ID — even
+// when that row sorts into the middle of the list (e.g. a back-dated entry),
+// not at the top.
+func TestApp_RegisterReload_SelectsPendingByID(t *testing.T) {
 	accountID := types.NewID()
 
 	// Rows in display order (date DESC): a newer txn, the back-dated new txn,
@@ -506,7 +507,7 @@ func TestApp_BuildRegisterTable_SelectsPendingByID(t *testing.T) {
 		pendingRegisterSelectID: newID,
 	}
 
-	app.buildRegisterTable()
+	app.Update(registerLoadedMsg{data: app.register.data})
 
 	if app.register.table.Cursor() != 1 {
 		t.Errorf("cursor = %d, want 1 (the back-dated new transaction)", app.register.table.Cursor())
@@ -550,7 +551,7 @@ func TestApp_BuildRegisterTable_NoPendingLeavesCursor(t *testing.T) {
 }
 
 // TestApp_Update_TransactionDialogSaved_SetsPendingSelectID verifies the saved
-// message's ID is stashed so the next register build can re-select the row.
+// message's ID is stashed so the next register reload can select the row.
 func TestApp_Update_TransactionDialogSaved_SetsPendingSelectID(t *testing.T) {
 	accountID := types.NewID()
 	app := &App{

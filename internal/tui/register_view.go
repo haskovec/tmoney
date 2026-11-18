@@ -23,6 +23,36 @@ type registerViewState struct {
 	// number columns fitted to the loaded rows. buildRegisterTable sets it,
 	// and the resize-time fit check uses it.
 	withBalance []widget.Column
+	// shown holds the transaction of each table row, in table order. It is
+	// all the transactions, or under a search only the ones that match.
+	// buildRegisterTable sets it; every action on "the selected row" reads
+	// it through selectedTransaction.
+	shown []*transaction.Transaction
+	// The search (the `/` key, or Transactions → Search…). While searching is
+	// true every key edits the query. Enter keeps the query and gives the
+	// keys back to the register; Esc clears it. See register_search.go.
+	searching bool
+	query     string
+}
+
+// selectedTransaction returns the transaction on the cursor row, or nil.
+func (s *registerViewState) selectedTransaction() *transaction.Transaction {
+	if s.table == nil {
+		return nil
+	}
+	cursor := s.table.Cursor()
+	if cursor < 0 || cursor >= len(s.shown) {
+		return nil
+	}
+	return s.shown[cursor]
+}
+
+// clearForLoad drops the register's data before another account loads into
+// it, together with the search: a search belongs to the account it was typed
+// in.
+func (s *registerViewState) clearForLoad() {
+	s.data = nil
+	s.resetSearch()
 }
 
 // registerData holds the loaded data for the account register view.
@@ -114,6 +144,19 @@ func (a *App) loadRegisterData(accountID types.ID) tea.Cmd {
 
 // handleRegisterKeys handles key presses in the register view.
 func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// While a search is typed, every key edits it (handleKeyPress routes the
+	// keys here first, so the global keys do not take them).
+	if a.register.searching {
+		a.handleRegisterSearchKey(msg)
+		return a, nil
+	}
+	// Esc clears a kept search before anything else: with the sidebar
+	// focused it would otherwise go to the sidebar, which ignores it.
+	if key.Matches(msg, a.keys.Escape) && a.register.searchActive() {
+		a.clearRegisterSearch()
+		return a, nil
+	}
+
 	// Handle Tab to switch focus between sidebar and table
 	if key.Matches(msg, a.keys.Tab) || key.Matches(msg, a.keys.ShiftTab) {
 		if a.sidebar.IsFocused() {
@@ -155,6 +198,10 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "pgdown":
 		tableHeight := max(a.height-6, 1)
 		a.register.table.PageDown(tableHeight)
+	case key.Matches(msg, a.keys.Search):
+		// A search only reads, so it works on a closed account too.
+		a.startRegisterSearch()
+		return a, nil
 	case msg.String() == "a":
 		// Amortization drill-in — loan accounts only (read-only, so it works
 		// on a closed loan too). A no-op on non-loan accounts.
@@ -168,7 +215,7 @@ func (a *App) handleRegisterKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			key.Matches(msg, a.keys.Delete) || key.Matches(msg, a.keys.New) || key.Matches(msg, a.keys.Enter)):
 		// A closed account is frozen: navigation still works, but every
 		// mutating action is a no-op with an explanatory toast.
-		a.statusbar.AddNotification("Account is closed — reopen to make changes", widget.NotificationAlert)
+		a.statusbar.AddNotification(closedAccountChangesNotice, widget.NotificationAlert)
 		return a, nil
 	case msg.String() == "c":
 		return a.toggleTransactionStatus()
@@ -202,12 +249,10 @@ func (a *App) openEditTransactionFlow() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	cursor := a.register.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.data.transactions) {
+	txn := a.register.selectedTransaction()
+	if txn == nil {
 		return a, nil
 	}
-
-	txn := a.register.data.transactions[cursor]
 
 	if txn.IsVoid() {
 		a.statusbar.AddNotification("Cannot edit void transaction", widget.NotificationAlert)
@@ -231,12 +276,10 @@ func (a *App) toggleTransactionStatus() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	cursor := a.register.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.data.transactions) {
+	txn := a.register.selectedTransaction()
+	if txn == nil {
 		return a, nil
 	}
-
-	txn := a.register.data.transactions[cursor]
 
 	// Cannot toggle void transactions
 	if txn.IsVoid() {
@@ -312,12 +355,10 @@ func (a *App) showVoidConfirmation() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	cursor := a.register.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.data.transactions) {
+	txn := a.register.selectedTransaction()
+	if txn == nil {
 		return a, nil
 	}
-
-	txn := a.register.data.transactions[cursor]
 
 	// Cannot void already-void transactions
 	if txn.IsVoid() {
@@ -381,12 +422,10 @@ func (a *App) showDeleteConfirmation() (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	cursor := a.register.table.Cursor()
-	if cursor < 0 || cursor >= len(a.register.data.transactions) {
+	txn := a.register.selectedTransaction()
+	if txn == nil {
 		return a, nil
 	}
-
-	txn := a.register.data.transactions[cursor]
 
 	// Cannot delete void transactions (Service.Delete rejects with IsVoidError).
 	// Surface a status-bar notification before opening the dialog the user can't complete.
@@ -469,10 +508,19 @@ func (a *App) buildRegisterTable() {
 	if a.register.data.account != nil {
 		opening = a.register.data.account.OpeningBalance
 	}
+	// The running balance is the account's balance after each row, so it is
+	// computed over every row and stays true on the rows a search shows.
 	balances := runningBalances(a.register.data.transactions, opening)
-	rows := make([][]string, len(a.register.data.transactions))
+	query := strings.ToLower(strings.TrimSpace(a.register.query))
+	var rows [][]string
+	a.register.shown = a.register.shown[:0]
 	for i, txn := range a.register.data.transactions {
-		rows[i] = append(a.formatRegisterRow(txn), accountMoney(balances[i], a.register.data.account))
+		cells := a.register.formatRow(txn)
+		if query != "" && !a.register.rowMatches(txn, cells, query) {
+			continue
+		}
+		rows = append(rows, append(cells, accountMoney(balances[i], a.register.data.account)))
+		a.register.shown = append(a.register.shown, txn)
 	}
 
 	// Running-balance column — shown only when the register is wide enough to
@@ -494,32 +542,20 @@ func (a *App) buildRegisterTable() {
 	}
 	a.register.table.SetRows(rows)
 
-	// After a save, move the cursor onto the just-saved row by matching its
-	// transaction ID. Selecting by ID (not position) keeps the cursor on the
-	// row even when it sorts into the middle of the list, e.g. a back-dated
-	// entry. The pending ID is cleared only once a matching row is found, so a
-	// rebuild against a stale ledger (e.g. a resize landing in the async
-	// save→reload window) preserves the pending selection for the real reload.
-	if !a.pendingRegisterSelectID.IsNil() {
-		for i, txn := range a.register.data.transactions {
-			if txn.ID == a.pendingRegisterSelectID {
-				a.register.table.SetCursor(i)
-				a.pendingRegisterSelectID = types.NilID
-				break
-			}
-		}
-	}
-
 	// Apply void row styling
-	for i, txn := range a.register.data.transactions {
+	for i, txn := range a.register.shown {
 		if txn.IsVoid() {
 			a.register.table.SetRowStyle(i, widget.RowStyleVoid)
 		}
 	}
 }
 
-// formatRegisterRow formats a transaction into table row strings.
-func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
+// registerAmountCol is the Amount cell's index in a formatRow row.
+const registerAmountCol = 4
+
+// formatRow formats a transaction into table row strings: date, status, payee,
+// category, amount.
+func (s *registerViewState) formatRow(txn *transaction.Transaction) []string {
 	// Date
 	dateStr := txn.Date.Time().Format("01/02/06")
 
@@ -537,13 +573,13 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	// Payee
 	payee := ""
 	if txn.IsTransfer() {
-		if name, ok := a.register.data.accountNames[txn.TransferAccountID.ID]; ok {
+		if name, ok := s.data.accountNames[txn.TransferAccountID.ID]; ok {
 			payee = "Transfer: " + name
 		} else {
 			payee = "Transfer"
 		}
 	} else if txn.HasPayee() {
-		if name, ok := a.register.data.payeeNames[txn.PayeeID.ID]; ok {
+		if name, ok := s.data.payeeNames[txn.PayeeID.ID]; ok {
 			payee = name
 		}
 	}
@@ -551,7 +587,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	// Category
 	category := ""
 	if txn.HasCategory() {
-		if name, ok := a.register.data.categoryNames[txn.CategoryID.ID]; ok {
+		if name, ok := s.data.categoryNames[txn.CategoryID.ID]; ok {
 			category = name
 		}
 	} else if txn.IsTransfer() {
@@ -559,7 +595,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 	}
 
 	// Amount
-	amount := accountMoney(txn.Amount, a.register.data.account)
+	amount := accountMoney(txn.Amount, s.data.account)
 
 	return []string{dateStr, status, payee, category, amount}
 }
@@ -568,8 +604,7 @@ func (a *App) formatRegisterRow(txn *transaction.Transaction) []string {
 // banner row under its title. renderRegister and tableContentRowOffset both
 // use it, so the mouse math follows the render.
 func (a *App) registerShowsClosedBanner() bool {
-	d := a.register.data
-	return d != nil && d.account != nil && d.account.IsClosed()
+	return a.cashRegisterClosed()
 }
 
 // renderRegister renders the account register view.
@@ -613,6 +648,9 @@ func (a *App) renderRegister() string {
 		}
 		sections = append(sections, a.styles.Muted.Render(label))
 	}
+	if a.register.searchActive() {
+		sections = append(sections, a.styles.Muted.Render(a.register.searchLine(max(contentWidth-4, 1))))
+	}
 
 	// Separator
 	sepWidth := max(contentWidth-4, 1)
@@ -624,6 +662,9 @@ func (a *App) renderRegister() string {
 	titleHeight := 2 // title + separator
 	if closedBanner {
 		titleHeight++ // account for the read-only banner line
+	}
+	if a.register.searchActive() {
+		titleHeight++ // the search line
 	}
 	paddingHeight := 2    // top/bottom padding
 	scrollInfoHeight := 1 // reserve a row for the scroll info line so a long list doesn't overflow the status bar

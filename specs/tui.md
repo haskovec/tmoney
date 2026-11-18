@@ -116,6 +116,29 @@ investment register (buy, sell, dividend, reinvest, cash operations, and share
 transfers). Reloads that aren't saves — toggling cleared status, deleting —
 leave the cursor where it was.
 
+#### Account register: search
+
+In a bank, card or loan register, `/` (or **Transactions → Search…**) opens a
+**search**. Typing narrows the list live to the rows that hold the query as a
+case-insensitive substring of the date, payee, category or amount as the
+register shows them, or of the memo or check number. An amount also matches as
+a plain number, and the query's thousands commas are ignored for amounts, so
+`-1500` and `1,500` both find the row shown as `-$1500.00`.
+
+A search line under the title shows the query and the match count
+(`Search: rent  (3 of 120)`), or `no matches`. While typing, the arrow, page,
+`Home` and `End` keys move through the matches, and every other key is query
+text. `Enter` keeps the query and gives the keys back to the register, so
+`Enter`, `d`, `c`, `v` and the other register keys act on the found rows.
+`Esc` clears the search, typed or kept, shows every row again and keeps the
+cursor on the row it was on. `/` with a kept query starts a new search in the
+same way. When the reload after a save lands, the cursor goes to the saved
+row. If a kept search hides that row, the search clears. If the user is typing
+a search, the search stays and the cursor does not move. The running balance stays the account's balance
+after each row. The search only reads, so it works on a closed account too. It
+is transient: it clears when the register is left or another account opens in
+it.
+
 #### Investment register: filter by security
 
 In an investment account's register, `/` opens a **security filter** for
@@ -429,6 +452,12 @@ Each menu label has its shortcut letter underlined to indicate the `Alt+key` sho
 - Search…
 - Link Transfers…
 - New Paycheck Schedule…
+
+The first five items act on the open register and do what its key does, with
+the same checks: `n`, `t`, `Enter` and `d` on the selected row, and `/`. In an
+investment register they do what its keys do (Search… opens the security
+filter); New Transfer there points to New Transaction → Transfer Cash. Where
+no register is open, each of the five says "Open an account register first".
 
 ### Securities Menu
 - Security Master

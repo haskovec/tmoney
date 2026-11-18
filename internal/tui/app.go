@@ -408,17 +408,11 @@ func (a *App) searchTakesKey(msg tea.KeyPressMsg) bool {
 // searchKeyHandler returns the key handler of the search or filter that is
 // being typed in the current view, or nil when none is.
 func (a *App) searchKeyHandler() func(tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case a.currentView == ViewInvestmentRegister && a.investmentRegister.filterSearching:
-		return a.handleInvestmentRegisterKeys
-	case a.currentView == ViewCorporateActions && a.corporateActions.filterEditing:
-		return a.handleCorporateActionViewKeys
-	case a.currentView == ViewPrices && a.prices.data != nil && a.prices.data.searching:
-		return a.handlePriceViewKeys
-	case a.currentView == ViewSecurities && a.securities.data != nil && a.securities.data.searching:
-		return a.handleSecurityViewKeys
+	e, ok := viewFor(a.currentView)
+	if !ok || e.searching == nil || !e.searching(a) {
+		return nil
 	}
-	return nil
+	return func(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) { return e.onKey(a, msg) }
 }
 
 // handleKeyPress handles keyboard input.
@@ -548,6 +542,10 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// still-typing filter is already captured by the early guard above.)
 		if a.currentView == ViewInvestmentRegister && a.investmentRegister.filterActive() {
 			return a.handleInvestmentRegisterKeys(msg)
+		}
+		// A kept search on the register: Esc clears it and stays.
+		if a.currentView == ViewRegister && a.register.searchActive() {
+			return a.handleRegisterKeys(msg)
 		}
 		// With the Corporate Actions details panel open, Esc closes the panel
 		// and stays in the view; let the view handler claim it. (A filter

@@ -78,6 +78,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case registerLoadedMsg:
 		a.register.data = msg.data
 		a.buildRegisterTable()
+		a.selectSavedRegisterRow()
 		return a, nil
 
 	case investmentRegisterLoadedMsg:
