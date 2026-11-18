@@ -75,15 +75,16 @@ func (s *registerViewState) holds(id types.ID) bool {
 // the row keeps the request for the next reload.
 //
 // When a kept search hides the saved row, the search ends, so the row shows.
-// While the user types a new search, the query has priority and the request
-// is dropped.
+// While the user types a new search, the query has priority: the request is
+// dropped and the cursor stays where the typing put it, also when the saved
+// row is one of the matches.
 func (a *App) selectSavedRegisterRow() {
 	id := a.pendingRegisterSelectID
 	if id.IsNil() || !a.register.holds(id) {
 		return
 	}
 	a.pendingRegisterSelectID = types.NilID
-	if a.register.selectRow(id) || a.register.searching {
+	if a.register.searching || a.register.selectRow(id) {
 		return
 	}
 	a.register.resetSearch()
