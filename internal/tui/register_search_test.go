@@ -350,6 +350,22 @@ func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
 			t.Error("a key after the reload ran a register command")
 		}
 	})
+
+	// The cursor does not move while the user types, also when the saved row
+	// is one of the matches.
+	t.Run("typing a search that shows the saved row", func(t *testing.T) {
+		a, r := newRegisterSearchApp(t)
+		regKey(a, slashKey())
+		regType(a, "an") // Landlord, then Bean There
+		a.pendingRegisterSelectID = r.coffee.ID
+		reloadRegister(a)
+		if got := a.register.selectedTransaction(); got != r.rent {
+			t.Error("the reload moved the cursor during a typed search")
+		}
+		if !a.pendingRegisterSelectID.IsNil() {
+			t.Error("the pending selection stays set after the typed search won")
+		}
+	})
 }
 
 // A rebuild that is not a reload does not use up a save's pending selection:
