@@ -276,8 +276,13 @@ func TestRegisterSearch_SlashAgainKeepsTheRow(t *testing.T) {
 	}
 }
 
-// A save selects the saved row. When the kept search hides that row, the
-// search ends so the cursor can go to it.
+// reloadRegister lands a reload of the register's ledger, as after a save.
+func reloadRegister(a *App) {
+	a.Update(registerLoadedMsg{data: a.register.data})
+}
+
+// A save selects the saved row when its reload lands. When the kept search
+// hides that row, the search ends so the cursor can go to it.
 func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
 	keep := func(t *testing.T, query string) (*App, searchRows) {
 		a, r := newRegisterSearchApp(t)
@@ -290,7 +295,7 @@ func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
 	t.Run("hidden by the search", func(t *testing.T) {
 		a, r := keep(t, "rent")
 		a.pendingRegisterSelectID = r.coffee.ID
-		a.buildRegisterTable()
+		reloadRegister(a)
 		if a.register.searchActive() {
 			t.Error("the search hides the saved row and stays")
 		}
@@ -305,7 +310,7 @@ func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
 	t.Run("shown by the search", func(t *testing.T) {
 		a, r := keep(t, "an") // Landlord and Bean There
 		a.pendingRegisterSelectID = r.coffee.ID
-		a.buildRegisterTable()
+		reloadRegister(a)
 		if a.register.query != "an" || len(a.register.shown) != 2 {
 			t.Errorf("query=%q rows=%d, want the search kept", a.register.query, len(a.register.shown))
 		}
@@ -314,17 +319,54 @@ func TestRegisterSearch_SaveSelectsTheSavedRow(t *testing.T) {
 		}
 	})
 
-	// A rebuild before the reload ends does not hold the saved row yet. The
-	// search and the pending selection stay for the reload.
+	// A reload from before the save does not hold the saved row. The search
+	// and the pending selection stay for the next reload.
 	t.Run("not loaded yet", func(t *testing.T) {
 		a, _ := keep(t, "rent")
 		pending := types.NewID()
 		a.pendingRegisterSelectID = pending
-		a.buildRegisterTable()
+		reloadRegister(a)
 		if a.register.query != "rent" || a.pendingRegisterSelectID != pending {
 			t.Errorf("query=%q, want the search and the pending selection kept", a.register.query)
 		}
 	})
+
+	// While the user types a new search, the query has priority: the search
+	// stays in typing mode, so the next keys are still query text.
+	t.Run("typing a search", func(t *testing.T) {
+		a, r := newRegisterSearchApp(t)
+		regKey(a, slashKey())
+		regType(a, "rent")
+		a.pendingRegisterSelectID = r.coffee.ID
+		reloadRegister(a)
+		if !a.register.searching || a.register.query != "rent" {
+			t.Fatalf("searching=%v query=%q, want the typed search kept", a.register.searching, a.register.query)
+		}
+		if !a.pendingRegisterSelectID.IsNil() {
+			t.Error("the pending selection stays set after the typed search won")
+		}
+		regType(a, "d")
+		if a.register.query != "rentd" || a.confirm.dlg != nil {
+			t.Error("a key after the reload ran a register command")
+		}
+	})
+}
+
+// A rebuild that is not a reload does not use up a save's pending selection:
+// the ledger can be from before the save, with the saved row at its old
+// position. Leaving the register with a search active rebuilds the table.
+func TestRegisterSearch_LeaveKeepsThePendingSelection(t *testing.T) {
+	a, r := newRegisterSearchApp(t)
+	regKey(a, slashKey())
+	regType(a, "rent")
+	regKey(a, regEnter)
+	a.pendingRegisterSelectID = r.grocer.ID // an edit of a row the old ledger holds
+
+	a.switchView(ViewDashboard)
+
+	if a.pendingRegisterSelectID != r.grocer.ID {
+		t.Error("the leave rebuild used up the pending selection before the reload")
+	}
 }
 
 func TestRegisterSearch_ClearedOnLeaveAndAccountOpen(t *testing.T) {

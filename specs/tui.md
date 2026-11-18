@@ -132,8 +132,9 @@ text. `Enter` keeps the query and gives the keys back to the register, so
 `Enter`, `d`, `c`, `v` and the other register keys act on the found rows.
 `Esc` clears the search, typed or kept, shows every row again and keeps the
 cursor on the row it was on. `/` with a kept query starts a new search in the
-same way. A save puts the cursor on the saved row; when the kept search hides
-that row, the search clears. The running balance stays the account's balance
+same way. When the reload after a save lands, the cursor goes to the saved
+row. If a kept search hides that row, the search clears. If the user is typing
+a search, the search stays and the cursor does not move. The running balance stays the account's balance
 after each row. The search only reads, so it works on a closed account too. It
 is transient: it clears when the register is left or another account opens in
 it.

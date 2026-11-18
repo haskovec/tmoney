@@ -512,12 +512,6 @@ func (a *App) buildRegisterTable() {
 	// computed over every row and stays true on the rows a search shows.
 	balances := runningBalances(a.register.data.transactions, opening)
 	query := strings.ToLower(strings.TrimSpace(a.register.query))
-	if query != "" && a.register.hides(a.pendingRegisterSelectID, query) {
-		// The saved row does not match the search. The search ends, so the
-		// row shows and the cursor can go to it.
-		a.register.resetSearch()
-		query = ""
-	}
 	var rows [][]string
 	a.register.shown = a.register.shown[:0]
 	for i, txn := range a.register.data.transactions {
@@ -547,16 +541,6 @@ func (a *App) buildRegisterTable() {
 		a.register.table.SetColumns(columns)
 	}
 	a.register.table.SetRows(rows)
-
-	// After a save, move the cursor onto the just-saved row by matching its
-	// transaction ID. Selecting by ID (not position) keeps the cursor on the
-	// row even when it sorts into the middle of the list, e.g. a back-dated
-	// entry. The pending ID is cleared only once a matching row is found, so a
-	// rebuild against a stale ledger (e.g. a resize landing in the async
-	// save→reload window) preserves the pending selection for the real reload.
-	if !a.pendingRegisterSelectID.IsNil() && a.register.selectRow(a.pendingRegisterSelectID) {
-		a.pendingRegisterSelectID = types.NilID
-	}
 
 	// Apply void row styling
 	for i, txn := range a.register.shown {

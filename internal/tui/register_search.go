@@ -53,18 +53,42 @@ func (s *registerViewState) rowMatches(txn *transaction.Transaction, cells []str
 	return false
 }
 
-// hides reports whether the lower-cased query hides the loaded transaction
-// id. It is false for a nil id and for an id the register has not loaded.
-func (s *registerViewState) hides(id types.ID, lowerQuery string) bool {
-	if id.IsNil() {
+// holds reports whether the loaded register has the transaction id.
+func (s *registerViewState) holds(id types.ID) bool {
+	if s.data == nil {
 		return false
 	}
 	for _, txn := range s.data.transactions {
 		if txn.ID == id {
-			return !s.rowMatches(txn, s.formatRow(txn), lowerQuery)
+			return true
 		}
 	}
 	return false
+}
+
+// selectSavedRegisterRow puts the cursor on the row that a save asked for,
+// matched by ID, so a back-dated row in the middle of the list is found too.
+//
+// It runs only when a reload lands. Other rebuilds (a resize, a search key,
+// leaving the register) can run on the ledger from before the save, where the
+// saved row is missing or at its old position. A reload that does not hold
+// the row keeps the request for the next reload.
+//
+// When a kept search hides the saved row, the search ends, so the row shows.
+// While the user types a new search, the query has priority and the request
+// is dropped.
+func (a *App) selectSavedRegisterRow() {
+	id := a.pendingRegisterSelectID
+	if id.IsNil() || !a.register.holds(id) {
+		return
+	}
+	a.pendingRegisterSelectID = types.NilID
+	if a.register.selectRow(id) || a.register.searching {
+		return
+	}
+	a.register.resetSearch()
+	a.buildRegisterTable()
+	a.register.selectRow(id)
 }
 
 // selectRow puts the cursor on the row of the transaction id. It reports

@@ -119,7 +119,7 @@ func TestApp_WindowResize_PreservesPendingSelectionAgainstStaleLedger(t *testing
 	app.register.data.transactions = append([]*transaction.Transaction{
 		{BaseModel: types.BaseModel{ID: savedID}, AccountID: accountID, Date: types.Today(), Amount: types.MustNewMoney("-7"), Status: transaction.StatusUncleared},
 	}, app.register.data.transactions...)
-	app.buildRegisterTable()
+	app.Update(registerLoadedMsg{data: app.register.data})
 	if app.register.table.Cursor() != 0 {
 		t.Errorf("cursor = %d, want 0 (the just-saved row)", app.register.table.Cursor())
 	}
