@@ -2,12 +2,10 @@ package tui
 
 import (
 	"slices"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/category"
-	"github.com/haskovec/tmoney/internal/payee"
 	"github.com/haskovec/tmoney/internal/scheduled"
 	"github.com/haskovec/tmoney/internal/tui/dialog"
 	"github.com/haskovec/tmoney/internal/tui/widget"
@@ -24,10 +22,7 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 	svc := a.services
 	file := a.fileOfOpen()
 	return func() tea.Msg {
-		data := &scheduledDialogData{
-			mode:     scheduledDialogModeNew,
-			payeeMap: make(map[string]*payee.Payee),
-		}
+		data := &scheduledDialogData{mode: scheduledDialogModeNew}
 
 		if svc.Account != nil {
 			accounts, err := svc.Account.List(true)
@@ -43,9 +38,6 @@ func (a *App) loadNewScheduledDialogData() tea.Cmd {
 				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
-			for _, p := range payees {
-				data.payeeMap[strings.ToLower(p.Name)] = p
-			}
 		}
 
 		return scheduledDialogDataMsg{data: data, fileOf: file}
@@ -70,7 +62,6 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 		data := &scheduledDialogData{
 			mode:       scheduledDialogModeEdit,
 			scheduled:  st,
-			payeeMap:   make(map[string]*payee.Payee),
 			isTransfer: st.IsTransfer(),
 		}
 
@@ -92,9 +83,6 @@ func (a *App) loadEditScheduledDialogData() tea.Cmd {
 				return errMsg{err: err, fileOf: file}
 			}
 			data.payees = payees
-			for _, p := range payees {
-				data.payeeMap[strings.ToLower(p.Name)] = p
-			}
 		}
 
 		return scheduledDialogDataMsg{data: data, fileOf: file}
