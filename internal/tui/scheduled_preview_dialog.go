@@ -319,15 +319,20 @@ func (p *SchedulePreviewDialog) IsLoanShaped() bool {
 // any user line edit (not just an amount change), which permanently freezes
 // loan reseeding (the reseed rebuilds the whole editor and would otherwise
 // discard a category/memo edit). See the reseed rule in specs/loan-wizard.md.
+//
+// The category is its ID, not its index: a category created from a line
+// rebuilds the sorted option list under the open preview, so an index can
+// name a different category than it did at the seed.
 func (p *SchedulePreviewDialog) currentLineSignatures() []string {
-	if p.splitDialog == nil {
+	sd := p.splitDialog
+	if sd == nil {
 		return nil
 	}
-	out := make([]string, len(p.splitDialog.rows))
-	for i := range p.splitDialog.rows {
-		r := &p.splitDialog.rows[i]
-		out[i] = fmt.Sprintf("%d|%t|%d|%s|%s",
-			r.categoryIndex, r.transferMode, r.accountIndex,
+	out := make([]string, len(sd.rows))
+	for i := range sd.rows {
+		r := &sd.rows[i]
+		out[i] = fmt.Sprintf("%s|%t|%d|%s|%s",
+			categoryIDAt(sd.categoryIDs, r.categoryIndex), r.transferMode, r.accountIndex,
 			r.amountField.Value, r.memoField.Value)
 	}
 	return out

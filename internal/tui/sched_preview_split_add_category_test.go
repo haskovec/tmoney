@@ -210,44 +210,80 @@ func TestSchedPreviewLine_AddNew_CancelRestores(t *testing.T) {
 	}
 }
 
-// A loan-shaped preview recomputes its lines at Save unless the user edited
-// them. A new category on the interest line is such an edit, so the posted
-// interest line keeps it.
+// A loan-shaped preview rebuilds its lines from the loan balance, at Save or
+// after a Date edit, unless the user edited them. A new category on the
+// interest line is such an edit. "Accrued Interest" sorts before "Interest",
+// so the line keeps its index in the rebuilt list; only the category ID shows
+// the edit. "Mortgage Interest" sorts after it and moves the index.
 func TestSchedPreviewLine_AddNew_LoanLineKeepsTheCategory(t *testing.T) {
+	for _, name := range []string{"Accrued Interest", "Mortgage Interest"} {
+		t.Run(name+"/save", func(t *testing.T) {
+			env, a, created := loanLineWithNewCategory(t, name)
+
+			sd := a.schedPreviewDialog.SplitDialog()
+			sd.focus = splitFocusSaveBtn
+			_, cmd := a.handleSchedulePreviewDialogKey(enterKey())
+			if cmd == nil {
+				t.Fatalf("Save returned no command; split error %q", sd.errorMsg)
+			}
+			if msg, ok := cmd().(errMsg); ok {
+				t.Fatalf("post failed: %v", msg.err)
+			}
+			txns, err := env.txnRepo.ListByAccount(env.funding.ID)
+			if err != nil || len(txns) != 1 {
+				t.Fatalf("posted transactions = %d (err %v), want 1", len(txns), err)
+			}
+			splits, err := env.splitRepo.ListByTransaction(txns[0].ID)
+			if err != nil {
+				t.Fatalf("ListByTransaction: %v", err)
+			}
+			var onNew, onOld int
+			for _, s := range splits {
+				switch s.CategoryID {
+				case created.ID:
+					onNew++
+				case env.interest.ID:
+					onOld++
+				}
+			}
+			if onNew != 1 || onOld != 0 {
+				t.Errorf("posted lines: %d on %s, %d on Interest; want 1 and 0", onNew, name, onOld)
+			}
+		})
+
+		t.Run(name+"/date edit", func(t *testing.T) {
+			_, a, created := loanLineWithNewCategory(t, name)
+			p := a.schedPreviewDialog
+
+			// A Date edit in the header runs the reseed check, as a typed
+			// date does (see TestSchedulePreview_LoanReseedsOnDateChange).
+			p.setSplitFocus(false)
+			p.HeaderDialog().SetFocusIndex(previewFieldDate)
+			p.HeaderDialog().Fields()[previewFieldDate].Value = "08/01/2024"
+			model, _ := a.handleSchedulePreviewDialogKey(tea.KeyPressMsg{Code: tea.KeyRight})
+			a = model.(*App)
+
+			if got := lineCategoryID(a.schedPreviewDialog.SplitDialog(), 0); got != created.ID {
+				t.Errorf("after a Date edit the interest line is on %v, want %s kept", got, name)
+			}
+		})
+	}
+}
+
+// loanLineWithNewCategory opens the loan preview and puts a new category
+// named name on its interest line through [+ Add new category…].
+func loanLineWithNewCategory(t *testing.T, name string) (*loanPreviewEnv, *App, *category.Category) {
+	t.Helper()
 	env := newLoanPreviewEnv(t, "250000.00", "6.5", "1580.17", types.NewDate(2024, time.July, 1))
 	env.openPreview(t)
 	if p := env.app.schedPreviewDialog; p == nil || !p.IsLoanShaped() {
 		t.Fatal("the preview should be loan-shaped")
 	}
-
-	a := openPreviewLineAddNew(t, env.app, 0, "Mortgage Interest")
+	a := openPreviewLineAddNew(t, env.app, 0, name)
 	a = submitNewCategory(t, a)
-	mi := findCategory(t, a, "Mortgage Interest")
-
-	sd := a.schedPreviewDialog.SplitDialog()
-	sd.focus = splitFocusSaveBtn
-	_, cmd := a.handleSchedulePreviewDialogKey(enterKey())
-	if cmd == nil {
-		t.Fatalf("Save returned no command; split error %q", sd.errorMsg)
+	created := findCategory(t, a, name)
+	if got := lineCategoryID(a.schedPreviewDialog.SplitDialog(), 0); got != created.ID {
+		t.Fatalf("the interest line did not take %s", name)
 	}
-	if msg, ok := cmd().(errMsg); ok {
-		t.Fatalf("post failed: %v", msg.err)
-	}
-	txns, err := env.txnRepo.ListByAccount(env.funding.ID)
-	if err != nil || len(txns) != 1 {
-		t.Fatalf("posted transactions = %d (err %v), want 1", len(txns), err)
-	}
-	splits, err := env.splitRepo.ListByTransaction(txns[0].ID)
-	if err != nil {
-		t.Fatalf("ListByTransaction: %v", err)
-	}
-	for _, s := range splits {
-		if s.CategoryID == env.interest.ID {
-			t.Error("Save recomputed the lines and dropped the new category")
-		}
-		if s.CategoryID == mi.ID {
-			return
-		}
-	}
-	t.Error("no posted line has the new category")
+	return env, a, created
 }
