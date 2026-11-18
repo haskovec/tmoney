@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/haskovec/tmoney/internal/category"
@@ -239,110 +238,32 @@ func (s *splitSurface) takeScheduledSplits() (pending *pendingSplitScheduled, sp
 	return pending, splits, true
 }
 
-// beginCreateCategory hides the editor and reports the focused row, whose
-// Category picker activated the [+ Add new category…] row, with the query
-// typed into the picker and the category type the row's amount implies. The
-// query is cleared, the same as on the other typeahead-combo surfaces. The
-// editor is kept alive (hidden) so its row state survives the divert;
-// applyCreatedCategory re-shows it with the new category selected, reshow
-// does so after a cancel. It reports false when no editor is open, in which
-// case nothing was hidden and the caller must not open the sub-dialog.
+// beginCreateCategory hides the editor and reports the focused row, the query
+// typed into its picker, and the category type the row's amount implies (see
+// SplitDialog.beginCreateCategory). The editor is kept alive (hidden) so its
+// row state survives the divert; applyCreatedCategory re-shows it with the new
+// category selected, reshow does so after a cancel. It reports false when no
+// editor is open, in which case nothing was hidden and the caller must not
+// open the sub-dialog.
 func (s *splitSurface) beginCreateCategory() (row int, query string, defaultType category.Type, ok bool) {
 	if s.editor == nil {
 		return -1, "", category.TypeExpense, false
 	}
-	row = s.editor.rowIndex
-	defaultType = category.TypeExpense
-	if row >= 0 && row < len(s.editor.rows) {
-		defaultType = inferCategoryTypeFromAmount(s.editor.rows[row].amountField.Value)
-	}
-	if p := s.editor.focusedPicker(); p != nil {
-		query = p.Query
-		p.ClearComboQuery()
-	}
+	row, query, defaultType = s.editor.beginCreateCategory()
 	s.editor.SetVisible(false)
 	return row, query, defaultType, true
 }
 
-// applyCreatedCategory rebuilds the editor's category option slices to include
-// the freshly-persisted category, points the originating row at it, and
-// re-shows the editor. Other rows' selections are preserved by looking up
-// their previously-selected category ID in the rebuilt slice. Persistence
-// already happened in persistCategory; the router passes the fresh category
-// in. The persist is asynchronous, so a surface the user has closed in the
-// meantime is left alone.
+// applyCreatedCategory puts the new category on the originating row (see
+// SplitDialog.applyCreatedCategory) and re-shows the editor. The persist is
+// asynchronous, so a surface the user has closed in the meantime is left
+// alone.
 func (s *splitSurface) applyCreatedCategory(newCat *category.Category, cats []*category.Category, originRow int) {
-	sd := s.editor
-	if sd == nil {
+	if s.editor == nil {
 		return
 	}
-
-	// Keep Value Adjustment when the editor offered it (a schedule on an
-	// asset account): rebuilt without it, a row on it fell back to "(None)".
-	includeVA := slices.Contains(sd.categoryOptions, category.ValueAdjustmentCategoryName)
-	options, ids := buildCategoryOptionsFor(cats, includeVA)
-
-	// Build a map from old categoryID to new index so non-originating
-	// rows preserve their selection by identity, not by stale index.
-	idToNewIdx := make(map[types.ID]int, len(ids))
-	for i, id := range ids {
-		idToNewIdx[id] = i
-	}
-
-	// Snapshot each row's selected categoryID before swapping slices.
-	priorIDs := make([]types.ID, len(sd.rows))
-	for i, row := range sd.rows {
-		switch {
-		case row.transferMode:
-			priorIDs[i] = types.NilID
-		case row.categoryIndex >= 0 && row.categoryIndex < len(sd.categoryIDs):
-			priorIDs[i] = sd.categoryIDs[row.categoryIndex]
-		default:
-			priorIDs[i] = types.NilID
-		}
-	}
-
-	sd.categoryOptions = options
-	sd.categoryIDs = ids
-	sd.categories = cats
-
-	// Re-map non-originating rows to their preserved category by ID.
-	for i := range sd.rows {
-		if i == originRow {
-			continue
-		}
-		if sd.rows[i].transferMode {
-			continue
-		}
-		if newIdx, ok := idToNewIdx[priorIDs[i]]; ok {
-			sd.rows[i].categoryIndex = newIdx
-		} else {
-			sd.rows[i].categoryIndex = 0 // (None)
-		}
-	}
-
-	// Point the originating row at the new category.
-	if originRow >= 0 && originRow < len(sd.rows) {
-		newIdx := 0
-		for i, id := range ids {
-			if id == newCat.ID {
-				newIdx = i
-				break
-			}
-		}
-		sd.rows[originRow].transferMode = false
-		sd.rows[originRow].categoryIndex = newIdx
-		sd.applyRowSign(&sd.rows[originRow])
-		// Focus advances to the row's Amount, as on the other surfaces
-		// (specs/tui.md, inline category creation).
-		if originRow == sd.rowIndex && sd.focus == splitFocusRows {
-			sd.fieldFocus = splitFieldAmount
-		}
-	}
-
-	// The picker holds the old options and selection; reload it on next use.
-	sd.pickerOpen = false
-	sd.SetVisible(true)
+	s.editor.applyCreatedCategory(newCat, cats, originRow)
+	s.editor.SetVisible(true)
 }
 
 // reshow makes the editor visible again after a create-category divert the

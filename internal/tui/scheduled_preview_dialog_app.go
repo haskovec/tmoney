@@ -252,8 +252,53 @@ func (a *App) schedulePreviewSplitAction(action dialog.DialogAction) (tea.Model,
 		return a, nil
 	case dialog.DialogActionSubmit:
 		return a.submitSchedulePreviewDialog()
+	case dialog.DialogActionAddNew:
+		return a.openCreateCategorySubDialogFromSchedPreviewSplit()
 	}
 	return a, nil
+}
+
+// openCreateCategorySubDialogFromSchedPreviewSplit opens the create-category
+// sub-dialog for the multi-line preview's focused line, whose Category picker
+// activated [+ Add new category…]. Hiding the header takes the whole preview
+// off screen (see SchedulePreviewDialog.IsVisible); the preview is kept alive,
+// so its header and lines survive the divert.
+func (a *App) openCreateCategorySubDialogFromSchedPreviewSplit() (tea.Model, tea.Cmd) {
+	p := a.schedPreviewDialog
+	if p == nil || p.splitDialog == nil {
+		return a, nil
+	}
+	row, query, defaultType := p.splitDialog.beginCreateCategory()
+	origin := originFrom(createCatSourceSchedPreviewSplit)
+	origin.splitRow = row
+	parent, name := splitCategoryQuery(query)
+	a.createCat.open(origin, name, parent, a.createCatParentsFor(origin.surface), defaultType)
+	p.headerDialog.SetVisible(false)
+	return a, nil
+}
+
+// applyCreatedCategoryToSchedPreviewSplit is the per-surface applier called
+// by the createCategoryRequestMsg router when the originating surface was a
+// line of the multi-line schedule preview. The line takes the new category,
+// the other lines keep theirs, and the preview shows again. The preview's own
+// category lists take the new category too, because a loan reseed rebuilds
+// the lines from them. The new category is a line edit, so a loan-shaped
+// preview stops reseeding at the next key or click (userEdited). The persist
+// is asynchronous, so a preview the user has closed in the meantime is left
+// alone.
+func (a *App) applyCreatedCategoryToSchedPreviewSplit(newCat *category.Category, cats []*category.Category) {
+	origin := a.createCat.openedFrom()
+	a.createCat.close()
+	p := a.schedPreviewDialog
+	if p == nil || p.splitDialog == nil {
+		return
+	}
+	sd := p.splitDialog
+	sd.applyCreatedCategory(newCat, cats, origin.splitRow)
+	p.categoryOptions = sd.categoryOptions
+	p.categoryIDs = sd.categoryIDs
+	p.categories = cats
+	p.headerDialog.SetVisible(true)
 }
 
 // openCreateCategorySubDialogFromSchedPreview hides the schedule preview
