@@ -718,8 +718,10 @@ func (a *App) submitTransactionDialog() (tea.Model, tea.Cmd) {
 		if editing {
 			pending.existing = existing
 		}
-		// Build category options for the split dialog (reuse loaded data)
-		categoryOptions, categoryIDs := buildCategoryOptions(a.txn.data.categories)
+		// Build category options for the split dialog (reuse loaded data). The
+		// lines follow the dialog's own rule: Value Adjustment is offered on an
+		// asset account, so a line on it opens on it and not on "(None)".
+		categoryOptions, categoryIDs := buildCategoryOptionsForAccount(a.txn.data.categories, a.sidebar.SelectedAccount())
 		accountOptions, accountIDs := buildSplitTransferAccountOptions(a.txn.data.accounts)
 		open := splitOpen{
 			amount:          amount,

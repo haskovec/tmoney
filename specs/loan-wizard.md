@@ -554,8 +554,10 @@ Two gaps in the existing machinery must be handled explicitly:
   checking/savings/cash/investment), the picker additionally offers the
   `Value Adjustment` system category. The system `Transfer` category
   stays engine-assigned and hidden everywhere. Wire through the
-  transaction dialog and scheduled dialog. The CLI resolves categories
-  by name without a system filter and needs no change.
+  transaction dialog and scheduled dialog, and the split lines each of
+  them opens, so a split line on `Value Adjustment` opens on it. The CLI
+  resolves categories by name without a system filter and needs no
+  change.
 - **Seeding**: the `EnsurePaycheckCategories` on-open pattern creates
   *non-system* categories and silently skips existing names, so it
   cannot be reused verbatim. New helper: create the category **with**
