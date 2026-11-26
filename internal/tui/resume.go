@@ -142,7 +142,15 @@ func (t resumeTarget) String() string {
 
 // resumeValue returns the --resume value of the screen on display. While an
 // account view has no account yet, it is the Dashboard's.
+//
+// While a resume opens (the auto-post and the sidebar's first load run first),
+// the Dashboard is on screen, but the value stays the screen of the resume.
+// The report replaces the terminal's record, so a second restart in that
+// window would otherwise bring back the Dashboard.
 func (a *App) resumeValue() string {
+	if t := a.resumeInFlight; t != nil && a.currentView == ViewDashboard {
+		return t.String()
+	}
 	e, ok := viewFor(a.currentView)
 	if !ok || e.resume.name == "" {
 		return resumeDashboard
@@ -264,6 +272,7 @@ func (a *App) startResume() (tea.Cmd, bool) {
 	}
 	a.pendingResume = nil
 	target := *t
+	a.resumeInFlight = &target
 	load := a.loadSidebarData()
 	withResume := func() tea.Msg {
 		msg := load()
@@ -329,6 +338,7 @@ func (a *App) resolveResume(t resumeTarget) tea.Cmd {
 // applyResume opens the screen of a resolved resume. It does nothing when the
 // user has already left the start view: what they opened wins.
 func (a *App) applyResume(msg resumeResolvedMsg) tea.Cmd {
+	a.resumeInFlight = nil // from here on, the report is the screen on display
 	if a.currentView != ViewDashboard {
 		return nil
 	}

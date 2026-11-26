@@ -92,7 +92,10 @@ type App struct {
 	// pendingResume is the screen that the --resume value asks for, until
 	// Init starts it (see setResume and startResume).
 	pendingResume *resumeTarget
-	err           error
+	// resumeInFlight is that screen from the start of the resume until it
+	// opens, fails, or the user leaves the Dashboard (see resumeValue).
+	resumeInFlight *resumeTarget
+	err            error
 
 	// widget.Styles
 	styles widget.Styles

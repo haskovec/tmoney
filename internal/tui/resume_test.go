@@ -553,3 +553,68 @@ func TestResume_CancelledReconciliationLoadsTheRegister(t *testing.T) {
 		t.Errorf("the register did not load the account after the cancel")
 	}
 }
+
+// While a resume opens, the report keeps the screen of the resume: the
+// Dashboard is on display only until the auto-post and the sidebar's first
+// load end, and a second restart in that window must not lose the screen.
+func TestResume_ReportsItsScreenWhileItOpens(t *testing.T) {
+	lastArg := func(a *App) string {
+		t.Helper()
+		pr := a.View().ProgramResume
+		if pr == nil || len(pr.Args) == 0 {
+			t.Fatal("no resume report")
+		}
+		return pr.Args[len(pr.Args)-1]
+	}
+
+	t.Run("until it opens", func(t *testing.T) {
+		a := resumeTestApp(t)
+		a.setResume("scheduled")
+		cmd, ok := a.startResume()
+		if !ok {
+			t.Fatal("no resume to start")
+		}
+		if got := lastArg(a); got != "scheduled" {
+			t.Errorf("while the resume opens the report is %q, want scheduled", got)
+		}
+		runKeepingToast(t, a, cmd, 4)
+		if a.currentView != ViewScheduled || lastArg(a) != "scheduled" {
+			t.Errorf("after the resume: view %v, report %q; want Scheduled", a.currentView, lastArg(a))
+		}
+	})
+	t.Run("until it fails", func(t *testing.T) {
+		a := resumeTestApp(t)
+		missing := "register/" + types.NewID().String()
+		a.setResume(missing)
+		cmd, _ := a.startResume()
+		if got := lastArg(a); got != missing {
+			t.Errorf("while the resume opens the report is %q, want %q", got, missing)
+		}
+		runKeepingToast(t, a, cmd, 4)
+		if got := lastArg(a); got != "dashboard" {
+			t.Errorf("after a failed resume the report is %q, want dashboard", got)
+		}
+	})
+	t.Run("until the user leaves the Dashboard", func(t *testing.T) {
+		a := resumeTestApp(t)
+		a.setResume("scheduled")
+		if _, ok := a.startResume(); !ok {
+			t.Fatal("no resume to start")
+		}
+		a.switchView(ViewPrices)
+		if got := lastArg(a); got != "prices" {
+			t.Errorf("after the user opened Prices the report is %q, want prices", got)
+		}
+	})
+	t.Run("until the file changes", func(t *testing.T) {
+		a := resumeTestApp(t)
+		a.setResume("scheduled")
+		if _, ok := a.startResume(); !ok {
+			t.Fatal("no resume to start")
+		}
+		a.switchDatabase(dbtest.New(t))
+		if got := lastArg(a); got != "dashboard" {
+			t.Errorf("after File > Open the report is %q, want dashboard", got)
+		}
+	})
+}

@@ -313,6 +313,9 @@ func (a *App) toggleMenu(index int) {
 // switchView changes the current view and stores the previous view.
 func (a *App) switchView(v View) {
 	if a.currentView != v {
+		// The user, or the resume itself, chose the screen: the resume
+		// report names the screen on display again (see resumeValue).
+		a.resumeInFlight = nil
 		if e, ok := viewFor(a.currentView); ok && e.leave != nil {
 			e.leave(a)
 		}
