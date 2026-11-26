@@ -148,6 +148,14 @@ func (s *Sidebar) SetCursorToAccount(id types.ID) bool {
 	return false
 }
 
+// SelectAccount selects the account with id, as Select does for the account
+// under the cursor, and moves the cursor onto it when the list has it. A
+// program resume uses it to open an account's view.
+func (s *Sidebar) SelectAccount(id types.ID) {
+	s.selectedAccountID = id
+	s.SetCursorToAccount(id)
+}
+
 // cursorItem returns the item at the current cursor position, or nil.
 func (s *Sidebar) cursorItem() *sidebarItem {
 	if s.cursor < 0 || s.cursor >= len(s.items) {

@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/haskovec/tmoney/internal/account"
 	"github.com/haskovec/tmoney/internal/tui/widget"
 )
 
@@ -54,6 +57,10 @@ type viewEntry struct {
 	// on the way out. It is nil for a view that keeps everything, and
 	// switchView checks for that.
 	leave func(*App)
+
+	// resume is the view's part of the program resume report: its fixed
+	// name in the --resume value, and how a resume opens it (resume.go).
+	resume resumeRule
 }
 
 // allViews is the one list of views. It holds only constants, method values,
@@ -84,6 +91,7 @@ func init() {
 					a.register.table.SetFocused(false)
 				}
 			},
+			resume: resumeRule{name: resumeDashboard},
 		},
 		{
 			id:        ViewRegister,
@@ -125,6 +133,17 @@ func init() {
 					a.clearRegisterSearch()
 				}
 			},
+			resume: resumeRule{
+				name:    "register",
+				subject: resumeAccount,
+				current: func(a *App) string {
+					if a.register.data != nil {
+						return a.accountSubject(a.register.data.account)
+					}
+					return a.accountSubject(nil)
+				},
+				open: func(a *App, msg resumeResolvedMsg) tea.Cmd { return a.openAccountView(msg.account) },
+			},
 		},
 		{
 			id:     ViewScheduled,
@@ -146,6 +165,7 @@ func init() {
 					a.scheduled.table.SetFocused(true)
 				}
 			},
+			resume: resumeRule{name: "scheduled"},
 		},
 		{
 			id:     ViewReports,
@@ -180,6 +200,21 @@ func init() {
 					a.register.table.SetFocused(false)
 				}
 			},
+			resume: resumeRule{
+				name:    "reports",
+				subject: resumeReport,
+				current: func(a *App) string {
+					if a.reports.data != nil {
+						return reportResumeNames[a.reports.data.rtype]
+					}
+					return reportResumeNames[reportTypeNetWorth]
+				},
+				open: func(a *App, msg resumeResolvedMsg) tea.Cmd {
+					a.switchView(ViewReports)
+					now := time.Now()
+					return a.reports.load(a.reportsDeps(), msg.target.report, now.Year(), int(now.Month()), false)
+				},
+			},
 		},
 		{
 			id:         ViewReconciliation,
@@ -205,6 +240,17 @@ func init() {
 					a.reconciliation.table.SetFocused(true)
 				}
 			},
+			resume: resumeRule{
+				name:    "reconciliation",
+				subject: resumeAccount,
+				current: func(a *App) string {
+					if a.reconciliation.data != nil {
+						return a.accountSubject(a.reconciliation.data.account)
+					}
+					return a.accountSubject(nil)
+				},
+				open: (*App).resumeReconciliation,
+			},
 		},
 		{
 			id:         ViewSecurities,
@@ -226,6 +272,7 @@ func init() {
 					a.securities.table.SetFocused(true)
 				}
 			},
+			resume: resumeRule{name: "securities"},
 		},
 		{
 			id:         ViewPrices,
@@ -258,6 +305,7 @@ func init() {
 					a.prices.table.SetFocused(true)
 				}
 			},
+			resume: resumeRule{name: "prices"},
 		},
 		{
 			id:        ViewInvestmentRegister,
@@ -287,6 +335,23 @@ func init() {
 			// Leaving the investment register drops its (transient) security
 			// filter, so reopening the account later shows the full register.
 			leave: func(a *App) { a.investmentRegister.resetFilter() },
+			resume: resumeRule{
+				name:    "investment-register",
+				subject: resumeAccount,
+				current: func(a *App) string {
+					if a.investmentRegister.data != nil {
+						return a.accountSubject(a.investmentRegister.data.account)
+					}
+					return a.accountSubject(nil)
+				},
+				open: func(a *App, msg resumeResolvedMsg) tea.Cmd {
+					if !msg.account.Type.IsInvestmentType() {
+						return a.openAccountView(msg.account)
+					}
+					a.switchView(ViewInvestmentRegister)
+					return a.investmentRegister.load(a.investmentRegisterDeps(), msg.account.ID)
+				},
+			},
 		},
 		{
 			id:   ViewPortfolio,
@@ -314,6 +379,17 @@ func init() {
 				// Start with portfolio table focused
 				a.sidebar.SetFocused(false)
 				a.portfolio.setTableFocused(true)
+			},
+			resume: resumeRule{
+				name:    "portfolio",
+				subject: resumeAccount,
+				current: func(a *App) string {
+					if a.portfolio.data != nil {
+						return a.accountSubject(a.portfolio.data.account)
+					}
+					return a.accountSubject(nil)
+				},
+				open: func(a *App, msg resumeResolvedMsg) tea.Cmd { return a.openAccountView(msg.account) },
 			},
 		},
 		{
@@ -352,6 +428,7 @@ func init() {
 				// filter itself is kept: a drill-in from Securities set it.
 				a.corporateActions.filterEditing = false
 			},
+			resume: resumeRule{name: "corporate-actions"},
 		},
 		{
 			id:         ViewAmortization,
@@ -378,6 +455,23 @@ func init() {
 				// Amortization is full-screen, no sidebar. The table is built
 				// once its data loads (buildTable focuses it then).
 				a.sidebar.SetFocused(false)
+			},
+			resume: resumeRule{
+				name:    "amortization",
+				subject: resumeAccount,
+				current: func(a *App) string {
+					if a.amortization.data != nil {
+						return a.accountSubject(a.amortization.data.account)
+					}
+					return a.accountSubject(nil)
+				},
+				open: func(a *App, msg resumeResolvedMsg) tea.Cmd {
+					if msg.account.Type != account.TypeLoan {
+						return a.openAccountView(msg.account)
+					}
+					a.switchView(ViewAmortization)
+					return a.amortization.load(a.amortizationDeps(), msg.account.ID)
+				},
 			},
 		},
 	}

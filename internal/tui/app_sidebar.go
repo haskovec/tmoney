@@ -10,6 +10,9 @@ import (
 // sidebarLoadedMsg is sent when sidebar data has been loaded.
 type sidebarLoadedMsg struct {
 	accounts []*account.Account
+	// resume is the program resume that the start's first load carries
+	// (see startResume), or nil.
+	resume *resumeTarget
 	fileOf
 }
 

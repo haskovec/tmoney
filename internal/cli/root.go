@@ -25,6 +25,11 @@ import (
 // default location"). Overridden in tests.
 var tuiLauncher = defaultTUILauncher
 
+// resumeLauncher launches the TUI for a program resume: the file and the
+// hidden --resume value of the command that the TUI reported to the terminal
+// (see tui/resume.go). Overridden in tests.
+var resumeLauncher = runTUIResume
+
 func defaultTUILauncher(file string) error {
 	return runTUI(file)
 }
@@ -62,7 +67,7 @@ func ExecuteWith(args []string, stdout, stderr io.Writer) error {
 }
 
 func newRootCmd() *cobra.Command {
-	var fileFlag string
+	var fileFlag, resumeFlag string
 
 	cmd := &cobra.Command{
 		Use:   "tmoney [file]",
@@ -82,10 +87,19 @@ func newRootCmd() *cobra.Command {
 			if file == "" && len(args) > 0 {
 				file = args[0]
 			}
+			if resumeFlag != "" {
+				return resumeLauncher(file, resumeFlag)
+			}
 			return tuiLauncher(file)
 		},
 	}
 	cmd.PersistentFlags().StringVarP(&fileFlag, "file", "f", "", "Database file path")
+	// --resume is the screen of a program resume (OSC 7577): the terminal
+	// runs the command that the TUI reported, after the terminal restarts.
+	// It is hidden, and it must stay: a terminal can run the report of an
+	// older tmoney after an upgrade, and an unknown flag would fail it.
+	cmd.Flags().StringVar(&resumeFlag, "resume", "", "Screen to open (set by a terminal that resumes tmoney)")
+	_ = cmd.Flags().MarkHidden("resume")
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(theme.NewCmd())
 	cmd.AddCommand(db.NewCmd())

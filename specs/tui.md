@@ -872,6 +872,39 @@ accounts, and show dollars.
 - Keyboard-only navigation
 - No reliance on color alone for meaning
 
+## Program Resume (OSC 7577)
+
+A terminal that supports the Program Resume Protocol (OSC 7577; Rex, at this time) can run tmoney again after the terminal restarts, on the same file and screen. A terminal that supports it sets `OSC7577_TOKEN`; in other terminals nothing changes.
+
+**What tmoney reports.** On every frame, `View` sets the command that opens the file on the screen on display, and Bubble Tea reports it each time it changes:
+
+```
+<tmoney> -f <absolute file> --resume <view>[/<subject>]
+```
+
+- `<tmoney>` is the absolute path of the binary that runs (`os.Executable`), not a bare `tmoney`: a development build that migrated the file must not come back as an older installed binary. A binary that the go tool built (`go run`, `go test`) is not reported, because the go tool deletes it.
+- The `--resume` values are fixed text. A terminal can run the report of an older tmoney after an upgrade, so **never rename or reuse a value**. The published values are:
+  - No subject: `dashboard`, `scheduled`, `securities`, `prices`, `corporate-actions`.
+  - An account ID: `register/<id>`, `investment-register/<id>`, `portfolio/<id>`, `amortization/<id>`, `reconciliation/<id>`.
+  - A report type: `reports/net-worth`, `reports/spending`, `reports/holdings`, `reports/allocation` (`reports` alone is Net Worth).
+- When the user quits (Ctrl+Q, File > Exit, File > Close File), the last view has no report, so the terminal clears the record and does not bring tmoney back. A closed terminal (SIGHUP) or SIGTERM keeps the record; tmoney then shuts down as on a quit, with the quit backup.
+
+**What comes back.** The file, the view, and the view's account or report type. Rows, scroll positions, searches, filters, open dialogs, and the check marks of a reconciliation do not come back.
+
+**How a resume opens.** The start runs the auto-post of due schedules first, then the sidebar's first load, then opens the screen, so the view shows the posted rows. It opens the screen only while the user is still on the Dashboard.
+
+| `--resume` value | Opens |
+|---|---|
+| A view with no subject | That view |
+| `register/<id>`, `portfolio/<id>` | The view the sidebar opens for the account: Portfolio for an investment account, Register otherwise |
+| `investment-register/<id>` | Investment Register; Register if the account is not an investment account |
+| `amortization/<id>` | Amortization; Register if the account is not a loan |
+| `reconciliation/<id>` | The account's active reconciliation session, with no item checked and the toast "Reconciliation resumed. Check the cleared items again"; with no active session, the account's view |
+| `reports/<type>` | Reports, with that report for the current month |
+| A value that is not known, or an account that is gone | The Dashboard, with the toast "Could not resume the last screen; this is the Dashboard" |
+
+For the start of a resume (a missing file, a file that another process holds), see [cli.md](cli.md#database-file-handling).
+
 ## v1.5 Features (Not in v1)
 
 Mouse support, theming, and vim-style navigation keys (`h`/`j`/`k`/`l`)

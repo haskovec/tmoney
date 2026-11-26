@@ -85,7 +85,14 @@ type App struct {
 	// Application state
 	ready    bool
 	quitting bool
-	err      error
+
+	// resumeExe is the program the resume report names (resumeExecutable),
+	// or "" for no report. Run sets it.
+	resumeExe string
+	// pendingResume is the screen that the --resume value asks for, until
+	// Init starts it (see setResume and startResume).
+	pendingResume *resumeTarget
+	err           error
 
 	// widget.Styles
 	styles widget.Styles
@@ -378,12 +385,17 @@ func NewApp(database *db.DB, cfg *config.Config) *App {
 func (a *App) Init() tea.Cmd {
 	a.updateStatusBar()
 	cmds := []tea.Cmd{
-		a.autoPostOnFileOpen(),
-		a.loadSidebarData(),
 		a.loadScheduledDueCount(),
 		a.dashboard.load(a.dashboardDeps()),
 		tea.RequestBackgroundColor,
 		a.queryPie(),
+	}
+	// A program resume orders the auto-post and the sidebar's first load
+	// (see startResume); a normal start runs them together.
+	if resume, ok := a.startResume(); ok {
+		cmds = append(cmds, resume)
+	} else {
+		cmds = append(cmds, a.autoPostOnFileOpen(), a.loadSidebarData())
 	}
 	// If NewApp surfaced a startup theme issue/failure, the toast is
 	// already on the status bar — schedule its auto-clear here so it
@@ -592,13 +604,16 @@ type mouseOpenAccountMsg struct {
 	accountID types.ID
 }
 
-// Run starts the TUI application.
+// Run starts the TUI application. resume is the --resume value of a program
+// resume (see resume.go), or "" for a normal start.
 //
 // The SIGHUP of a closing terminal ends the program as a quit does, so the
 // shutdown below still closes the database and makes the quit backup (see
 // watchHangup). SIGHUP stays caught until shutdown ends.
-func Run(database *db.DB, cfg *config.Config) error {
+func Run(database *db.DB, cfg *config.Config, resume string) error {
 	app := NewApp(database, cfg)
+	app.resumeExe = resumeExecutable()
+	app.setResume(resume)
 	p := tea.NewProgram(app)
 
 	hangups := make(chan os.Signal, 1)
