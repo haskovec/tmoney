@@ -61,6 +61,13 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case resumeResolvedMsg:
 		return a, a.applyResume(msg)
 
+	case resumeDroppedMsg:
+		a.resumeInFlight = nil
+		if msg.msg == nil {
+			return a, nil
+		}
+		return a.Update(msg.msg)
+
 	case scheduledDueCountMsg:
 		a.applyScheduledDueCount(msg.count)
 		return a, nil

@@ -264,7 +264,8 @@ func (a *App) setResume(s string) {
 //   - With the sidebar: the sidebar can then select the account.
 //   - In that one message: a first load that fails, or that a File > Open
 //     makes stale, drops the resume with it, so no later load of the sidebar
-//     starts it on another file.
+//     starts it on another file. A failure ends the resume (see
+//     resumeDroppedMsg).
 func (a *App) startResume() (tea.Cmd, bool) {
 	t := a.pendingResume
 	if t == nil {
@@ -274,15 +275,26 @@ func (a *App) startResume() (tea.Cmd, bool) {
 	target := *t
 	a.resumeInFlight = &target
 	load := a.loadSidebarData()
+	file := a.fileOfOpen()
 	withResume := func() tea.Msg {
 		msg := load()
 		if loaded, ok := msg.(sidebarLoadedMsg); ok {
 			loaded.resume = &target
 			return loaded
 		}
-		return msg
+		return resumeDroppedMsg{msg: msg, fileOf: file}
 	}
 	return tea.Sequence(a.autoPostOnFileOpen(), withResume), true
+}
+
+// resumeDroppedMsg is the result of the start's first sidebar load when it
+// did not load: msg is the load's own result, its errMsg or nil. The resume
+// cannot open without the load, so it ends there, and the report shows the
+// Dashboard again. A File > Open first makes it stale; switchDatabase has
+// ended the resume then.
+type resumeDroppedMsg struct {
+	msg tea.Msg
+	fileOf
 }
 
 // resumeFailedText is the toast of a resume that falls back to the Dashboard.

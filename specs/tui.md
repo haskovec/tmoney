@@ -891,7 +891,7 @@ A terminal that supports the Program Resume Protocol (OSC 7577; Rex, at this tim
 
 **What comes back.** The file, the view, and the view's account or report type. Rows, scroll positions, searches, filters, open dialogs, and the check marks of a reconciliation do not come back.
 
-**How a resume opens.** The start runs the auto-post of due schedules first, then the sidebar's first load, then opens the screen, so the view shows the posted rows. It opens the screen only while the user is still on the Dashboard.
+**How a resume opens.** The start runs the auto-post of due schedules first, then the sidebar's first load, then opens the screen, so the view shows the posted rows. It opens the screen only while the user is still on the Dashboard. Until the screen opens, the report keeps the screen of the resume, so a second restart in that time does not lose it. The resume ends, and the report is the Dashboard again, when the screen cannot open (the account is gone, or the first load fails), when the user leaves the Dashboard, or when File > Open changes the file.
 
 | `--resume` value | Opens |
 |---|---|

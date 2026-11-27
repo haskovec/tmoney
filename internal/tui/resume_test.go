@@ -279,23 +279,31 @@ func TestProgramResume(t *testing.T) {
 // (whose message type is not exported) in order.
 func runKeepingToast(t *testing.T, a *App, cmd tea.Cmd, depth int) {
 	t.Helper()
+	runCmds(t, a, cmd, depth, false)
+}
+
+// runCmds is runKeepingToast. With failures, it gives Update the errMsg of a
+// failed command too, where runKeepingToast fails the test.
+func runCmds(t *testing.T, a *App, cmd tea.Cmd, depth int, failures bool) {
+	t.Helper()
 	if cmd == nil || depth == 0 {
 		return
 	}
 	msg := cmd()
 	if v := reflect.ValueOf(msg); v.Kind() == reflect.Slice && v.Type().Elem() == reflect.TypeFor[tea.Cmd]() {
 		for i := range v.Len() {
-			runKeepingToast(t, a, v.Index(i).Interface().(tea.Cmd), depth)
+			runCmds(t, a, v.Index(i).Interface().(tea.Cmd), depth, failures)
 		}
 		return
 	}
-	switch msg := msg.(type) {
+	if e, ok := msg.(errMsg); ok && !failures {
+		t.Fatalf("command failed: %v", e.err)
+	}
+	switch msg.(type) {
 	case nil, widget.ToastClearMsg:
-	case errMsg:
-		t.Fatalf("command failed: %v", msg.err)
 	default:
 		_, next := a.Update(msg)
-		runKeepingToast(t, a, next, depth-1)
+		runCmds(t, a, next, depth-1, failures)
 	}
 }
 
@@ -615,6 +623,37 @@ func TestResume_ReportsItsScreenWhileItOpens(t *testing.T) {
 		a.switchDatabase(dbtest.New(t))
 		if got := lastArg(a); got != "dashboard" {
 			t.Errorf("after File > Open the report is %q, want dashboard", got)
+		}
+	})
+	t.Run("until its first load fails", func(t *testing.T) {
+		a := resumeTestApp(t)
+		a.setResume("scheduled")
+		cmd, ok := a.startResume()
+		if !ok {
+			t.Fatal("no resume to start")
+		}
+		if err := a.db.Close(); err != nil { // every read of the start fails
+			t.Fatal(err)
+		}
+		runCmds(t, a, cmd, 4, true)
+		if a.err == nil {
+			t.Error("the failed first load shows no error")
+		}
+		if a.currentView != ViewDashboard || lastArg(a) != "dashboard" {
+			t.Errorf("after a failed first load: view %v, report %q; want the Dashboard", a.currentView, lastArg(a))
+		}
+	})
+	t.Run("until a first load that has no accounts to load", func(t *testing.T) {
+		a := resumeTestApp(t)
+		a.services.Account = nil // the load returns nothing
+		a.setResume("scheduled")
+		cmd, ok := a.startResume()
+		if !ok {
+			t.Fatal("no resume to start")
+		}
+		runKeepingToast(t, a, cmd, 4)
+		if got := lastArg(a); got != "dashboard" {
+			t.Errorf("after a first load with no result the report is %q, want dashboard", got)
 		}
 	})
 }
