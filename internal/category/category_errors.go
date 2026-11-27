@@ -1,6 +1,15 @@
 package category
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrMergeInTx is returned when MergeCategories is called on a service bound to
+// an existing transaction via InTx. DuckDB forbids deleting a parent row in the
+// same transaction that dereferenced its foreign keys, so MergeCategories must
+// manage its own two-step transaction sequence.
+var ErrMergeInTx = errors.New("cannot merge categories inside an existing transaction")
 
 // IsSystemError is returned when trying to modify or delete a system category.
 type IsSystemError struct {

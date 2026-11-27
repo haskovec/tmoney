@@ -551,47 +551,25 @@ func (s *Service) ListChildren(parentID types.ID) ([]*Category, error) {
 }
 
 // MergeCategories merges the source category into the target category.
-// All transactions, splits, scheduled transactions, and payee defaults
-// using the source category will be updated to use the target category.
-// The source category is then deleted.
+// All transactions, splits, scheduled transactions, scheduled split items,
+// payee defaults, and child categories using the source category will be
+// updated to use the target category. The source category is then deleted.
 //
 // Rules:
 // - Source and target must have the same type (income/expense)
 // - System categories cannot be merged
 // - Cannot merge a category into itself
+// - Must not be called on an InTx-bound service (returns ErrMergeInTx), because
+//   DuckDB forbids deleting a parent key in the same transaction that
+//   dereferenced its foreign keys.
 func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
+	if s.tx != nil {
+		return ErrMergeInTx
+	}
+
 	// Cannot merge into itself
 	if sourceID == targetID {
 		return &MergeSameError{ID: sourceID.String()}
-	}
-
-	// Get both categories
-	source, err := s.repo.GetByID(sourceID)
-	if err != nil {
-		return fmt.Errorf("failed to get source category: %w", err)
-	}
-
-	target, err := s.repo.GetByID(targetID)
-	if err != nil {
-		return fmt.Errorf("failed to get target category: %w", err)
-	}
-
-	// System categories cannot be merged
-	if source.IsSystem {
-		return &IsSystemError{ID: sourceID.String(), Name: source.Name}
-	}
-	if target.IsSystem {
-		return &IsSystemError{ID: targetID.String(), Name: target.Name}
-	}
-
-	// Types must match
-	if source.Type != target.Type {
-		return &MergeTypeMismatchError{
-			SourceID:   sourceID.String(),
-			SourceType: source.Type.String(),
-			TargetID:   targetID.String(),
-			TargetType: target.Type.String(),
-		}
 	}
 
 	// Reassign every reference from source to target in ONE transaction: a
@@ -604,78 +582,112 @@ func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
 	// it: moving every reference off source and then deleting source in one tx
 	// fails with "Violates foreign key constraint because key ... is still
 	// referenced" — verified against the pinned duckdb-go version for every
-	// update form (bulk UPDATE, the repo's DELETE+INSERT, and temp-table
-	// DELETE+reinsert). So the delete runs as a separate trailing statement. The
-	// residual non-atomicity is benign and self-consistent: if the delete fails
-	// after the reassignment commits, source is left as an orphan category with
-	// zero references, which a re-run of the merge cleans up idempotently.
-	if err := s.runInTx(func(b *Service) error {
-		// Update transactions
-		if _, err := b.q().Exec(`
-			UPDATE transactions
-			SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-			WHERE CAST(category_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to update transactions: %w", err)
-		}
-
-		// Update transaction splits
-		if _, err := b.q().Exec(`
-			UPDATE transaction_splits
-			SET category_id = CAST(? AS UUID)
-			WHERE CAST(category_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to update transaction splits: %w", err)
-		}
-
-		// Update payee defaults
-		if _, err := b.q().Exec(`
-			UPDATE payees
-			SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-			WHERE CAST(default_category_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to update payee defaults: %w", err)
-		}
-
-		// Update scheduled transactions
-		if _, err := b.q().Exec(`
-			UPDATE scheduled_transactions
-			SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
-			WHERE CAST(category_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to update scheduled transactions: %w", err)
-		}
-
-		// Update scheduled split items
-		if _, err := b.q().Exec(`
-			UPDATE scheduled_split_items
-			SET category_id = CAST(? AS UUID)
-			WHERE category_id = CAST(? AS UUID)
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to update scheduled split items: %w", err)
-		}
-
-		// If source has children, reassign them to target
-		children, err := b.repo.ListChildren(sourceID)
-		if err != nil {
-			return fmt.Errorf("failed to list source children: %w", err)
-		}
-		for _, child := range children {
-			child.SetParent(targetID)
-			if err := b.repo.Update(child); err != nil {
-				return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
-			}
-		}
-
-		return nil
+	// update form (bulk UPDATE and temp-table DELETE+reinsert). So the delete
+	// runs in a separate trailing transaction.
+	// The residual non-atomicity is benign and self-consistent: if the delete
+	// fails after the reassignment commits, source is left as an orphan category
+	// with zero references, which a re-run of the merge cleans up idempotently.
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		return s.InTx(tx).reassignForMerge(sourceID, targetID)
 	}); err != nil {
 		return err
 	}
 
-	// Delete the source category — now dereferenced — in its own statement (see
-	// the transaction comment above for why it cannot join the reassignment tx).
-	if err := s.repo.Delete(sourceID); err != nil {
+	// Delete the source category — now dereferenced — in its own transaction so
+	// it stays serialized under db.WithTx while running after reassignment commits.
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		return s.InTx(tx).repo.Delete(sourceID)
+	}); err != nil {
 		return fmt.Errorf("failed to delete source category: %w", err)
+	}
+
+	return nil
+}
+
+// reassignForMerge validates source/target and moves every reference from
+// sourceID to targetID using the service's bound transaction.
+func (s *Service) reassignForMerge(sourceID, targetID types.ID) error {
+	source, err := s.repo.GetByID(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get source category: %w", err)
+	}
+
+	target, err := s.repo.GetByID(targetID)
+	if err != nil {
+		return fmt.Errorf("failed to get target category: %w", err)
+	}
+
+	if source.IsSystem {
+		return &IsSystemError{ID: sourceID.String(), Name: source.Name}
+	}
+	if target.IsSystem {
+		return &IsSystemError{ID: targetID.String(), Name: target.Name}
+	}
+
+	if source.Type != target.Type {
+		return &MergeTypeMismatchError{
+			SourceID:   sourceID.String(),
+			SourceType: source.Type.String(),
+			TargetID:   targetID.String(),
+			TargetType: target.Type.String(),
+		}
+	}
+
+	// Update transactions
+	if _, err := s.q().Exec(`
+		UPDATE transactions
+		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE category_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to update transactions: %w", err)
+	}
+
+	// Update transaction splits
+	if _, err := s.q().Exec(`
+		UPDATE transaction_splits
+		SET category_id = CAST(? AS UUID)
+		WHERE category_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to update transaction splits: %w", err)
+	}
+
+	// Update payee defaults
+	if _, err := s.q().Exec(`
+		UPDATE payees
+		SET default_category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE default_category_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to update payee defaults: %w", err)
+	}
+
+	// Update scheduled transactions
+	if _, err := s.q().Exec(`
+		UPDATE scheduled_transactions
+		SET category_id = CAST(? AS UUID), updated_at = CURRENT_TIMESTAMP
+		WHERE category_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to update scheduled transactions: %w", err)
+	}
+
+	// Update scheduled split items
+	if _, err := s.q().Exec(`
+		UPDATE scheduled_split_items
+		SET category_id = CAST(? AS UUID)
+		WHERE category_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to update scheduled split items: %w", err)
+	}
+
+	// If source has children, reassign them to target
+	children, err := s.repo.ListChildren(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to list source children: %w", err)
+	}
+	for _, child := range children {
+		child.SetParent(targetID)
+		if err := s.repo.Update(child); err != nil {
+			return fmt.Errorf("failed to reassign child category %s: %w", child.Name, err)
+		}
 	}
 
 	return nil

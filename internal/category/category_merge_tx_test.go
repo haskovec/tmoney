@@ -2,6 +2,7 @@ package category
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -86,12 +87,12 @@ func TestMergeCategories_FaultRollsBack(t *testing.T) {
 		t.Fatalf("insert split error = %v", err)
 	}
 
-	// Exec order inside the merge: UPDATE transactions (#1), UPDATE
+	// Exec order inside the merge reassignment: UPDATE transactions (#1), UPDATE
 	// transaction_splits (#2), UPDATE payees (#3). Fail #3 so the first two
 	// updates must roll back with it.
 	err := database.WithTx(func(tx db.Queryer) error {
 		fw := &failingQueryer{inner: tx, failOn: 3}
-		return svc.InTx(fw).MergeCategories(source.ID, target.ID)
+		return svc.InTx(fw).reassignForMerge(source.ID, target.ID)
 	})
 	if err == nil {
 		t.Fatal("expected injected fault error, got nil")
@@ -124,5 +125,91 @@ func TestMergeCategories_FaultRollsBack(t *testing.T) {
 	}
 	if splitCat != source.ID.String() {
 		t.Errorf("split category = %s, want source %s (reference was not rolled back)", splitCat, source.ID.String())
+	}
+}
+
+// TestMergeCategories_RejectsInTx verifies that MergeCategories fails fast with
+// ErrMergeInTx when called on a transaction-bound service (DuckDB forbids
+// deleting a parent row in the same transaction that dereferenced it), without
+// executing any writes against the caller's transaction.
+func TestMergeCategories_RejectsInTx(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewCategory("SourceInTx", TypeExpense)
+	target := NewCategory("TargetInTx", TypeExpense)
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("Create source error = %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("Create target error = %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.NewDate(2020, time.January, 1))
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("Create account error = %v", err)
+	}
+
+	now := time.Now()
+	txnID := types.NewID()
+	if _, err := database.Conn().Exec(`
+		INSERT INTO transactions (
+			id, account_id, date, amount, payee_id, category_id,
+			memo, check_number, status, transfer_id, transfer_account_id,
+			bank_reference_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, txnID, acct.ID, types.NewDate(2024, time.January, 1), types.MustNewMoney("-10.00"),
+		nil, source.ID, nil, nil, "uncleared", nil, nil, nil, now, now); err != nil {
+		t.Fatalf("insert transaction error = %v", err)
+	}
+
+	var execs int
+	err := database.WithTx(func(tx db.Queryer) error {
+		fw := &failingQueryer{inner: tx}
+		mergeErr := svc.InTx(fw).MergeCategories(source.ID, target.ID)
+		execs = fw.execN
+		return mergeErr
+	})
+	if !errors.Is(err, ErrMergeInTx) {
+		t.Fatalf("InTx().MergeCategories() error = %v, want ErrMergeInTx", err)
+	}
+	if execs != 0 {
+		t.Errorf("InTx().MergeCategories() ran %d Exec statements before failing, want 0", execs)
+	}
+}
+
+// TestMergeCategories_IdempotentAfterOrphanedSource verifies the documented
+// recovery path: if reassignment commits (leaving source with zero references)
+// and the trailing delete fails, re-running MergeCategories deletes the
+// orphaned source cleanly.
+func TestMergeCategories_IdempotentAfterOrphanedSource(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewCategory("Orphan Source", TypeExpense)
+	target := NewCategory("Orphan Target", TypeExpense)
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("Create source error = %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("Create target error = %v", err)
+	}
+
+	// Simulate tx 1 committing without tx 2 running.
+	if err := database.WithTx(func(tx db.Queryer) error {
+		return svc.InTx(tx).reassignForMerge(source.ID, target.ID)
+	}); err != nil {
+		t.Fatalf("reassignForMerge error = %v", err)
+	}
+
+	// Re-running MergeCategories must clean up the orphaned source cleanly.
+	if err := svc.MergeCategories(source.ID, target.ID); err != nil {
+		t.Fatalf("MergeCategories retry error = %v", err)
+	}
+	if _, err := svc.GetByID(source.ID); err == nil {
+		t.Error("expected orphaned source category to be deleted on retry")
 	}
 }
