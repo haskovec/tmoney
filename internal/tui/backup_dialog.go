@@ -97,16 +97,23 @@ func (a *App) createManualBackupCmd() tea.Cmd {
 }
 
 // createAutoBackupOnQuit creates an auto-backup as the TUI exits. It closes the
-// database first and waits for a heal in flight (see db.DB.CloseAndSettle); the
-// caller's later Close is a no-op. When a reader still holds the old instance,
-// the backup is skipped: the heal could open the file under the copy. Errors are
-// ignored: the TUI is tearing down and has no surface to report them on.
+// database first, waits for a heal in flight, and copies the file while it
+// holds the gate of the file (see db.DB.CloseAndSettleWith): another tmoney,
+// such as the one that a terminal resume starts, does not open the file before
+// the copy ends. The caller's later Close is a no-op. When a reader still holds
+// the old instance, the backup is skipped: the heal could open the file under
+// the copy. Errors are ignored: the TUI is tearing down and has no surface to
+// report them on.
 func createAutoBackupOnQuit(database *db.DB) {
-	if settled, err := database.CloseAndSettle(db.SettleTimeout); err != nil || !settled {
-		return
-	}
-	_, _ = backup.CreateAutoBackup(database.Path())
+	_, _ = database.CloseAndSettleWith(db.SettleTimeout, func(path string) error {
+		_, err := createAutoBackup(path)
+		return err
+	})
 }
+
+// createAutoBackup is backup.CreateAutoBackup. Tests replace it to look at the
+// file from another process during the quit backup.
+var createAutoBackup = backup.CreateAutoBackup
 
 // backupDialogState holds the state for the restore backup dialog.
 type backupDialogState struct {

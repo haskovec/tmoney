@@ -831,29 +831,65 @@ func TestRestoreStopsWhenItCannotCheckTheLock(t *testing.T) {
 }
 
 // TestRestoreStopsWhenTheDatabaseChanges: a program that opens the database
-// after the lock check and writes to it during the safety backup changes the
-// file or its log. The safety backup does not have that write, and the swap
-// would lose it (the moved log was deleted), so Restore must stop.
+// after the lock check and writes to it during or after the safety backup
+// changes the file or its log. The safety backup does not have that write,
+// and the swap would lose it (the moved log was deleted), so Restore must
+// stop. A write during the copy drops the copy (copyDatabase), so no safety
+// backup stays; after the copy, the safety backup stays.
 func TestRestoreStopsWhenTheDatabaseChanges(t *testing.T) {
-	for name, leaveWAL := range map[string]bool{"a write to the file": false, "a write to its log": true} {
-		t.Run(name, func(t *testing.T) {
+	cases := []struct {
+		name       string
+		leaveWAL   bool
+		duringCopy bool
+	}{
+		{"a write to the file after the safety copy", false, false},
+		{"a write to its log after the safety copy", true, false},
+		{"a write to the file during the safety copy", false, true},
+		{"a write to its log during the safety copy", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			path := newDBFile(t)
 			addRows(t, path, 1, false)
 			good, err := backup.CreateManualBackup(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			backup.SetAfterSafetyBackup(t, func(file string) { addRows(t, file, 1, leaveWAL) })
+			write := func(file string) { addRows(t, file, 1, tc.leaveWAL) }
+			if tc.duringCopy {
+				backup.SetAfterCopy(t, write)
+			} else {
+				backup.SetAfterSafetyBackup(t, write)
+			}
 
 			safety, err := backup.Restore(path, good)
-			if err == nil || !strings.Contains(err.Error(), "changed during the restore") {
-				t.Fatalf("Restore while another program writes: %v, want a refusal", err)
+			const want = "the database changed during the restore, so another program has it open; close it and try again"
+			if err == nil || err.Error() != want || !errors.Is(err, backup.ErrOpenElsewhere) {
+				t.Fatalf("Restore while another program writes: %v, want %q", err, want)
 			}
 			if n := rowsWithLogs(t, path); n != 2 {
 				t.Errorf("after the refused restore the database shows %d rows, want the 2 with the new one", n)
 			}
-			if _, err := os.Stat(safety); err != nil {
-				t.Errorf("the refusal names no safety backup that exists: %q (%v)", safety, err)
+			if !tc.duringCopy {
+				if _, err := os.Stat(safety); err != nil {
+					t.Errorf("the refusal names no safety backup that exists: %q (%v)", safety, err)
+				}
+				return
+			}
+			if safety != "" {
+				t.Errorf("the refusal names safety backup %q, want none: the copy was dropped", safety)
+			}
+			backups, err := backup.ListBackups(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(backups) != 1 || backups[0].Path != good {
+				t.Errorf("backups after the refused restore = %+v, want only %s", backups, good)
+			}
+			for _, name := range dirNames(t, filepath.Dir(path)) {
+				if strings.Contains(name, "tmoney-partial") {
+					t.Errorf("the refused restore left %s", name)
+				}
 			}
 		})
 	}

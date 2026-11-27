@@ -16,8 +16,12 @@ import (
 // It runs the open-time repairs (app.Services.Prepare), then auto-posts due
 // scheduled transactions and prints a summary if any were posted. A failure
 // in either is printed to stderr as a warning, and the command still runs.
+//
+// While another tmoney closes the file, or makes or restores a backup of it,
+// the open waits up to db.GateWait for it (see db.OpenWaiting), and says so
+// once on stderr. A tmoney that has the file open fails the open at once.
 func OpenServices(file string) (*db.DB, *app.Services, error) {
-	database, err := db.Open(file)
+	database, err := db.OpenWaiting(file, db.GateWait, WaitNotice(file))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -51,24 +55,42 @@ func OpenServices(file string) (*db.DB, *app.Services, error) {
 	return database, svc, nil
 }
 
+// WaitNotice returns the waiting func of a CLI command's wait for the gate
+// of file (see db.OpenWaiting and db.HoldGate). It tells the user on stderr
+// that the command waits for another tmoney, so that a wait of some seconds
+// does not look like a hang.
+func WaitNotice(file string) func() {
+	return func() {
+		fmt.Fprintf(os.Stderr, "Waiting for another tmoney to finish with %s...\n", file)
+	}
+}
+
 // AutoBackupAfterModification creates an auto-backup after a data-modifying CLI
-// command. It closes the database first and waits for a heal in flight (see
-// db.DB.CloseAndSettle), so call it as the command's last database action; the
-// deferred Close is then a no-op.
+// command. It closes the database first, waits for a heal in flight, and
+// copies the file while it holds the gate of the file (see
+// db.DB.CloseAndSettleWith), so no other tmoney opens the file before the copy
+// ends. Call it as the command's last database action; the deferred Close is
+// then a no-op.
 func AutoBackupAfterModification(database *db.DB) {
 	// Best-effort: don't fail the CLI command if the close or backup fails, and
 	// skip the backup while a heal could still open the file under the copy.
-	settled, err := database.CloseAndSettle(db.SettleTimeout)
+	ran, err := database.CloseAndSettleWith(db.SettleTimeout, func(path string) error {
+		_, err := createAutoBackup(path)
+		return err
+	})
 	switch {
-	case err != nil:
+	case !ran && err != nil:
 		fmt.Fprintf(os.Stderr, "warning: auto-backup skipped: %v\n", err)
-		return
-	case !settled:
+	case !ran:
 		fmt.Fprintf(os.Stderr, "warning: auto-backup skipped: the database was still busy\n")
-		return
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "warning: auto-backup failed: %v\n", err)
 	}
-	_, _ = backup.CreateAutoBackup(database.Path())
 }
+
+// createAutoBackup is backup.CreateAutoBackup. Tests replace it to look at
+// the file from another process during the copy, and to make it fail.
+var createAutoBackup = backup.CreateAutoBackup
 
 // RequireFile returns the standard error when no database file was supplied via
 // the persistent --file flag. It folds the identical guard repeated across

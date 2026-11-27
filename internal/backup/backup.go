@@ -46,6 +46,33 @@ const (
 // tests with fake file content can replace it.
 var validateDatabase = db.ValidateFile
 
+// ErrOpenElsewhere is the error of a backup or a restore of a database that
+// another program has open, or that changed during the copy. Such a program
+// can write to the file at any time, so a copy of it can mix old and new
+// blocks, and a restore under it loses its later writes.
+var ErrOpenElsewhere = errors.New("the database is open in another program")
+
+// errChangedDuringBackup is the error of a backup whose database changed, or
+// that another program opened, during the copy. It wraps ErrOpenElsewhere.
+var errChangedDuringBackup = &openElsewhereError{
+	msg: "the database changed during the backup, so another program has it open; the backup was not kept",
+}
+
+// errChangedDuringRestore is the error of a restore whose database changed,
+// or that another program opened, during the safety backup. It wraps
+// ErrOpenElsewhere.
+var errChangedDuringRestore = &openElsewhereError{
+	msg: "the database changed during the restore, so another program has it open; close it and try again",
+}
+
+// openElsewhereError is an error with its own text that wraps
+// ErrOpenElsewhere.
+type openElsewhereError struct{ msg string }
+
+func (e *openElsewhereError) Error() string { return e.msg }
+
+func (e *openElsewhereError) Unwrap() error { return ErrOpenElsewhere }
+
 // BackupType distinguishes auto from manual backups.
 type BackupType string
 
@@ -64,6 +91,10 @@ type BackupInfo struct {
 
 // CreateAutoBackup creates an auto-backup of the given database file and
 // enforces rolling retention (keeping at most MaxAutoBackups auto-backups).
+//
+// The caller holds the gate of the file (see db.HoldGate and
+// db.DB.CloseAndSettleWith), and has no DuckDB open on it. A database that
+// another program has open is refused (see copyDatabase).
 func CreateAutoBackup(dbPath string) (string, error) {
 	return createAutoBackup(dbPath, time.Now(), true)
 }
@@ -101,6 +132,10 @@ func createAutoBackup(dbPath string, now time.Time, fold bool, keep ...string) (
 
 // CreateManualBackup creates a manual backup of the given database file.
 // Manual backups are never auto-deleted by rolling retention.
+//
+// The caller holds the gate of the file (see db.HoldGate and
+// db.DB.WithFileClosed), and has no DuckDB open on it. A database that
+// another program has open is refused (see copyDatabase).
 func CreateManualBackup(dbPath string) (string, error) {
 	return createManualBackupAt(dbPath, time.Now())
 }
@@ -176,8 +211,8 @@ func ListBackups(dbPath string) ([]BackupInfo, error) {
 // the link, and the link stays; the backups keep their names beside dbPath,
 // where ListBackups looks (see db.FilePath).
 //
-// The database at dbPath must be closed while this runs (see db.DB.Close and
-// db.DB.WithFileClosed).
+// The caller holds the gate of the file (see db.HoldGate and
+// db.DB.WithFileClosed), and has no DuckDB open on it.
 func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// Verify backup file exists
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
@@ -194,6 +229,15 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	// beside it, so that the rename stays on one file system, and the rename
 	// replaces it, not the link.
 	file := db.FilePath(dbPath)
+	// A program that has the database open (a tmoney in another terminal)
+	// stops the restore at once, before the copy of the backup. The caller
+	// holds the gate, and a tmoney that closes the file waits for it: a late
+	// refusal makes it wait for nothing, and it can skip its quit backup.
+	// Steps 4 and 5 check again. An error of the check counts as "not held"
+	// here (see isHeldElsewhere); step 5 stops on it.
+	if isHeldElsewhere(file) {
+		return "", fmt.Errorf("%w; close it and try again", ErrOpenElsewhere)
+	}
 
 	// 1. Check the backup: a backup cut short by a crash, a file that is not a
 	//    TMoney database, one of a newer app version, one that this user
@@ -241,20 +285,30 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	//    backupPath and the copy. It is raw when the fold failed, and when a
 	//    log is still there after the fold: DuckDB ignored it as torn, but
 	//    its bytes can hold committed rows.
+	//
+	//    A program that opened the database after the check in step 4 and
+	//    wrote to it changed the file or a log. The safety backup does not
+	//    have that write, and the swap would lose it, so stop. A change
+	//    during the copy is seen by copyDatabase, which keeps no safety
+	//    backup; a change after the copy (while the backup gets its name and
+	//    the retention pass runs) by the check below, and the safety backup
+	//    stays.
 	raw := foldErr != nil || db.HasWAL(dbPath)
 	before := stateOf(file)
 	safetyPath, err := createAutoBackup(dbPath, time.Now(), !raw, backupPath, tempPath)
-	if err != nil {
+	switch {
+	case errors.Is(err, errChangedDuringBackup):
+		return "", errChangedDuringRestore
+	case errors.Is(err, ErrOpenElsewhere):
+		return "", fmt.Errorf("%w; close it and try again", ErrOpenElsewhere)
+	case err != nil:
 		return "", fmt.Errorf("failed to create safety backup before restore: %w", err)
 	}
 	if afterSafetyBackup != nil {
 		afterSafetyBackup(file)
 	}
-	// A program that opened the database after the check in step 4 and wrote
-	// to it changed the file or a log. The safety backup does not have that
-	// write, and the swap would lose it, so stop. The safety backup stays.
 	if stateOf(file) != before {
-		return safetyPath, fmt.Errorf("the database changed during the restore, so another program has it open; close it and try again")
+		return safetyPath, errChangedDuringRestore
 	}
 	// A program that only opened it changed nothing yet, but after the swap
 	// it writes to the old file, and its log goes beside the restored one,
@@ -262,7 +316,7 @@ func Restore(dbPath, backupPath string) (safetyBackupPath string, err error) {
 	if held, err := heldElsewhere(file); err != nil {
 		return safetyPath, fmt.Errorf("cannot check whether another program has the database open: %w", err)
 	} else if held {
-		return safetyPath, errors.New("the database is open in another program; close it and try again")
+		return safetyPath, fmt.Errorf("%w; close it and try again", ErrOpenElsewhere)
 	}
 
 	// 6. Move the logs that the fold could not apply aside, rename the copy
@@ -345,11 +399,13 @@ func walHint(backupPath string) string {
 }
 
 // beforeSwap, when set, runs right before Restore renames its copy over the
-// database, and afterSafetyBackup right after the safety backup. Test hooks
-// (see export_test.go).
+// database, afterSafetyBackup right after the safety backup, and afterCopy
+// right after the copy of a backup, before its checks. Test hooks (see
+// export_test.go).
 var (
 	beforeSwap        func(dbPath string)
 	afterSafetyBackup func(file string)
+	afterCopy         func(file string)
 )
 
 // heldElsewhere is db.HeldElsewhere; a test can make it fail.
@@ -619,11 +675,30 @@ func isDigits(s string) bool {
 // file is left. If another process takes the name first, next names the
 // backup again. With fold false, raw copies of the WAL files of src go beside
 // the backup (see createAutoBackup).
+//
+// The caller holds the gate of the file, so no tmoney opens it during the
+// copy. But a tmoney that has it open already, an older tmoney or another
+// DuckDB client can write to it at any time, and a copy of it can mix old and
+// new blocks. So copyDatabase refuses a file that another process has open,
+// and after the copy it drops a copy of a file that changed or that another
+// process opened meanwhile. Both errors wrap ErrOpenElsewhere.
 func copyDatabase(src string, next func() string, fold bool) (string, error) {
+	file := db.FilePath(src)
+	if isHeldElsewhere(file) {
+		return "", ErrOpenElsewhere
+	}
+	before := stateOf(file)
 	dst := next()
 	tempPath, err := copyToTemp(src, dst, src, fold)
 	if err != nil {
 		return "", err
+	}
+	if afterCopy != nil {
+		afterCopy(file)
+	}
+	if stateOf(file) != before || isHeldElsewhere(file) {
+		removeCopy(tempPath)
+		return "", errChangedDuringBackup
 	}
 	for tries := 1; ; tries++ {
 		err := publish(tempPath, dst)
@@ -642,6 +717,15 @@ func copyDatabase(src string, next func() string, fold bool) (string, error) {
 		}
 		dst = next()
 	}
+}
+
+// isHeldElsewhere is heldElsewhere for the checks of copyDatabase. An error
+// counts as "not held": a file system with no fcntl locks (smbfs gives
+// ENOTSUP) cannot tell, and a refusal there would stop every backup. The
+// copy itself reports a file that it cannot read.
+func isHeldElsewhere(file string) bool {
+	held, err := heldElsewhere(file)
+	return err == nil && held
 }
 
 // publishRawLogs gives the raw copies of the logs beside the partial file at

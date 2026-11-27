@@ -54,10 +54,12 @@ The root command also has a hidden flag, `--resume <value>`, that `--help` does 
 
 CLI subcommands always require step 1 — they don't fall back to the last-used file.
 
+Another tmoney holds the gate of the file while it closes the file, or makes or restores a backup of it (see [database.md](database.md#the-file-gate)). Every open waits for the gate for up to 10 seconds. The TUI start says so once on stderr with `Waiting for another tmoney to close <file>...`, and a CLI command that works on the data (also `db backup`, `db restore` and `db reindex`) with `Waiting for another tmoney to finish with <file>...`. After 10 seconds the open fails with `<name> is busy: another tmoney is closing it, or is making or restoring a backup of it. Try again in a moment`. A tmoney that only has the file open does not hold the gate, so an open of that file fails at once with DuckDB's lock error.
+
 A start with `--resume` (a program resume) differs in two ways:
 
 - It never creates a file. A file that does not exist (moved, renamed, deleted, or on a volume that is not mounted) is the error `cannot resume: <file> does not exist`.
-- While another process has the file open (at a terminal restart, the tmoney that the terminal closed can still be in its shutdown), it prints `Waiting for another tmoney to close <file>...` and tries again for up to 10 seconds. Then it gives the usual open error.
+- While another process has the file open (at a terminal restart, the tmoney that the terminal closed can still be in its shutdown), it prints `Waiting for another tmoney to close <file>...` and tries again for up to 10 seconds. Then it gives the usual open error. Each try can also wait up to 10 seconds for the gate, so the worst case is about 20 seconds. The wait line shows once for both waits.
 
 ```bash
 tmoney personal.tdb                    # Relative path (TUI)
@@ -481,6 +483,8 @@ Create a manual backup of the database file. Manual backups are never auto-delet
 tmoney -f personal.tdb db backup
 ```
 
+The command holds the gate of the file during the copy. It refuses a file that another program has open, such as a tmoney TUI: `Error: failed to create backup: <file> is open in another program; close it, or use File > Create Backup in that tmoney`.
+
 ### `db create`
 
 `Use: db create <path>` · `Args: ExactArgs(1)`
@@ -534,6 +538,8 @@ Restore the database from the specified backup file. A safety backup of the curr
 ```bash
 tmoney -f personal.tdb db restore /path/to/backup.tdb
 ```
+
+The command holds the gate of the file during the restore. It refuses at once a file that another program has open: `Error: failed to restore: the database is open in another program; close it and try again`.
 
 ---
 
