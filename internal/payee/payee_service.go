@@ -1,6 +1,7 @@
 package payee
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/db"
@@ -297,21 +298,17 @@ func (s *Service) DeleteAlias(id types.ID) error {
 //
 // Rules:
 // - Cannot merge a payee into itself
+// - Must not be called on an InTx-bound service (returns ErrMergeInTx), because
+//   DuckDB forbids deleting a parent key in the same transaction that
+//   dereferenced its foreign keys.
 func (s *Service) MergePayees(sourceID, targetID types.ID) error {
+	if s.tx != nil {
+		return ErrMergeInTx
+	}
+
 	// Cannot merge into itself
 	if sourceID == targetID {
 		return &MergeSameError{ID: sourceID.String()}
-	}
-
-	// Get both payees
-	source, err := s.repo.GetByID(sourceID)
-	if err != nil {
-		return fmt.Errorf("failed to get source payee: %w", err)
-	}
-
-	_, err = s.repo.GetByID(targetID)
-	if err != nil {
-		return fmt.Errorf("failed to get target payee: %w", err)
 	}
 
 	// Update all references to use target payee.
@@ -328,103 +325,151 @@ func (s *Service) MergePayees(sourceID, targetID types.ID) error {
 	// forbids deleting a key in the same transaction that earlier dereferenced it:
 	// moving every reference off source and then deleting source in one tx fails
 	// with "Violates foreign key constraint because key ... is still referenced"
-	// (verified for the temp-table reinsert form too). So the delete runs as a
-	// separate trailing statement. The residual non-atomicity is benign: if the
+	// (verified for the temp-table reinsert form too). So the delete runs in a
+	// separate trailing transaction. The residual non-atomicity is benign: if the
 	// delete fails after the reassignment commits, source is left as an orphan
 	// payee with zero references, which a re-run of the merge cleans up.
-	if err := s.runInTx(func(b *Service) error {
-		// Update transactions: reassign payee_id from source to target
-		if _, err := b.q().Exec(`
-			CREATE TEMPORARY TABLE _merge_txns AS
-			SELECT id, account_id, date, amount, CAST(? AS UUID) AS payee_id,
-				category_id, memo, check_number, status, transfer_id,
-				transfer_account_id, bank_reference_id, created_at, CURRENT_TIMESTAMP AS updated_at
-			FROM transactions
-			WHERE CAST(payee_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to stage transaction updates: %w", err)
-		}
-
-		if _, err := b.q().Exec(`
-			DELETE FROM transactions WHERE CAST(payee_id AS VARCHAR) = ?
-		`, sourceID.String()); err != nil {
-			return fmt.Errorf("failed to delete source transactions for merge: %w", err)
-		}
-
-		if _, err := b.q().Exec(`INSERT INTO transactions SELECT * FROM _merge_txns`); err != nil {
-			return fmt.Errorf("failed to re-insert merged transactions: %w", err)
-		}
-
-		if _, err := b.q().Exec(`DROP TABLE IF EXISTS _merge_txns`); err != nil {
-			return fmt.Errorf("failed to drop temp table: %w", err)
-		}
-
-		// Update scheduled transactions: reassign payee_id from source to target
-		if _, err := b.q().Exec(`
-			CREATE TEMPORARY TABLE _merge_st AS
-			SELECT id, account_id, CAST(? AS UUID) AS payee_id, category_id,
-				amount, memo, frequency, interval, start_date, end_date,
-				occurrences, day_of_month, secondary_day_of_month, next_date,
-				occurrences_remaining, amount_estimate_count,
-				auto_post, post_lead_days,
-				created_at, CURRENT_TIMESTAMP AS updated_at,
-				transfer_account_id
-			FROM scheduled_transactions
-			WHERE CAST(payee_id AS VARCHAR) = ?
-		`, targetID.String(), sourceID.String()); err != nil {
-			return fmt.Errorf("failed to stage scheduled transaction updates: %w", err)
-		}
-
-		if _, err := b.q().Exec(`
-			DELETE FROM scheduled_transactions WHERE CAST(payee_id AS VARCHAR) = ?
-		`, sourceID.String()); err != nil {
-			return fmt.Errorf("failed to delete source scheduled transactions for merge: %w", err)
-		}
-
-		if _, err := b.q().Exec(`INSERT INTO scheduled_transactions SELECT * FROM _merge_st`); err != nil {
-			return fmt.Errorf("failed to re-insert merged scheduled transactions: %w", err)
-		}
-
-		if _, err := b.q().Exec(`DROP TABLE IF EXISTS _merge_st`); err != nil {
-			return fmt.Errorf("failed to drop temp table: %w", err)
-		}
-
-		// Reassign aliases from source to target
-		aliases, err := b.repo.GetAliasesByPayee(sourceID)
-		if err != nil {
-			return fmt.Errorf("failed to get source aliases: %w", err)
-		}
-
-		for _, alias := range aliases {
-			// Create an exact alias for the source payee name so it can still be matched
-			// This preserves the historical mapping
-			alias.PayeeID = targetID
-			if err := b.repo.UpdateAlias(alias); err != nil {
-				return fmt.Errorf("failed to reassign alias %s: %w", alias.Pattern, err)
-			}
-		}
-
-		// Create an exact alias from source name to target (if source name differs)
-		if source.Name != "" {
-			exactAlias := NewExactAlias(targetID, source.Name)
-			// Only create if not a duplicate pattern
-			if err := b.repo.CreateAlias(exactAlias); err != nil {
-				// Ignore duplicate pattern error - the alias might already exist
-				if _, ok := err.(*dberrors.DuplicateError); !ok {
-					return fmt.Errorf("failed to create name alias: %w", err)
-				}
-			}
-		}
-
-		return nil
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		return s.InTx(tx).reassignForMerge(sourceID, targetID)
 	}); err != nil {
 		return err
 	}
 
-	// Delete the source payee — now dereferenced — in its own statement (see the
-	// transaction comment above for why it cannot join the reassignment tx).
-	if _, err := s.q().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, sourceID.String()); err != nil {
+	// Delete the source payee — now dereferenced — in its own transaction so it
+	// stays serialized under db.WithTx while running after reassignment commits.
+	if err := s.db.WithTx(func(tx db.Queryer) error {
+		_, err := tx.Exec(`DELETE FROM payees WHERE id = CAST(? AS UUID)`, sourceID.String())
+		return err
+	}); err != nil {
 		return fmt.Errorf("failed to delete source payee: %w", err)
+	}
+
+	return nil
+}
+
+// reassignForMerge validates source/target and moves every reference and alias
+// from sourceID to targetID using the service's bound transaction.
+func (s *Service) reassignForMerge(sourceID, targetID types.ID) error {
+	source, err := s.repo.GetByID(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get source payee: %w", err)
+	}
+
+	if _, err := s.repo.GetByID(targetID); err != nil {
+		return fmt.Errorf("failed to get target payee: %w", err)
+	}
+
+	// Update transactions: reassign payee_id from source to target
+	if _, err := s.q().Exec(`
+		CREATE TEMPORARY TABLE _merge_txns AS
+		SELECT id, account_id, date, amount, CAST(? AS UUID) AS payee_id,
+			category_id, memo, check_number, status, transfer_id,
+			transfer_account_id, bank_reference_id, created_at, CURRENT_TIMESTAMP AS updated_at
+		FROM transactions
+		WHERE payee_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to stage transaction updates: %w", err)
+	}
+
+	if _, err := s.q().Exec(`
+		DELETE FROM transactions WHERE payee_id = CAST(? AS UUID)
+	`, sourceID.String()); err != nil {
+		return fmt.Errorf("failed to delete source transactions for merge: %w", err)
+	}
+
+	if _, err := s.q().Exec(`
+		INSERT INTO transactions (
+			id, account_id, date, amount, payee_id,
+			category_id, memo, check_number, status, transfer_id,
+			transfer_account_id, bank_reference_id, created_at, updated_at
+		)
+		SELECT
+			id, account_id, date, amount, payee_id,
+			category_id, memo, check_number, status, transfer_id,
+			transfer_account_id, bank_reference_id, created_at, updated_at
+		FROM _merge_txns
+	`); err != nil {
+		return fmt.Errorf("failed to re-insert merged transactions: %w", err)
+	}
+
+	if _, err := s.q().Exec(`DROP TABLE IF EXISTS _merge_txns`); err != nil {
+		return fmt.Errorf("failed to drop temp table: %w", err)
+	}
+
+	// Update scheduled transactions: reassign payee_id from source to target
+	if _, err := s.q().Exec(`
+		CREATE TEMPORARY TABLE _merge_st AS
+		SELECT id, account_id, CAST(? AS UUID) AS payee_id, category_id,
+			amount, memo, frequency, interval, start_date, end_date,
+			occurrences, day_of_month, secondary_day_of_month, next_date,
+			occurrences_remaining, amount_estimate_count,
+			auto_post, post_lead_days,
+			created_at, CURRENT_TIMESTAMP AS updated_at,
+			transfer_account_id
+		FROM scheduled_transactions
+		WHERE payee_id = CAST(? AS UUID)
+	`, targetID.String(), sourceID.String()); err != nil {
+		return fmt.Errorf("failed to stage scheduled transaction updates: %w", err)
+	}
+
+	if _, err := s.q().Exec(`
+		DELETE FROM scheduled_transactions WHERE payee_id = CAST(? AS UUID)
+	`, sourceID.String()); err != nil {
+		return fmt.Errorf("failed to delete source scheduled transactions for merge: %w", err)
+	}
+
+	if _, err := s.q().Exec(`
+		INSERT INTO scheduled_transactions (
+			id, account_id, payee_id, category_id,
+			amount, memo, frequency, interval, start_date, end_date,
+			occurrences, day_of_month, secondary_day_of_month, next_date,
+			occurrences_remaining, amount_estimate_count,
+			auto_post, post_lead_days,
+			created_at, updated_at,
+			transfer_account_id
+		)
+		SELECT
+			id, account_id, payee_id, category_id,
+			amount, memo, frequency, interval, start_date, end_date,
+			occurrences, day_of_month, secondary_day_of_month, next_date,
+			occurrences_remaining, amount_estimate_count,
+			auto_post, post_lead_days,
+			created_at, updated_at,
+			transfer_account_id
+		FROM _merge_st
+	`); err != nil {
+		return fmt.Errorf("failed to re-insert merged scheduled transactions: %w", err)
+	}
+
+	if _, err := s.q().Exec(`DROP TABLE IF EXISTS _merge_st`); err != nil {
+		return fmt.Errorf("failed to drop temp table: %w", err)
+	}
+
+	// Reassign aliases from source to target
+	aliases, err := s.repo.GetAliasesByPayee(sourceID)
+	if err != nil {
+		return fmt.Errorf("failed to get source aliases: %w", err)
+	}
+
+	for _, alias := range aliases {
+		// Preserves historical pattern mappings under the surviving target payee.
+		alias.PayeeID = targetID
+		if err := s.repo.UpdateAlias(alias); err != nil {
+			return fmt.Errorf("failed to reassign alias %s: %w", alias.Pattern, err)
+		}
+	}
+
+	// Create an exact alias from source name to target (if source name differs)
+	if source.Name != "" {
+		exactAlias := NewExactAlias(targetID, source.Name)
+		// Only create if not a duplicate pattern
+		if err := s.repo.CreateAlias(exactAlias); err != nil {
+			// Ignore duplicate pattern error - the alias might already exist
+			var dup *dberrors.DuplicateError
+			if !errors.As(err, &dup) {
+				return fmt.Errorf("failed to create name alias: %w", err)
+			}
+		}
 	}
 
 	return nil

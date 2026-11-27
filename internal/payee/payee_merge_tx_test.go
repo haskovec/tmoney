@@ -2,6 +2,7 @@ package payee
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -77,12 +78,12 @@ func TestMergePayees_FaultRollsBack(t *testing.T) {
 		t.Fatalf("insert transaction error = %v", err)
 	}
 
-	// Exec order inside the merge: CREATE TEMPORARY TABLE _merge_txns (#1),
+	// Exec order inside the merge reassignment: CREATE TEMPORARY TABLE _merge_txns (#1),
 	// DELETE source transactions (#2), INSERT re-insert from temp table (#3).
 	// Fail #3 so the delete of the source's transactions must roll back.
 	err := database.WithTx(func(tx db.Queryer) error {
 		fw := &failingQueryer{inner: tx, failOn: 3}
-		return svc.InTx(fw).MergePayees(source.ID, target.ID)
+		return svc.InTx(fw).reassignForMerge(source.ID, target.ID)
 	})
 	if err == nil {
 		t.Fatal("expected injected fault error, got nil")
@@ -118,5 +119,57 @@ func TestMergePayees_FaultRollsBack(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 source-referencing transaction after rollback, got %d", count)
+	}
+}
+
+// TestMergePayees_RejectsInTx verifies that MergePayees fails fast with
+// ErrMergeInTx when called on a transaction-bound service (DuckDB forbids
+// deleting a parent row in the same transaction that dereferenced it), without
+// executing any writes against the caller's transaction.
+func TestMergePayees_RejectsInTx(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewPayee("Old InTx Store")
+	target := NewPayee("New InTx Store")
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("Create source error = %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("Create target error = %v", err)
+	}
+
+	acctRepo := account.NewRepository(database)
+	acct := account.NewAccount("Checking", account.TypeChecking, "USD", types.ZeroMoney, types.NewDate(2020, time.January, 1))
+	if err := acctRepo.Create(acct); err != nil {
+		t.Fatalf("Create account error = %v", err)
+	}
+
+	now := time.Now()
+	txnID := types.NewID()
+	if _, err := database.Conn().Exec(`
+		INSERT INTO transactions (
+			id, account_id, date, amount, payee_id, category_id,
+			memo, check_number, status, transfer_id, transfer_account_id,
+			bank_reference_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, txnID, acct.ID, types.NewDate(2024, time.January, 1), types.MustNewMoney("-10.00"),
+		source.ID, nil, nil, nil, "uncleared", nil, nil, nil, now, now); err != nil {
+		t.Fatalf("insert transaction error = %v", err)
+	}
+
+	var execs int
+	err := database.WithTx(func(tx db.Queryer) error {
+		fw := &failingQueryer{inner: tx}
+		mergeErr := svc.InTx(fw).MergePayees(source.ID, target.ID)
+		execs = fw.execN
+		return mergeErr
+	})
+	if !errors.Is(err, ErrMergeInTx) {
+		t.Fatalf("InTx().MergePayees() error = %v, want ErrMergeInTx", err)
+	}
+	if execs != 0 {
+		t.Errorf("InTx().MergePayees() ran %d Exec statements before failing, want 0", execs)
 	}
 }
