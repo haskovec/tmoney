@@ -54,6 +54,10 @@ func (r *Repository) Create(payee *Payee) error {
 		return &dberrors.DuplicateError{Entity: "payee", Field: "name", Value: payee.Name}
 	}
 
+	if err := r.verifyDefaultCategory(payee.DefaultCategoryID); err != nil {
+		return err
+	}
+
 	query := `
 		INSERT INTO payees (
 			id, name, default_category_id, notes,
@@ -144,15 +148,12 @@ func (r *Repository) List() ([]*Payee, error) {
 	return r.queryPayees(query)
 }
 
-// Update updates an existing payee in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
+// Update updates an existing payee in place.
 func (r *Repository) Update(payee *Payee) error {
-	payee.Touch()
-
 	// Check for duplicate name (excluding current payee)
 	var exists bool
 	err := r.q().QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM payees WHERE name = ? AND CAST(id AS VARCHAR) != ?)`,
+		`SELECT EXISTS(SELECT 1 FROM payees WHERE name = ? AND id != CAST(? AS UUID))`,
 		payee.Name, payee.ID.String(),
 	).Scan(&exists)
 	if err != nil {
@@ -164,7 +165,7 @@ func (r *Repository) Update(payee *Payee) error {
 
 	// Check if payee exists
 	var count int
-	err = r.q().QueryRow(`SELECT COUNT(*) FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String()).Scan(&count)
+	err = r.q().QueryRow(`SELECT COUNT(*) FROM payees WHERE id = CAST(? AS UUID)`, payee.ID.String()).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check payee exists: %w", err)
 	}
@@ -172,31 +173,61 @@ func (r *Repository) Update(payee *Payee) error {
 		return &dberrors.NotFoundError{Entity: "payee", ID: payee.ID.String()}
 	}
 
-	// Delete the existing record
-	_, err = r.q().Exec(`DELETE FROM payees WHERE CAST(id AS VARCHAR) = ?`, payee.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
+	if err := r.verifyDefaultCategory(payee.DefaultCategoryID); err != nil {
+		return err
 	}
 
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO payees (
-			id, name, default_category_id, notes,
-			created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?)
-	`
-	_, err = r.q().Exec(insertQuery,
-		payee.ID.String(),
+	payee.Touch()
+
+	updateQuery := fmt.Sprintf(`
+		UPDATE payees
+		SET name = ?,
+			default_category_id = %s,
+			notes = ?,
+			updated_at = ?
+		WHERE id = CAST(? AS UUID)
+	`, dbutil.NullUUIDCast(payee.DefaultCategoryID))
+
+	result, err := r.q().Exec(updateQuery,
 		payee.Name,
 		dbutil.NullID(payee.DefaultCategoryID),
 		dbutil.NullString(payee.Notes),
-		payee.CreatedAt.Time(),
 		payee.UpdatedAt.Time(),
+		payee.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update payee: %w", err)
 	}
 
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "payee", ID: payee.ID.String()}
+	}
+
+	return nil
+}
+
+// verifyDefaultCategory confirms that an assigned default_category_id refers
+// to an existing category row (the outbound FK was dropped in migration 038 so
+// referenced payees can be updated in place).
+func (r *Repository) verifyDefaultCategory(catID types.NullableID) error {
+	if !catID.Valid {
+		return nil
+	}
+	var exists bool
+	err := r.q().QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM categories WHERE id = CAST(? AS UUID))`,
+		catID.ID.String(),
+	).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to verify default category: %w", err)
+	}
+	if !exists {
+		return &dberrors.NotFoundError{Entity: "category", ID: catID.ID.String()}
+	}
 	return nil
 }
 

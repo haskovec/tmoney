@@ -469,8 +469,9 @@ func (s *Service) Create(category *Category) error {
 		return err
 	}
 
-	// Additional parent validation is done in the repository
-	return s.repo.Create(category)
+	return s.runInTx(func(b *Service) error {
+		return b.repo.Create(category)
+	})
 }
 
 // GetByID retrieves a category by its ID.
@@ -492,37 +493,38 @@ func (s *Service) GetWithParent(id types.ID) (*Category, *Category, error) {
 // Update validates and updates an existing category.
 // System categories cannot be updated (except by seeding).
 func (s *Service) Update(category *Category) error {
-	// Check if this is a system category
-	existing, err := s.repo.GetByID(category.ID)
-	if err != nil {
-		return err
-	}
-	if existing.IsSystem {
-		return &IsSystemError{ID: category.ID.String(), Name: existing.Name}
-	}
-
 	if err := s.validateCategory(category); err != nil {
 		return err
 	}
 
-	return s.repo.Update(category)
+	return s.runInTx(func(b *Service) error {
+		existing, err := b.repo.GetByID(category.ID)
+		if err != nil {
+			return err
+		}
+		if existing.IsSystem {
+			return &IsSystemError{ID: category.ID.String(), Name: existing.Name}
+		}
+
+		return b.repo.Update(category)
+	})
 }
 
 // Delete removes a category.
 // System categories cannot be deleted.
-// Categories with transactions or subcategories cannot be deleted.
+// Categories with dependents cannot be deleted.
 func (s *Service) Delete(id types.ID) error {
-	// Check if this is a system category
-	category, err := s.repo.GetByID(id)
-	if err != nil {
-		return err
-	}
-	if category.IsSystem {
-		return &IsSystemError{ID: id.String(), Name: category.Name}
-	}
+	return s.runInTx(func(b *Service) error {
+		category, err := b.repo.GetByID(id)
+		if err != nil {
+			return err
+		}
+		if category.IsSystem {
+			return &IsSystemError{ID: id.String(), Name: category.Name}
+		}
 
-	// Repository handles checks for subcategories and transactions
-	return s.repo.Delete(id)
+		return b.repo.Delete(id)
+	})
 }
 
 // List returns all categories ordered by name.

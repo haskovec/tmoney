@@ -2,6 +2,7 @@ package category
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/haskovec/tmoney/internal/db"
@@ -247,16 +248,13 @@ func (r *Repository) ListChildren(parentID types.ID) ([]*Category, error) {
 	return r.queryCategoriesWithArgs(query, parentID.String())
 }
 
-// Update updates an existing category in the database.
-// Note: Uses DELETE + INSERT (non-transactional) due to DuckDB limitations.
+// Update updates an existing category in place.
 func (r *Repository) Update(category *Category) error {
-	category.Touch()
-
 	// Check for duplicate name within the same parent (excluding current category)
 	var exists bool
 	if category.ParentID.Valid {
 		err := r.q().QueryRow(
-			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND CAST(parent_id AS VARCHAR) = ? AND CAST(id AS VARCHAR) != ?)`,
+			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND parent_id = CAST(? AS UUID) AND id != CAST(? AS UUID))`,
 			category.Name, category.ParentID.ID.String(), category.ID.String(),
 		).Scan(&exists)
 		if err != nil {
@@ -264,7 +262,7 @@ func (r *Repository) Update(category *Category) error {
 		}
 	} else {
 		err := r.q().QueryRow(
-			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL AND CAST(id AS VARCHAR) != ?)`,
+			`SELECT EXISTS(SELECT 1 FROM categories WHERE name = ? AND parent_id IS NULL AND id != CAST(? AS UUID))`,
 			category.Name, category.ID.String(),
 		).Scan(&exists)
 		if err != nil {
@@ -277,7 +275,7 @@ func (r *Repository) Update(category *Category) error {
 
 	// Check if category exists
 	var count int
-	err := r.q().QueryRow(`SELECT COUNT(*) FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String()).Scan(&count)
+	err := r.q().QueryRow(`SELECT COUNT(*) FROM categories WHERE id = CAST(? AS UUID)`, category.ID.String()).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check category exists: %w", err)
 	}
@@ -285,11 +283,12 @@ func (r *Repository) Update(category *Category) error {
 		return &dberrors.NotFoundError{Entity: "category", ID: category.ID.String()}
 	}
 
-	// If setting a parent, verify it exists and matches type
+	// If setting a parent, verify it exists, matches type, and is top-level.
 	if category.ParentID.Valid {
 		parent, err := r.GetByID(category.ParentID.ID)
 		if err != nil {
-			if _, ok := err.(*dberrors.NotFoundError); ok {
+			var nf *dberrors.NotFoundError
+			if errors.As(err, &nf) {
 				return fmt.Errorf("parent category not found: %s", category.ParentID.ID.String())
 			}
 			return fmt.Errorf("failed to verify parent category: %w", err)
@@ -302,30 +301,36 @@ func (r *Repository) Update(category *Category) error {
 		}
 	}
 
-	// Delete the existing record
-	_, err = r.q().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, category.ID.String())
-	if err != nil {
-		return fmt.Errorf("failed to delete for update: %w", err)
-	}
+	category.Touch()
 
-	// Insert the updated record
-	insertQuery := `
-		INSERT INTO categories (
-			id, name, parent_id, type, system_category,
-			created_at, updated_at
-		) VALUES (CAST(? AS UUID), ?, ?, ?, ?, ?, ?)
-	`
-	_, err = r.q().Exec(insertQuery,
-		category.ID.String(),
+	updateQuery := fmt.Sprintf(`
+		UPDATE categories
+		SET name = ?,
+			parent_id = %s,
+			type = ?,
+			system_category = ?,
+			updated_at = ?
+		WHERE id = CAST(? AS UUID)
+	`, dbutil.NullUUIDCast(category.ParentID))
+
+	result, err := r.q().Exec(updateQuery,
 		category.Name,
 		dbutil.NullID(category.ParentID),
 		category.Type.String(),
 		category.IsSystem,
-		category.CreatedAt.Time(),
 		category.UpdatedAt.Time(),
+		category.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert for update: %w", err)
+		return fmt.Errorf("failed to update category: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return &dberrors.NotFoundError{Entity: "category", ID: category.ID.String()}
 	}
 
 	return nil
@@ -333,12 +338,13 @@ func (r *Repository) Update(category *Category) error {
 
 // Delete removes a category from the database.
 // This will fail if the category has any subcategories, transactions,
-// transaction split lines, or scheduled transactions referencing it.
+// transaction split lines, scheduled transactions, scheduled split lines,
+// or payees referencing it.
 func (r *Repository) Delete(id types.ID) error {
 	// Check for subcategories
 	var childCount int
 	err := r.q().QueryRow(`
-		SELECT COUNT(*) FROM categories WHERE CAST(parent_id AS VARCHAR) = ?
+		SELECT COUNT(*) FROM categories WHERE parent_id = CAST(? AS UUID)
 	`, id.String()).Scan(&childCount)
 	if err != nil {
 		return fmt.Errorf("failed to check subcategories: %w", err)
@@ -355,7 +361,7 @@ func (r *Repository) Delete(id types.ID) error {
 	// Check for transactions
 	var txnCount int
 	err = r.q().QueryRow(`
-		SELECT COUNT(*) FROM transactions WHERE CAST(category_id AS VARCHAR) = ?
+		SELECT COUNT(*) FROM transactions WHERE category_id = CAST(? AS UUID)
 	`, id.String()).Scan(&txnCount)
 	if err != nil {
 		return fmt.Errorf("failed to check transactions: %w", err)
@@ -372,7 +378,7 @@ func (r *Repository) Delete(id types.ID) error {
 	// Check for transaction split lines
 	var splitCount int
 	err = r.q().QueryRow(`
-		SELECT COUNT(*) FROM transaction_splits WHERE CAST(category_id AS VARCHAR) = ?
+		SELECT COUNT(*) FROM transaction_splits WHERE category_id = CAST(? AS UUID)
 	`, id.String()).Scan(&splitCount)
 	if err != nil {
 		return fmt.Errorf("failed to check split lines: %w", err)
@@ -389,7 +395,7 @@ func (r *Repository) Delete(id types.ID) error {
 	// Check for scheduled transactions
 	var scheduledCount int
 	err = r.q().QueryRow(`
-		SELECT COUNT(*) FROM scheduled_transactions WHERE CAST(category_id AS VARCHAR) = ?
+		SELECT COUNT(*) FROM scheduled_transactions WHERE category_id = CAST(? AS UUID)
 	`, id.String()).Scan(&scheduledCount)
 	if err != nil {
 		return fmt.Errorf("failed to check scheduled transactions: %w", err)
@@ -403,7 +409,41 @@ func (r *Repository) Delete(id types.ID) error {
 		}
 	}
 
-	result, err := r.q().Exec(`DELETE FROM categories WHERE CAST(id AS VARCHAR) = ?`, id.String())
+	// Check for scheduled split lines
+	var schedSplitCount int
+	err = r.q().QueryRow(`
+		SELECT COUNT(*) FROM scheduled_split_items WHERE category_id = CAST(? AS UUID)
+	`, id.String()).Scan(&schedSplitCount)
+	if err != nil {
+		return fmt.Errorf("failed to check scheduled split lines: %w", err)
+	}
+	if schedSplitCount > 0 {
+		return &dberrors.HasDependentsError{
+			Entity:     "category",
+			ID:         id.String(),
+			Dependents: "scheduled split lines",
+			Count:      schedSplitCount,
+		}
+	}
+
+	// Check for payees using this category as their default
+	var payeeCount int
+	err = r.q().QueryRow(`
+		SELECT COUNT(*) FROM payees WHERE default_category_id = CAST(? AS UUID)
+	`, id.String()).Scan(&payeeCount)
+	if err != nil {
+		return fmt.Errorf("failed to check payees: %w", err)
+	}
+	if payeeCount > 0 {
+		return &dberrors.HasDependentsError{
+			Entity:     "category",
+			ID:         id.String(),
+			Dependents: "payees",
+			Count:      payeeCount,
+		}
+	}
+
+	result, err := r.q().Exec(`DELETE FROM categories WHERE id = CAST(? AS UUID)`, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete category: %w", err)
 	}

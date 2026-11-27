@@ -62,7 +62,9 @@ func (s *Service) Create(payee *Payee) error {
 	if err := s.validatePayee(payee); err != nil {
 		return err
 	}
-	return s.repo.Create(payee)
+	return s.runInTx(func(b *Service) error {
+		return b.repo.Create(payee)
+	})
 }
 
 // GetByID retrieves a payee by its ID.
@@ -80,7 +82,9 @@ func (s *Service) Update(payee *Payee) error {
 	if err := s.validatePayee(payee); err != nil {
 		return err
 	}
-	return s.repo.Update(payee)
+	return s.runInTx(func(b *Service) error {
+		return b.repo.Update(payee)
+	})
 }
 
 // Delete removes a payee. The payee must have no transactions.
@@ -209,24 +213,28 @@ func (s *Service) ResolveOrCreate(name string) (*Payee, bool, error) {
 
 // SetDefaultCategory sets the default category for a payee.
 func (s *Service) SetDefaultCategory(payeeID, categoryID types.ID) error {
-	p, err := s.repo.GetByID(payeeID)
-	if err != nil {
-		return err
-	}
+	return s.runInTx(func(b *Service) error {
+		p, err := b.repo.GetByID(payeeID)
+		if err != nil {
+			return err
+		}
 
-	p.SetDefaultCategory(categoryID)
-	return s.repo.Update(p)
+		p.SetDefaultCategory(categoryID)
+		return b.repo.Update(p)
+	})
 }
 
 // ClearDefaultCategory removes the default category from a payee.
 func (s *Service) ClearDefaultCategory(payeeID types.ID) error {
-	p, err := s.repo.GetByID(payeeID)
-	if err != nil {
-		return err
-	}
+	return s.runInTx(func(b *Service) error {
+		p, err := b.repo.GetByID(payeeID)
+		if err != nil {
+			return err
+		}
 
-	p.ClearDefaultCategory()
-	return s.repo.Update(p)
+		p.ClearDefaultCategory()
+		return b.repo.Update(p)
+	})
 }
 
 // GetDefaultCategory returns the default category for a payee, or nil if not set.
