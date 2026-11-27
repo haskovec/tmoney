@@ -646,6 +646,15 @@ func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
 			return fmt.Errorf("failed to update scheduled transactions: %w", err)
 		}
 
+		// Update scheduled split items
+		if _, err := b.q().Exec(`
+			UPDATE scheduled_split_items
+			SET category_id = CAST(? AS UUID)
+			WHERE category_id = CAST(? AS UUID)
+		`, targetID.String(), sourceID.String()); err != nil {
+			return fmt.Errorf("failed to update scheduled split items: %w", err)
+		}
+
 		// If source has children, reassign them to target
 		children, err := b.repo.ListChildren(sourceID)
 		if err != nil {

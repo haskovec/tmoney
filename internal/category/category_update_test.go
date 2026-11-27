@@ -187,6 +187,50 @@ func TestService_MergeCategories_WithReferencedChild(t *testing.T) {
 	}
 }
 
+func TestService_MergeCategories_ReassignsScheduledSplitItems(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewCategory("OldTax", TypeExpense)
+	target := NewCategory("NewTax", TypeExpense)
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	splitItemID := types.NewID()
+	if _, err := database.Conn().Exec(
+		`INSERT INTO scheduled_split_items (id, scheduled_transaction_id, category_id, amount) VALUES (CAST(? AS UUID), CAST(? AS UUID), CAST(? AS UUID), -100.00)`,
+		splitItemID.String(), types.NewID().String(), source.ID.String(),
+	); err != nil {
+		t.Fatalf("insert scheduled_split_items: %v", err)
+	}
+
+	if err := svc.MergeCategories(source.ID, target.ID); err != nil {
+		t.Fatalf("MergeCategories() error = %v", err)
+	}
+
+	// Source category must be deleted.
+	if _, err := svc.GetByID(source.ID); err == nil {
+		t.Error("expected source category to be deleted after merge")
+	}
+
+	// Scheduled split item must now point to target.
+	var gotCatID types.ID
+	if err := database.Conn().QueryRow(
+		`SELECT category_id FROM scheduled_split_items WHERE id = CAST(? AS UUID)`,
+		splitItemID.String(),
+	).Scan(&gotCatID); err != nil {
+		t.Fatalf("query scheduled_split_items: %v", err)
+	}
+	if gotCatID != target.ID {
+		t.Errorf("scheduled_split_items.category_id = %s, want %s", gotCatID, target.ID)
+	}
+}
+
 func TestRepository_Delete_PayeeDefaultAndScheduledSplitGuards(t *testing.T) {
 	t.Run("blocks delete when referenced by payee default_category_id", func(t *testing.T) {
 		database := createTestDB(t)

@@ -13,10 +13,9 @@
   - **Issue:** Both `Update` methods execute `DELETE` then `INSERT` without a transaction. A failed `INSERT` (e.g., invalid `default_category_id` FK in `SetDefaultCategory`) commits the `DELETE` and permanently destroys the row. Worse, because `categories(id)` still has 6 inbound FKs and `payees(id)` has 3 inbound FKs, editing/renaming *any* referenced category or payee (or merging a category with referenced children) fails with a DuckDB FK violation.
   - **DuckDB Note:** This workaround originally existed because older DuckDB versions turned `UPDATE` on an indexed column into an internal `DELETE+INSERT` that tripped inbound FKs. See the [DuckDB `UPDATE` Probe Findings](#duckdb-update-probe-findings) section below for live verification against the pinned DuckDB version before fixing.
 
-- [ ] **CRIT-02: `category.Service.MergeCategories` omits `scheduled_split_items` → partial merge & unrecoverable FK failure**
-  - **Files:** `internal/category/category_service.go:607-668`, `internal/db/migrations/029_transfer_categories.sql:82`
-  - **Issue:** Reassigns `transactions`, `transaction_splits`, `payees`, `scheduled_transactions`, and child categories, commits, then deletes `sourceID`. Never updates `scheduled_split_items.category_id` (which has an FK to `categories(id)`), leaving references permanently split across source and target when `Delete` fails.
-  - **Related:** Calling `InTx(tx).MergeCategories(...)` or `InTx(tx).MergePayees(...)` (`internal/payee/payee_service.go:327-418`) runs the trailing `DELETE` inside `tx`, hitting DuckDB's same-tx FK delete restriction.
+- [ ] **CRIT-02: `MergeCategories` / `MergePayees` fail when called via `InTx(tx)`** *(main `scheduled_split_items` omission in `MergeCategories` fixed on PR #143; remaining work: guard/handle `InTx(tx)` callers)*
+  - **Files:** `internal/category/category_service.go:607-680`, `internal/payee/payee_service.go:327-418`
+  - **Issue:** ~~`MergeCategories` never updated `scheduled_split_items.category_id`~~ *(fixed in PR #143)*. Remaining: calling `InTx(tx).MergeCategories(...)` or `InTx(tx).MergePayees(...)` runs the trailing `DELETE` inside `tx`, hitting DuckDB's same-tx FK delete restriction.
 
 - [ ] **CRIT-03: `payee.Repository.Delete` permanently destroys `payee_aliases` before failing on `scheduled_transactions` FK**
   - **Files:** `internal/payee/payee_repository.go:205-244`
