@@ -2,6 +2,9 @@
 package tui
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -590,13 +593,26 @@ type mouseOpenAccountMsg struct {
 }
 
 // Run starts the TUI application.
+//
+// The SIGHUP of a closing terminal ends the program as a quit does, so the
+// shutdown below still closes the database and makes the quit backup (see
+// watchHangup). SIGHUP stays caught until shutdown ends.
 func Run(database *db.DB, cfg *config.Config) error {
 	app := NewApp(database, cfg)
 	p := tea.NewProgram(app)
 
+	hangups := make(chan os.Signal, 1)
+	signal.Notify(hangups, syscall.SIGHUP)
+	done := make(chan struct{})
+	defer func() {
+		signal.Stop(hangups)
+		close(done)
+	}()
+	watch := watchHangup(hangups, done, quitOnHangup(p))
+
 	_, err := p.Run()
 	app.shutdown()
-	return err
+	return runError(err, watch.hungUp.Load())
 }
 
 // shutdown closes the databases after the program ends, and writes the quit

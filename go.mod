@@ -13,6 +13,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f
 	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/creack/pty v1.1.24
 	github.com/duckdb/duckdb-go/v2 v2.20000.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.50.0
