@@ -254,7 +254,7 @@
   - **Files:** `internal/db/connection.go:303-306, 923-945`, `internal/db/reindex.go:37-78`
 - [ ] **MED-03: `types` edge cases (`Quantity.Scan` missing `int64`, `Nullable*.Scan` sets `Valid = true` on scan error, `MaxLength`/`MinLength` count bytes instead of runes, `ServiceValidationError` missing `Unwrap()`)**
   - **Files:** `internal/types/types.go:390-427, 662-776`, `internal/types/validation.go:87-100, 303-309`
-- [ ] **MED-04: `category.Repository.Update` allows self-parent cycles, 3-level hierarchies, parent/child type mismatch; `Service.Update` allows setting `IsSystem = true`; `Delete` misses `scheduled_split_items` & `payees.default_category_id` guard**
+- [x] **MED-04: `category.Repository.Update` allows self-parent cycles, 3-level hierarchies, parent/child type mismatch; `Service.Update` allows setting `IsSystem = true`; `Delete` misses `scheduled_split_items` & `payees.default_category_id` guard** *(fixed on PR #143 alongside CRIT-01)*
   - **Files:** `internal/category/category_repository.go:288-303, 337-420`, `internal/category/category_service.go:494-509`
 - [ ] **MED-05: `payee.Service` auto-create methods skip `validatePayee`**
   - **Files:** `internal/payee/payee_service.go:103-145, 187-204`

@@ -246,3 +246,90 @@ func TestRepository_Delete_PayeeDefaultAndScheduledSplitGuards(t *testing.T) {
 		}
 	})
 }
+
+func TestCategory_Update_HierarchyAndSystemGuards(t *testing.T) {
+	setup := func(t *testing.T) (*Service, *Category, *Category, *Category) {
+		t.Helper()
+		database := createTestDB(t)
+		repo := NewRepository(database)
+		svc := NewService(repo, database)
+
+		parent := NewCategory("Food", TypeExpense)
+		otherParent := NewCategory("Living", TypeExpense)
+		if err := svc.Create(parent); err != nil {
+			t.Fatalf("create parent: %v", err)
+		}
+		if err := svc.Create(otherParent); err != nil {
+			t.Fatalf("create otherParent: %v", err)
+		}
+		child := NewSubcategory("Groceries", parent.ID, TypeExpense)
+		if err := svc.Create(child); err != nil {
+			t.Fatalf("create child: %v", err)
+		}
+		return svc, parent, otherParent, child
+	}
+
+	t.Run("rejects self-parenting", func(t *testing.T) {
+		svc, _, otherParent, _ := setup(t)
+		attempt := *otherParent
+		attempt.SetParent(otherParent.ID)
+		if err := svc.Update(&attempt); err == nil {
+			t.Fatal("Update() expected error when setting category as its own parent")
+		}
+		got, err := svc.GetByID(otherParent.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if got.ParentID.Valid {
+			t.Errorf("ParentID mutated to %+v, want invalid", got.ParentID)
+		}
+	})
+
+	t.Run("rejects making a category with subcategories into a subcategory", func(t *testing.T) {
+		svc, parent, otherParent, _ := setup(t)
+		attempt := *parent
+		attempt.SetParent(otherParent.ID)
+		if err := svc.Update(&attempt); err == nil {
+			t.Fatal("Update() expected error when reparenting a category that has children")
+		}
+		got, err := svc.GetByID(parent.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if got.ParentID.Valid {
+			t.Errorf("ParentID mutated to %+v, want invalid", got.ParentID)
+		}
+	})
+
+	t.Run("rejects changing type of a category with subcategories", func(t *testing.T) {
+		svc, parent, _, _ := setup(t)
+		attempt := *parent
+		attempt.Type = TypeIncome
+		if err := svc.Update(&attempt); err == nil {
+			t.Fatal("Update() expected error when changing type of category with children")
+		}
+		got, err := svc.GetByID(parent.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if got.Type != TypeExpense {
+			t.Errorf("Type mutated to %q, want %q", got.Type, TypeExpense)
+		}
+	})
+
+	t.Run("rejects escalating a user category to system category", func(t *testing.T) {
+		svc, _, otherParent, _ := setup(t)
+		attempt := *otherParent
+		attempt.IsSystem = true
+		if err := svc.Update(&attempt); err == nil {
+			t.Fatal("Update() expected error when setting IsSystem = true on user category")
+		}
+		got, err := svc.GetByID(otherParent.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if got.IsSystem {
+			t.Error("IsSystem mutated to true, want false")
+		}
+	})
+}

@@ -273,18 +273,17 @@ func (r *Repository) Update(category *Category) error {
 		return &dberrors.DuplicateError{Entity: "category", Field: "name", Value: category.Name}
 	}
 
-	// Check if category exists
-	var count int
-	err := r.q().QueryRow(`SELECT COUNT(*) FROM categories WHERE id = CAST(? AS UUID)`, category.ID.String()).Scan(&count)
+	// Load existing category (also verifies existence)
+	existing, err := r.GetByID(category.ID)
 	if err != nil {
-		return fmt.Errorf("failed to check category exists: %w", err)
-	}
-	if count == 0 {
-		return &dberrors.NotFoundError{Entity: "category", ID: category.ID.String()}
+		return err
 	}
 
-	// If setting a parent, verify it exists, matches type, and is top-level.
+	// If setting a parent, verify it is not self, exists, matches type, and is top-level.
 	if category.ParentID.Valid {
+		if category.ParentID.ID == category.ID {
+			return fmt.Errorf("category cannot be its own parent")
+		}
 		parent, err := r.GetByID(category.ParentID.ID)
 		if err != nil {
 			var nf *dberrors.NotFoundError
@@ -298,6 +297,25 @@ func (r *Repository) Update(category *Category) error {
 		}
 		if parent.ParentID.Valid {
 			return fmt.Errorf("cannot create subcategory under another subcategory")
+		}
+	}
+
+	// Preserve the two-level hierarchy and parent/child type invariants when
+	// this category already has subcategories.
+	if category.ParentID.Valid || category.Type != existing.Type {
+		var childCount int
+		err := r.q().QueryRow(
+			`SELECT COUNT(*) FROM categories WHERE parent_id = CAST(? AS UUID)`,
+			category.ID.String(),
+		).Scan(&childCount)
+		if err != nil {
+			return fmt.Errorf("failed to check subcategories: %w", err)
+		}
+		if childCount > 0 {
+			if category.ParentID.Valid {
+				return fmt.Errorf("cannot make a category with subcategories into a subcategory")
+			}
+			return fmt.Errorf("cannot change type of a category with subcategories")
 		}
 	}
 

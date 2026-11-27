@@ -505,6 +505,9 @@ func (s *Service) Update(category *Category) error {
 		if existing.IsSystem {
 			return &IsSystemError{ID: category.ID.String(), Name: existing.Name}
 		}
+		if category.IsSystem {
+			return fmt.Errorf("cannot mark user category %q as a system category", existing.Name)
+		}
 
 		return b.repo.Update(category)
 	})
