@@ -18,8 +18,16 @@ func SetAfterSafetyBackup(t *testing.T, f func(file string)) {
 	t.Cleanup(func() { afterSafetyBackup = nil })
 }
 
-// SetHeldElsewhere replaces, for one test, the check of Restore whether
-// another process has the database open.
+// SetAfterCopy sets, for one test, the hook that a backup runs right after
+// its copy of the database, before its checks, with the database file.
+func SetAfterCopy(t *testing.T, f func(file string)) {
+	t.Helper()
+	afterCopy = f
+	t.Cleanup(func() { afterCopy = nil })
+}
+
+// SetHeldElsewhere replaces, for one test, the check of a backup or Restore
+// whether another process has the database open.
 func SetHeldElsewhere(t *testing.T, f func(path string) (bool, error)) {
 	t.Helper()
 	saved := heldElsewhere

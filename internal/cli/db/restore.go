@@ -6,6 +6,7 @@ import (
 
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	tmoneydb "github.com/haskovec/tmoney/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -39,10 +40,20 @@ func newDBRestoreCmd() *cobra.Command {
 }
 
 // runDBRestore restores the database from a backup file.
+//
+// It holds the gate of the file during the restore (see tmoneydb.HoldGate),
+// so no other tmoney opens the file then. Restore itself refuses a file that
+// another program has open.
 func runDBRestore(opts *dbRestoreOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
 	}
+
+	release, err := tmoneydb.HoldGate(opts.file, tmoneydb.GateWait, cmdutil.WaitNotice(opts.file))
+	if err != nil {
+		return fmt.Errorf("failed to restore: %w", err)
+	}
+	defer release()
 
 	fmt.Fprintln(w, "Creating backup of current state...")
 

@@ -22,6 +22,11 @@ func TestKillChild(t *testing.T) {
 	if dbPath == "" {
 		t.Skip("helper process for the kill tests")
 	}
+	// The database of a backup is the FIFO. The check whether another
+	// program has the database open would open the FIFO and close it again,
+	// and the parent's write would then find no reader. So the check is off;
+	// open_elsewhere_test.go covers it.
+	heldElsewhere = func(string) (bool, error) { return false, nil }
 	var err error
 	switch os.Getenv(KillChildKindEnv) {
 	case "manual":

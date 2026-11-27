@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/haskovec/tmoney/internal/db"
+	"github.com/haskovec/tmoney/internal/filegate"
 )
 
 // stubResumeLauncher swaps resumeLauncher with a stub that records its calls.
@@ -81,10 +82,20 @@ func TestRunTUIResume_MissingFileIsAnError(t *testing.T) {
 // and then succeed. It returns the count of calls.
 func stubOpen(t *testing.T, locked int, lockErr error) *int {
 	t.Helper()
+	return stubOpenWaiting(t, locked, lockErr, false)
+}
+
+// stubOpenWaiting is stubOpen, and with gateWait each call first calls its
+// waiting func, as an open that waits for the gate of the file does.
+func stubOpenWaiting(t *testing.T, locked int, lockErr error, gateWait bool) *int {
+	t.Helper()
 	calls := 0
 	origOpen, origLocked, origInterval := openDatabase, lockedElsewhere, lockRetryInterval
-	openDatabase = func(string) (*db.DB, error) {
+	openDatabase = func(_ string, waiting func()) (*db.DB, error) {
 		calls++
+		if gateWait {
+			waiting()
+		}
 		if calls <= locked {
 			return nil, lockErr
 		}
@@ -131,6 +142,40 @@ func TestOpenWaitingForLock(t *testing.T) {
 		}
 		if took := time.Since(start); took > 2*time.Second {
 			t.Errorf("the wait took %v, want about 50ms", took)
+		}
+	})
+	t.Run("a wait for the gate and for the lock says it once", func(t *testing.T) {
+		calls := stubOpenWaiting(t, 1, errTestLocked, true)
+		var out bytes.Buffer
+		if _, err := openWaitingForLock("f.tdb", 5*time.Second, &out); err != nil {
+			t.Errorf("err = %v, want the open after the lock went", err)
+		}
+		if *calls != 2 {
+			t.Errorf("calls = %d, want 2", *calls)
+		}
+		if got := strings.Count(out.String(), "\n"); got != 1 || !strings.Contains(out.String(), "Waiting for another tmoney to close f.tdb...") {
+			t.Errorf("output = %q, want exactly one wait line", out.String())
+		}
+	})
+	t.Run("a normal start says that it waits for the gate", func(t *testing.T) {
+		stubOpenWaiting(t, 0, nil, true)
+		var out bytes.Buffer
+		if _, err := openWaitingForLock("f.tdb", 0, &out); err != nil {
+			t.Errorf("err = %v, want the open", err)
+		}
+		if out.String() != "Waiting for another tmoney to close f.tdb...\n" {
+			t.Errorf("output = %q, want the wait line", out.String())
+		}
+	})
+	t.Run("a gate that stays busy is final", func(t *testing.T) {
+		busy := &filegate.BusyError{File: "f.tdb"}
+		calls := stubOpen(t, 5, busy)
+		lockedElsewhere = func(string, error) bool { return true } // the other tmoney also has the file open
+		if _, err := openWaitingForLock("f.tdb", 5*time.Second, &bytes.Buffer{}); !errors.Is(err, db.ErrGateBusy) {
+			t.Errorf("err = %v, want the busy gate", err)
+		}
+		if *calls != 1 {
+			t.Errorf("calls = %d, want 1", *calls)
 		}
 	})
 	t.Run("another error does not wait", func(t *testing.T) {

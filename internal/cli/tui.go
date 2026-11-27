@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -86,10 +87,14 @@ func launchTUI(file, resume string) error {
 	return tui.Run(database, cfg, resume)
 }
 
-// openDatabase and lockedElsewhere are db.Open and the check of a lock that
-// another process holds; tests replace them.
+// openDatabase and lockedElsewhere are db.OpenWaiting and the check of a lock
+// that another process holds; tests replace them. openDatabase waits up to
+// db.GateWait for the gate of the file, and calls waiting once when that wait
+// starts.
 var (
-	openDatabase    = db.Open
+	openDatabase = func(file string, waiting func()) (*db.DB, error) {
+		return db.OpenWaiting(file, db.GateWait, waiting)
+	}
 	lockedElsewhere = func(path string, err error) bool {
 		if db.IsLockedElsewhere(err) {
 			return true
@@ -102,18 +107,27 @@ var (
 // openWaitingForLock opens file. While another process has it open, it tries
 // again for up to wait, and says once on w that it waits. With wait 0 it
 // tries once, as a normal start does.
+//
+// Each open also waits for the gate of the file while another tmoney closes
+// it, or makes or restores a backup of it (see db.OpenWaiting). That wait
+// says the same line, and only once for both waits. When the gate stays busy
+// to its deadline, the error is final: the other tmoney did not finish in
+// time, and a try again would wait as long.
 func openWaitingForLock(file string, wait time.Duration, w io.Writer) (*db.DB, error) {
 	deadline := time.Now().Add(wait)
 	told := false
-	for {
-		database, err := openDatabase(file)
-		if err == nil || wait <= 0 || !time.Now().Before(deadline) || !lockedElsewhere(file, err) {
-			return database, err
-		}
+	tell := func() {
 		if !told {
 			_, _ = fmt.Fprintf(w, "Waiting for another tmoney to close %s...\n", file)
 			told = true
 		}
+	}
+	for {
+		database, err := openDatabase(file, tell)
+		if err == nil || wait <= 0 || !time.Now().Before(deadline) || errors.Is(err, db.ErrGateBusy) || !lockedElsewhere(file, err) {
+			return database, err
+		}
+		tell()
 		time.Sleep(lockRetryInterval)
 	}
 }

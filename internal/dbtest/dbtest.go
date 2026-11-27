@@ -16,6 +16,8 @@
 //     fixtures that seed, close, and hand the path to a command that reopens it.
 //   - NewFileIn is NewFile but writes into a caller-supplied dir, for tests that
 //     keep the DB beside other files (an export target, an import source).
+//   - OpenElsewhere opens a database once in another process, as another
+//     tmoney would, for tests of the gate of a file (see child.go).
 package dbtest
 
 import (

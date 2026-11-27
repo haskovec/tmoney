@@ -343,6 +343,52 @@ GROUP BY c.id, c.name, c.parent_id, c.type, DATE_TRUNC('month', t.date);
 2. Import from SQL dump
 3. DuckDB has built-in crash recovery
 
+### The file gate
+
+DuckDB's lock on the file is down whenever tmoney has the file closed. Each
+tmoney therefore takes the "gate" of the file (`internal/filegate`): an
+exclusive lock (`flock` on macOS and Linux, `LockFileEx` on Windows) on an
+empty file beside the database, `.<name>.tmoney-lock`. The gate file is never
+written or deleted. A tmoney holds the gate only while it changes the state of
+the file:
+
+- during an open (`db.Open`, `db.OpenWaiting`, `db.Create`): the open, the
+  checks, the migrations and the reconnect after them;
+- across each close and reopen (`WithFileClosed`, the reconnect of a heal),
+  and from before the last close to the end of the quit backup
+  (`CloseAndSettleWith`);
+- during `db backup` and `db restore` (`db.HoldGate`).
+
+So "gate busy" means "another tmoney changes the state of the file: wait", and
+"gate free, DuckDB's lock held" means "another tmoney runs on the file: fail
+at once". An open waits up to 10 seconds (`db.GateWait`) for the gate, and then
+fails with `<name> is busy: another tmoney is closing it, or is making or
+restoring a backup of it. Try again in a moment`. In one process the gate
+counts its holders, so a second hold never waits.
+
+The wait can be long, and the file can change in that time. So the open and
+`db.Create` check the file again when they hold the gate. An open of a file
+that went during the wait (moved, or deleted by a `Create` of another tmoney
+that failed) is `file not found`: DuckDB would make a new, empty database at
+the path. A `Create` that finds a file that another tmoney made during the
+wait is `file already exists`: it would otherwise fail on the tables of that
+file and delete it.
+
+Because the gate file stays, an open takes the gate only for a path that can be
+a database: a regular file whose header has DuckDB's magic bytes (`DUCK` at
+offset 8), or that is too short to tell (DuckDB can be making it). A folder, a
+FIFO or a device, or a file such as a CSV file, gets no gate file; DuckDB
+refuses it. `db backup` and `db restore` take the gate of any path that
+exists, because a restore makes it a database.
+
+The lock is not on the database file itself: the close of any descriptor of a
+file drops the process's `fcntl` locks on it, on macOS a `flock` on the file
+conflicts with the process's own DuckDB, a restore renames a new file over it,
+and on Linux a `flock` does not stop DuckDB. Where the gate file cannot be
+made or locked (a folder that the user cannot write, a file system with no such
+locks), the gate does nothing, and only DuckDB's lock applies. Other DuckDB
+clients and older tmoney versions do not take the gate.
+
 ### Index Repair (`db reindex`)
 
 DuckDB can leave a secondary ART index desynced from its table on disk — a row

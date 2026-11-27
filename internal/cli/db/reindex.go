@@ -38,12 +38,15 @@ func newDBReindexCmd() *cobra.Command {
 }
 
 // runDBReindex rebuilds every secondary index in the database file.
+//
+// Its open waits for the gate of the file, and says so, as the open of every
+// other command does (see cmdutil.OpenServices).
 func runDBReindex(opts *dbReindexOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
 	}
 
-	database, err := tmoneydb.Open(opts.file)
+	database, err := tmoneydb.OpenWaiting(opts.file, tmoneydb.GateWait, cmdutil.WaitNotice(opts.file))
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

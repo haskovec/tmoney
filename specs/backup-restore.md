@@ -12,6 +12,8 @@ Auto-backup runs **on app close**:
 - TUI: when the user quits the application (Ctrl+Q or File → Exit)
 - CLI: when a CLI command that modifies data completes successfully
 
+The auto-backup holds the gate of the file (see [Other tmoney processes](#other-tmoney-processes)) from before the close to the end of the copy. A CLI command reports a backup that did not run as `warning: auto-backup skipped: <reason>`, and one that failed as `warning: auto-backup failed: <reason>`. The command still succeeds.
+
 ### Backup File Naming
 
 Pattern: `<filename>.tdb.backup.<ISO-timestamp>`
@@ -195,6 +197,9 @@ Safety: the current state is always backed up before restoring.
 | Backup of a newer TMoney | `"Error: failed to restore: cannot restore backup file <path>: file was created with a newer version of TMoney (file: v<n>, app: v<m>)"` |
 | Backup file cannot be read | `"Error: failed to restore: cannot read backup file <path>: open <path>: permission denied"` (also for a log beside it: `open <resolved path>.wal: ...`, with the absolute path of the file at the end of any link) |
 | Backup file open in another program | `"Error: failed to restore: backup file <path> is open in another program; close it and try again: <reason>"` |
+| Database open in another program (restore) | `"Error: failed to restore: the database is open in another program; close it and try again"` (nothing changes) |
+| Database open in another program (`db backup`) | `"Error: failed to create backup: <path> is open in another program; close it, or use File > Create Backup in that tmoney"` (no backup) |
+| Another tmoney holds the gate for 10 s | `"Error: failed to create backup: <name> is busy: another tmoney is closing it, or is making or restoring a backup of it. Try again in a moment"` (also `failed to restore: ...`) |
 | Disk full during backup | `"Error: Not enough disk space to create backup"` |
 | Permission denied | `"Error: Cannot write to backup location"` |
 | Restore fails mid-copy | Original file is preserved (copy to temp first, then rename) |
@@ -205,6 +210,10 @@ To prevent data loss if restore fails:
 
 0. Stop if the database file is not there: the open in step 4 would create
    an empty database, and its safety backup would count toward retention.
+   Then stop at once if another process holds the lock of the file, with
+   `"Error: failed to restore: the database is open in another program;
+   close it and try again"`: the gate is held during the restore, and a
+   tmoney that closes the file waits for it.
 1. Verify the backup is a valid TMoney database (open it and the write-ahead
    log files beside it for reading, attach it read-only, check the metadata,
    refuse a newer schema version). A backup that this user cannot read, or
@@ -231,9 +240,12 @@ To prevent data loss if restore fails:
    log changed during it (a program opened the database after step 4 and
    wrote to it), stop with `"Error: failed to restore: the database changed
    during the restore, so another program has it open; close it and try
-   again"`. The safety backup stays. Then ask the operating system again
-   whether another process holds the lock of the file, and stop the same way
-   if one does: a program that only opened the database changed nothing yet.
+   again"`. A change during the copy drops the copy (as for every backup), so
+   no safety backup stays; a change after the copy, while the safety backup
+   gets its name and the retention pass runs, keeps the safety backup. Then
+   ask the operating system again whether another process holds the lock of
+   the file, and stop the same way if one does: a program that only opened
+   the database changed nothing yet.
 6. Rename the temp file over the database name in one step. If the process
    dies before the rename, the database is as it was; after it, the database
    is the complete copy.
@@ -275,6 +287,34 @@ backup leaves only a `.tmoney-partial-<n>` file, which no listing shows. The
 next auto-backup deletes such a file when it is more than an hour old. The
 sweep finds these files by name only, so the name has "tmoney" in it: a file of
 the user is not likely to have such a name.
+
+Before the copy, a backup refuses a database that another process has open.
+After the copy, it drops the copy when the database file or a log changed, or
+when another process opened the database meanwhile: `the database changed
+during the backup, so another program has it open; the backup was not kept`.
+
+## Other tmoney processes
+
+A backup or restore copies the database file while no DuckDB has it open. So
+another tmoney must not open the file then. Each tmoney takes a lock, the
+"gate", on an empty file beside the database (`.<name>.tmoney-lock`) for each
+moment when DuckDB's own lock on the file is down: during an open, from before
+the close to the end of the quit backup or the CLI auto-backup, and during a
+File > Create Backup, a restore, `db backup` and `db restore`. A tmoney that
+only has the file open does not hold the gate. See
+[database.md](database.md#the-file-gate).
+
+- An open while another tmoney holds the gate waits for it, for up to 10
+  seconds, and then opens the file. A resumed TUI thus opens after the quit
+  backup of the tmoney that the terminal closed.
+- `db backup` and `db restore` refuse a database that another program has
+  open. In the TUI of that tmoney, use File > Create Backup or File > Restore
+  from Backup.
+
+Known limits: other DuckDB clients and older tmoney versions do not take the
+gate. The check after the copy drops a copy of a file that they changed or
+still have open, but it does not keep them out. A copy that takes more than 10
+seconds makes the opens that wait for it fail with the busy error.
 
 ## Validation Rules
 

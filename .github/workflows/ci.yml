@@ -62,6 +62,18 @@ jobs:
         id: test
         run: mise run test
 
+      # The file gate (internal/filegate) has code for each OS, and this job
+      # runs on Linux only. A vet for the other systems checks that their
+      # code compiles. The package has no cgo, so no C compiler is needed.
+      # Like Lint, they run after failed tests too.
+      - name: Vet the file gate for Windows
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: mise exec -- env GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go vet ./internal/filegate/
+
+      - name: Vet the file gate for macOS
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: mise exec -- env GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go vet ./internal/filegate/
+
       # Lint runs after failed tests too, so one run reports both; it is left
       # out only when the tests did not run (a setup step failed).
       - name: Lint

@@ -56,4 +56,7 @@ main
 *.tdb
 *.tdb.wal
 *.tdb.backup.*
+# The gate of a database file (internal/filegate): an empty lock file beside
+# it, .<name>.tmoney-lock, that tmoney never deletes
+*.tmoney-lock
 

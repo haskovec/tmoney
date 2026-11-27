@@ -1,11 +1,13 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/haskovec/tmoney/internal/backup"
 	"github.com/haskovec/tmoney/internal/cli/cmdutil"
+	tmoneydb "github.com/haskovec/tmoney/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -35,12 +37,26 @@ func newDBBackupCmd() *cobra.Command {
 }
 
 // runDBBackup creates a manual backup of the database file.
+//
+// It holds the gate of the file during the copy (see tmoneydb.HoldGate), so
+// no other tmoney opens the file then. A tmoney that has the file open does
+// not hold the gate: the backup refuses its file, and the user makes the
+// backup in that tmoney.
 func runDBBackup(opts *dbBackupOptions, w io.Writer) error {
 	if err := cmdutil.RequireFile(opts.file); err != nil {
 		return err
 	}
 
+	release, err := tmoneydb.HoldGate(opts.file, tmoneydb.GateWait, cmdutil.WaitNotice(opts.file))
+	if err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+	defer release()
+
 	backupPath, err := backup.CreateManualBackup(opts.file)
+	if errors.Is(err, backup.ErrOpenElsewhere) {
+		return fmt.Errorf("failed to create backup: %s is open in another program; close it, or use File > Create Backup in that tmoney", opts.file)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}

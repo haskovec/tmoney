@@ -39,8 +39,9 @@ type DB struct {
 	// can block for as long as a reader holds a cursor on the old instance, so
 	// reconnect publishes its new pool only if no Close landed in the meantime.
 	closeGen uint64
-	// final records CloseAndSettle or CloseForGood, guarded by connMu: the
-	// database is closed for good, so WithFileClosed refuses to run and reopen.
+	// final records CloseAndSettle, CloseAndSettleWith or CloseForGood,
+	// guarded by connMu: the database is closed for good, so WithFileClosed
+	// refuses to run and reopen.
 	final bool
 	// reopenMu serializes the opens of the file. reconnect holds it from the
 	// close of the old pool to the publish of the new one, and WithFileClosed
@@ -50,6 +51,17 @@ type DB struct {
 	// DuckDB attaches a file only once, so two opens racing for it leave one
 	// failed; and a heal that opens under fn would change the file while it
 	// is copied. Take it after txMu, never before.
+	//
+	// Lock order: txMu, then reopenMu, then the gate of the file (gate.go),
+	// then the mutex of package filegate, which is a leaf. reconnect,
+	// WithFileClosed and CloseAndSettleWith take the gate after the mutexes
+	// of the handle, so that other tmoney processes do not wait while this
+	// one waits for a write or a heal. Open and Create take the gate before
+	// the mutexes of their new handle, which no other goroutine can see yet.
+	// The gate cannot deadlock, for two reasons. A hold in this process
+	// never waits: a second hold counts up. And a holder never waits for
+	// another process: a DuckDB open of a file that another process has open
+	// fails at once.
 	reopenMu sync.Mutex
 	// fileBusy is set while that background reopen waits for the read, so a
 	// WithFileClosed that times out on reopenMu meanwhile gives the same "try
@@ -134,12 +146,48 @@ func monoNow() int64 {
 // Open opens an existing TMoney database file.
 // Returns an error if the file doesn't exist, isn't a valid DuckDB file,
 // or isn't a TMoney database.
+//
+// It waits up to GateWait for the gate of the file (see OpenWaiting).
 func Open(path string) (*DB, error) {
+	return OpenWaiting(path, GateWait, nil)
+}
+
+// OpenWaiting is Open with a wait of up to wait for the gate of the file
+// (gate.go). It calls waiting, when not nil, once, when the wait starts.
+//
+// It holds the gate for the whole open: the open, the checks, the
+// migrations and the reconnect after them. So it does not open the file
+// while another tmoney has it closed to copy or reopen it, and no other
+// tmoney opens the file during the reconnect. When the wait runs out, the
+// error is a *filegate.BusyError, which wraps ErrGateBusy. A tmoney that
+// only has the file open does not hold the gate, so DuckDB's lock error
+// still comes at once.
+func OpenWaiting(path string, wait time.Duration, waiting func()) (*DB, error) {
 	path = ExpandHome(path)
 
 	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
 		return nil, &FileNotFoundError{Path: path}
+	}
+
+	// A path that cannot be a database, such as a folder or a CSV file, gets
+	// no gate (see canBeDatabase): DuckDB refuses it, and no tmoney can have
+	// it open, so no tmoney can be closing or copying it.
+	if err != nil || canBeDatabase(path, info) {
+		release, err := holdGate(path, time.Now().Add(wait), waiting)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+
+		// The wait for the gate can be long, and the file can go in that
+		// time: the user moved it, or a Create of another tmoney failed and
+		// deleted it. DuckDB makes a new, empty database at a path with no
+		// file, so check again under the gate.
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return nil, &FileNotFoundError{Path: path}
+		}
 	}
 
 	// Open DuckDB connection
@@ -198,6 +246,23 @@ func Create(path string) (*DB, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, &DatabaseError{Op: "create directory", Err: err}
+	}
+
+	// The gate (gate.go) keeps another tmoney out of the new file until this
+	// one has it open: through the reconnect below, and through the delete
+	// of the file after a failure.
+	release, err := holdGate(path, time.Now().Add(GateWait), createWaiting)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	// Each tmoney that creates a file holds its gate until its Create
+	// returns, so this check under the gate is final. Without it, a Create
+	// that waited for the gate would open the file that another Create made
+	// in the wait, fail on its _metadata table, and delete it below.
+	if _, err := os.Stat(path); err == nil {
+		return nil, &FileExistsError{Path: path}
 	}
 
 	// Create DuckDB connection (creates file)
@@ -296,9 +361,10 @@ func (db *DB) close() (*sql.DB, uint64, error) {
 	return db.conn, db.closeGen, db.conn.Close()
 }
 
-// reopenWaitTimeout bounds WithFileClosed's waits: for a heal in flight, and
-// then for the reads that still hold the closed pool. A var so tests can
-// shorten it.
+// reopenWaitTimeout bounds WithFileClosed's waits: for a heal in flight, for
+// the gate of the file, and then for the reads that still hold the closed
+// pool. It also bounds the wait of reconnect for the gate. A var so tests
+// can shorten it.
 var reopenWaitTimeout = SettleTimeout
 
 // errFileBusy reports that a read still held the closed pool, and with it the
@@ -313,8 +379,9 @@ var errFileBusy = errors.New(
 // ErrClosedForGood: fn ran, and WithFileClosed does not return it.
 var errReopenDropped = fmt.Errorf("the reopen was dropped: %w", ErrClosed)
 
-// SettleTimeout is how long CloseAndSettle waits before the last backup: on
-// quit in the TUI, and after each CLI command that changes data.
+// SettleTimeout is how long CloseAndSettle and CloseAndSettleWith wait
+// before the last backup: on quit in the TUI, and after each CLI command that
+// changes data.
 const SettleTimeout = 5 * time.Second
 
 // CloseAndSettle closes the database for good before a last copy of the file:
@@ -326,7 +393,33 @@ const SettleTimeout = 5 * time.Second
 // ErrClosedForGood, so the copy sees a still file. Last, it waits for the reads that still hold the closed pool
 // (see drained). It returns false when a wait ran out: the database is
 // closed, but something may still touch the file, so do not copy it then.
+//
+// It does not take the gate of the file (gate.go), so another tmoney can
+// open the file as soon as it is closed. For a copy of the file, use
+// CloseAndSettleWith.
 func (db *DB) CloseAndSettle(timeout time.Duration) (bool, error) {
+	return db.closeAndSettle(timeout, nil)
+}
+
+// CloseAndSettleWith is CloseAndSettle for the last copy of the file: when
+// the database settles, it runs fn on the path. It holds the gate of the file
+// (gate.go) from before the close to the end of fn. So another tmoney does
+// not open the file between the close and the end of the copy: that open
+// waits for the gate. What this package says of CloseAndSettle holds for
+// CloseAndSettleWith too.
+//
+// It reports whether fn ran. When fn ran, the error is the error of fn. One
+// deadline, timeout from now, bounds the waits for txMu, reopenMu and the
+// gate, and for the reads that hold the closed pool. When one of these waits
+// runs out, the database closes for good all the same, fn does not run, and
+// the result is (false, nil). When the close fails, the result is (false,
+// err).
+func (db *DB) CloseAndSettleWith(timeout time.Duration, fn func(path string) error) (ran bool, err error) {
+	return db.closeAndSettle(timeout, fn)
+}
+
+// closeAndSettle is CloseAndSettle, and with fn CloseAndSettleWith.
+func (db *DB) closeAndSettle(timeout time.Duration, fn func(path string) error) (bool, error) {
 	deadline := time.Now().Add(timeout)
 	// The same order as WithFileClosed: txMu, then reopenMu, which reconnect
 	// holds for as long as a heal is in flight.
@@ -338,11 +431,27 @@ func (db *DB) CloseAndSettle(timeout time.Duration) (bool, error) {
 			defer db.reopenMu.Unlock()
 		}
 	}
+	// Then the gate (see reopenMu), before the close: DuckDB's lock on the
+	// file goes down when the last connection closes.
+	if settled && fn != nil {
+		release, err := holdGate(db.path, deadline, nil)
+		if err != nil {
+			settled = false
+		} else {
+			defer release()
+		}
+	}
 
 	if err := db.CloseForGood(); err != nil {
 		return false, err
 	}
-	return settled && drained(db.live(), deadline), nil
+	if !settled || !drained(db.live(), deadline) {
+		return false, nil
+	}
+	if fn == nil {
+		return true, nil
+	}
+	return true, fn(db.path)
 }
 
 // CloseForGood closes the database for good at once, without the waits of
@@ -434,6 +543,13 @@ func (db *DB) isClosed() bool {
 // the error is ErrClosedForGood, also when an earlier reopen or a heal is
 // still busy. A close for good that comes while it waits for the reads to let
 // go gives errFileBusy instead; fn does not run then either.
+//
+// It holds the gate of the file (gate.go) from before the close to the end
+// of the reopen, so another tmoney does not open the file in between: that
+// open waits for the gate. A reopen left in the background keeps the gate
+// until it ends. When another tmoney holds the gate until the deadline,
+// nothing changes, fn does not run, and the error wraps a
+// *filegate.BusyError (ErrGateBusy).
 func (db *DB) WithFileClosed(fn func(path string) error) error {
 	// Closed for good comes first: the waits below cannot end in a run of
 	// fn, and their errors would say "try again" or "restart tmoney".
@@ -462,7 +578,7 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 		}
 		return &DatabaseError{Op: "close for file operation", Err: errHealBlocked}
 	}
-	unlock := true // false when a background reopen takes reopenMu over
+	unlock := true // false when a background reopen takes reopenMu and the gate over
 	defer func() {
 		if unlock {
 			db.reopenMu.Unlock()
@@ -473,14 +589,29 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 		return ErrClosedForGood // fn does not run, and nothing reopens
 	}
 
+	// Then the gate (see reopenMu), with the same deadline. While this
+	// tmoney has the file open, another one holds the gate only for a
+	// moment: for an open that DuckDB refuses, or for a backup or restore
+	// that it refuses. So a wait to the deadline means "try again".
+	releaseGate, err := holdGate(db.path, deadline, nil)
+	if err != nil {
+		return &DatabaseError{Op: "close for file operation", Err: err}
+	}
+	defer func() { // runs before the unlock of reopenMu above
+		if unlock {
+			releaseGate()
+		}
+	}()
+
 	pool, gen, err := db.close()
 	if err != nil {
 		return &DatabaseError{Op: "close for file operation", Err: err}
 	}
 	if !drained(pool, deadline) {
 		// fn does not run. The reopen blocks until the read lets go, so it
-		// runs in the background and keeps reopenMu, as a blocked heal does;
-		// until it publishes, calls get "sql: database is closed". No one
+		// runs in the background and keeps reopenMu and the gate, as a
+		// blocked heal does; until it publishes, calls get "sql: database is
+		// closed", and other tmoney processes wait for the gate. No one
 		// waits for its error: a failure leaves the handle to the next heal
 		// (see openPool).
 		unlock = false
@@ -488,6 +619,7 @@ func (db *DB) WithFileClosed(fn func(path string) error) error {
 		go func() {
 			defer db.fileBusy.Store(false) // after the unlock: a call that timed out sees it
 			defer db.reopenMu.Unlock()
+			defer releaseGate() // runs first: the reverse of the lock order
 			if db.awaitDrain(pool, gen) {
 				_ = db.openPool(gen)
 			}
@@ -546,6 +678,16 @@ func (db *DB) reconnectLocked() error {
 	if closed {
 		return ErrClosed
 	}
+	// The gate of the file (see reopenMu), from before the close to the
+	// publish of the new pool or the failure, so that no other tmoney opens
+	// the file in between. Open and Create hold the gate already, so their
+	// hold counts up at once. When another tmoney holds the gate until the
+	// deadline, nothing changes: the old pool stays as it was.
+	release, err := holdGate(db.path, time.Now().Add(reopenWaitTimeout), nil)
+	if err != nil {
+		return &DatabaseError{Op: "reconnect", Err: err}
+	}
+	defer release()
 	if old != nil {
 		if err := old.Close(); err != nil {
 			return &DatabaseError{Op: "close for reconnect", Err: err}
