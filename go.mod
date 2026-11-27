@@ -4,14 +4,14 @@ go 1.27
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.1.2
+	charm.land/bubbletea/v2 v2.2.0
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/NimbleMarkets/ntcharts/v2 v2.9.0
 	github.com/alpacahq/alpacadecimal v0.0.9
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f
-	github.com/charmbracelet/x/ansi v0.11.10
+	github.com/charmbracelet/x/ansi v0.12.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/creack/pty v1.1.24
 	github.com/duckdb/duckdb-go/v2 v2.20000.0

@@ -41,28 +41,44 @@ func viewConstants(t *testing.T) []viewConstant {
 // implicitly; any spec with its own type or value is an error rather than a
 // wrong value.
 func viewConstantsFromSource(src []byte) ([]viewConstant, error) {
-	file, err := parser.ParseFile(token.NewFileSet(), "app.go", src, 0)
+	names, err := iotaConstantNames(src, "View")
+	if err != nil || names == nil {
+		return nil, err
+	}
+	out := make([]viewConstant, len(names))
+	for i, name := range names {
+		out[i] = viewConstant{Name: name, Value: View(i)}
+	}
+	return out, nil
+}
+
+// iotaConstantNames finds the const block whose first spec is
+// `X <typeName> = iota` and returns its names in order, so that the value of
+// each name is its index (see viewConstantsFromSource). It returns nil when
+// src has no such block.
+func iotaConstantNames(src []byte, typeName string) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), "src.go", src, 0)
 	if err != nil {
 		return nil, err
 	}
 	for _, decl := range file.Decls {
 		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.CONST || !isViewIotaBlock(gen) {
+		if !ok || gen.Tok != token.CONST || !isIotaBlockOf(gen, typeName) {
 			continue
 		}
-		var out []viewConstant
+		var out []string
 		for i, spec := range gen.Specs {
 			vs := spec.(*ast.ValueSpec)
 			if i > 0 && (vs.Type != nil || len(vs.Values) > 0) {
-				return nil, fmt.Errorf("View constant %s has its own type or value; "+
-					"the enumerator assumes a plain iota block", vs.Names[0].Name)
+				return nil, fmt.Errorf("%s constant %s has its own type or value; "+
+					"the enumerator assumes a plain iota block", typeName, vs.Names[0].Name)
 			}
 			for _, name := range vs.Names {
 				if name.Name == "_" {
-					return nil, fmt.Errorf("the View block skips a value with _; " +
-						"the enumerator assumes one name per value")
+					return nil, fmt.Errorf("the %s block skips a value with _; "+
+						"the enumerator assumes one name per value", typeName)
 				}
-				out = append(out, viewConstant{Name: name.Name, Value: View(len(out))})
+				out = append(out, name.Name)
 			}
 		}
 		return out, nil
@@ -70,14 +86,15 @@ func viewConstantsFromSource(src []byte) ([]viewConstant, error) {
 	return nil, nil
 }
 
-// isViewIotaBlock reports whether the block's first spec is `X View = iota`.
-func isViewIotaBlock(gen *ast.GenDecl) bool {
+// isIotaBlockOf reports whether the block's first spec is
+// `X <typeName> = iota`.
+func isIotaBlockOf(gen *ast.GenDecl, typeName string) bool {
 	if len(gen.Specs) == 0 {
 		return false
 	}
 	first := gen.Specs[0].(*ast.ValueSpec)
 	typ, ok := first.Type.(*ast.Ident)
-	if !ok || typ.Name != "View" || len(first.Values) != 1 {
+	if !ok || typ.Name != typeName || len(first.Values) != 1 {
 		return false
 	}
 	val, ok := first.Values[0].(*ast.Ident)

@@ -318,6 +318,8 @@ The TUI has several views accessible via number keys or the menu bar:
 | `5` | Prices | Latest price per security; Enter or double-click drills into one ticker's full history; `u` to refresh prices |
 | - | Register | Transaction list for a selected account (open from Dashboard) |
 
+**Terminal restarts.** In a terminal that supports program resume (OSC 7577, for example Rex), tmoney comes back on the same file and screen after the terminal restarts. The screen and its account or report come back; rows, filters and open dialogs do not. When you quit with Ctrl+Q, tmoney does not come back. When a terminal tab or window closes, tmoney shuts down as on a quit: it closes the database and makes the quit backup.
+
 ### Keyboard Shortcuts
 
 Press `?` at any time to show the help overlay.

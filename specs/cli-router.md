@@ -95,6 +95,7 @@ The root Cobra command's `RunE` handles the "no subcommand, possibly a positiona
 | `--file <path>` | `-f` | persistent (all commands) | Database file. |
 | `--help` | `-h` | persistent | Show help (auto-provided by Cobra). |
 | `--version` | `-v` | root only | Print version (auto-provided by Cobra). |
+| `--resume <value>` | (none) | root only, hidden | The screen of a program resume (OSC 7577). A terminal sets it; it must stay in every later tmoney. See [tui.md](tui.md#program-resume-osc-7577). |
 
 The `--file`/`-f` flag is persistent — every subcommand that operates on a database respects it.
 

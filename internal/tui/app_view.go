@@ -16,6 +16,7 @@ func (a *App) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "TMoney - Personal Finance Manager"
+	v.ProgramResume = a.programResume()
 	return v
 }
 

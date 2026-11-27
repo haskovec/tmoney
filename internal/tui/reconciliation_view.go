@@ -663,10 +663,19 @@ func (a *App) afterReconciliationFinished() tea.Cmd {
 }
 
 // afterReconciliationCancelled drops the session and returns to the register.
-// Nothing is reloaded: a cancelled session wrote nothing.
-func (a *App) afterReconciliationCancelled() {
+// A cancelled session wrote nothing, so the register that the session started
+// from stays as it is. But a session can start where no register of the
+// account is loaded: from the Accounts menu on another view, or from a program
+// resume. The register then loads the selected account.
+func (a *App) afterReconciliationCancelled() tea.Cmd {
 	a.reconciliation.data = nil
 	a.reconciliation.table = nil
 	a.switchView(ViewRegister)
 	a.statusbar.AddNotification("Reconciliation cancelled", widget.NotificationInfo)
+	id := a.sidebar.SelectedAccountID()
+	if d := a.register.data; d != nil && d.account != nil && d.account.ID == id {
+		return nil
+	}
+	a.register.clearForLoad()
+	return a.loadRegisterData(id)
 }

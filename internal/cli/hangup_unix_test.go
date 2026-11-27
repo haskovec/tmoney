@@ -51,27 +51,42 @@ type ptyTUI struct {
 	// when its tab or window closes: the kernel hangs up the pty and sends
 	// SIGHUP.
 	hangUp func()
+	ptmx   *os.File
+}
+
+// ptyOptions changes how startTUIOnPTY starts the child.
+type ptyOptions struct {
+	// bin is the binary to run; the test binary when empty.
+	bin string
+	// args come after "-f <dbPath>".
+	args []string
+	// env is added to the child's environment.
+	env []string
 }
 
 // startTUIOnPTY starts tmoney's TUI on dbPath in a child process whose
 // controlling terminal is a new pseudo-terminal, and waits until the TUI has
 // drawn its first screen.
 //
-// The child gets only the variables set below: its own HOME and config
-// folder, so it does not touch the user's config, and a fixed TERM. No other
-// variable comes from the terminal that runs the test (for example TMUX,
-// TERM_PROGRAM or COLORTERM).
-func startTUIOnPTY(t *testing.T, dbPath string) *ptyTUI {
+// The child gets only the variables set below and in opts.env: its own HOME
+// and config folder, so it does not touch the user's config, and a fixed
+// TERM. No other variable comes from the terminal that runs the test (for
+// example TMUX, TERM_PROGRAM, COLORTERM or OSC7577_TOKEN).
+func startTUIOnPTY(t *testing.T, dbPath string, opts ptyOptions) *ptyTUI {
 	t.Helper()
 	home := t.TempDir()
-	cmd := exec.Command(os.Args[0], "-f", dbPath)
-	cmd.Env = []string{
+	bin := opts.bin
+	if bin == "" {
+		bin = os.Args[0]
+	}
+	cmd := exec.Command(bin, append([]string{"-f", dbPath}, opts.args...)...)
+	cmd.Env = append([]string{
 		runAsCLIEnv + "=1",
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"TERM=xterm-256color",
 		"PATH=" + os.Getenv("PATH"),
-	}
+	}, opts.env...)
 	// pty sets only the streams that are nil, and the TUI draws on stdout.
 	stderr := &syncBuffer{}
 	cmd.Stderr = stderr
@@ -144,7 +159,15 @@ func startTUIOnPTY(t *testing.T, dbPath string) *ptyTUI {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return &ptyTUI{cmd: cmd, out: out, stderr: stderr, hangUp: hangUp}
+	return &ptyTUI{cmd: cmd, out: out, stderr: stderr, hangUp: hangUp, ptmx: ptmx}
+}
+
+// send writes keys to the child's terminal, as a user who types them.
+func (p *ptyTUI) send(t *testing.T, keys string) {
+	t.Helper()
+	if _, err := p.ptmx.WriteString(keys); err != nil {
+		t.Fatalf("type %q: %v", keys, err)
+	}
 }
 
 // waitExit waits for the child to end, or fails the test after timeout.
@@ -174,7 +197,7 @@ func TestTUI_TerminalHangupClosesDatabaseAndBacksUp(t *testing.T) {
 		t.Fatalf("close the seeded database: %v", err)
 	}
 
-	tui := startTUIOnPTY(t, dbPath)
+	tui := startTUIOnPTY(t, dbPath, ptyOptions{})
 	tui.hangUp() // the terminal closes
 	// Shutdown waits up to db.SettleTimeout (5 s) for work in flight.
 	tui.waitExit(t, 20*time.Second)

@@ -51,7 +51,22 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sidebarLoadedMsg:
 		a.sidebar.SetAccounts(msg.accounts)
+		// The start's first load carries a program resume, which opens
+		// its screen now that the sidebar can select the account.
+		if msg.resume != nil {
+			return a, a.resolveResume(*msg.resume)
+		}
 		return a, nil
+
+	case resumeResolvedMsg:
+		return a, a.applyResume(msg)
+
+	case resumeDroppedMsg:
+		a.resumeInFlight = nil
+		if msg.msg == nil {
+			return a, nil
+		}
+		return a.Update(msg.msg)
 
 	case scheduledDueCountMsg:
 		a.applyScheduledDueCount(msg.count)
@@ -387,8 +402,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.afterReconciliationFinished()
 
 	case reconciliationCancelledMsg:
-		a.afterReconciliationCancelled()
-		return a, nil
+		return a, a.afterReconciliationCancelled()
 
 	case accountDeletedMsg:
 		a.switchView(ViewDashboard)

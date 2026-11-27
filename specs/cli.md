@@ -43,6 +43,8 @@ tmoney report net-worth --file personal.tdb
 
 `--file`/`-f` is a persistent flag on the root command, so every CLI subcommand inherits it without re-declaring it. CLI subcommands that need a database (i.e., almost all of them) require either `--file` to be set or a positional file argument; they do not fall back to the last-used file in config.
 
+The root command also has a hidden flag, `--resume <value>`, that `--help` does not list. A terminal that supports program resume (OSC 7577) sets it when it runs tmoney again after a restart; see [tui.md](tui.md#program-resume-osc-7577) for the values. It must stay in every later tmoney: a terminal can run the command of an older tmoney after an upgrade, and an unknown flag would fail it.
+
 ## Database File Handling
 
 1. If `--file` is supplied, use that file
@@ -51,6 +53,11 @@ tmoney report net-worth --file personal.tdb
 4. If no last file is recorded, the TUI prompts to create or open one
 
 CLI subcommands always require step 1 — they don't fall back to the last-used file.
+
+A start with `--resume` (a program resume) differs in two ways:
+
+- It never creates a file. A file that does not exist (moved, renamed, deleted, or on a volume that is not mounted) is the error `cannot resume: <file> does not exist`.
+- While another process has the file open (at a terminal restart, the tmoney that the terminal closed can still be in its shutdown), it prints `Waiting for another tmoney to close <file>...` and tries again for up to 10 seconds. Then it gives the usual open error.
 
 ```bash
 tmoney personal.tdb                    # Relative path (TUI)

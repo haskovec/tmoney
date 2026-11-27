@@ -506,6 +506,7 @@ func (a *App) switchDatabase(newDB *db.DB) (tea.Model, tea.Cmd) {
 	a.closeDialogsOfTheOldFile()
 
 	// Set new database and reinitialize ALL services
+	a.resumeInFlight = nil // a resume is for the file it started on
 	a.db = newDB
 	svc, prepareErr := newTUIServices(newDB)
 	a.services = *svc
