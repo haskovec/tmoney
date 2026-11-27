@@ -13,7 +13,7 @@
   - **Issue:** Both `Update` methods execute `DELETE` then `INSERT` without a transaction. A failed `INSERT` (e.g., invalid `default_category_id` FK in `SetDefaultCategory`) commits the `DELETE` and permanently destroys the row. Worse, because `categories(id)` still has 6 inbound FKs and `payees(id)` has 3 inbound FKs, editing/renaming *any* referenced category or payee (or merging a category with referenced children) fails with a DuckDB FK violation.
   - **DuckDB Note:** This workaround originally existed because older DuckDB versions turned `UPDATE` on an indexed column into an internal `DELETE+INSERT` that tripped inbound FKs. See the [DuckDB `UPDATE` Probe Findings](#duckdb-update-probe-findings) section below for live verification against the pinned DuckDB version before fixing.
 
-- [x] **CRIT-02: `MergeCategories` / `MergePayees` fail when called via `InTx(tx)`** *(scheduled_split_items fixed in PR #143; `ErrMergeInTx` guard, two-tx `WithTx` serialization, and explicit column lists in `MergePayees` fixed on `fix/merge-in-tx-guard`)*
+- [x] **CRIT-02: `MergeCategories` / `MergePayees` fail when called via `InTx(tx)`** *(scheduled_split_items fixed in PR #143; `ErrMergeInTx` guard, two-tx `WithTx` serialization, and plain `UPDATE` in `MergePayees` fixed on PR #144)*
   - **Files:** `internal/category/category_service.go:607-680`, `internal/payee/payee_service.go:327-418`
   - **Issue:** ~~`MergeCategories` never updated `scheduled_split_items.category_id`~~ *(fixed in PR #143)*. Remaining: calling `InTx(tx).MergeCategories(...)` or `InTx(tx).MergePayees(...)` runs the trailing `DELETE` inside `tx`, hitting DuckDB's same-tx FK delete restriction.
 
@@ -318,7 +318,7 @@
   - Remove `"testing"` import from production `internal/config/config.go`; deduplicate XDG path resolution with `filepath.IsAbs` check and `0700`/`0600` permissions.
   - Change `report.Service` date APIs from `time.Time` to `types.Date`.
   - Consolidate the 4 CLI category resolvers onto `internal/cli/category/resolve.go`, deduplicate `addMonths`/`lastDayOf` between `loan` and `scheduled`, and centralize `db.ExpandHome` at CLI/TUI/backup boundaries.
-  - Pass explicit `io.Writer`s (Cobra's `cmd.ErrOrStderr()`) into `cmdutil.OpenServices` / `AutoBackupAfterModification`; replace positional `INSERT INTO ... SELECT *` in `payee.Service.MergePayees` with explicit column lists.
+  - Pass explicit `io.Writer`s (Cobra's `cmd.ErrOrStderr()`) into `cmdutil.OpenServices` / `AutoBackupAfterModification` *(positional `INSERT INTO ... SELECT *` in `payee.Service.MergePayees` removed in PR #144)*.
 
 ---
 

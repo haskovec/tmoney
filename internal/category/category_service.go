@@ -582,8 +582,8 @@ func (s *Service) MergeCategories(sourceID, targetID types.ID) error {
 	// it: moving every reference off source and then deleting source in one tx
 	// fails with "Violates foreign key constraint because key ... is still
 	// referenced" — verified against the pinned duckdb-go version for every
-	// update form (bulk UPDATE, the repo's DELETE+INSERT, and temp-table
-	// DELETE+reinsert). So the delete runs in a separate trailing transaction.
+	// update form (bulk UPDATE and temp-table DELETE+reinsert). So the delete
+	// runs in a separate trailing transaction.
 	// The residual non-atomicity is benign and self-consistent: if the delete
 	// fails after the reassignment commits, source is left as an orphan category
 	// with zero references, which a re-run of the merge cleans up idempotently.

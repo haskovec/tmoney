@@ -40,11 +40,10 @@ func (f *failingQueryer) QueryRow(query string, args ...any) *sql.Row {
 }
 
 // TestMergePayees_FaultRollsBack seeds source and target payees plus a
-// transaction referencing the source, then forces the re-insert of the staged
-// transactions to fail after the source rows have already been deleted inside
-// the tx (temp-table create + delete having run). It asserts the whole merge
-// rolls back: both payees still exist and the transaction still references the
-// source payee.
+// transaction referencing the source, then forces the second merge UPDATE
+// (scheduled_transactions) to fail after UPDATE transactions has already run
+// inside the tx. It asserts the whole merge rolls back: both payees still exist
+// and the transaction still references the source payee.
 func TestMergePayees_FaultRollsBack(t *testing.T) {
 	database := createTestDB(t)
 	repo := NewRepository(database)
@@ -78,11 +77,11 @@ func TestMergePayees_FaultRollsBack(t *testing.T) {
 		t.Fatalf("insert transaction error = %v", err)
 	}
 
-	// Exec order inside the merge reassignment: CREATE TEMPORARY TABLE _merge_txns (#1),
-	// DELETE source transactions (#2), INSERT re-insert from temp table (#3).
-	// Fail #3 so the delete of the source's transactions must roll back.
+	// Exec order inside the merge reassignment: UPDATE transactions (#1),
+	// UPDATE scheduled_transactions (#2). Fail #2 so the first update must roll
+	// back with it.
 	err := database.WithTx(func(tx db.Queryer) error {
-		fw := &failingQueryer{inner: tx, failOn: 3}
+		fw := &failingQueryer{inner: tx, failOn: 2}
 		return svc.InTx(fw).reassignForMerge(source.ID, target.ID)
 	})
 	if err == nil {
@@ -171,5 +170,39 @@ func TestMergePayees_RejectsInTx(t *testing.T) {
 	}
 	if execs != 0 {
 		t.Errorf("InTx().MergePayees() ran %d Exec statements before failing, want 0", execs)
+	}
+}
+
+// TestMergePayees_IdempotentAfterOrphanedSource verifies the documented recovery
+// path: if reassignment commits (leaving source with zero references) and the
+// trailing delete fails, re-running MergePayees deletes the orphaned source
+// payee without duplicating aliases or corrupting references.
+func TestMergePayees_IdempotentAfterOrphanedSource(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewPayee("Orphan Source")
+	target := NewPayee("Orphan Target")
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("Create source error = %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("Create target error = %v", err)
+	}
+
+	// Simulate tx 1 committing without tx 2 running.
+	if err := database.WithTx(func(tx db.Queryer) error {
+		return svc.InTx(tx).reassignForMerge(source.ID, target.ID)
+	}); err != nil {
+		t.Fatalf("reassignForMerge error = %v", err)
+	}
+
+	// Re-running MergePayees must clean up the orphaned source cleanly.
+	if err := svc.MergePayees(source.ID, target.ID); err != nil {
+		t.Fatalf("MergePayees retry error = %v", err)
+	}
+	if _, err := svc.GetByID(source.ID); err == nil {
+		t.Error("expected orphaned source payee to be deleted on retry")
 	}
 }

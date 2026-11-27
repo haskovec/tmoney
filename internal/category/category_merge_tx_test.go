@@ -179,3 +179,37 @@ func TestMergeCategories_RejectsInTx(t *testing.T) {
 		t.Errorf("InTx().MergeCategories() ran %d Exec statements before failing, want 0", execs)
 	}
 }
+
+// TestMergeCategories_IdempotentAfterOrphanedSource verifies the documented
+// recovery path: if reassignment commits (leaving source with zero references)
+// and the trailing delete fails, re-running MergeCategories deletes the
+// orphaned source cleanly.
+func TestMergeCategories_IdempotentAfterOrphanedSource(t *testing.T) {
+	database := createTestDB(t)
+	repo := NewRepository(database)
+	svc := NewService(repo, database)
+
+	source := NewCategory("Orphan Source", TypeExpense)
+	target := NewCategory("Orphan Target", TypeExpense)
+	if err := svc.Create(source); err != nil {
+		t.Fatalf("Create source error = %v", err)
+	}
+	if err := svc.Create(target); err != nil {
+		t.Fatalf("Create target error = %v", err)
+	}
+
+	// Simulate tx 1 committing without tx 2 running.
+	if err := database.WithTx(func(tx db.Queryer) error {
+		return svc.InTx(tx).reassignForMerge(source.ID, target.ID)
+	}); err != nil {
+		t.Fatalf("reassignForMerge error = %v", err)
+	}
+
+	// Re-running MergeCategories must clean up the orphaned source cleanly.
+	if err := svc.MergeCategories(source.ID, target.ID); err != nil {
+		t.Fatalf("MergeCategories retry error = %v", err)
+	}
+	if _, err := svc.GetByID(source.ID); err == nil {
+		t.Error("expected orphaned source category to be deleted on retry")
+	}
+}
